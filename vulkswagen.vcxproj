@@ -52,13 +52,13 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\personal\glfw\include;$(VK_SDK_PATH)\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\glfw\include;$(VK_SDK_PATH)\include</AdditionalIncludeDirectories>
       <TreatSpecificWarningsAsErrors>4133</TreatSpecificWarningsAsErrors>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Source\lib;C:\personal\glfw\build\src\Debug</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Source\lib;$(ProjectDir)..\glfw\build\src\Debug</AdditionalLibraryDirectories>
       <AdditionalDependencies>Shlwapi.lib;vulkan-1.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <IgnoreSpecificDefaultLibraries>LIBCMTD</IgnoreSpecificDefaultLibraries>
     </Link>
@@ -72,7 +72,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\personal\glfw\include;$(VK_SDK_PATH)\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\glfw\include;$(VK_SDK_PATH)\include</AdditionalIncludeDirectories>
       <TreatSpecificWarningsAsErrors>4133</TreatSpecificWarningsAsErrors>
     </ClCompile>
     <Link>
@@ -80,7 +80,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Source\lib;C:\personal\glfw\build\src\Release</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Source\lib;$(ProjectDir)..\glfw\build\src\Release</AdditionalLibraryDirectories>
       <AdditionalDependencies>Shlwapi.lib;vulkan-1.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <IgnoreSpecificDefaultLibraries>LIBCMT;MSVCRTD</IgnoreSpecificDefaultLibraries>
     </Link>
