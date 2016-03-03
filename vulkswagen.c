@@ -754,9 +754,9 @@ int main(int argc, char *argv[]) {
 	VULKAN_CHECK( vkCreateRenderPass(device, &renderPassCreateInfo, allocationCallbacks, &renderPass) );
 
 	// Load shaders
-	VkShaderModule vertexShaderModule   = readSpvFile(device, allocationCallbacks, "tri-vert.spv");
+	VkShaderModule vertexShaderModule   = readSpvFile(device, allocationCallbacks, "tri.vert.spv");
 	assert(vertexShaderModule != VK_NULL_HANDLE);
-	VkShaderModule fragmentShaderModule = readSpvFile(device, allocationCallbacks, "tri-frag.spv");
+	VkShaderModule fragmentShaderModule = readSpvFile(device, allocationCallbacks, "tri.frag.spv");
 	assert(fragmentShaderModule != VK_NULL_HANDLE);
 
 	// Load textures, create sampler and image view
