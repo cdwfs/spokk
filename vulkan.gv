@@ -1,0 +1,114 @@
+digraph G {
+    application_name [label="Application Name"];
+    application_name -> VkApplicationInfo;
+    
+    application_version [label="Application Version"];
+    application_version -> VkApplicationInfo;
+
+    engine_name [label="Engine Name"];
+    engine_name -> VkApplicationInfo;
+
+    engine_version [label="Engine Version"];
+    engine_version -> VkApplicationInfo;
+
+    api_version [label="API Version"];
+    api_version -> VkApplicationInfo;
+    
+    allocation_functions [label="alloc/free/realloc\nfunctions"];
+    allocation_functions -> VkAllocationCallbacks;
+
+    instance_layer_names [label="instance layer\nnames"];
+    instance_layer_names -> VkInstanceCreateInfo;
+
+    instance_extension_names [label="instance extension\nnames"];
+    instance_extension_names -> VkInstanceCreateInfo;
+    
+    device_layer_names [label="device layer\nnames"];
+    device_layer_names -> VkDeviceCreateInfo;
+
+    device_extension_names [label="device extension\nnames"];
+    device_extension_names -> VkDeviceCreateInfo;
+    
+    VkAllocationCallbacks -> {
+        VkInstance,
+        VkPhysicalDevice,
+        VkDevice,
+        VkDebugReportCallbackEXT,
+        VkSurfaceKHR,
+        VkSwapchainKHR
+    }
+    
+    VkApplicationInfo -> {
+        VkInstanceCreateInfo
+    }
+
+    VkInstanceCreateInfo -> VkInstance;
+    VkInstance -> {
+        VkPhysicalDevice,
+        VkLayerProperties,
+        VkExtensionProperties,
+        VkDebugReportCallbackEXT,
+        VkSurfaceKHR
+    }
+
+    VkPhysicalDevice -> {
+        VkPhysicalDeviceProperties,
+        VkPhysicalDeviceMemoryProperties,
+        VkPhysicalDeviceFeatures,
+        VkLayerProperties,
+        VkExtensionProperties,
+        VkQueueFamilyProperties,
+        VkDevice,
+        VkSurfaceCapabilitiesKHR
+    }
+
+    VkPhysicalDeviceFeatures -> {
+        VkDeviceCreateInfo
+    }
+
+    VkQueueFamilyProperties -> {
+        VkDeviceQueueCreateInfo,
+        VkQueue
+    }
+
+    VkDeviceQueueCreateInfo -> VkDeviceCreateInfo;
+
+    VkDeviceCreateInfo -> VkDevice;
+    VkDevice -> {
+        VkQueue,
+        VkCommandPool,
+        VkCommandBuffer,
+        VkSurfaceFormatKHR,
+        VkSwapchainKHR
+    }
+
+    VkDebugReportCallbackCreateInfoEXT -> VkDebugReportCallbackEXT;
+
+    VkCommandPoolCreateInfo -> VkCommandPool;
+    VkCommandPool -> {
+        VkCommandBufferAllocateInfo
+    }
+
+    VkCommandBufferAllocateInfo -> VkCommandBuffer;
+    VkCommandBuffer -> {
+    }
+
+    VkSurfaceKHR -> {
+        VkSurfaceCapabilitiesKHR,
+        VkSurfaceFormatKHR,
+        VkSwapchainCreateInfoKHR
+    }
+
+    VkSurfaceFormatKHR -> {
+        VkSwapchainCreateInfoKHR,
+        VkColorSpaceKHR
+    }
+
+    VkSurfaceCapabilities -> {
+        VkSurfaceTransformFlagsKHR
+    }
+
+    VkSurfaceTransformFlagsKHR -> VkSwapchainCreateInfoKHR;
+    VkColorSpaceKHR -> VkSwapchainCreateInfoKHR;
+    VkSwapchainCreateInfoKHR -> VkSwapchainKHR;
+}
