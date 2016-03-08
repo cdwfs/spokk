@@ -1,4 +1,4 @@
-digraph G {
+strict digraph Vulkan {
     application_name [label="Application Name"];
     application_name -> VkApplicationInfo;
     
@@ -35,7 +35,19 @@ digraph G {
         VkDevice,
         VkDebugReportCallbackEXT,
         VkSurfaceKHR,
-        VkSwapchainKHR
+        VkSwapchainKHR,
+        VkDeviceMemory,
+        VkBuffer,
+        VkDescriptorSetLayout,
+        VkPipelineLayout,
+        VkRenderPass,
+        VkShaderModule,
+        VkSampler,
+        VkPipelineCache,
+        VkPipeline,
+        VkDescriptorPool,
+        VkFramebuffer,
+        VkSemaphore
     }
     
     VkApplicationInfo -> {
@@ -59,7 +71,12 @@ digraph G {
         VkExtensionProperties,
         VkQueueFamilyProperties,
         VkDevice,
-        VkSurfaceCapabilitiesKHR
+        VkSurfaceCapabilitiesKHR,
+        VkFormatProperties
+    }
+
+    VkPhysicalDeviceMemoryProperties -> {
+        VkMemoryAllocateInfo
     }
 
     VkPhysicalDeviceFeatures -> {
@@ -79,7 +96,24 @@ digraph G {
         VkCommandPool,
         VkCommandBuffer,
         VkSurfaceFormatKHR,
-        VkSwapchainKHR
+        VkSwapchainKHR,
+        VkImage,
+        VkMemoryRequirements,
+        VkDeviceMemory,
+        VkBuffer,
+        VkDescriptorSetLayout,
+        VkPipelineLayout,
+        VkRenderPass,
+        VkShaderModule,
+        VkSubresourceLayout,
+        VkSampler,
+        VkPipelineCache,
+        VkPipeline,
+        VkDescriptorPool,
+        VkDescriptorSet,
+        VkWriteDescriptorSet,
+        VkFramebuffer,
+        VkSemaphore
     }
 
     VkDebugReportCallbackCreateInfoEXT -> VkDebugReportCallbackEXT;
@@ -91,6 +125,7 @@ digraph G {
 
     VkCommandBufferAllocateInfo -> VkCommandBuffer;
     VkCommandBuffer -> {
+        VkSubmitInfo
     }
 
     VkSurfaceKHR -> {
@@ -101,7 +136,15 @@ digraph G {
 
     VkSurfaceFormatKHR -> {
         VkSwapchainCreateInfoKHR,
+        VkFormat,
         VkColorSpaceKHR
+    }
+
+    VkFormat -> {
+        VkSwapchainCreateInfoKHR,
+        VkImageViewCreateInfo,
+        VkImageCreateInfo,
+        VkFormatProperties
     }
 
     VkSurfaceCapabilities -> {
@@ -111,4 +154,154 @@ digraph G {
     VkSurfaceTransformFlagsKHR -> VkSwapchainCreateInfoKHR;
     VkColorSpaceKHR -> VkSwapchainCreateInfoKHR;
     VkSwapchainCreateInfoKHR -> VkSwapchainKHR;
+
+    VkSwapchainKHR -> {
+        VkImage,
+        VkImageViewCreateInfo,
+        VkPresentInfoKHR
+    }
+
+    VkImageViewCreateInfo -> VkImageView;
+    VkImageView -> {
+        VkDescriptorImageInfo,
+        VkFramebufferCreateInfo
+    }
+    
+
+    VkImageCreateInfo -> VkImage;
+    VkImage -> {
+        VkMemoryRequirements,
+        VkSubresourceLayout,
+        VkImageMemoryBarrier
+    }
+
+    VkMemoryRequirements -> {
+        VkMemoryAllocateInfo
+    }
+
+    VkMemoryAllocateInfo -> {
+        VkDeviceMemory
+    }
+
+    VkVertexInputBindingDescription -> {
+        VkPipelineVertexInputStateCreateInfo
+    }
+
+    VkVertexInputAttributeDescription -> {
+        VkPipelineVertexInputStateCreateInfo
+    }
+
+    VkBufferCreateInfo -> VkBuffer;
+    VkBuffer -> {
+    }
+
+    VkDescriptorSetLayoutBinding -> {
+        VkDescriptorSetLayoutCreateInfo
+    }
+
+    VkDescriptorSetLayoutCreateInfo -> VkDescriptorSetLayout;
+    VkDescriptorSetLayout -> {
+        VkPipelineLayoutCreateInfo,
+        VkDescriptorSetAllocateInfo
+    }
+
+    VkPipelineVertexInputStateCreateInfo -> VkPipelineVertexInputState;
+
+    VkPushConstantRange -> {
+        VkPipelineLayoutCreateInfo
+    }
+
+    VkPipelineLayoutCreateInfo -> VkPipelineLayout;
+    VkPipelineLayout -> {
+    }
+
+    VkAttachmentDescriptions -> {
+        VkRenderPassCreateInfo
+    }
+
+    VkAttachmentReference -> {
+        VkSubpassDescription
+    }
+
+    VkSubpassDescription -> {
+        VkRenderPassCreateInfo
+    }
+
+    VkRenderPassCreateInfo -> VkRenderPass;
+    VkRenderPass -> {
+        VkGraphicsPipelineCreateInfo,
+        VkFramebufferCreateInfo,
+        VkCommandBufferInheritanceInfo,
+        VkRenderPassBeginInfo
+    }
+
+    shader_code [label="Shader Code"];
+    shader_code -> VkShaderModuleCreateInfo;
+
+    VkShaderModuleCreateInfo -> VkShaderModule;
+    VkShaderModule -> {
+        VkPipelineShaderStageCreateInfo
+    }
+
+    VkImageSubresource -> {
+        VkSubresourceLayout
+    }
+
+    VkSubresourceLayout -> {
+    }
+
+    VkSamplerCreateInfo -> VkSampler;
+    VkSampler -> {
+        VkDescriptorImageInfo
+    }
+
+    VkDynamicState -> {
+        VkPipelineDynamicStateCreateInfo
+    }
+
+    VkPipelineInputAssemblyStateCreateInfo -> VkGraphicsPipelineCreateInfo;
+    VkPipelineRasterizationStateCreateInfo -> VkGraphicsPipelineCreateInfo;
+    VkPipelineColorBlendAttachmentState -> VkPipelineColorBlendStateCreateInfo;
+    VkPipelineColorBlendStateCreateInfo -> VkGraphicsPipelineCreateInfo;
+    VkPipelineViewportStateCreateInfo -> VkGraphicsPipelineCreateInfo;
+    VkPipelineDepthStencilStateCreateInfo -> VkGraphicsPipelineCreateInfo;
+    VkSampleMask -> VkPipelineMultisampleStateCreateInfo;
+    VkPipelineMultisampleStateCreate -> VkGraphicsPipelineCreateInfo;
+    VkPipelineCacheCreateInfo -> VkPipelineCache;
+    VkPipelineCache -> VkPipeline;
+    VkPipelineShaderStageCreateInfo -> VkGraphicsPipelineCreateInfo;
+    VkPipelineDynamicStateCreateInfo -> VkGraphicsPipelineCreateInfo;
+    VkGraphicsPipelineCreateInfo -> VkPipeline;
+
+    VkDescriptorPoolSize -> VkDescriptorPoolCreateInfo;
+    VkDescriptorPoolCreateInfo -> VkDescriptorPool;
+    VkDescriptorPool -> {
+        VkDescriptorSetAllocateInfo
+    }
+
+    VkDescriptorSetAllocateInfo -> {
+        VkDescriptorSet
+    }
+    VkDescriptorSet -> {
+        VkWriteDescriptorSet
+    }
+
+    VkDescriptorImageInfo -> {
+        VkWriteDescriptorSet
+    }
+
+    VkFramebufferCreateInfo -> VkFramebuffer;
+    VkFramebuffer -> {
+        VkCommandBufferInheritanceInfo,
+        VkRenderPassBeginInfo
+    }
+
+    VkSemaphoreCreateInfo -> VkSemaphore;
+
+    VkCommandBufferInheritanceInfo -> VkCommandBufferBeginInfo;
+
+    VkClearValue -> VkRenderPassBeginInfo;
+
+    VkPresentInfoKHR -> {
+    }
 }
