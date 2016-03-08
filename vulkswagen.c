@@ -1252,9 +1252,11 @@ int main(int argc, char *argv[]) {
 	}
 
 	vkDeviceWaitIdle(device);
+	vkDestroySwapchainKHR(device, swapchain, allocationCallbacks);
 	vkDestroySurfaceKHR(instance, surface, allocationCallbacks);
 	vkFreeCommandBuffers(device, commandPool, 1, &cmdBufDraw);
 	vkDestroyCommandPool(device, commandPool, allocationCallbacks);
+	DestroyDebugReportCallback(instance, debugReportCallback, allocationCallbacks);
 	vkDestroyDevice(device, allocationCallbacks);
 	vkDestroyInstance(instance, allocationCallbacks);
 	glfwTerminate();
