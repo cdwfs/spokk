@@ -5,6 +5,9 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -102,19 +105,20 @@ static void setImageLayout(VkCommandBuffer cmdBuf, VkImage image,
 		},
 	};
 	switch(newLayout) {
+	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
 	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
 		// Make sure anything that was copying from this image has completed.
-		imgMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		imgMemoryBarrier.dstAccessMask |= VK_ACCESS_TRANSFER_READ_BIT;
 		break;
 	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-		imgMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		imgMemoryBarrier.dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		break;
 	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-		imgMemoryBarrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		imgMemoryBarrier.dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 		break;
 	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
 		// Make sure any Copy or CPU writes to image are flushed
-        imgMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+        imgMemoryBarrier.dstAccessMask |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
 		break;
 	}
 	VkPipelineStageFlags srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -593,16 +597,17 @@ int main(int argc, char *argv[]) {
 
 	// Create vertex buffer
 	const float vertices[] = {
-		//0,1,2: position  4,5: texcoord
-		-1.0f, -1.0f, 0.25f,	0.0f, 0.0f,
-		 1.0f, -1.0f, 0.25f,	1.0f, 0.0f,
-		 0.0f,  1.0f, 1.00f,	0.5f, 1.0f,
+		//0,1,2: position  4,5,6: texcoord
+		-0.75f, -0.75f, 1.00f,	0.0f, 0.0f, 0.0f,
+		 0.75f, -0.75f, 1.00f,	1.0f, 0.0f, 0.25f,
+		-0.75f,  0.75f, 1.00f,	0.0f, 1.0f, 0.5f,
+		 0.75f,  0.75f, 1.00f,	1.0f, 1.0f, 0.75f,
 	};
 	const uint32_t kVertexBufferBindId = 0;
 	const VkVertexInputBindingDescription vertexInputBindingDescriptions[] = {
 		[0] = {
 			.binding = kVertexBufferBindId,
-			.stride = 3*sizeof(float) + 2*sizeof(float),
+			.stride = 3*sizeof(float) + 3*sizeof(float),
 			.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
 		},
 	};
@@ -615,7 +620,7 @@ int main(int argc, char *argv[]) {
 		}, [1] = {
 			.binding = kVertexBufferBindId,
 			.location = 1,
-			.format = VK_FORMAT_R32G32_SFLOAT,
+			.format = VK_FORMAT_R32G32B32_SFLOAT,
 			.offset = 3*sizeof(float),
 		},
 	};
@@ -661,6 +666,26 @@ int main(int argc, char *argv[]) {
 		.pVertexAttributeDescriptions = vertexInputAttributeDescriptions,
 	};
 
+	// Create push constants
+	struct {
+		float time[4]; // .x=seconds, .yzw=???
+	} pushConstants = {0,0,0,0};
+	assert(sizeof(pushConstants) <= deviceProps.limits.maxPushConstantsSize);
+#ifdef _WIN32
+	LARGE_INTEGER counterFreq;
+	QueryPerformanceFrequency(&counterFreq);
+	const double clocksToSeconds = 1.0 / (double)counterFreq.QuadPart;
+	LARGE_INTEGER counterStart;
+	QueryPerformanceCounter(&counterStart);
+#else
+#	error need timer code here
+#endif
+	const VkPushConstantRange pushConstantRange = {
+		.stageFlags = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		.offset = 0,
+		.size = sizeof(pushConstants),
+	};
+
 	// Create Vulkan descriptor layout & pipeline layout
 	const VkDescriptorSetLayoutBinding descriptorSetLayoutBindings[] = {
 		[0] = {
@@ -680,15 +705,14 @@ int main(int argc, char *argv[]) {
 	};
 	VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
 	VULKAN_CHECK( vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, allocationCallbacks, &descriptorSetLayout) );
-	VkPushConstantRange *pushConstantRanges = NULL;
 	const VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.pNext = NULL,
 		.flags = 0,
 		.setLayoutCount = 1,
 		.pSetLayouts = &descriptorSetLayout,
-		.pushConstantRangeCount = 0,
-		.pPushConstantRanges = pushConstantRanges,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &pushConstantRange,
 	};
 	VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 	VULKAN_CHECK( vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, allocationCallbacks, &pipelineLayout) );
@@ -760,18 +784,20 @@ int main(int argc, char *argv[]) {
 	assert(fragmentShaderModule != VK_NULL_HANDLE);
 
 	// Load textures, create sampler and image view
-	VkFormat surfaceTextureFormat = VK_FORMAT_B8G8R8A8_UNORM;
+	const uint32_t kTextureLayerCount = 32;
+	int texWidth, texHeight, texComp;
+	{
+		uint32_t *pixels = (uint32_t*)stbi_load("trevor/trevor-0.png", &texWidth, &texHeight, &texComp, 4);
+		stbi_image_free(pixels);
+	}
+	VkFormat surfaceTextureFormat = VK_FORMAT_R8G8B8A8_UNORM;
 	VkFormatProperties textureFormatProperties = {0};
 	vkGetPhysicalDeviceFormatProperties(physicalDevice, surfaceTextureFormat, &textureFormatProperties);
-	const uint32_t textureColors[kDemoTextureCount][2] = {
-		[0] = {
-			0xFFFF0000,
-			0xFF00FF00,
-		},
-	};
-	const int32_t textureWidth = 2, textureHeight = 2;
-	VkImageTiling imageTiling = VK_IMAGE_TILING_LINEAR;
-	VkImageUsageFlags imageUsageFlags = VK_IMAGE_USAGE_SAMPLED_BIT;
+	if (0 == (textureFormatProperties.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
+		// TODO(cort): use a staging pass to transfer the linear source image to a tiled format.
+		fprintf(stderr, "ERROR: linear texture sampling is not supported on this hardware.\n");
+		exit(1);
+	}
 	const VkImageCreateInfo imageCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 		.pNext = NULL,
@@ -779,70 +805,44 @@ int main(int argc, char *argv[]) {
 		.imageType = VK_IMAGE_TYPE_2D,
 		.format = surfaceTextureFormat,
 		.extent = {
-			.width = textureWidth,
-			.height = textureHeight,
+			.width = texWidth,
+			.height = texHeight,
 			.depth = 1,
 		},
 		.mipLevels = 1,
-		.arrayLayers = 1,
+		.arrayLayers = kTextureLayerCount,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
-		.tiling = imageTiling,
-		.usage = VK_IMAGE_USAGE_SAMPLED_BIT,
+		.tiling = VK_IMAGE_TILING_OPTIMAL,
+		.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.queueFamilyIndexCount = 0,
 		.pQueueFamilyIndices = NULL,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	};
-	VkImage textureImages[kDemoTextureCount] = {VK_NULL_HANDLE};
-	for(uint32_t iTexture=0; iTexture<kDemoTextureCount; iTexture+=1) {
-		if (0 == (textureFormatProperties.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
-			// TODO(cort): use a staging pass to transfer the linear source image to a tiled format.
-			fprintf(stderr, "ERROR: linear texture sampling is not supported on this hardware.\n");
-			exit(1);
-		}
-		VULKAN_CHECK( vkCreateImage(device, &imageCreateInfo, allocationCallbacks, &textureImages[iTexture]) );
-		VkMemoryRequirements memoryRequirements = {0};
-		vkGetImageMemoryRequirements(device, textureImages[iTexture], &memoryRequirements);
-		VkMemoryAllocateInfo memoryAllocateInfo = {
-			.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-			.pNext = NULL,
-			.allocationSize = memoryRequirements.size,
-			.memoryTypeIndex = 0, // filled in below
-		};
-		const VkFlags requiredMemoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-		VkBool32 foundMemoryType = getMemoryTypeFromProperties(&physicalDeviceMemoryProperties,
-			memoryRequirements.memoryTypeBits,
-			requiredMemoryProperties,
-			&memoryAllocateInfo.memoryTypeIndex);
-		assert(foundMemoryType);
-		VkDeviceMemory textureDeviceMemory = VK_NULL_HANDLE;
-		VULKAN_CHECK( vkAllocateMemory(device, &memoryAllocateInfo, allocationCallbacks, &textureDeviceMemory) );
-		VkDeviceSize textureMemoryOffset = 0;
-		VULKAN_CHECK( vkBindImageMemory(device, textureImages[iTexture], textureDeviceMemory, textureMemoryOffset) );
-		if (requiredMemoryProperties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-			const VkImageSubresource textureImageSubresource = {
-				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-				.mipLevel = 0,
-				.arrayLayer = 0,
-			};
-			VkSubresourceLayout subresourceLayout = {0};
-			VkMemoryMapFlags memoryMapFlags = 0;
-			vkGetImageSubresourceLayout(device, textureImages[iTexture], &textureImageSubresource, &subresourceLayout);
-			void *mappedTextureData = NULL;
-			VULKAN_CHECK( vkMapMemory(device, textureDeviceMemory, textureMemoryOffset,
-				memoryRequirements.size, memoryMapFlags, &mappedTextureData) );
-			for(int32_t iY=0; iY<textureHeight; iY+=1) {
-				uint32_t *row = (uint32_t*)( (char*)mappedTextureData + iY*subresourceLayout.rowPitch );
-				for(int32_t iX=0; iX<textureWidth; iX+=1) {
-					row[iX] = textureColors[0][(iX&1)^(iY^1)];
-				}
-			}
-			vkUnmapMemory(device, textureDeviceMemory);
-		}
-		VkImageLayout textureImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		setImageLayout(cmdBufSetup, textureImages[iTexture], VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_UNDEFINED, textureImageLayout);
-	}
+	VkImage textureImage;
+	VkImageFormatProperties imageFormatProperties = {0};
+	VULKAN_CHECK( vkGetPhysicalDeviceImageFormatProperties(physicalDevice,
+		imageCreateInfo.format, imageCreateInfo.imageType, imageCreateInfo.tiling,
+		imageCreateInfo.usage, 0, &imageFormatProperties) );
+	assert(kTextureLayerCount <= imageFormatProperties.maxArrayLayers);
+	VULKAN_CHECK( vkCreateImage(device, &imageCreateInfo, allocationCallbacks, &textureImage) );
+	VkMemoryRequirements memoryRequirements = {0};
+	vkGetImageMemoryRequirements(device, textureImage, &memoryRequirements);
+	VkMemoryAllocateInfo memoryAllocateInfo = {
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.pNext = NULL,
+		.allocationSize = memoryRequirements.size,
+		.memoryTypeIndex = 0, // filled in below
+	};
+	VkBool32 foundMemoryType = getMemoryTypeFromProperties(&physicalDeviceMemoryProperties,
+		memoryRequirements.memoryTypeBits,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		&memoryAllocateInfo.memoryTypeIndex);
+	assert(foundMemoryType);
+	VkDeviceMemory textureDeviceMemory = VK_NULL_HANDLE;
+	VULKAN_CHECK( vkAllocateMemory(device, &memoryAllocateInfo, allocationCallbacks, &textureDeviceMemory) );
+	VkDeviceSize textureMemoryOffset = 0;
+	VULKAN_CHECK( vkBindImageMemory(device, textureImage, textureDeviceMemory, textureMemoryOffset) );
 	const VkSamplerCreateInfo samplerCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
 		.pNext = NULL,
@@ -869,7 +869,7 @@ int main(int argc, char *argv[]) {
 		.pNext = NULL,
 		.flags = 0,
 		.image = VK_NULL_HANDLE, // filled in below
-		.viewType = VK_IMAGE_VIEW_TYPE_2D,
+		.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
 		.format = surfaceTextureFormat,
 		.components = {
 			.r = VK_COMPONENT_SWIZZLE_R,
@@ -882,15 +882,111 @@ int main(int argc, char *argv[]) {
 			.baseMipLevel = 0,
 			.levelCount = 1,
 			.baseArrayLayer = 0,
-			.layerCount = 1,
+			.layerCount = kTextureLayerCount,
 		},
 	};
 	VkImageView textureImageViews[kDemoTextureCount];
 	for(uint32_t iTexture=0; iTexture<kDemoTextureCount; iTexture+=1) {
-		textureImageViewCreateInfo.image = textureImages[iTexture];
+		textureImageViewCreateInfo.image = textureImage;
 		VULKAN_CHECK( vkCreateImageView(device, &textureImageViewCreateInfo, allocationCallbacks, &textureImageViews[iTexture]) );
 	}
 	
+
+	// Load individual texture layers into staging textures, and copy them into the final texture.
+	const VkImageCreateInfo stagingImageCreateInfo = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.pNext = NULL,
+		.flags = 0,
+		.imageType = VK_IMAGE_TYPE_2D,
+		.format = surfaceTextureFormat,
+		.extent = {
+			.width = texWidth,
+			.height = texHeight,
+			.depth = 1,
+		},
+		.mipLevels = 1,
+		.arrayLayers = 1,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.tiling = VK_IMAGE_TILING_LINEAR,
+		.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+		.queueFamilyIndexCount = 0,
+		.pQueueFamilyIndices = NULL,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+	};
+	VkImage *stagingTextureImages = (VkImage*)malloc(kTextureLayerCount * sizeof(VkImage));
+	for(uint32_t iLayer=0; iLayer<kTextureLayerCount; iLayer += 1) {
+		VULKAN_CHECK( vkCreateImage(device, &stagingImageCreateInfo, allocationCallbacks, &stagingTextureImages[iLayer]) );
+		VkMemoryRequirements memoryRequirements = {0};
+		vkGetImageMemoryRequirements(device, stagingTextureImages[iLayer], &memoryRequirements);
+		VkMemoryAllocateInfo memoryAllocateInfo = {
+			.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+			.pNext = NULL,
+			.allocationSize = memoryRequirements.size,
+			.memoryTypeIndex = 0, // filled in below
+		};
+		VkBool32 foundMemoryType = getMemoryTypeFromProperties(&physicalDeviceMemoryProperties,
+			memoryRequirements.memoryTypeBits,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+			&memoryAllocateInfo.memoryTypeIndex);
+		assert(foundMemoryType);
+		VkDeviceMemory textureDeviceMemory = VK_NULL_HANDLE;
+		VULKAN_CHECK( vkAllocateMemory(device, &memoryAllocateInfo, allocationCallbacks, &textureDeviceMemory) );
+		VkDeviceSize textureMemoryOffset = 0;
+		VULKAN_CHECK( vkBindImageMemory(device, stagingTextureImages[iLayer], textureDeviceMemory, textureMemoryOffset) );
+
+		const VkImageSubresource textureImageSubresource = {
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.mipLevel = 0,
+			.arrayLayer = 0,
+		};
+		VkSubresourceLayout subresourceLayout = {0};
+		VkMemoryMapFlags memoryMapFlags = 0;
+		vkGetImageSubresourceLayout(device, stagingTextureImages[iLayer], &textureImageSubresource, &subresourceLayout);
+		void *mappedTextureData = NULL;
+		VULKAN_CHECK( vkMapMemory(device, textureDeviceMemory, textureMemoryOffset,
+			memoryRequirements.size, memoryMapFlags, &mappedTextureData) );
+		char imagePath[128];
+		_snprintf(imagePath, 127, "trevor/trevor-%u.png", iLayer);
+		imagePath[127] = 0;
+		int width=0,height=0,comp=0;
+		uint32_t *pixels = (uint32_t*)stbi_load(imagePath, &width, &height, &comp, 4);
+		for(int32_t iY=0; iY<texHeight; iY+=1) {
+			uint32_t *row = (uint32_t*)( (char*)mappedTextureData + iY*subresourceLayout.rowPitch );
+			for(int32_t iX=0; iX<texWidth; iX+=1) {
+				row[iX] = pixels[iY*texWidth+iX];
+			}
+		}
+		stbi_image_free(pixels);
+		vkUnmapMemory(device, textureDeviceMemory);
+		setImageLayout(cmdBufSetup, stagingTextureImages[iLayer], VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+		const VkImageCopy copyRegion = {
+			.srcSubresource = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+				.mipLevel = 0,
+			},
+			.srcOffset = {0,0,0},
+			.dstSubresource = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseArrayLayer = iLayer,
+				.layerCount = 1,
+				.mipLevel = 0,
+			},
+			.dstOffset = {0,0,0},
+			.extent = stagingImageCreateInfo.extent,
+		};
+		vkCmdCopyImage(cmdBufSetup,
+			stagingTextureImages[iLayer], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+	}
+	VkImageLayout textureImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	setImageLayout(cmdBufSetup, textureImage, VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED, textureImageLayout);
+
 	// Create Vulkan pipeline & graphics state
 	VkDynamicState dynamicStateEnables[VK_DYNAMIC_STATE_RANGE_SIZE] = {0}; // filled in below
 	VkPipelineDynamicStateCreateInfo pipelineDynamicStateCreateInfo = {
@@ -904,7 +1000,7 @@ int main(int argc, char *argv[]) {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
 		.pNext = NULL,
 		.flags = 0,
-		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
 	};
 	const VkPipelineRasterizationStateCreateInfo pipelineRasterizationStateCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
@@ -1173,6 +1269,11 @@ int main(int argc, char *argv[]) {
 		vkCmdBeginRenderPass(cmdBufDraw, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 		vkCmdBindPipeline(cmdBufDraw, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineGraphics);
 		vkCmdBindDescriptorSets(cmdBufDraw, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,1,&descriptorSet, 0,NULL);
+		LARGE_INTEGER counterTime;
+		QueryPerformanceCounter(&counterTime);
+		pushConstants.time[0] = (float)( (double)(counterTime.QuadPart - counterStart.QuadPart) * clocksToSeconds );
+		vkCmdPushConstants(cmdBufDraw, pipelineLayout, pushConstantRange.stageFlags,
+			pushConstantRange.offset, pushConstantRange.size, &pushConstants);
 		const VkViewport viewport = {
 			.width  = (float)kWindowWidthDefault,
 			.height = (float)kWindowHeightDefault,
@@ -1189,7 +1290,7 @@ int main(int argc, char *argv[]) {
 		vkCmdSetScissor(cmdBufDraw, 0,1, &scissorRect);
 		const VkDeviceSize vertexBufferOffsets[1] = {0};
 		vkCmdBindVertexBuffers(cmdBufDraw, kVertexBufferBindId,1, &bufferVertices, vertexBufferOffsets);
-		vkCmdDraw(cmdBufDraw, 3,1,0,0);
+		vkCmdDraw(cmdBufDraw, 4,1,0,0);
 
 		vkCmdEndRenderPass(cmdBufDraw);
 		const VkImageMemoryBarrier prePresentBarrier = {
