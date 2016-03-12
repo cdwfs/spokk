@@ -1353,13 +1353,50 @@ int main(int argc, char *argv[]) {
 	}
 
 	vkDeviceWaitIdle(device);
-	vkDestroySwapchainKHR(device, swapchain, allocationCallbacks);
-	vkDestroySurfaceKHR(instance, surface, allocationCallbacks);
+	for(uint32_t iFB=0; iFB<swapchainImageCount; iFB+=1) {
+		vkDestroyFramebuffer(device, framebuffers[iFB], allocationCallbacks);
+		vkDestroyImageView(device, swapchainImageViews[iFB], allocationCallbacks);
+	}
+	free(framebuffers);
+	free(swapchainImageViews);
+
+	vkDestroyImageView(device, imageDepthView, allocationCallbacks);
+	vkFreeMemory(device, imageDepthMemory, allocationCallbacks);
+	vkDestroyImage(device, imageDepth, allocationCallbacks);
+
+	vkFreeMemory(device, bufferVerticesMemory, allocationCallbacks);
+	vkDestroyBuffer(device, bufferVertices, allocationCallbacks);
+
+	vkDestroyDescriptorSetLayout(device, descriptorSetLayout, allocationCallbacks);
+	vkDestroyDescriptorPool(device, descriptorPool, allocationCallbacks);
+
 	vkFreeCommandBuffers(device, commandPool, 1, &cmdBufDraw);
 	vkDestroyCommandPool(device, commandPool, allocationCallbacks);
+
+	vkDestroyRenderPass(device, renderPass, allocationCallbacks);
+
+	vkDestroyImage(device, textureImage, allocationCallbacks);
+	vkFreeMemory(device, textureDeviceMemory, allocationCallbacks);
+	for(uint32_t iTex=0; iTex<kDemoTextureCount; ++iTex) {
+		vkDestroyImageView(device, textureImageViews[iTex], allocationCallbacks);
+	}
+	for(uint32_t iLayer=0; iLayer<kTextureLayerCount; ++iLayer) {
+		vkDestroyImage(device, stagingTextureImages[iLayer], allocationCallbacks);
+		//vkFreeMemory(device, stagingTextureDeviceMemory, allocationCallbacks); // LEAKED!
+	}
+	free(stagingTextureImages);
+
+	vkDestroySampler(device, sampler, allocationCallbacks);
+
+	vkDestroyPipelineLayout(device, pipelineLayout, allocationCallbacks);
+	vkDestroyPipeline(device, pipelineGraphics, allocationCallbacks);
+
+	vkDestroySwapchainKHR(device, swapchain, allocationCallbacks);
 	DestroyDebugReportCallback(instance, debugReportCallback, allocationCallbacks);
+
 	vkDestroyDevice(device, allocationCallbacks);
-	vkDestroyInstance(instance, allocationCallbacks);
+	vkDestroySurfaceKHR(instance, surface, allocationCallbacks);
 	glfwTerminate();
+	vkDestroyInstance(instance, allocationCallbacks);
 	return 0;
 }
