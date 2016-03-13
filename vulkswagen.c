@@ -8,6 +8,9 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+#define STB_VULKAN_IMPLEMENTATION
+#include "stb_vulkan.h"
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

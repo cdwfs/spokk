@@ -10,4 +10,7 @@
     <CustomBuild Include="tri.frag" />
     <CustomBuild Include="tri.vert" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="stb_vulkan.h" />
+  </ItemGroup>
 </Project>

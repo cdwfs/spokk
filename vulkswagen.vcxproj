@@ -115,6 +115,9 @@
   <ItemGroup>
     <Text Include="vk_layer_settings.txt" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="stb_vulkan.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
