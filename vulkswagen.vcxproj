@@ -53,7 +53,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(ProjectDir)..\glfw\include;$(VK_SDK_PATH)\include</AdditionalIncludeDirectories>
-      <TreatSpecificWarningsAsErrors>4133;4020</TreatSpecificWarningsAsErrors>
+      <TreatSpecificWarningsAsErrors>4013;4020;4047;4133</TreatSpecificWarningsAsErrors>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -73,7 +73,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(ProjectDir)..\glfw\include;$(VK_SDK_PATH)\include</AdditionalIncludeDirectories>
-      <TreatSpecificWarningsAsErrors>4133;4020</TreatSpecificWarningsAsErrors>
+      <TreatSpecificWarningsAsErrors>4013;4020;4047;4133</TreatSpecificWarningsAsErrors>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
