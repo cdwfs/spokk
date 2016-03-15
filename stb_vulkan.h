@@ -55,13 +55,31 @@ extern "C" {
 
     typedef struct
     {
-        VkAllocationCallbacks allocation_callbacks;
+        VkAllocationCallbacks *allocation_callbacks;
+
         VkInstance instance;
-        VkDevice device;
+
         VkPhysicalDevice physical_device;
+        VkPhysicalDeviceProperties physical_device_properties;
+        VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
+        VkPhysicalDeviceFeatures physical_device_features;
+        uint32_t queue_family_index;
+        VkQueueFamilyProperties queue_family_properties;
+        VkDevice device;
+        VkQueue *queues;
+
+        VkCommandPool command_pool;
     } stbvk_context;
 
-    STBVKDEF stbvk_init_context(stbvk_context *c);
+
+    typedef struct
+    {
+        VkAllocationCallbacks *allocation_callbacks;
+        VkBool32 enable_standard_validation_layers;
+        const VkApplicationInfo *application_info; // Used to initialize VkInstance. Optional; set to NULL for default values.
+    } stbvk_context_create_info;
+    STBVKDEF VkResult stbvk_init_context(stbvk_context_create_info const *createInfo, stbvk_context *c);
+    STBVKDEF void stbvk_destroy_context(stbvk_context *c);
 
     typedef struct
     {
@@ -139,8 +157,8 @@ typedef unsigned char validate_uint32[sizeof(stbvk__uint32)==4 ? 1 : -1];
 
 #ifndef STBVK_MALLOC
 #   define STBVK_MALLOC(sz)           malloc(sz)
-#   define STBVK_REALLOC(p,newsz)     realloc(p,newsz)
-#   define STBVK_FREE(p)              free(p)
+#   define STBVK_REALLOC(p,newsz)     realloc((p),(newsz))
+#   define STBVK_FREE(p)              free( (void*)(p) )
 #endif
 
 #ifndef STBVK_REALLOC_SIZED
@@ -154,9 +172,227 @@ typedef unsigned char validate_uint32[sizeof(stbvk__uint32)==4 ? 1 : -1];
 #   define STBVK__X86_TARGET
 #endif
 
-STBVKDEF stbvk_init_context(stbvk_context *c)
-{
+// TODO: proper return-value test
+#if !defined(RETVAL_CHECK)
+#define RETVAL_CHECK(expected, expr) do { \
+        int err = (expr); \
+        if (err != (expected)) { \
+            printf("%s(%d): error in %s() -- %s returned %d\n", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
+            __debugbreak(); \
+        } \
+        assert(err == (expected)); \
+        __pragma(warning(push)) \
+        __pragma(warning(disable:4127)) \
+    } while(0) \
+    __pragma(warning(pop))
+#endif
+#define STBVK__CHECK(expr) RETVAL_CHECK(VK_SUCCESS, expr)
 
+static VkResult stbvk__init_instance(stbvk_context_create_info const *create_info, stbvk_context *context)
+{
+    const char *extension_layer_name = NULL;
+    uint32_t extension_count = 0;
+    STBVK__CHECK( vkEnumerateInstanceExtensionProperties(extension_layer_name, &extension_count, NULL) );
+    VkExtensionProperties *extension_properties = (VkExtensionProperties*)malloc(extension_count * sizeof(VkExtensionProperties));
+    STBVK__CHECK( vkEnumerateInstanceExtensionProperties(extension_layer_name, &extension_count, extension_properties) );
+    const char **extension_names = (const char**)STBVK_MALLOC(extension_count * sizeof(const char**));
+    for(uint32_t iExt=0; iExt<extension_count; iExt+=1)
+    {
+        extension_names[iExt] = extension_properties[iExt].extensionName;
+    }
+
+    uint32_t requested_layer_count = 0;
+    const char **requested_layer_names = NULL;
+    const char *standard_validation_layer = "VK_LAYER_LUNARG_standard_validation";
+    if (create_info->enable_standard_validation_layers)
+    {
+        requested_layer_names = &standard_validation_layer;
+        requested_layer_count += 1;
+    }
+
+    VkApplicationInfo application_info_default = {0};
+    application_info_default.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    application_info_default.pNext = NULL;
+    application_info_default.pApplicationName = "Default Application Name";
+    application_info_default.applicationVersion = 0x1000;
+    application_info_default.pEngineName = "Default Engine Name";
+    application_info_default.engineVersion = 0x1000;
+    application_info_default.apiVersion = VK_MAKE_VERSION(1,0,0);
+
+    VkInstanceCreateInfo instance_create_info = {0};
+    instance_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    instance_create_info.pNext = NULL;
+    instance_create_info.flags = 0;
+    instance_create_info.pApplicationInfo = create_info->application_info ? create_info->application_info : &application_info_default;
+    instance_create_info.enabledLayerCount = requested_layer_count;
+    instance_create_info.ppEnabledLayerNames = requested_layer_names;
+    instance_create_info.enabledExtensionCount = extension_count;
+    instance_create_info.ppEnabledExtensionNames = extension_names;
+
+    STBVK__CHECK( vkCreateInstance(&instance_create_info, create_info->allocation_callbacks, &context->instance) );
+    STBVK_FREE(extension_names);
+    return VK_SUCCESS;
+}
+
+static VkResult stbvk__init_device(stbvk_context_create_info const *create_info, stbvk_context *context)
+{
+    uint32_t physical_device_count = 0;
+    STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, NULL) );
+    STBVK_ASSERT(physical_device_count > 0);
+    VkPhysicalDevice *physical_devices = (VkPhysicalDevice*)STBVK_MALLOC(physical_device_count * sizeof(VkPhysicalDevice));
+    STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, physical_devices) );
+    context->physical_device = physical_devices[0];
+    STBVK_FREE(physical_devices);
+
+    vkGetPhysicalDeviceProperties(context->physical_device, &context->physical_device_properties);
+#if 0
+    printf("Physical device #%u: '%s', API version %u.%u.%u\n",
+        0,
+        deviceProps.deviceName,
+        VK_VERSION_MAJOR(deviceProps.apiVersion),
+        VK_VERSION_MINOR(deviceProps.apiVersion),
+        VK_VERSION_PATCH(deviceProps.apiVersion));
+#endif
+
+    vkGetPhysicalDeviceMemoryProperties(context->physical_device, &context->physical_device_memory_properties);
+
+    vkGetPhysicalDeviceFeatures(context->physical_device, &context->physical_device_features);
+
+    uint32_t requested_layer_count = 0;
+    const char **requested_layer_names = NULL;
+    const char *standard_validation_layer = "VK_LAYER_LUNARG_standard_validation";
+    if (create_info->enable_standard_validation_layers)
+    {
+        requested_layer_names = &standard_validation_layer;
+        requested_layer_count += 1;
+    }
+
+    uint32_t extension_count = 0;
+    const char *extension_layer_name = NULL;
+    STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device, extension_layer_name, &extension_count, NULL) );
+    VkExtensionProperties *extension_properties = (VkExtensionProperties*)STBVK_MALLOC(extension_count*sizeof(VkExtensionProperties));
+    STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device, extension_layer_name, &extension_count, extension_properties) );
+    const char **extension_names = (const char**)STBVK_MALLOC(extension_count * sizeof(const char**));
+    for(uint32_t iExt=0; iExt<extension_count; iExt+=1)
+    {
+        extension_names[iExt] = extension_properties[iExt].extensionName;
+    }
+
+    uint32_t queue_family_count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(context->physical_device, &queue_family_count, NULL);
+    VkQueueFamilyProperties *queue_family_properties_all = (VkQueueFamilyProperties*)STBVK_MALLOC(queue_family_count * sizeof(VkQueueFamilyProperties));
+    vkGetPhysicalDeviceQueueFamilyProperties(context->physical_device, &queue_family_count, queue_family_properties_all);
+    VkDeviceQueueCreateInfo device_queue_create_info = {0};
+    VkBool32 found_graphics_queue_family = VK_FALSE;
+    for(uint32_t iQF=0; iQF<queue_family_count; iQF+=1) {
+        if ( (queue_family_properties_all[iQF].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0)
+            continue;
+        float *queue_priorities = (float*)STBVK_MALLOC(queue_family_properties_all[iQF].queueCount * sizeof(float));
+        for(uint32_t iQ=0; iQ<queue_family_properties_all[iQF].queueCount; ++iQ) {
+            queue_priorities[iQ] = 1.0f;
+        }
+        device_queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        device_queue_create_info.pNext = NULL;
+        device_queue_create_info.flags = 0;
+        device_queue_create_info.queueFamilyIndex = iQF;
+        device_queue_create_info.queueCount = queue_family_properties_all[iQF].queueCount;
+        device_queue_create_info.pQueuePriorities = queue_priorities;
+
+        context->queue_family_index = iQF;
+        context->queue_family_properties = queue_family_properties_all[iQF];
+        found_graphics_queue_family = VK_TRUE;
+        break;
+    }
+    STBVK_ASSERT(found_graphics_queue_family);
+    STBVK_FREE(queue_family_properties_all);
+
+    VkDeviceCreateInfo device_create_info = {0};
+    device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    device_create_info.pNext = NULL;
+    device_create_info.flags = 0;
+    device_create_info.queueCreateInfoCount = queue_family_count;
+    device_create_info.pQueueCreateInfos = &device_queue_create_info;
+    device_create_info.enabledLayerCount = requested_layer_count;
+    device_create_info.ppEnabledLayerNames = requested_layer_names;
+    device_create_info.enabledExtensionCount = extension_count;
+    device_create_info.ppEnabledExtensionNames = extension_names;
+    device_create_info.pEnabledFeatures = &context->physical_device_features;
+    STBVK__CHECK( vkCreateDevice(context->physical_device, &device_create_info, context->allocation_callbacks, &context->device) );
+    STBVK_FREE(extension_names);
+    STBVK_FREE(extension_properties);
+    STBVK_FREE(device_create_info.pQueueCreateInfos->pQueuePriorities);
+#if 0
+    printf("Created Vulkan logical device with extensions:\n");
+    for(uint32_t iExt=0; iExt<device_create_info.enabledExtensionCount; iExt+=1) {
+        printf("- %s\n", device_create_info.ppEnabledExtensionNames[iExt]);
+    }
+    printf("and device layers:\n");
+    for(uint32_t iLayer=0; iLayer<device_create_info.enabledLayerCount; iLayer+=1) {
+        printf("- %s\n", device_create_info.ppEnabledLayerNames[iLayer]);
+    }
+#endif
+
+    context->queues = (VkQueue*)STBVK_MALLOC(context->queue_family_properties.queueCount * sizeof(VkQueue));
+    for(uint32_t iQ=0; iQ<context->queue_family_properties.queueCount; iQ+=1) {
+        vkGetDeviceQueue(context->device, context->queue_family_index, iQ, &context->queues[iQ]);
+    }
+
+    return VK_SUCCESS;
+}
+
+static VkResult stbvk__init_command_pool(stbvk_context_create_info const *createInfo, stbvk_context *context)
+{
+    VkCommandPoolCreateInfo command_pool_create_info = {0};
+    command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    command_pool_create_info.pNext = NULL;
+    command_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // allows reseting individual command buffers from this pool
+    command_pool_create_info.queueFamilyIndex = context->queue_family_index;
+    STBVK__CHECK( vkCreateCommandPool(context->device, &command_pool_create_info, context->allocation_callbacks, &context->command_pool) );
+    return VK_SUCCESS;
+}
+
+STBVKDEF VkResult stbvk_init_context(stbvk_context_create_info const *createInfo, stbvk_context *c)
+{
+    VkResult result = VK_SUCCESS;
+
+    c->allocation_callbacks = createInfo->allocation_callbacks;
+
+    result = stbvk__init_instance(createInfo, c);
+    if (result != VK_SUCCESS)
+    {
+        return result;
+    }
+
+    stbvk__init_device(createInfo, c);
+    if (result != VK_SUCCESS)
+    {
+        return result;
+    }
+
+    stbvk__init_command_pool(createInfo, c);
+    if (result != VK_SUCCESS)
+    {
+        return result;
+    }
+
+    return VK_SUCCESS;
+}
+
+STBVKDEF void stbvk_destroy_context(stbvk_context *context)
+{
+    STBVK_FREE(context->queues);
+    context->queues = NULL;
+
+    vkDestroyCommandPool(context->device, context->command_pool, context->allocation_callbacks);
+    context->command_pool = NULL;
+
+    vkDestroyDevice(context->device, context->allocation_callbacks);
+    context->device = VK_NULL_HANDLE;
+
+    vkDestroyInstance(context->instance, context->allocation_callbacks);
+    context->instance = VK_NULL_HANDLE;
+
+    context->allocation_callbacks = NULL;
 }
 
 
@@ -184,7 +420,7 @@ STBVKDEF VkShaderModule stbvk_load_shader_from_file(stbvk_context *c, FILE *f, i
     }
     VkShaderModule shader_module = stbvk_load_shader_from_memory(c, shader_bin, len);
     STBVK_FREE(shader_bin);
-    return VK_NULL_HANDLE;
+    return shader_module;
 }
 
 STBVKDEF VkShaderModule stbvk_load_shader(stbvk_context *c, char const *filename)
@@ -213,7 +449,7 @@ STBVKDEF VkShaderModule stbvk_load_shader_from_memory(stbvk_context *c, stbvk_uc
     smci.codeSize = len;
     smci.pCode = (uint32_t*)buffer;
     VkShaderModule shader_module = VK_NULL_HANDLE;
-    VkResult result = vkCreateShaderModule(c->device, &smci, &c->allocation_callbacks, &shader_module);
+    VkResult result = vkCreateShaderModule(c->device, &smci, c->allocation_callbacks, &shader_module);
     return shader_module;
 }
 STBVKDEF VkShaderModule stbvk_load_shader_from_callbacks(stbvk_context *c, stbvk_io_callbacks const *clbk, void *user)
