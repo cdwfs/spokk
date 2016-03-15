@@ -87,28 +87,37 @@ static VkBool32 getMemoryTypeFromProperties(const VkPhysicalDeviceMemoryProperti
 }
 
 static void setImageLayout(VkCommandBuffer cmdBuf, VkImage image,
-	VkImageAspectFlags aspectMask, VkImageLayout oldLayout, VkImageLayout newLayout) {
+		VkImageSubresourceRange subresourceRange, VkImageLayout oldLayout, VkImageLayout newLayout,
+		VkAccessFlagBits srcAccessMask) {
 	VkImageMemoryBarrier imgMemoryBarrier = {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 		.pNext = NULL,
-		.srcAccessMask = 0,
+		.srcAccessMask = srcAccessMask,
 		.dstAccessMask = 0, // overwritten below
 		.oldLayout = oldLayout,
 		.newLayout = newLayout,
 		.image = image,
-		.subresourceRange = {
-			.aspectMask = 0,
-			.baseMipLevel = 0,
-			.levelCount = 1,
-			.baseArrayLayer = 0,
-			.layerCount = 1,
-		},
+		.subresourceRange = subresourceRange,
 	};
+	switch(oldLayout) {
+	case VK_IMAGE_LAYOUT_PREINITIALIZED:
+		imgMemoryBarrier.srcAccessMask |= VK_ACCESS_HOST_WRITE_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+		imgMemoryBarrier.srcAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+        imgMemoryBarrier.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		break;
+
+	}
+
 	switch(newLayout) {
 	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-		// Make sure anything that was copying from this image has completed.
 		imgMemoryBarrier.dstAccessMask |= VK_ACCESS_TRANSFER_READ_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+		imgMemoryBarrier.dstAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
 		break;
 	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
 		imgMemoryBarrier.dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -117,10 +126,14 @@ static void setImageLayout(VkCommandBuffer cmdBuf, VkImage image,
 		imgMemoryBarrier.dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 		break;
 	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+        imgMemoryBarrier.srcAccessMask |= VK_ACCESS_HOST_WRITE_BIT;
+		imgMemoryBarrier.srcAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
 		// Make sure any Copy or CPU writes to image are flushed
-        imgMemoryBarrier.dstAccessMask |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+        imgMemoryBarrier.dstAccessMask |= VK_ACCESS_SHADER_READ_BIT;
+		imgMemoryBarrier.dstAccessMask |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
 		break;
 	}
+
 	VkPipelineStageFlags srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 	VkPipelineStageFlags dstStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 	// TODO(cort): 
@@ -542,7 +555,14 @@ int main(int argc, char *argv[]) {
 		// Render loop will expect image to have been used before and in
         // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout and will change to
 		// COLOR_ATTACHMENT_OPTIMAL, so init the image to that state.
-		setImageLayout(cmdBufSetup, imageViewCreateInfo.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+		const VkImageSubresourceRange subresourceRange = {
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		};
+		setImageLayout(cmdBufSetup, imageViewCreateInfo.image, subresourceRange, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0);
 		VULKAN_CHECK( vkCreateImageView(device, &imageViewCreateInfo, allocationCallbacks, &swapchainImageViews[iSCI]) );
 	}
 	uint32_t swapchainCurrentBufferIndex = 0;
@@ -583,8 +603,15 @@ int main(int argc, char *argv[]) {
 	VULKAN_CHECK( vkAllocateMemory(device, &memoryAllocateInfoDepth, allocationCallbacks, &imageDepthMemory) );
 	VkDeviceSize imageDepthMemoryOffset = 0;
 	VULKAN_CHECK( vkBindImageMemory(device, imageDepth, imageDepthMemory, imageDepthMemoryOffset) );
-	setImageLayout(cmdBufSetup, imageDepth, VK_IMAGE_ASPECT_DEPTH_BIT,
-		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+	const VkImageSubresourceRange depthSubresourceRange = {
+		.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+		.baseMipLevel = 0,
+		.levelCount = 1,
+		.baseArrayLayer = 0,
+		.layerCount = 1,
+	};
+	setImageLayout(cmdBufSetup, imageDepth, depthSubresourceRange,
+		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0);
 	const VkImageViewCreateInfo imageViewCreateInfoDepth = {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 		.pNext = NULL,
@@ -851,6 +878,15 @@ int main(int argc, char *argv[]) {
 	VULKAN_CHECK( vkAllocateMemory(device, &memoryAllocateInfo, allocationCallbacks, &textureDeviceMemory) );
 	VkDeviceSize textureMemoryOffset = 0;
 	VULKAN_CHECK( vkBindImageMemory(device, textureImage, textureDeviceMemory, textureMemoryOffset) );
+	VkImageSubresourceRange textureImageSubresourceRange = {
+		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+		.baseMipLevel = 0,
+		.levelCount = 1,
+		.baseArrayLayer = 0,
+		.layerCount = kTextureLayerCount,
+	};
+	setImageLayout(cmdBufSetup, textureImage, textureImageSubresourceRange,
+		imageCreateInfo.initialLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0);
 	const VkSamplerCreateInfo samplerCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
 		.pNext = NULL,
@@ -899,7 +935,6 @@ int main(int argc, char *argv[]) {
 		VULKAN_CHECK( vkCreateImageView(device, &textureImageViewCreateInfo, allocationCallbacks, &textureImageViews[iTexture]) );
 	}
 	
-
 	// Load individual texture layers into staging textures, and copy them into the final texture.
 	const VkImageCreateInfo stagingImageCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -920,7 +955,7 @@ int main(int argc, char *argv[]) {
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.queueFamilyIndexCount = 0,
 		.pQueueFamilyIndices = NULL,
-		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
 	};
 	VkImage *stagingTextureImages = (VkImage*)malloc(kTextureLayerCount * sizeof(VkImage));
 	for(uint32_t iLayer=0; iLayer<kTextureLayerCount; iLayer += 1) {
@@ -967,8 +1002,15 @@ int main(int argc, char *argv[]) {
 		}
 		stbi_image_free(pixels);
 		vkUnmapMemory(device, textureDeviceMemory);
-		setImageLayout(cmdBufSetup, stagingTextureImages[iLayer], VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		const VkImageSubresourceRange stagingImageSubresourceRange = {
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		};
+		setImageLayout(cmdBufSetup, stagingTextureImages[iLayer], stagingImageSubresourceRange,
+			stagingImageCreateInfo.initialLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0);
 
 		const VkImageCopy copyRegion = {
 			.srcSubresource = {
@@ -991,9 +1033,9 @@ int main(int argc, char *argv[]) {
 			stagingTextureImages[iLayer], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 	}
-	VkImageLayout textureImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	setImageLayout(cmdBufSetup, textureImage, VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_IMAGE_LAYOUT_UNDEFINED, textureImageLayout);
+	const VkImageLayout textureImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	setImageLayout(cmdBufSetup, textureImage, textureImageSubresourceRange,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, textureImageLayout, 0);
 
 	// Create Vulkan pipeline & graphics state
 	VkDynamicState dynamicStateEnables[VK_DYNAMIC_STATE_RANGE_SIZE] = {0}; // filled in below
@@ -1251,10 +1293,17 @@ int main(int argc, char *argv[]) {
 		};
 
 		VULKAN_CHECK( vkBeginCommandBuffer(cmdBufDraw, &cmdBufDrawBeginInfo) );
+		const VkImageSubresourceRange swapchainSubresourceRange = {
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		};
 		setImageLayout(cmdBufDraw, swapchainImages[currentBufferIndex],
-			VK_IMAGE_ASPECT_COLOR_BIT,
+			swapchainSubresourceRange,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0);
 		// TODO(cort): is a sync point needed here? tri.c submits this layout change as a separate
 		// command buffer, then waits for the queue to be idle.
 
