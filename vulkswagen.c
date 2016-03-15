@@ -430,6 +430,14 @@ int main(int argc, char *argv[]) {
 	VkSurfaceKHR surface;
 	VULKAN_CHECK( glfwCreateWindowSurface(instance, window, allocationCallbacks, &surface) ); // wraps vkCreate*SurfaceKHR() for the current platform
 
+	// Iterate over each queue to learn whether it supports presenting:
+	VkBool32 *supportsPresent = (VkBool32 *)malloc(queueFamilyCount * sizeof(VkBool32));
+	for (uint32_t iQF = 0; iQF < queueFamilyCount; iQF += 1) {
+		VULKAN_CHECK( vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, iQF, surface, &supportsPresent[iQF]) );
+	}
+	assert(supportsPresent[0]);
+	free(supportsPresent);
+
 	VkSurfaceCapabilitiesKHR surfaceCapabilities;
 	VULKAN_CHECK( vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities) );
 	VkExtent2D swapchainExtent;
@@ -653,8 +661,8 @@ int main(int argc, char *argv[]) {
 	VULKAN_CHECK( vkMapMemory(device, bufferVerticesMemory, bufferVerticesMemoryOffset,
 		memoryAllocateInfoVertices.allocationSize, bufferVerticesMemoryMapFlags, &bufferVerticesMapped) );
 	memcpy(bufferVerticesMapped, vertices, sizeof(vertices));
-	vkUnmapMemory(device, bufferVerticesMapped); // TODO: see if validation layer catches this error
-	//vkUnmapMemory(device, bufferVerticesMemory);
+	//vkUnmapMemory(device, bufferVerticesMapped); // TODO: see if validation layer catches this error
+	vkUnmapMemory(device, bufferVerticesMemory);
 	VULKAN_CHECK( vkBindBufferMemory(device, bufferVertices, bufferVerticesMemory, bufferVerticesMemoryOffset) );
 	const VkPipelineVertexInputStateCreateInfo pipelineVertexInputStateCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -681,7 +689,7 @@ int main(int argc, char *argv[]) {
 #	error need timer code here
 #endif
 	const VkPushConstantRange pushConstantRange = {
-		.stageFlags = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
 		.offset = 0,
 		.size = sizeof(pushConstants),
 	};
