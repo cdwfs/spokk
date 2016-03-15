@@ -235,7 +235,7 @@ int main(int argc, char *argv[]) {
 		.applicationVersion = 0x1000,
 		.pEngineName = "Zombo",
 		.engineVersion = 0x1001,
-		.apiVersion = VK_API_VERSION,
+		.apiVersion = VK_MAKE_VERSION(1,0,0),
 	};
 
 	const VkInstanceCreateInfo instanceCreateInfo = {
