@@ -207,7 +207,7 @@ int main(int argc, char *argv[]) {
 		"VK_LAYER_LUNARG_param_checker", // Validates parameters of all API calls, checking for out-of-range/invalid enums, etc.
 		//"VK_LAYER_LUNARG_screenshot",
 		"VK_LAYER_LUNARG_swapchain", // Validates that swap chains are set up correctly.
-		//"VK_LAYER_LUNARG_threading", // Checks multithreading API calls for validity.
+		"VK_LAYER_GOOGLE_threading", // Checks multithreading API calls for validity.
         "VK_LAYER_GOOGLE_unique_objects", // Forces all objects to have unique handle values. Must be the last layer loaded (closest to the driver) to be useful.
 		//"VK_LAYER_LUNARG_vktrace",
 		//"VK_LAYER_RENDERDOC_Capture",
