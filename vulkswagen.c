@@ -212,12 +212,11 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK( vkEnumerateInstanceLayerProperties(&instanceLayerCount, instanceLayerProperties) );
     const char *desiredInstanceLayerNames[] = {
         //"VK_LAYER_LUNARG_api_dump", // prints each vk API call (+inputs and outputs) to stdout
+        "VK_LAYER_LUNARG_core_validation", // Ensures resources bound to descriptor sets align with the specified set layout, validates image/buffer layout transitions, etc.
         "VK_LAYER_LUNARG_device_limits", // Tracks device features/limitations and reports an error if the app requests unsupported features. Work in progess.
-        "VK_LAYER_LUNARG_draw_state", // Ensures resources bound to descriptor sets align with the specified set layout, validates image/buffer layout transitions, etc.
         "VK_LAYER_LUNARG_image", // Validates image parameters, formats, and correct use.
-        "VK_LAYER_LUNARG_mem_tracker", // Tracks memory object lifetimes, binding errors, and other memory hazards.
         "VK_LAYER_LUNARG_object_tracker", // Tracks all Vulkan objects. Reports on invalid object use, and reports leaked objects at vkDestroyDevice() time.
-        "VK_LAYER_LUNARG_param_checker", // Validates parameters of all API calls, checking for out-of-range/invalid enums, etc.
+        "VK_LAYER_LUNARG_parameter_validation", // Validates parameters of all API calls, checking for out-of-range/invalid enums, etc.
         //"VK_LAYER_LUNARG_screenshot",
         "VK_LAYER_LUNARG_swapchain", // Validates that swap chains are set up correctly.
         "VK_LAYER_GOOGLE_threading", // Checks multithreading API calls for validity.
