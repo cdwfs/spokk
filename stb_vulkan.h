@@ -201,6 +201,16 @@ static VkResult stbvk__init_instance(stbvk_context_create_info const *create_inf
         extension_names[iExt] = extension_properties[iExt].extensionName;
     }
 
+#if 0 // Enable to query the instance's supported layers
+    {
+        uint32_t instance_layer_count = 0;
+        STBVK__CHECK( vkEnumerateInstanceLayerProperties(&instance_layer_count, NULL) );
+        VkLayerProperties *instance_layer_properties = (VkLayerProperties*)STBVK_MALLOC(instance_layer_count * sizeof(VkLayerProperties));
+        STBVK__CHECK( vkEnumerateInstanceLayerProperties(&instance_layer_count, instance_layer_properties) );
+        STBVK_FREE(instance_layer_properties);
+    }
+#endif
+
     uint32_t requested_layer_count = 0;
     const char **requested_layer_names = NULL;
     const char *standard_validation_layer = "VK_LAYER_LUNARG_standard_validation";
@@ -257,6 +267,16 @@ static VkResult stbvk__init_device(stbvk_context_create_info const *create_info,
     vkGetPhysicalDeviceMemoryProperties(context->physical_device, &context->physical_device_memory_properties);
 
     vkGetPhysicalDeviceFeatures(context->physical_device, &context->physical_device_features);
+
+#if 0 // Enable to query the device's supported layers
+    {
+        uint32_t device_layer_count = 0;
+        STBVK__CHECK( vkEnumerateDeviceLayerProperties(context->physical_device, &device_layer_count, NULL) );
+        VkLayerProperties *device_layer_properties = (VkLayerProperties*)STBVK_MALLOC(device_layer_count * sizeof(VkLayerProperties));
+        STBVK__CHECK( vkEnumerateDeviceLayerProperties(context->physical_device, &device_layer_count, device_layer_properties) );
+        STBVK_FREE(device_layer_properties);
+    }
+#endif
 
     uint32_t requested_layer_count = 0;
     const char **requested_layer_names = NULL;
