@@ -173,20 +173,31 @@ typedef unsigned char validate_uint32[sizeof(stbvk__uint32)==4 ? 1 : -1];
 #endif
 
 // TODO: proper return-value test
-#if !defined(RETVAL_CHECK)
-#define RETVAL_CHECK(expected, expr) do { \
-        int err = (expr); \
-        if (err != (expected)) { \
+#if defined(_MSC_VER)
+#   define STBVK__RETVAL_CHECK(expected, expr) \
+    do {  \
+        int err = (expr);                             \
+        if (err != (expected)) {                                            \
             printf("%s(%d): error in %s() -- %s returned %d\n", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
-            __debugbreak(); \
-        } \
-        assert(err == (expected)); \
-        __pragma(warning(push)) \
-        __pragma(warning(disable:4127)) \
-    } while(0) \
+            __debugbreak();                                                   \
+        }                                                                   \
+        assert(err == (expected));                                          \
+        __pragma(warning(push))                                             \
+        __pragma(warning(disable:4127))                                 \
+        } while(0)                                                      \
     __pragma(warning(pop))
+#else
+#   define STBVK__RETVAL_CHECK(expected, expr) \
+    do {  \
+        int err = (expr);                                                   \
+        if (err != (expected)) {                                            \
+            printf("%s(%d): error in %s() -- %s returned %d\n", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
+            __asm__("int $3"); /*__debugbreak();*/                 \
+        }                                                                   \
+        assert(err == (expected));                                          \
+    } while(0)
 #endif
-#define STBVK__CHECK(expr) RETVAL_CHECK(VK_SUCCESS, expr)
+#define STBVK__CHECK(expr) STBVK__RETVAL_CHECK(VK_SUCCESS, expr)
 
 static VkResult stbvk__init_instance(stbvk_context_create_info const *create_info, stbvk_context *context)
 {
