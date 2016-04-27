@@ -341,7 +341,7 @@ static VkResult stbvk__init_device(stbvk_context_create_info const *create_info,
     device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     device_create_info.pNext = NULL;
     device_create_info.flags = 0;
-    device_create_info.queueCreateInfoCount = queue_family_count;
+    device_create_info.queueCreateInfoCount = 1;
     device_create_info.pQueueCreateInfos = &device_queue_create_info;
     device_create_info.enabledLayerCount = requested_layer_count;
     device_create_info.ppEnabledLayerNames = requested_layer_names;
