@@ -269,10 +269,10 @@ static VkResult stbvk__init_device(stbvk_context_create_info const *create_info,
 #if 0
     printf("Physical device #%u: '%s', API version %u.%u.%u\n",
         0,
-        deviceProps.deviceName,
-        VK_VERSION_MAJOR(deviceProps.apiVersion),
-        VK_VERSION_MINOR(deviceProps.apiVersion),
-        VK_VERSION_PATCH(deviceProps.apiVersion));
+        context->physical_device_properties.deviceName,
+        VK_VERSION_MAJOR(context->physical_device_properties.apiVersion),
+        VK_VERSION_MINOR(context->physical_device_properties.apiVersion),
+        VK_VERSION_PATCH(context->physical_device_properties.apiVersion));
 #endif
 
     vkGetPhysicalDeviceMemoryProperties(context->physical_device, &context->physical_device_memory_properties);
