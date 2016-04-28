@@ -1,6 +1,12 @@
 *~
 *.spv
 
+# GNU global
+GPATH
+GRTAGS
+GSYMS
+GTAGS
+
 # Visual Studio detritus
 Debug/
 Release/
