@@ -2,6 +2,8 @@
 #   include <Windows.h>
 #endif
 
+#include "platform.h"
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -13,32 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/**
- * Handy meta-macro to simplify repetitive error checking for APIs where every function returns
- * an error code (e.g. CUDA, C11 threads, most of the Windows API, etc.)
- *
- * Example usage:
- *     #define CUDA_CHECK(expr) RETVAL_CHECK(cudaSuccess, expr)
- *     ...
- *     CUDA_CHECK( cudaMemcpy(dst, src, size, cudaMemcpyHostToDevice) );
- *
- * To disable the checks in release builds, just redefine the macro:
- *     #define CUDA_CHECK(expr) expr
- *
- * As written, it's Visual C++ specific, but don't let that stop you!
- */
-#define RETVAL_CHECK(expected, expr) do { \
-        int err = (expr); \
-        if (err != (expected)) { \
-            printf("%s(%d): error in %s() -- %s returned %d\n", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
-            __debugbreak(); \
-        } \
-        assert(err == (expected)); \
-        __pragma(warning(push)) \
-        __pragma(warning(disable:4127)) \
-    } while(0) \
-    __pragma(warning(pop))
-#define VULKAN_CHECK(expr) RETVAL_CHECK(VK_SUCCESS, expr)
+#define VULKAN_CHECK(expr) ZOMBO_RETVAL_CHECK(VK_SUCCESS, expr)
 
 #define kDemoTextureCount 1U
 #define kWindowWidthDefault 1280U
@@ -75,7 +52,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallbackFunc(VkFlags msgFlags,
 
 static VkBool32 getMemoryTypeFromProperties(const VkPhysicalDeviceMemoryProperties *memoryProperties,
     uint32_t memoryTypeBits, VkFlags requirementsMask, uint32_t *outMemoryTypeIndex) {
-    static_assert(sizeof(memoryTypeBits)*8 == VK_MAX_MEMORY_TYPES, "expected VK_MAX_MEMORY_TYPES=32");
+    assert(sizeof(memoryTypeBits)*8 == VK_MAX_MEMORY_TYPES);
     for(uint32_t iMemType=0; iMemType<VK_MAX_MEMORY_TYPES; iMemType+=1) {
         if (	(memoryTypeBits & (1<<iMemType)) != 0
             &&	(memoryProperties->memoryTypes[iMemType].propertyFlags & requirementsMask) == requirementsMask) {
@@ -358,7 +335,7 @@ int main(int argc, char *argv[]) {
         .queueCreateInfoCount = queueFamilyCount,
         .pQueueCreateInfos = deviceQueueCreateInfos,
         .enabledLayerCount = desiredDeviceLayerCount,
-        .ppEnabledLayerNames = desiredDeviceLayerNames,
+        .ppEnabledLayerNames = (const char* const*)desiredDeviceLayerNames,
         .enabledExtensionCount = deviceExtensionCount,
         .ppEnabledExtensionNames = deviceExtensionNames,
         .pEnabledFeatures = NULL, // &physicalDeviceFeaturesAll,
@@ -705,15 +682,7 @@ int main(int argc, char *argv[]) {
         float time[4]; // .x=seconds, .yzw=???
     } pushConstants = {0,0,0,0};
     assert(sizeof(pushConstants) <= deviceProps.limits.maxPushConstantsSize);
-#ifdef _WIN32
-    LARGE_INTEGER counterFreq;
-    QueryPerformanceFrequency(&counterFreq);
-    const double clocksToSeconds = 1.0 / (double)counterFreq.QuadPart;
-    LARGE_INTEGER counterStart;
-    QueryPerformanceCounter(&counterStart);
-#else
-#   error need timer code here
-#endif
+    uint64_t counterStart = zomboClockTicks();
     const VkPushConstantRange pushConstantRange = {
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         .offset = 0,
@@ -989,7 +958,7 @@ int main(int argc, char *argv[]) {
         VULKAN_CHECK( vkMapMemory(device, textureDeviceMemory, textureMemoryOffset,
             memoryRequirements.size, memoryMapFlags, &mappedTextureData) );
         char imagePath[128];
-        _snprintf(imagePath, 127, "trevor/trevor-%u.png", iLayer);
+        zomboSnprintf(imagePath, 127, "trevor/trevor-%u.png", iLayer);
         imagePath[127] = 0;
         int width=0,height=0,comp=0;
         uint32_t *pixels = (uint32_t*)stbi_load(imagePath, &width, &height, &comp, 4);
@@ -1325,9 +1294,7 @@ int main(int argc, char *argv[]) {
         vkCmdBeginRenderPass(cmdBufDraw, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(cmdBufDraw, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineGraphics);
         vkCmdBindDescriptorSets(cmdBufDraw, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,1,&descriptorSet, 0,NULL);
-        LARGE_INTEGER counterTime;
-        QueryPerformanceCounter(&counterTime);
-        pushConstants.time[0] = (float)( (double)(counterTime.QuadPart - counterStart.QuadPart) * clocksToSeconds );
+        pushConstants.time[0] = (float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) );
         vkCmdPushConstants(cmdBufDraw, pipelineLayout, pushConstantRange.stageFlags,
             pushConstantRange.offset, pushConstantRange.size, &pushConstants);
         const VkViewport viewport = {
