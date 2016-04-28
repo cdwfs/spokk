@@ -18,6 +18,7 @@ SET(headers
   stb_image.h
   )
 
+include_directories(${VULKAN_INCLUDE_DIR})
 #link_directories(${VK_SDK_PATH}/lib)
 
 IF(MSVC)
