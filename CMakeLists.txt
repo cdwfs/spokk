@@ -14,9 +14,29 @@ include_directories(glfw/include)
 project(vulkswagen)
 
 SET(headers
-  platform.h
-  stb_image.h
-  )
+    platform.h
+    stb_image.h
+    )
+SET(sources
+    vulkswagen.c
+    )
+
+SET(shaders
+    tri.vert
+    tri.frag
+    )
+
+FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)
+    ADD_CUSTOM_COMMAND(
+        OUTPUT ${SPV_FILE}
+        COMMAND $ENV{VK_SDK_PATH}/bin/glslangValidator -V -o ${SPV_FILE} ${SOURCE_FILE}
+        MAIN_DEPENDENCY ${SOURCE_FILE}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        )
+ENDFUNCTION(SHADER_BUILD_RULE SHADER_FILE SPV_FILE)
+FOREACH(SHADER_FILE tri.vert tri.frag)
+    SHADER_BUILD_RULE(${SHADER_FILE} ${CMAKE_BINARY_DIR}/${SHADER_FILE}.spv)
+ENDFOREACH(SHADER_FILE)
 
 include_directories(${VULKAN_INCLUDE_DIR})
 #link_directories(${VK_SDK_PATH}/lib)
@@ -48,8 +68,15 @@ MACRO (cmp_IDE_SOURCE_PROPERTIES SOURCE_PATH HEADERS SOURCES)
 ENDMACRO (cmp_IDE_SOURCE_PROPERTIES NAME HEADERS SOURCES INSTALL_FILES)
 
 set(exe_name vulkswagen)
-set(sources vulkswagen.c)
 cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${headers}" "${sources}")
-add_executable(${exe_name} ${sources} ${headers})
+add_executable(${exe_name} ${sources} ${shaders} ${headers})
 target_link_libraries(${exe_name} glfw ${GLFW_LIBRARIES} ${libs})
+
+ADD_CUSTOM_COMMAND(
+    TARGET ${exe_name} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/trevor
+        ${CMAKE_BINARY_DIR}/trevor
+    COMMENT "Copying assets to build directory"
+    )
 
