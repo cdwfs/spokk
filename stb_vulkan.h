@@ -95,6 +95,9 @@ extern "C" {
     STBVKDEF VkShaderModule stbvk_load_shader_from_file(stbvk_context *c, FILE *f, int len);
 #endif
 
+    STBVKDEF void stbvk_set_image_layout(VkCommandBuffer cmd_buf, VkImage image,
+        VkImageSubresourceRange subresource_range, VkImageLayout old_layout, VkImageLayout new_layout,
+        VkAccessFlags src_access_mask);
 
 #ifdef __cplusplus
 }
@@ -488,5 +491,70 @@ STBVKDEF VkShaderModule stbvk_load_shader_from_callbacks(stbvk_context *c, stbvk
     return VK_NULL_HANDLE;
 }
 
+
+STBVKDEF void stbvk_set_image_layout(VkCommandBuffer cmd_buf, VkImage image,
+        VkImageSubresourceRange subresource_range, VkImageLayout old_layout, VkImageLayout new_layout,
+        VkAccessFlags src_access_mask)
+{
+    VkImageMemoryBarrier img_memory_barrier = {};
+    img_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    img_memory_barrier.pNext = NULL;
+    img_memory_barrier.srcAccessMask = src_access_mask;
+    img_memory_barrier.dstAccessMask = 0; // overwritten below
+    img_memory_barrier.oldLayout = old_layout;
+    img_memory_barrier.newLayout = new_layout;
+    img_memory_barrier.image = image;
+    img_memory_barrier.subresourceRange = subresource_range;
+
+    switch(old_layout)
+    {
+    case VK_IMAGE_LAYOUT_PREINITIALIZED:
+        img_memory_barrier.srcAccessMask |= VK_ACCESS_HOST_WRITE_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+        img_memory_barrier.srcAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+        img_memory_barrier.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        break;
+    }
+
+    switch(new_layout)
+    {
+    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+        img_memory_barrier.dstAccessMask |= VK_ACCESS_TRANSFER_READ_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+        img_memory_barrier.dstAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+        img_memory_barrier.dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+        img_memory_barrier.dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+        img_memory_barrier.srcAccessMask |= VK_ACCESS_HOST_WRITE_BIT;
+        img_memory_barrier.srcAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
+        // Make sure any Copy or CPU writes to image are flushed
+        img_memory_barrier.dstAccessMask |= VK_ACCESS_SHADER_READ_BIT;
+        img_memory_barrier.dstAccessMask |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+        break;
+    }
+
+    VkPipelineStageFlags src_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    VkPipelineStageFlags dst_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    // TODO(cort): 
+    VkDependencyFlags dependency_flags = 0;
+    uint32_t memory_barrier_count = 0;
+    const VkMemoryBarrier *memory_barriers = NULL;
+    uint32_t buffer_memory_barrier_count = 0;
+    const VkBufferMemoryBarrier *buffer_memory_barriers = NULL;
+    uint32_t image_memory_barrier_count = 1;
+    vkCmdPipelineBarrier(cmd_buf, src_stages, dst_stages, dependency_flags,
+        memory_barrier_count, memory_barriers,
+        buffer_memory_barrier_count, buffer_memory_barriers,
+        image_memory_barrier_count, &img_memory_barrier);
+}
 
 #endif // STB_VULKAN_IMPLEMENTATION

@@ -66,68 +66,6 @@ static VkBool32 getMemoryTypeFromProperties(const VkPhysicalDeviceMemoryProperti
     return VK_FALSE;
 }
 
-static void setImageLayout(VkCommandBuffer cmdBuf, VkImage image,
-        VkImageSubresourceRange subresourceRange, VkImageLayout oldLayout, VkImageLayout newLayout,
-        VkAccessFlags srcAccessMask) {
-    VkImageMemoryBarrier imgMemoryBarrier = {};
-    imgMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    imgMemoryBarrier.pNext = NULL;
-    imgMemoryBarrier.srcAccessMask = srcAccessMask;
-    imgMemoryBarrier.dstAccessMask = 0; // overwritten below
-    imgMemoryBarrier.oldLayout = oldLayout;
-    imgMemoryBarrier.newLayout = newLayout;
-    imgMemoryBarrier.image = image;
-    imgMemoryBarrier.subresourceRange = subresourceRange;
-    switch(oldLayout) {
-    case VK_IMAGE_LAYOUT_PREINITIALIZED:
-        imgMemoryBarrier.srcAccessMask |= VK_ACCESS_HOST_WRITE_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-        imgMemoryBarrier.srcAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-        imgMemoryBarrier.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        break;
-
-    }
-
-    switch(newLayout) {
-    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-        imgMemoryBarrier.dstAccessMask |= VK_ACCESS_TRANSFER_READ_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-        imgMemoryBarrier.dstAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-        imgMemoryBarrier.dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-        imgMemoryBarrier.dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-        imgMemoryBarrier.srcAccessMask |= VK_ACCESS_HOST_WRITE_BIT;
-        imgMemoryBarrier.srcAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
-        // Make sure any Copy or CPU writes to image are flushed
-        imgMemoryBarrier.dstAccessMask |= VK_ACCESS_SHADER_READ_BIT;
-        imgMemoryBarrier.dstAccessMask |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-        break;
-    }
-
-    VkPipelineStageFlags srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    VkPipelineStageFlags dstStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    // TODO(cort): 
-    VkDependencyFlags dependencyFlags = 0;
-    uint32_t memoryBarrierCount = 0;
-    const VkMemoryBarrier *memoryBarriers = NULL;
-    uint32_t bufferMemoryBarrierCount = 0;
-    const VkBufferMemoryBarrier *bufferMemoryBarriers = NULL;
-    uint32_t imageMemoryBarrierCount = 1;
-    vkCmdPipelineBarrier(cmdBuf, srcStages, dstStages, dependencyFlags,
-        memoryBarrierCount, memoryBarriers,
-        bufferMemoryBarrierCount, bufferMemoryBarriers,
-        imageMemoryBarrierCount, &imgMemoryBarrier);
-}
-
 int main(int argc, char *argv[]) {
     //
     // Initialise GLFW
@@ -146,20 +84,18 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    const VkApplicationInfo applicationInfo = {
-        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pNext = NULL,
-        .pApplicationName = "Vulkswagen",
-        .applicationVersion = 0x1000,
-        .pEngineName = "Zombo",
-        .engineVersion = 0x1001,
-        .apiVersion = VK_MAKE_VERSION(1,0,0),
-    };
-    const stbvk_context_create_info contextCreateInfo = {
-        .allocation_callbacks = NULL,
-        .enable_standard_validation_layers = VK_TRUE,
-        .application_info = &applicationInfo,
-    };
+    VkApplicationInfo applicationInfo = {};
+    applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    applicationInfo.pNext = NULL;
+    applicationInfo.pApplicationName = "Vulkswagen";
+    applicationInfo.applicationVersion = 0x1000;
+    applicationInfo.pEngineName = "Zombo";
+    applicationInfo.engineVersion = 0x1001;
+    applicationInfo.apiVersion = VK_MAKE_VERSION(1,0,0);
+    stbvk_context_create_info contextCreateInfo = {};
+    contextCreateInfo.allocation_callbacks = NULL;
+    contextCreateInfo.enable_standard_validation_layers = VK_TRUE;
+    contextCreateInfo.application_info = &applicationInfo;
     stbvk_context context;
     stbvk_init_context(&contextCreateInfo, &context);
 
@@ -168,13 +104,12 @@ int main(int argc, char *argv[]) {
         (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(context.instance, "vkCreateDebugReportCallbackEXT");
     PFN_vkDestroyDebugReportCallbackEXT DestroyDebugReportCallback =
         (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(context.instance, "vkDestroyDebugReportCallbackEXT");
-    const VkDebugReportCallbackCreateInfoEXT debugReportCallbackCreateInfo = {
-        .sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT,
-        .pNext = NULL,
-        .flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT,
-        .pfnCallback = debugReportCallbackFunc,
-        .pUserData = NULL,
-    };
+    VkDebugReportCallbackCreateInfoEXT debugReportCallbackCreateInfo = {};
+    debugReportCallbackCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
+    debugReportCallbackCreateInfo.pNext = NULL;
+    debugReportCallbackCreateInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+    debugReportCallbackCreateInfo.pfnCallback = debugReportCallbackFunc;
+    debugReportCallbackCreateInfo.pUserData = NULL;
     VkDebugReportCallbackEXT debugReportCallback = VK_NULL_HANDLE;
     VULKAN_CHECK( CreateDebugReportCallback(context.instance, &debugReportCallbackCreateInfo, context.allocation_callbacks, &debugReportCallback) );
 
@@ -185,13 +120,12 @@ int main(int argc, char *argv[]) {
     }
 
     // Allocate command buffers
-    const VkCommandBufferAllocateInfo commandBufferAllocateInfoPrimary = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .pNext = NULL,
-        .commandPool = context.command_pool,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-    };
+    VkCommandBufferAllocateInfo commandBufferAllocateInfoPrimary = {};
+    commandBufferAllocateInfoPrimary.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    commandBufferAllocateInfoPrimary.pNext = NULL;
+    commandBufferAllocateInfoPrimary.commandPool = context.command_pool;
+    commandBufferAllocateInfoPrimary.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    commandBufferAllocateInfoPrimary.commandBufferCount = 1;
     VkCommandBuffer cmdBufSetup, cmdBufDraw;
     VULKAN_CHECK( vkAllocateCommandBuffers(context.device, &commandBufferAllocateInfoPrimary, &cmdBufSetup) );
     VULKAN_CHECK( vkAllocateCommandBuffers(context.device, &commandBufferAllocateInfoPrimary, &cmdBufDraw) );
@@ -319,7 +253,7 @@ int main(int argc, char *argv[]) {
         subresourceRange.levelCount = 1;
         subresourceRange.baseArrayLayer = 0;
         subresourceRange.layerCount = 1;
-        setImageLayout(cmdBufSetup, imageViewCreateInfo.image, subresourceRange, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0);
+        stbvk_set_image_layout(cmdBufSetup, imageViewCreateInfo.image, subresourceRange, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0);
         VULKAN_CHECK( vkCreateImageView(context.device, &imageViewCreateInfo, context.allocation_callbacks, &swapchainImageViews[iSCI]) );
     }
     uint32_t swapchainCurrentBufferIndex = 0;
@@ -363,7 +297,7 @@ int main(int argc, char *argv[]) {
     depthSubresourceRange.levelCount = 1;
     depthSubresourceRange.baseArrayLayer = 0;
     depthSubresourceRange.layerCount = 1;
-    setImageLayout(cmdBufSetup, imageDepth, depthSubresourceRange,
+    stbvk_set_image_layout(cmdBufSetup, imageDepth, depthSubresourceRange,
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0);
     VkImageViewCreateInfo imageViewCreateInfoDepth = {};
     imageViewCreateInfoDepth.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -600,7 +534,7 @@ int main(int argc, char *argv[]) {
     textureImageSubresourceRange.levelCount = 1;
     textureImageSubresourceRange.baseArrayLayer = 0;
     textureImageSubresourceRange.layerCount = kTextureLayerCount;
-    setImageLayout(cmdBufSetup, textureImage, textureImageSubresourceRange,
+    stbvk_set_image_layout(cmdBufSetup, textureImage, textureImageSubresourceRange,
         imageCreateInfo.initialLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0);
     VkSamplerCreateInfo samplerCreateInfo = {};
     samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -715,7 +649,7 @@ int main(int argc, char *argv[]) {
         stagingImageSubresourceRange.levelCount = 1;
         stagingImageSubresourceRange.baseArrayLayer = 0;
         stagingImageSubresourceRange.layerCount = 1;
-        setImageLayout(cmdBufSetup, stagingTextureImages[iLayer], stagingImageSubresourceRange,
+        stbvk_set_image_layout(cmdBufSetup, stagingTextureImages[iLayer], stagingImageSubresourceRange,
             stagingImageCreateInfo.initialLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0);
 
         VkImageCopy copyRegion = {};
@@ -737,7 +671,7 @@ int main(int argc, char *argv[]) {
             textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
     }
     const VkImageLayout textureImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    setImageLayout(cmdBufSetup, textureImage, textureImageSubresourceRange,
+    stbvk_set_image_layout(cmdBufSetup, textureImage, textureImageSubresourceRange,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, textureImageLayout, 0);
 
     // Create Vulkan pipeline & graphics state
@@ -975,7 +909,7 @@ int main(int argc, char *argv[]) {
         swapchainSubresourceRange.levelCount = 1;
         swapchainSubresourceRange.baseArrayLayer = 0;
         swapchainSubresourceRange.layerCount = 1;
-        setImageLayout(cmdBufDraw, swapchainImages[currentBufferIndex],
+        stbvk_set_image_layout(cmdBufDraw, swapchainImages[currentBufferIndex],
             swapchainSubresourceRange,
             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0);
