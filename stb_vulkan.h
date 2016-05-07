@@ -231,7 +231,7 @@ static VkResult stbvk__init_instance(stbvk_context_create_info const *create_inf
         requested_layer_count += 1;
     }
 
-    VkApplicationInfo application_info_default = {0};
+    VkApplicationInfo application_info_default = {};
     application_info_default.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     application_info_default.pNext = NULL;
     application_info_default.pApplicationName = "Default Application Name";
@@ -240,7 +240,7 @@ static VkResult stbvk__init_instance(stbvk_context_create_info const *create_inf
     application_info_default.engineVersion = 0x1000;
     application_info_default.apiVersion = VK_MAKE_VERSION(1,0,0);
 
-    VkInstanceCreateInfo instance_create_info = {0};
+    VkInstanceCreateInfo instance_create_info = {};
     instance_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instance_create_info.pNext = NULL;
     instance_create_info.flags = 0;
@@ -313,7 +313,7 @@ static VkResult stbvk__init_device(stbvk_context_create_info const *create_info,
     vkGetPhysicalDeviceQueueFamilyProperties(context->physical_device, &queue_family_count, NULL);
     VkQueueFamilyProperties *queue_family_properties_all = (VkQueueFamilyProperties*)STBVK_MALLOC(queue_family_count * sizeof(VkQueueFamilyProperties));
     vkGetPhysicalDeviceQueueFamilyProperties(context->physical_device, &queue_family_count, queue_family_properties_all);
-    VkDeviceQueueCreateInfo device_queue_create_info = {0};
+    VkDeviceQueueCreateInfo device_queue_create_info = {};
     VkBool32 found_graphics_queue_family = VK_FALSE;
     for(uint32_t iQF=0; iQF<queue_family_count; iQF+=1) {
         if ( (queue_family_properties_all[iQF].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0)
@@ -337,7 +337,7 @@ static VkResult stbvk__init_device(stbvk_context_create_info const *create_info,
     STBVK_ASSERT(found_graphics_queue_family);
     STBVK_FREE(queue_family_properties_all);
 
-    VkDeviceCreateInfo device_create_info = {0};
+    VkDeviceCreateInfo device_create_info = {};
     device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     device_create_info.pNext = NULL;
     device_create_info.flags = 0;
@@ -373,7 +373,7 @@ static VkResult stbvk__init_device(stbvk_context_create_info const *create_info,
 
 static VkResult stbvk__init_command_pool(stbvk_context_create_info const *createInfo, stbvk_context *context)
 {
-    VkCommandPoolCreateInfo command_pool_create_info = {0};
+    VkCommandPoolCreateInfo command_pool_create_info = {};
     command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     command_pool_create_info.pNext = NULL;
     command_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // allows reseting individual command buffers from this pool
@@ -449,7 +449,7 @@ STBVKDEF VkShaderModule stbvk_load_shader_from_file(stbvk_context *c, FILE *f, i
         free(shader_bin);
         return VK_NULL_HANDLE;
     }
-    VkShaderModule shader_module = stbvk_load_shader_from_memory(c, shader_bin, len);
+    VkShaderModule shader_module = stbvk_load_shader_from_memory(c, (const stbvk_uc*)shader_bin, len);
     STBVK_FREE(shader_bin);
     return shader_module;
 }
@@ -473,7 +473,7 @@ STBVKDEF VkShaderModule stbvk_load_shader(stbvk_context *c, char const *filename
 
 STBVKDEF VkShaderModule stbvk_load_shader_from_memory(stbvk_context *c, stbvk_uc const *buffer, int len)
 {
-    VkShaderModuleCreateInfo smci = {0};
+    VkShaderModuleCreateInfo smci = {};
     smci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     smci.pNext = NULL;
     smci.flags = 0;
