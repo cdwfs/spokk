@@ -7,8 +7,15 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#ifdef _MSC_VER
+#   pragma warning(push)
+#   pragma warning(disable:4244) // implicit variable truncation (e.g. int32_t -> int16_t)
+#endif
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#ifdef _MSC_VER
+#   pragma warning(pop)
+#endif
 
 #define STB_VULKAN_IMPLEMENTATION
 #include "stb_vulkan.h"
@@ -31,8 +38,8 @@ static void myGlfwErrorCallback(int error, const char *description)
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallbackFunc(VkFlags msgFlags,
-    VkDebugReportObjectTypeEXT objType, uint64_t srcObject, size_t location, int32_t msgCode,
-    const char *pLayerPrefix, const char *pMsg, void *pUserData) {
+    VkDebugReportObjectTypeEXT /*objType*/, uint64_t /*srcObject*/, size_t /*location*/, int32_t msgCode,
+    const char *pLayerPrefix, const char *pMsg, void * /*pUserData*/) {
 
     char *message = (char*)malloc(strlen(pMsg)+100);
     assert(message);
@@ -67,6 +74,8 @@ static VkBool32 getMemoryTypeFromProperties(const VkPhysicalDeviceMemoryProperti
 }
 
 int main(int argc, char *argv[]) {
+    (void)argc;
+(    void)argv;
     //
     // Initialise GLFW
     //
@@ -256,7 +265,7 @@ int main(int argc, char *argv[]) {
         stbvk_set_image_layout(cmdBufSetup, imageViewCreateInfo.image, subresourceRange, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0);
         VULKAN_CHECK( vkCreateImageView(context.device, &imageViewCreateInfo, context.allocation_callbacks, &swapchainImageViews[iSCI]) );
     }
-    uint32_t swapchainCurrentBufferIndex = 0;
+    //uint32_t swapchainCurrentBufferIndex = 0;
 
     // Create depth buffer
     VkFormat surfaceDepthFormat = VK_FORMAT_D16_UNORM;

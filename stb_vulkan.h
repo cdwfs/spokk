@@ -374,7 +374,7 @@ static VkResult stbvk__init_device(stbvk_context_create_info const *create_info,
     return VK_SUCCESS;
 }
 
-static VkResult stbvk__init_command_pool(stbvk_context_create_info const *createInfo, stbvk_context *context)
+static VkResult stbvk__init_command_pool(stbvk_context_create_info const * /*createInfo*/, stbvk_context *context)
 {
     VkCommandPoolCreateInfo command_pool_create_info = {};
     command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -483,10 +483,11 @@ STBVKDEF VkShaderModule stbvk_load_shader_from_memory(stbvk_context *c, stbvk_uc
     smci.codeSize = len;
     smci.pCode = (uint32_t*)buffer;
     VkShaderModule shader_module = VK_NULL_HANDLE;
-    VkResult result = vkCreateShaderModule(c->device, &smci, c->allocation_callbacks, &shader_module);
+    STBVK__CHECK( vkCreateShaderModule(c->device, &smci, c->allocation_callbacks, &shader_module) );
+    
     return shader_module;
 }
-STBVKDEF VkShaderModule stbvk_load_shader_from_callbacks(stbvk_context *c, stbvk_io_callbacks const *clbk, void *user)
+STBVKDEF VkShaderModule stbvk_load_shader_from_callbacks(stbvk_context * /*c*/, stbvk_io_callbacks const * /*clbk*/, void * /*user*/)
 {
     return VK_NULL_HANDLE;
 }
