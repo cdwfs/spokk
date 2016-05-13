@@ -66,10 +66,21 @@ extern "C" {
         VkPhysicalDeviceFeatures physical_device_features;
         uint32_t queue_family_index;
         VkQueueFamilyProperties queue_family_properties;
+        VkSurfaceKHR present_surface;
         VkDevice device;
         VkQueue *queues;
+        VkQueue graphics_queue;
 
         VkCommandPool command_pool;
+        VkCommandBuffer command_buffer_primary;
+
+        VkSwapchainKHR swapchain;
+        uint32_t swapchain_image_count;
+        uint32_t swapchain_image_index;
+        VkImage *swapchain_images;
+        VkImageView *swapchain_image_views;
+
+        VkPhysicalDevice *all_physical_devices;
     } stbvk_context;
 
 
@@ -81,7 +92,14 @@ extern "C" {
         PFN_vkDebugReportCallbackEXT debug_report_callback; // Optional; set to NULL to disable debug reports.
         void *debug_report_callback_user_data; // Optional; passed to debug_report_callback, if enabled.
     } stbvk_context_create_info;
-    STBVKDEF VkResult stbvk_init_context(stbvk_context_create_info const *createInfo, stbvk_context *c);
+    STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_info, stbvk_context *c);
+    STBVKDEF VkResult stbvk_init_physical_device(stbvk_context_create_info const *create_info, stbvk_context *c);
+    STBVKDEF VkResult stbvk_init_logical_device(stbvk_context_create_info const *create_info, stbvk_context *c);
+    STBVKDEF VkResult stbvk_init_command_pool(stbvk_context_create_info const *create_info, stbvk_context *c);
+    STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const *create_info, VkSurfaceKHR present_surface, stbvk_context *c);
+
+
+    //STBVKDEF VkResult stbvk_init_context(stbvk_context_create_info const *createInfo, stbvk_context *c);
     STBVKDEF void stbvk_destroy_context(stbvk_context *c);
 
     typedef struct
@@ -205,7 +223,7 @@ typedef unsigned char validate_uint32[sizeof(stbvk__uint32)==4 ? 1 : -1];
 #endif
 #define STBVK__CHECK(expr) STBVK__RETVAL_CHECK(VK_SUCCESS, expr)
 
-static VkResult stbvk__init_instance(stbvk_context_create_info const *create_info, stbvk_context *context)
+STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_info, stbvk_context *context)
 {
     const char *extension_layer_name = NULL;
     uint32_t extension_count = 0;
@@ -277,15 +295,16 @@ static VkResult stbvk__init_instance(stbvk_context_create_info const *create_inf
     return VK_SUCCESS;
 }
 
-static VkResult stbvk__init_device(stbvk_context_create_info const *create_info, stbvk_context *context)
+STBVKDEF VkResult stbvk_init_physical_device(stbvk_context_create_info const * /*create_info*/, stbvk_context *context)
 {
     uint32_t physical_device_count = 0;
     STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, NULL) );
     STBVK_ASSERT(physical_device_count > 0);
-    VkPhysicalDevice *physical_devices = (VkPhysicalDevice*)STBVK_MALLOC(physical_device_count * sizeof(VkPhysicalDevice));
-    STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, physical_devices) );
-    context->physical_device = physical_devices[0];
-    STBVK_FREE(physical_devices);
+    context->all_physical_devices = (VkPhysicalDevice*)STBVK_MALLOC(physical_device_count * sizeof(VkPhysicalDevice));
+    STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, context->all_physical_devices) );
+
+    // TODO(cort): be more picky than this.
+    context->physical_device = context->all_physical_devices[0];
 
     vkGetPhysicalDeviceProperties(context->physical_device, &context->physical_device_properties);
 #if 0
@@ -310,7 +329,11 @@ static VkResult stbvk__init_device(stbvk_context_create_info const *create_info,
         STBVK_FREE(device_layer_properties);
     }
 #endif
+    return VK_SUCCESS;
+}
 
+STBVKDEF VkResult stbvk_init_logical_device(stbvk_context_create_info const *create_info, stbvk_context *context)
+{
     uint32_t requested_layer_count = 0;
     const char **requested_layer_names = NULL;
     const char *standard_validation_layer = "VK_LAYER_LUNARG_standard_validation";
@@ -359,6 +382,8 @@ static VkResult stbvk__init_device(stbvk_context_create_info const *create_info,
     STBVK_ASSERT(found_graphics_queue_family);
     STBVK_FREE(queue_family_properties_all);
 
+    // TODO(cort): Logical device creation should really happen after the presentation surface is created.
+    // For now, assume that whatever graphics-capable queue family we found also supports presentation.
     VkDeviceCreateInfo device_create_info = {};
     device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     device_create_info.pNext = NULL;
@@ -389,58 +414,218 @@ static VkResult stbvk__init_device(stbvk_context_create_info const *create_info,
     for(uint32_t iQ=0; iQ<context->queue_family_properties.queueCount; iQ+=1) {
         vkGetDeviceQueue(context->device, context->queue_family_index, iQ, &context->queues[iQ]);
     }
+    vkGetDeviceQueue(context->device, context->queue_family_index, 0, &context->graphics_queue);
 
     return VK_SUCCESS;
 }
 
-static VkResult stbvk__init_command_pool(stbvk_context_create_info const * /*createInfo*/, stbvk_context *context)
+STBVKDEF VkResult stbvk_init_command_pool(stbvk_context_create_info const * /*createInfo*/, stbvk_context *context)
 {
+    // Create command pool
     VkCommandPoolCreateInfo command_pool_create_info = {};
     command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     command_pool_create_info.pNext = NULL;
     command_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // allows reseting individual command buffers from this pool
     command_pool_create_info.queueFamilyIndex = context->queue_family_index;
     STBVK__CHECK( vkCreateCommandPool(context->device, &command_pool_create_info, context->allocation_callbacks, &context->command_pool) );
+
+    // Allocate primary command buffer
+    VkCommandBufferAllocateInfo command_buffer_allocate_info = {};
+    command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    command_buffer_allocate_info.pNext = NULL;
+    command_buffer_allocate_info.commandPool = context->command_pool;
+    command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    command_buffer_allocate_info.commandBufferCount = 1;
+    STBVK__CHECK( vkAllocateCommandBuffers(context->device, &command_buffer_allocate_info, &context->command_buffer_primary) );
+
     return VK_SUCCESS;
 }
 
-STBVKDEF VkResult stbvk_init_context(stbvk_context_create_info const *createInfo, stbvk_context *c)
+STBVKDEF VkResult stbvk_init_swapchain(stbvk_context *context, VkSurfaceKHR present_surface, uint32_t width, uint32_t height)
 {
-    VkResult result = VK_SUCCESS;
+    context->present_surface = present_surface;
 
-    c->allocation_callbacks = createInfo->allocation_callbacks;
+    // TODO(cort): Riiight, the present surface needs to be present for physical device selection to ensure
+    // that the physical device can present to it before a logical device is created. So in theory a lot of
+    // this code should move into init_physical_device().
+    VkBool32 queueFamilySupportsPresent = VK_FALSE;
+    STBVK__CHECK( vkGetPhysicalDeviceSurfaceSupportKHR(context->physical_device, context->queue_family_index,
+        present_surface, &queueFamilySupportsPresent) );
+    STBVK_ASSERT(queueFamilySupportsPresent);
 
-    result = stbvk__init_instance(createInfo, c);
-    if (result != VK_SUCCESS)
+    VkSurfaceCapabilitiesKHR surfaceCapabilities;
+    STBVK__CHECK( vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physical_device, present_surface, &surfaceCapabilities) );
+    VkExtent2D swapchainExtent;
+    if (surfaceCapabilities.currentExtent.width == (uint32_t)-1)
     {
-        return result;
+        STBVK_ASSERT(surfaceCapabilities.currentExtent.height == (uint32_t)-1);
+        swapchainExtent.width = width;
+        swapchainExtent.height = height;
+    }
+    else
+    {
+        swapchainExtent = surfaceCapabilities.currentExtent;
+        if (	swapchainExtent.width  != width
+            ||	swapchainExtent.height != height)
+        {
+            // TODO(cort): update rendering dimensions to match swap chain size. For now, assume this never happens.
+            assert(0);
+        }
+    }
+    uint32_t deviceSurfaceFormatCount = 0;
+    STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, present_surface, &deviceSurfaceFormatCount, NULL) );
+    VkSurfaceFormatKHR *deviceSurfaceFormats = (VkSurfaceFormatKHR*)STBVK_MALLOC(deviceSurfaceFormatCount * sizeof(VkSurfaceFormatKHR));
+    STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, present_surface, &deviceSurfaceFormatCount, deviceSurfaceFormats) );
+    VkFormat surfaceColorFormat;
+    if (deviceSurfaceFormatCount == 1 && deviceSurfaceFormats[0].format == VK_FORMAT_UNDEFINED)
+    {
+        // No preferred format.
+        surfaceColorFormat = VK_FORMAT_B8G8R8A8_UNORM;
+    }
+    else
+    {
+        assert(deviceSurfaceFormatCount >= 1);
+        surfaceColorFormat = deviceSurfaceFormats[0].format;
+    }
+    VkColorSpaceKHR surfaceColorSpace = deviceSurfaceFormats[0].colorSpace;
+    STBVK_FREE(deviceSurfaceFormats);
+
+    uint32_t deviceSurfacePresentModeCount = 0;
+    STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, present_surface, &deviceSurfacePresentModeCount, NULL) );
+    VkPresentModeKHR *deviceSurfacePresentModes = (VkPresentModeKHR*)STBVK_MALLOC(deviceSurfacePresentModeCount * sizeof(VkPresentModeKHR));
+    STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, present_surface, &deviceSurfacePresentModeCount, deviceSurfacePresentModes) );
+    VkPresentModeKHR swapchainPresentMode = VK_PRESENT_MODE_FIFO_KHR; // TODO(cort): make sure this mode is supported, or pick a different one?
+    STBVK_FREE(deviceSurfacePresentModes);
+
+    uint32_t desiredSwapchainImageCount = surfaceCapabilities.minImageCount+1;
+    if (	surfaceCapabilities.maxImageCount > 0
+        &&	desiredSwapchainImageCount > surfaceCapabilities.maxImageCount)
+    {
+        desiredSwapchainImageCount = surfaceCapabilities.maxImageCount;
+    }
+    VkSurfaceTransformFlagBitsKHR preTransform;
+    if (0 != (surfaceCapabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR))
+    {
+        preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+    }
+    else
+    {
+        preTransform = surfaceCapabilities.currentTransform;
     }
 
-    stbvk__init_device(createInfo, c);
-    if (result != VK_SUCCESS)
+    VkSwapchainCreateInfoKHR swapchain_create_info = {};
+    swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    swapchain_create_info.pNext = NULL;
+    swapchain_create_info.surface = present_surface;
+    swapchain_create_info.minImageCount = desiredSwapchainImageCount;
+    swapchain_create_info.imageFormat = surfaceColorFormat;
+    swapchain_create_info.imageColorSpace = surfaceColorSpace;
+    swapchain_create_info.imageExtent.width = swapchainExtent.width;
+    swapchain_create_info.imageExtent.height = swapchainExtent.height;
+    swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    swapchain_create_info.preTransform = preTransform;
+    swapchain_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    swapchain_create_info.imageArrayLayers = 1;
+    swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    swapchain_create_info.queueFamilyIndexCount = 0;
+    swapchain_create_info.pQueueFamilyIndices = NULL;
+    swapchain_create_info.presentMode = swapchainPresentMode;
+    swapchain_create_info.clipped = VK_TRUE;
+    swapchain_create_info.oldSwapchain = VK_NULL_HANDLE;
+    STBVK__CHECK( vkCreateSwapchainKHR(context->device, &swapchain_create_info, context->allocation_callbacks, &context->swapchain) );
+
+    STBVK__CHECK( vkGetSwapchainImagesKHR(context->device, context->swapchain, &context->swapchain_image_count, NULL) );
+    context->swapchain_images = (VkImage*)malloc(context->swapchain_image_count * sizeof(VkImage));
+    STBVK__CHECK( vkGetSwapchainImagesKHR(context->device, context->swapchain, &context->swapchain_image_count, context->swapchain_images) );
+
+    VkCommandBufferBeginInfo command_buffer_begin_info = {};
+    command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    command_buffer_begin_info.pNext = NULL;
+    command_buffer_begin_info.flags = 0;
+    command_buffer_begin_info.pInheritanceInfo = NULL; // must be non-NULL for secondary command buffers
+    STBVK__CHECK( vkBeginCommandBuffer(context->command_buffer_primary, &command_buffer_begin_info) );
+
+    VkImageViewCreateInfo image_view_create_info = {};
+    image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    image_view_create_info.pNext = NULL;
+    image_view_create_info.flags = 0;
+    image_view_create_info.format = surfaceColorFormat;
+    image_view_create_info.components = {};
+    image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_R;
+    image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_G;
+    image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_B;
+    image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_A;
+    image_view_create_info.subresourceRange = {};
+    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_view_create_info.subresourceRange.baseMipLevel = 0;
+    image_view_create_info.subresourceRange.levelCount = 1;
+    image_view_create_info.subresourceRange.baseArrayLayer = 0;
+    image_view_create_info.subresourceRange.layerCount = 1;
+    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    image_view_create_info.image = VK_NULL_HANDLE; // filled in below
+    context->swapchain_image_views = (VkImageView*)malloc(context->swapchain_image_count * sizeof(VkImageView));
+    for(uint32_t iSCI=0; iSCI<context->swapchain_image_count; iSCI+=1)
     {
-        return result;
+        image_view_create_info.image = context->swapchain_images[iSCI];
+        // Render loop will expect image to have been used before and in
+        // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout and will change to
+        // COLOR_ATTACHMENT_OPTIMAL, so init the image to that state.
+        VkImageSubresourceRange subresource_range = {};
+        subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        subresource_range.baseMipLevel = 0;
+        subresource_range.levelCount = 1;
+        subresource_range.baseArrayLayer = 0;
+        subresource_range.layerCount = 1;
+        stbvk_set_image_layout(context->command_buffer_primary, image_view_create_info.image, subresource_range, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0);
+        STBVK__CHECK( vkCreateImageView(context->device, &image_view_create_info, context->allocation_callbacks, &context->swapchain_image_views[iSCI]) );
     }
 
-    stbvk__init_command_pool(createInfo, c);
-    if (result != VK_SUCCESS)
-    {
-        return result;
-    }
+    // Submit the setup command buffer
+    STBVK__CHECK( vkEndCommandBuffer(context->command_buffer_primary) );
+    VkSubmitInfo submit_info_setup = {};
+    submit_info_setup.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info_setup.pNext = NULL;
+    submit_info_setup.waitSemaphoreCount = 0;
+    submit_info_setup.pWaitSemaphores = NULL;
+    submit_info_setup.pWaitDstStageMask = NULL;
+    submit_info_setup.commandBufferCount = 1;
+    submit_info_setup.pCommandBuffers = &context->command_buffer_primary;
+    submit_info_setup.signalSemaphoreCount = 0;
+    submit_info_setup.pSignalSemaphores = NULL;
+    VkFence submit_fence = VK_NULL_HANDLE;
+    STBVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info_setup, submit_fence) );
+    STBVK__CHECK( vkQueueWaitIdle(context->graphics_queue) );
 
+    //uint32_t swapchainCurrentBufferIndex = 0;
     return VK_SUCCESS;
 }
 
 STBVKDEF void stbvk_destroy_context(stbvk_context *context)
 {
+    vkDeviceWaitIdle(context->device);
+
     STBVK_FREE(context->queues);
     context->queues = NULL;
+
+    for(uint32_t iSCI=0; iSCI<context->swapchain_image_count; ++iSCI)
+    {
+        vkDestroyImageView(context->device, context->swapchain_image_views[iSCI], context->allocation_callbacks);
+    }
+    STBVK_FREE(context->swapchain_image_views);
+    context->swapchain_image_views = NULL;
+    STBVK_FREE(context->swapchain_images);
+    context->swapchain_images = NULL;
+    vkDestroySwapchainKHR(context->device, context->swapchain, context->allocation_callbacks);
+
+    vkFreeCommandBuffers(context->device, context->command_pool, 1, &context->command_buffer_primary);
 
     vkDestroyCommandPool(context->device, context->command_pool, context->allocation_callbacks);
     context->command_pool = NULL;
 
     vkDestroyDevice(context->device, context->allocation_callbacks);
     context->device = VK_NULL_HANDLE;
+    STBVK_FREE(context->all_physical_devices);
+
     if (context->debug_report_callback != VK_NULL_HANDLE)
     {
         PFN_vkDestroyDebugReportCallbackEXT DestroyDebugReportCallback =
@@ -448,11 +633,13 @@ STBVKDEF void stbvk_destroy_context(stbvk_context *context)
         DestroyDebugReportCallback(context->instance, context->debug_report_callback, context->allocation_callbacks);
     }
 
+    vkDestroySurfaceKHR(context->instance, context->present_surface, context->allocation_callbacks);
 
     vkDestroyInstance(context->instance, context->allocation_callbacks);
     context->instance = VK_NULL_HANDLE;
 
     context->allocation_callbacks = NULL;
+    memset(context, 0, sizeof(*context));
 }
 
 

@@ -60,6 +60,46 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallbackFunc(VkFlags msgFlags,
     return VK_FALSE; // false = don't bail out of an API call with validation failures.
 }
 
+static VkResult my_stbvk_init_context(stbvk_context_create_info const *createInfo, GLFWwindow *window, stbvk_context *c)
+{
+    VkResult result = VK_SUCCESS;
+
+    c->allocation_callbacks = createInfo->allocation_callbacks;
+
+    result = stbvk_init_instance(createInfo, c);
+    if (result != VK_SUCCESS)
+    {
+        return result;
+    }
+
+    // wraps vkCreate*SurfaceKHR() for the current platform
+    VkSurfaceKHR presentSurface = VK_NULL_HANDLE;
+    VULKAN_CHECK( glfwCreateWindowSurface(c->instance, window, c->allocation_callbacks, &presentSurface) );
+
+    result = stbvk_init_physical_device(createInfo, c);
+    if (result != VK_SUCCESS)
+    {
+        return result;
+    }
+
+    result = stbvk_init_logical_device(createInfo, c);
+    if (result != VK_SUCCESS)
+    {
+        return result;
+    }
+
+    result = stbvk_init_command_pool(createInfo, c);
+    if (result != VK_SUCCESS)
+    {
+        return result;
+    }
+
+    result = stbvk_init_swapchain(c, presentSurface, kWindowWidthDefault, kWindowHeightDefault);
+
+    return VK_SUCCESS;
+}
+
+
 static VkBool32 getMemoryTypeFromProperties(const VkPhysicalDeviceMemoryProperties *memoryProperties,
     uint32_t memoryTypeBits, VkFlags requirementsMask, uint32_t *outMemoryTypeIndex) {
     assert(sizeof(memoryTypeBits)*8 == VK_MAX_MEMORY_TYPES);
@@ -79,6 +119,7 @@ int main(int argc, char *argv[]) {
     //
     // Initialise GLFW
     //
+    const char *applicationName = "Vulkswagen";
 
     // Set a callback to handle GLFW errors (*not* Vulkan errors! That comes later)
     glfwSetErrorCallback(myGlfwErrorCallback);
@@ -92,11 +133,15 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Vulkan is not available :(\n");
         return -1;
     }
+    // Create GLFW window
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    GLFWwindow *window = glfwCreateWindow(kWindowWidthDefault, kWindowHeightDefault, applicationName, NULL, NULL);
+
 
     VkApplicationInfo applicationInfo = {};
     applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     applicationInfo.pNext = NULL;
-    applicationInfo.pApplicationName = "Vulkswagen";
+    applicationInfo.pApplicationName = applicationName;
     applicationInfo.applicationVersion = 0x1000;
     applicationInfo.pEngineName = "Zombo";
     applicationInfo.engineVersion = 0x1001;
@@ -108,24 +153,7 @@ int main(int argc, char *argv[]) {
     contextCreateInfo.debug_report_callback = debugReportCallbackFunc;
     contextCreateInfo.debug_report_callback_user_data = NULL;
     stbvk_context context;
-    stbvk_init_context(&contextCreateInfo, &context);
-
-    // Wraps vkGetPhysicalDevice*PresentationSupportKHR()
-    if (!glfwGetPhysicalDevicePresentationSupport(context.instance, context.physical_device, context.queue_family_index)) {
-        fprintf(stderr, "ERROR: Queue family does not support presentation.\n");
-        return -1;
-    }
-
-    // Allocate command buffers
-    VkCommandBufferAllocateInfo commandBufferAllocateInfoPrimary = {};
-    commandBufferAllocateInfoPrimary.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    commandBufferAllocateInfoPrimary.pNext = NULL;
-    commandBufferAllocateInfoPrimary.commandPool = context.command_pool;
-    commandBufferAllocateInfoPrimary.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    commandBufferAllocateInfoPrimary.commandBufferCount = 1;
-    VkCommandBuffer cmdBufSetup, cmdBufDraw;
-    VULKAN_CHECK( vkAllocateCommandBuffers(context.device, &commandBufferAllocateInfoPrimary, &cmdBufSetup) );
-    VULKAN_CHECK( vkAllocateCommandBuffers(context.device, &commandBufferAllocateInfoPrimary, &cmdBufDraw) );
+    my_stbvk_init_context(&contextCreateInfo, window, &context);
 
     // Record the setup command buffer
     VkCommandBufferBeginInfo commandBufferBeginInfo = {};
@@ -133,127 +161,7 @@ int main(int argc, char *argv[]) {
     commandBufferBeginInfo.pNext = NULL;
     commandBufferBeginInfo.flags = 0;
     commandBufferBeginInfo.pInheritanceInfo = NULL; // must be non-NULL for secondary command buffers
-    VULKAN_CHECK( vkBeginCommandBuffer(cmdBufSetup, &commandBufferBeginInfo) );
-
-    // Create GLFW window, Vulken window surface, and swapchain
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow *window = glfwCreateWindow(kWindowWidthDefault, kWindowHeightDefault, "Vulkswagen", NULL, NULL);
-
-    VkSurfaceKHR surface;
-    VULKAN_CHECK( glfwCreateWindowSurface(context.instance, window, context.allocation_callbacks, &surface) ); // wraps vkCreate*SurfaceKHR() for the current platform
-
-    VkBool32 queueFamilySupportsPresent = VK_FALSE;
-    VULKAN_CHECK( vkGetPhysicalDeviceSurfaceSupportKHR(context.physical_device, context.queue_family_index,
-        surface, &queueFamilySupportsPresent) );
-
-    VkSurfaceCapabilitiesKHR surfaceCapabilities;
-    VULKAN_CHECK( vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context.physical_device, surface, &surfaceCapabilities) );
-    VkExtent2D swapchainExtent;
-    if (surfaceCapabilities.currentExtent.width == (uint32_t)-1) {
-        assert(surfaceCapabilities.currentExtent.height == (uint32_t)-1);
-        swapchainExtent.width = kWindowWidthDefault;
-        swapchainExtent.height = kWindowHeightDefault;
-    } else {
-        swapchainExtent = surfaceCapabilities.currentExtent;
-        if (	swapchainExtent.width  != kWindowWidthDefault
-            ||	swapchainExtent.height != kWindowHeightDefault) {
-            // TODO(cort): update rendering dimensions to match swap chain size. For now, assume this never happens.
-            assert(0);
-        }
-    }
-    uint32_t deviceSurfaceFormatCount = 0;
-    VULKAN_CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context.physical_device, surface, &deviceSurfaceFormatCount, NULL) );
-    VkSurfaceFormatKHR *deviceSurfaceFormats = (VkSurfaceFormatKHR*)malloc(deviceSurfaceFormatCount * sizeof(VkSurfaceFormatKHR));
-    VULKAN_CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context.physical_device, surface, &deviceSurfaceFormatCount, deviceSurfaceFormats) );
-    VkFormat surfaceColorFormat;
-    if (deviceSurfaceFormatCount == 1 && deviceSurfaceFormats[0].format == VK_FORMAT_UNDEFINED) {
-        // No preferred format.
-        surfaceColorFormat = VK_FORMAT_B8G8R8A8_UNORM;
-    } else {
-        assert(deviceSurfaceFormatCount >= 1);
-        surfaceColorFormat = deviceSurfaceFormats[0].format;
-    }
-    VkColorSpaceKHR surfaceColorSpace = deviceSurfaceFormats[0].colorSpace;
-
-    uint32_t deviceSurfacePresentModeCount = 0;
-    VULKAN_CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context.physical_device, surface, &deviceSurfacePresentModeCount, NULL) );
-    VkPresentModeKHR *deviceSurfacePresentModes = (VkPresentModeKHR*)malloc(deviceSurfacePresentModeCount * sizeof(VkPresentModeKHR));
-    VULKAN_CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context.physical_device, surface, &deviceSurfacePresentModeCount, deviceSurfacePresentModes) );
-    VkPresentModeKHR swapchainPresentMode = VK_PRESENT_MODE_FIFO_KHR; // TODO(cort): make sure this mode is supported, or pick a different one?
-
-    uint32_t desiredSwapchainImageCount = surfaceCapabilities.minImageCount+1;
-    if (	surfaceCapabilities.maxImageCount > 0
-        &&	desiredSwapchainImageCount > surfaceCapabilities.maxImageCount) {
-        desiredSwapchainImageCount = surfaceCapabilities.maxImageCount;
-    }
-    VkSurfaceTransformFlagBitsKHR preTransform;
-    if (0 != (surfaceCapabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)) {
-        preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-    } else {
-        preTransform = surfaceCapabilities.currentTransform;
-    }
-
-    VkSwapchainCreateInfoKHR swapchainCreateInfo = {};
-    swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    swapchainCreateInfo.pNext = NULL;
-    swapchainCreateInfo.surface = surface;
-    swapchainCreateInfo.minImageCount = desiredSwapchainImageCount;
-    swapchainCreateInfo.imageFormat = surfaceColorFormat;
-    swapchainCreateInfo.imageColorSpace = surfaceColorSpace;
-    swapchainCreateInfo.imageExtent.width = swapchainExtent.width;
-    swapchainCreateInfo.imageExtent.height = swapchainExtent.height;
-    swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    swapchainCreateInfo.preTransform = preTransform;
-    swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    swapchainCreateInfo.imageArrayLayers = 1;
-    swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    swapchainCreateInfo.queueFamilyIndexCount = 0;
-    swapchainCreateInfo.pQueueFamilyIndices = NULL;
-    swapchainCreateInfo.presentMode = swapchainPresentMode;
-    swapchainCreateInfo.clipped = VK_TRUE;
-    swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
-    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreateSwapchainKHR(context.device, &swapchainCreateInfo, context.allocation_callbacks, &swapchain) );
-
-    uint32_t swapchainImageCount = 0;
-    VULKAN_CHECK( vkGetSwapchainImagesKHR(context.device, swapchain, &swapchainImageCount, NULL) );
-    VkImage *swapchainImages = (VkImage*)malloc(swapchainImageCount * sizeof(VkImage));
-    VULKAN_CHECK( vkGetSwapchainImagesKHR(context.device, swapchain, &swapchainImageCount, swapchainImages) );
-
-    VkImageViewCreateInfo imageViewCreateInfo = {};
-    imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    imageViewCreateInfo.pNext = NULL;
-    imageViewCreateInfo.flags = 0;
-    imageViewCreateInfo.format = surfaceColorFormat;
-    imageViewCreateInfo.components = {};
-    imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_R;
-    imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_G;
-    imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_B;
-    imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_A;
-    imageViewCreateInfo.subresourceRange = {};
-    imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
-    imageViewCreateInfo.subresourceRange.levelCount = 1;
-    imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-    imageViewCreateInfo.subresourceRange.layerCount = 1;
-    imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    imageViewCreateInfo.image = VK_NULL_HANDLE; // filled in below
-    VkImageView *swapchainImageViews = (VkImageView*)malloc(swapchainImageCount * sizeof(VkImageView));
-    for(uint32_t iSCI=0; iSCI<swapchainImageCount; iSCI+=1) {
-        imageViewCreateInfo.image = swapchainImages[iSCI];
-        // Render loop will expect image to have been used before and in
-        // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout and will change to
-        // COLOR_ATTACHMENT_OPTIMAL, so init the image to that state.
-        VkImageSubresourceRange subresourceRange = {};
-        subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        subresourceRange.baseMipLevel = 0;
-        subresourceRange.levelCount = 1;
-        subresourceRange.baseArrayLayer = 0;
-        subresourceRange.layerCount = 1;
-        stbvk_set_image_layout(cmdBufSetup, imageViewCreateInfo.image, subresourceRange, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0);
-        VULKAN_CHECK( vkCreateImageView(context.device, &imageViewCreateInfo, context.allocation_callbacks, &swapchainImageViews[iSCI]) );
-    }
-    //uint32_t swapchainCurrentBufferIndex = 0;
+    VULKAN_CHECK( vkBeginCommandBuffer(context.command_buffer_primary, &commandBufferBeginInfo) );
 
     // Create depth buffer
     VkFormat surfaceDepthFormat = VK_FORMAT_D16_UNORM;
@@ -294,7 +202,7 @@ int main(int argc, char *argv[]) {
     depthSubresourceRange.levelCount = 1;
     depthSubresourceRange.baseArrayLayer = 0;
     depthSubresourceRange.layerCount = 1;
-    stbvk_set_image_layout(cmdBufSetup, imageDepth, depthSubresourceRange,
+    stbvk_set_image_layout(context.command_buffer_primary, imageDepth, depthSubresourceRange,
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0);
     VkImageViewCreateInfo imageViewCreateInfoDepth = {};
     imageViewCreateInfoDepth.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -414,7 +322,7 @@ int main(int argc, char *argv[]) {
     VkAttachmentDescription attachmentDescriptions[2];
     attachmentDescriptions[0] = {};
     attachmentDescriptions[0].flags = 0;
-    attachmentDescriptions[0].format = surfaceColorFormat;
+    attachmentDescriptions[0].format = VK_FORMAT_B8G8R8A8_UNORM; // TODO(cort): does this need to match the swapchain format?
     attachmentDescriptions[0].samples = VK_SAMPLE_COUNT_1_BIT;
     attachmentDescriptions[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachmentDescriptions[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -531,7 +439,7 @@ int main(int argc, char *argv[]) {
     textureImageSubresourceRange.levelCount = 1;
     textureImageSubresourceRange.baseArrayLayer = 0;
     textureImageSubresourceRange.layerCount = kTextureLayerCount;
-    stbvk_set_image_layout(cmdBufSetup, textureImage, textureImageSubresourceRange,
+    stbvk_set_image_layout(context.command_buffer_primary, textureImage, textureImageSubresourceRange,
         imageCreateInfo.initialLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0);
     VkSamplerCreateInfo samplerCreateInfo = {};
     samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -646,7 +554,7 @@ int main(int argc, char *argv[]) {
         stagingImageSubresourceRange.levelCount = 1;
         stagingImageSubresourceRange.baseArrayLayer = 0;
         stagingImageSubresourceRange.layerCount = 1;
-        stbvk_set_image_layout(cmdBufSetup, stagingTextureImages[iLayer], stagingImageSubresourceRange,
+        stbvk_set_image_layout(context.command_buffer_primary, stagingTextureImages[iLayer], stagingImageSubresourceRange,
             stagingImageCreateInfo.initialLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0);
 
         VkImageCopy copyRegion = {};
@@ -663,12 +571,12 @@ int main(int argc, char *argv[]) {
         copyRegion.dstSubresource.mipLevel = 0;
         copyRegion.dstOffset = {0,0,0};
         copyRegion.extent = stagingImageCreateInfo.extent;
-        vkCmdCopyImage(cmdBufSetup,
+        vkCmdCopyImage(context.command_buffer_primary,
             stagingTextureImages[iLayer], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
     }
     const VkImageLayout textureImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    stbvk_set_image_layout(cmdBufSetup, textureImage, textureImageSubresourceRange,
+    stbvk_set_image_layout(context.command_buffer_primary, textureImage, textureImageSubresourceRange,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, textureImageLayout, 0);
 
     // Create Vulkan pipeline & graphics state
@@ -827,14 +735,14 @@ int main(int argc, char *argv[]) {
     framebufferCreateInfo.width = kWindowWidthDefault;
     framebufferCreateInfo.height = kWindowHeightDefault;
     framebufferCreateInfo.layers = 1;
-    VkFramebuffer *framebuffers = (VkFramebuffer*)malloc(swapchainImageCount * sizeof(VkFramebuffer));
-    for(uint32_t iFB=0; iFB<swapchainImageCount; iFB += 1) {
-        attachmentImageViews[0] = swapchainImageViews[iFB];
+    VkFramebuffer *framebuffers = (VkFramebuffer*)malloc(context.swapchain_image_count * sizeof(VkFramebuffer));
+    for(uint32_t iFB=0; iFB<context.swapchain_image_count; iFB += 1) {
+        attachmentImageViews[0] = context.swapchain_image_views[iFB];
         VULKAN_CHECK( vkCreateFramebuffer(context.device, &framebufferCreateInfo, context.allocation_callbacks, &framebuffers[iFB]) );
     }
 
     // Submit the setup command buffer
-    VULKAN_CHECK( vkEndCommandBuffer(cmdBufSetup) );
+    VULKAN_CHECK( vkEndCommandBuffer(context.command_buffer_primary) );
     VkSubmitInfo submitInfoSetup = {};
     submitInfoSetup.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfoSetup.pNext = NULL;
@@ -842,14 +750,12 @@ int main(int argc, char *argv[]) {
     submitInfoSetup.pWaitSemaphores = NULL;
     submitInfoSetup.pWaitDstStageMask = NULL;
     submitInfoSetup.commandBufferCount = 1;
-    submitInfoSetup.pCommandBuffers = &cmdBufSetup;
+    submitInfoSetup.pCommandBuffers = &context.command_buffer_primary;
     submitInfoSetup.signalSemaphoreCount = 0;
     submitInfoSetup.pSignalSemaphores = NULL;
     VkFence submitFence = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkQueueSubmit(context.queues[0], 1, &submitInfoSetup, submitFence) );
-    VULKAN_CHECK( vkQueueWaitIdle(context.queues[0]) );
-    vkFreeCommandBuffers(context.device, context.command_pool, 1, &cmdBufSetup);
-    cmdBufSetup = VK_NULL_HANDLE;
+    VULKAN_CHECK( vkQueueSubmit(context.graphics_queue, 1, &submitInfoSetup, submitFence) );
+    VULKAN_CHECK( vkQueueWaitIdle(context.graphics_queue) );
 
 #if 0
     // Set a callback to receive keyboard input
@@ -872,9 +778,8 @@ int main(int argc, char *argv[]) {
 
         // Retrieve the index of the next available swapchain index
         VkFence presentCompleteFence = VK_NULL_HANDLE; // TODO(cort): unused
-        uint32_t currentBufferIndex = 0;
-        VkResult result = vkAcquireNextImageKHR(context.device, swapchain, UINT64_MAX, presentCompleteSemaphore,
-            presentCompleteFence, &currentBufferIndex);
+        VkResult result = vkAcquireNextImageKHR(context.device, context.swapchain, UINT64_MAX, presentCompleteSemaphore,
+            presentCompleteFence, &context.swapchain_image_index);
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
         } else if (result == VK_SUBOPTIMAL_KHR) {
@@ -899,14 +804,14 @@ int main(int argc, char *argv[]) {
         cmdBufDrawBeginInfo.flags = 0;
         cmdBufDrawBeginInfo.pInheritanceInfo = &cmdBufDrawInheritanceInfo;
 
-        VULKAN_CHECK( vkBeginCommandBuffer(cmdBufDraw, &cmdBufDrawBeginInfo) );
+        VULKAN_CHECK( vkBeginCommandBuffer(context.command_buffer_primary, &cmdBufDrawBeginInfo) );
         VkImageSubresourceRange swapchainSubresourceRange = {};
         swapchainSubresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         swapchainSubresourceRange.baseMipLevel = 0;
         swapchainSubresourceRange.levelCount = 1;
         swapchainSubresourceRange.baseArrayLayer = 0;
         swapchainSubresourceRange.layerCount = 1;
-        stbvk_set_image_layout(cmdBufDraw, swapchainImages[currentBufferIndex],
+        stbvk_set_image_layout(context.command_buffer_primary, context.swapchain_images[context.swapchain_image_index],
             swapchainSubresourceRange,
             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0);
@@ -924,36 +829,36 @@ int main(int argc, char *argv[]) {
         renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.pNext = NULL;
         renderPassBeginInfo.renderPass = renderPass;
-        renderPassBeginInfo.framebuffer = framebuffers[currentBufferIndex];
+        renderPassBeginInfo.framebuffer = framebuffers[context.swapchain_image_index];
         renderPassBeginInfo.renderArea.offset.x = 0;
         renderPassBeginInfo.renderArea.offset.y = 0;
         renderPassBeginInfo.renderArea.extent.width  = kWindowWidthDefault;
         renderPassBeginInfo.renderArea.extent.height = kWindowHeightDefault;
         renderPassBeginInfo.clearValueCount = 2;
         renderPassBeginInfo.pClearValues = clearValues;
-        vkCmdBeginRenderPass(cmdBufDraw, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-        vkCmdBindPipeline(cmdBufDraw, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineGraphics);
-        vkCmdBindDescriptorSets(cmdBufDraw, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,1,&descriptorSet, 0,NULL);
+        vkCmdBeginRenderPass(context.command_buffer_primary, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBindPipeline(context.command_buffer_primary, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineGraphics);
+        vkCmdBindDescriptorSets(context.command_buffer_primary, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,1,&descriptorSet, 0,NULL);
         pushConstants.time[0] = (float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) );
-        vkCmdPushConstants(cmdBufDraw, pipelineLayout, pushConstantRange.stageFlags,
+        vkCmdPushConstants(context.command_buffer_primary, pipelineLayout, pushConstantRange.stageFlags,
             pushConstantRange.offset, pushConstantRange.size, &pushConstants);
         VkViewport viewport = {};
         viewport.width  = (float)kWindowWidthDefault;
         viewport.height = (float)kWindowHeightDefault;
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
-        vkCmdSetViewport(cmdBufDraw, 0,1, &viewport);
+        vkCmdSetViewport(context.command_buffer_primary, 0,1, &viewport);
         VkRect2D scissorRect = {};
         scissorRect.extent.width  = kWindowWidthDefault;
         scissorRect.extent.height = kWindowHeightDefault;
         scissorRect.offset.x = 0;
         scissorRect.offset.y = 0;
-        vkCmdSetScissor(cmdBufDraw, 0,1, &scissorRect);
+        vkCmdSetScissor(context.command_buffer_primary, 0,1, &scissorRect);
         const VkDeviceSize vertexBufferOffsets[1] = {};
-        vkCmdBindVertexBuffers(cmdBufDraw, kVertexBufferBindId,1, &bufferVertices, vertexBufferOffsets);
-        vkCmdDraw(cmdBufDraw, 4,1,0,0);
+        vkCmdBindVertexBuffers(context.command_buffer_primary, kVertexBufferBindId,1, &bufferVertices, vertexBufferOffsets);
+        vkCmdDraw(context.command_buffer_primary, 4,1,0,0);
 
-        vkCmdEndRenderPass(cmdBufDraw);
+        vkCmdEndRenderPass(context.command_buffer_primary);
         VkImageMemoryBarrier prePresentBarrier = {};
         prePresentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         prePresentBarrier.pNext = NULL;
@@ -969,11 +874,11 @@ int main(int argc, char *argv[]) {
         prePresentBarrier.subresourceRange.levelCount = 1;
         prePresentBarrier.subresourceRange.baseArrayLayer = 0;
         prePresentBarrier.subresourceRange.layerCount = 1;
-        prePresentBarrier.image = swapchainImages[currentBufferIndex],
-        vkCmdPipelineBarrier(cmdBufDraw, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        prePresentBarrier.image = context.swapchain_images[context.swapchain_image_index],
+        vkCmdPipelineBarrier(context.command_buffer_primary, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0,
             NULL, 1, &prePresentBarrier);
-        VULKAN_CHECK( vkEndCommandBuffer(cmdBufDraw) );
+        VULKAN_CHECK( vkEndCommandBuffer(context.command_buffer_primary) );
         VkFence nullFence = VK_NULL_HANDLE;
         const VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
         VkSubmitInfo submitInfoDraw = {};
@@ -983,17 +888,17 @@ int main(int argc, char *argv[]) {
         submitInfoDraw.pWaitSemaphores = &presentCompleteSemaphore;
         submitInfoDraw.pWaitDstStageMask = &pipelineStageFlags;
         submitInfoDraw.commandBufferCount = 1;
-        submitInfoDraw.pCommandBuffers = &cmdBufDraw;
+        submitInfoDraw.pCommandBuffers = &context.command_buffer_primary;
         submitInfoDraw.signalSemaphoreCount = 0;
         submitInfoDraw.pSignalSemaphores = NULL;
-        VULKAN_CHECK( vkQueueSubmit(context.queues[0], 1, &submitInfoDraw, nullFence) );
+        VULKAN_CHECK( vkQueueSubmit(context.graphics_queue, 1, &submitInfoDraw, nullFence) );
         VkPresentInfoKHR presentInfo = {};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.pNext = NULL;
         presentInfo.swapchainCount = 1;
-        presentInfo.pSwapchains = &swapchain;
-        presentInfo.pImageIndices = &currentBufferIndex;
-        result = vkQueuePresentKHR(context.queues[0], &presentInfo);
+        presentInfo.pSwapchains = &context.swapchain;
+        presentInfo.pImageIndices = &context.swapchain_image_index;
+        result = vkQueuePresentKHR(context.graphics_queue, &presentInfo);
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
         } else if (result == VK_SUBOPTIMAL_KHR) {
@@ -1001,7 +906,7 @@ int main(int argc, char *argv[]) {
         } else {
             VULKAN_CHECK(result);
         }
-        VULKAN_CHECK( vkQueueWaitIdle(context.queues[0]) );
+        VULKAN_CHECK( vkQueueWaitIdle(context.graphics_queue) );
 
         // glfwSwapBuffers(window); // Not necessary in Vulkan
         glfwPollEvents();
@@ -1010,12 +915,10 @@ int main(int argc, char *argv[]) {
     }
 
     vkDeviceWaitIdle(context.device);
-    for(uint32_t iFB=0; iFB<swapchainImageCount; iFB+=1) {
+    for(uint32_t iFB=0; iFB<context.swapchain_image_count; iFB+=1) {
         vkDestroyFramebuffer(context.device, framebuffers[iFB], context.allocation_callbacks);
-        vkDestroyImageView(context.device, swapchainImageViews[iFB], context.allocation_callbacks);
     }
     free(framebuffers);
-    free(swapchainImageViews);
 
     vkDestroyImageView(context.device, imageDepthView, context.allocation_callbacks);
     vkFreeMemory(context.device, imageDepthMemory, context.allocation_callbacks);
@@ -1026,8 +929,6 @@ int main(int argc, char *argv[]) {
 
     vkDestroyDescriptorSetLayout(context.device, descriptorSetLayout, context.allocation_callbacks);
     vkDestroyDescriptorPool(context.device, descriptorPool, context.allocation_callbacks);
-
-    vkFreeCommandBuffers(context.device, context.command_pool, 1, &cmdBufDraw);
 
     vkDestroyRenderPass(context.device, renderPass, context.allocation_callbacks);
 
@@ -1047,9 +948,6 @@ int main(int argc, char *argv[]) {
     vkDestroyPipelineLayout(context.device, pipelineLayout, context.allocation_callbacks);
     vkDestroyPipeline(context.device, pipelineGraphics, context.allocation_callbacks);
 
-    vkDestroySwapchainKHR(context.device, swapchain, context.allocation_callbacks);
-
-    vkDestroySurfaceKHR(context.instance, surface, context.allocation_callbacks);
     glfwTerminate();
     stbvk_destroy_context(&context);
     return 0;
