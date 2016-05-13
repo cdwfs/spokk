@@ -58,6 +58,7 @@ extern "C" {
         VkAllocationCallbacks *allocation_callbacks;
 
         VkInstance instance;
+        VkDebugReportCallbackEXT debug_report_callback;
 
         VkPhysicalDevice physical_device;
         VkPhysicalDeviceProperties physical_device_properties;
@@ -77,6 +78,8 @@ extern "C" {
         VkAllocationCallbacks *allocation_callbacks;
         VkBool32 enable_standard_validation_layers;
         const VkApplicationInfo *application_info; // Used to initialize VkInstance. Optional; set to NULL for default values.
+        PFN_vkDebugReportCallbackEXT debug_report_callback; // Optional; set to NULL to disable debug reports.
+        void *debug_report_callback_user_data; // Optional; passed to debug_report_callback, if enabled.
     } stbvk_context_create_info;
     STBVKDEF VkResult stbvk_init_context(stbvk_context_create_info const *createInfo, stbvk_context *c);
     STBVKDEF void stbvk_destroy_context(stbvk_context *c);
@@ -255,6 +258,22 @@ static VkResult stbvk__init_instance(stbvk_context_create_info const *create_inf
 
     STBVK__CHECK( vkCreateInstance(&instance_create_info, create_info->allocation_callbacks, &context->instance) );
     STBVK_FREE(extension_names);
+
+    // Set up debug report callback
+    if (create_info->debug_report_callback)
+    {
+        PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallback =
+            (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(context->instance, "vkCreateDebugReportCallbackEXT");
+        VkDebugReportCallbackCreateInfoEXT debugReportCallbackCreateInfo = {};
+        debugReportCallbackCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
+        debugReportCallbackCreateInfo.pNext = NULL;
+        debugReportCallbackCreateInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+        debugReportCallbackCreateInfo.pfnCallback = create_info->debug_report_callback;
+        debugReportCallbackCreateInfo.pUserData = create_info->debug_report_callback_user_data;
+        context->debug_report_callback = VK_NULL_HANDLE;
+        STBVK__CHECK( CreateDebugReportCallback(context->instance, &debugReportCallbackCreateInfo, context->allocation_callbacks, &context->debug_report_callback) );
+    }
+
     return VK_SUCCESS;
 }
 
@@ -422,6 +441,13 @@ STBVKDEF void stbvk_destroy_context(stbvk_context *context)
 
     vkDestroyDevice(context->device, context->allocation_callbacks);
     context->device = VK_NULL_HANDLE;
+    if (context->debug_report_callback != VK_NULL_HANDLE)
+    {
+        PFN_vkDestroyDebugReportCallbackEXT DestroyDebugReportCallback =
+            (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(context->instance, "vkDestroyDebugReportCallbackEXT");
+        DestroyDebugReportCallback(context->instance, context->debug_report_callback, context->allocation_callbacks);
+    }
+
 
     vkDestroyInstance(context->instance, context->allocation_callbacks);
     context->instance = VK_NULL_HANDLE;

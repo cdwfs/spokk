@@ -105,22 +105,10 @@ int main(int argc, char *argv[]) {
     contextCreateInfo.allocation_callbacks = NULL;
     contextCreateInfo.enable_standard_validation_layers = VK_TRUE;
     contextCreateInfo.application_info = &applicationInfo;
+    contextCreateInfo.debug_report_callback = debugReportCallbackFunc;
+    contextCreateInfo.debug_report_callback_user_data = NULL;
     stbvk_context context;
     stbvk_init_context(&contextCreateInfo, &context);
-
-    // Set up debug report callback
-    PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallback =
-        (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(context.instance, "vkCreateDebugReportCallbackEXT");
-    PFN_vkDestroyDebugReportCallbackEXT DestroyDebugReportCallback =
-        (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(context.instance, "vkDestroyDebugReportCallbackEXT");
-    VkDebugReportCallbackCreateInfoEXT debugReportCallbackCreateInfo = {};
-    debugReportCallbackCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
-    debugReportCallbackCreateInfo.pNext = NULL;
-    debugReportCallbackCreateInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
-    debugReportCallbackCreateInfo.pfnCallback = debugReportCallbackFunc;
-    debugReportCallbackCreateInfo.pUserData = NULL;
-    VkDebugReportCallbackEXT debugReportCallback = VK_NULL_HANDLE;
-    VULKAN_CHECK( CreateDebugReportCallback(context.instance, &debugReportCallbackCreateInfo, context.allocation_callbacks, &debugReportCallback) );
 
     // Wraps vkGetPhysicalDevice*PresentationSupportKHR()
     if (!glfwGetPhysicalDevicePresentationSupport(context.instance, context.physical_device, context.queue_family_index)) {
@@ -1060,7 +1048,6 @@ int main(int argc, char *argv[]) {
     vkDestroyPipeline(context.device, pipelineGraphics, context.allocation_callbacks);
 
     vkDestroySwapchainKHR(context.device, swapchain, context.allocation_callbacks);
-    DestroyDebugReportCallback(context.instance, debugReportCallback, context.allocation_callbacks);
 
     vkDestroySurfaceKHR(context.instance, surface, context.allocation_callbacks);
     glfwTerminate();
