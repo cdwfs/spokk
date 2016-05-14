@@ -76,13 +76,7 @@ static VkResult my_stbvk_init_context(stbvk_context_create_info const *createInf
     VkSurfaceKHR presentSurface = VK_NULL_HANDLE;
     VULKAN_CHECK( glfwCreateWindowSurface(c->instance, window, c->allocation_callbacks, &presentSurface) );
 
-    result = stbvk_init_physical_device(createInfo, c);
-    if (result != VK_SUCCESS)
-    {
-        return result;
-    }
-
-    result = stbvk_init_logical_device(createInfo, c);
+    result = stbvk_init_device(createInfo, presentSurface, c);
     if (result != VK_SUCCESS)
     {
         return result;
@@ -94,7 +88,7 @@ static VkResult my_stbvk_init_context(stbvk_context_create_info const *createInf
         return result;
     }
 
-    result = stbvk_init_swapchain(c, presentSurface, kWindowWidthDefault, kWindowHeightDefault);
+    result = stbvk_init_swapchain(createInfo, c, kWindowWidthDefault, kWindowHeightDefault);
 
     return VK_SUCCESS;
 }

@@ -64,12 +64,16 @@ extern "C" {
         VkPhysicalDeviceProperties physical_device_properties;
         VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
         VkPhysicalDeviceFeatures physical_device_features;
-        uint32_t queue_family_index;
-        VkQueueFamilyProperties queue_family_properties;
+
         VkSurfaceKHR present_surface;
+        uint32_t graphics_queue_family_index;
+        uint32_t present_queue_family_index;
+        VkQueueFamilyProperties graphics_queue_family_properties;
+        VkQueueFamilyProperties present_queue_family_properties;
+
         VkDevice device;
-        VkQueue *queues;
         VkQueue graphics_queue;
+        VkQueue present_queue;
 
         VkCommandPool command_pool;
         VkCommandBuffer command_buffer_primary;
@@ -93,10 +97,9 @@ extern "C" {
         void *debug_report_callback_user_data; // Optional; passed to debug_report_callback, if enabled.
     } stbvk_context_create_info;
     STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_info, stbvk_context *c);
-    STBVKDEF VkResult stbvk_init_physical_device(stbvk_context_create_info const *create_info, stbvk_context *c);
-    STBVKDEF VkResult stbvk_init_logical_device(stbvk_context_create_info const *create_info, stbvk_context *c);
+    STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info, VkSurfaceKHR present_surface, stbvk_context *c);
     STBVKDEF VkResult stbvk_init_command_pool(stbvk_context_create_info const *create_info, stbvk_context *c);
-    STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const *create_info, VkSurfaceKHR present_surface, stbvk_context *c);
+    STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const *create_info, stbvk_context *c, uint32_t width, uint32_t height);
 
 
     //STBVKDEF VkResult stbvk_init_context(stbvk_context_create_info const *createInfo, stbvk_context *c);
@@ -295,7 +298,7 @@ STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_in
     return VK_SUCCESS;
 }
 
-STBVKDEF VkResult stbvk_init_physical_device(stbvk_context_create_info const * /*create_info*/, stbvk_context *context)
+STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info, VkSurfaceKHR present_surface, stbvk_context *context)
 {
     uint32_t physical_device_count = 0;
     STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, NULL) );
@@ -303,8 +306,105 @@ STBVKDEF VkResult stbvk_init_physical_device(stbvk_context_create_info const * /
     context->all_physical_devices = (VkPhysicalDevice*)STBVK_MALLOC(physical_device_count * sizeof(VkPhysicalDevice));
     STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, context->all_physical_devices) );
 
-    // TODO(cort): be more picky than this.
-    context->physical_device = context->all_physical_devices[0];
+    // Select a physical device.
+    // Loop over all physical devices and all queue families of each device, looking for at least
+    // one queue that supports graphics & at least one that can present to the present surface. Preferably
+    // the same quque, but not always.
+    // TODO(cort): Right now, we use the first physical device that suits our needs. It may be worth trying harder
+    // to identify the *best* GPU in a multi-GPU system, >1 of which may fully support Vulkan.
+    // Maybe let the caller pass in an optional device name (which they've queried for themselves, or prompted a user for)
+    // and skip devices that don't match it?
+    bool found_graphics_queue_family = false;
+    bool found_present_queue_family = false;
+    uint32_t graphics_queue_family_index = UINT32_MAX;
+    uint32_t present_queue_family_index = UINT32_MAX;
+    VkDeviceQueueCreateInfo device_queue_create_infos[2] = {};
+    uint32_t device_queue_create_info_count = 0;
+    for(uint32_t iPD=0; iPD< physical_device_count; ++iPD)
+    {
+        found_graphics_queue_family = false;
+        found_present_queue_family = false;
+        graphics_queue_family_index = UINT32_MAX;
+        present_queue_family_index = UINT32_MAX;
+
+        uint32_t queue_family_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(context->all_physical_devices[iPD], &queue_family_count, NULL);
+        VkQueueFamilyProperties *queue_family_properties_all = (VkQueueFamilyProperties*)STBVK_MALLOC(queue_family_count * sizeof(VkQueueFamilyProperties));
+        vkGetPhysicalDeviceQueueFamilyProperties(context->all_physical_devices[iPD], &queue_family_count, queue_family_properties_all);
+
+        for(uint32_t iQF=0; iQF<queue_family_count; ++iQF)
+        {
+            bool queue_supports_graphics = (queue_family_properties_all[iQF].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
+            VkBool32 queue_supports_present = VK_FALSE;
+            STBVK__CHECK( vkGetPhysicalDeviceSurfaceSupportKHR(context->all_physical_devices[iPD], iQF,
+                present_surface, &queue_supports_present) );
+            if (queue_supports_graphics && queue_supports_present)
+            {
+                // prefer a queue that supports both if possible.
+                graphics_queue_family_index = present_queue_family_index = iQF;
+                found_graphics_queue_family = found_present_queue_family = true;
+                context->graphics_queue_family_properties = queue_family_properties_all[iQF];
+                context->present_queue_family_properties  = queue_family_properties_all[iQF];
+            }
+            else
+            {
+                if (!found_present_queue_family && queue_supports_present)
+                {
+                    present_queue_family_index = iQF;
+                    found_present_queue_family = true;
+                    context->present_queue_family_properties = queue_family_properties_all[iQF];
+                }
+                if (!found_graphics_queue_family && queue_supports_graphics)
+                {
+                    graphics_queue_family_index = iQF;
+                    found_graphics_queue_family = true;
+                    context->graphics_queue_family_properties = queue_family_properties_all[iQF];
+                }
+            }
+            if (found_graphics_queue_family && found_present_queue_family)
+            {
+                break;
+            }
+        }
+        STBVK_FREE(queue_family_properties_all);
+        queue_family_properties_all = NULL;
+
+        if (found_present_queue_family && found_graphics_queue_family)
+        {
+            context->physical_device = context->all_physical_devices[iPD];
+
+            uint32_t graphics_queue_count = context->graphics_queue_family_properties.queueCount;
+            float *graphics_queue_priorities = (float*)STBVK_MALLOC(graphics_queue_count * sizeof(float));
+            for(uint32_t iQ=0; iQ<graphics_queue_count; ++iQ) {
+                graphics_queue_priorities[iQ] = 1.0f;
+            }
+            device_queue_create_info_count += 1;
+            device_queue_create_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            device_queue_create_infos[0].pNext = NULL;
+            device_queue_create_infos[0].flags = 0;
+            device_queue_create_infos[0].queueFamilyIndex = graphics_queue_family_index;
+            device_queue_create_infos[0].queueCount = graphics_queue_count;
+            device_queue_create_infos[0].pQueuePriorities = graphics_queue_priorities;
+
+            if (present_queue_family_index != graphics_queue_family_index)
+            {
+                uint32_t present_queue_count = context->present_queue_family_properties.queueCount;
+                float *present_queue_priorities = (float*)STBVK_MALLOC(present_queue_count * sizeof(float));
+                for(uint32_t iQ=0; iQ<present_queue_count; ++iQ) {
+                    present_queue_priorities[iQ] = 1.0f;
+                }
+                device_queue_create_info_count += 1;
+                device_queue_create_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+                device_queue_create_infos[1].pNext = NULL;
+                device_queue_create_infos[1].flags = 0;
+                device_queue_create_infos[1].queueFamilyIndex = present_queue_family_index;
+                device_queue_create_infos[1].queueCount = present_queue_count;
+                device_queue_create_infos[1].pQueuePriorities = present_queue_priorities;
+            }
+        }
+    }
+    STBVK_ASSERT(found_graphics_queue_family && found_present_queue_family);
+    context->present_surface = present_surface;
 
     vkGetPhysicalDeviceProperties(context->physical_device, &context->physical_device_properties);
 #if 0
@@ -329,11 +429,7 @@ STBVKDEF VkResult stbvk_init_physical_device(stbvk_context_create_info const * /
         STBVK_FREE(device_layer_properties);
     }
 #endif
-    return VK_SUCCESS;
-}
 
-STBVKDEF VkResult stbvk_init_logical_device(stbvk_context_create_info const *create_info, stbvk_context *context)
-{
     uint32_t requested_layer_count = 0;
     const char **requested_layer_names = NULL;
     const char *standard_validation_layer = "VK_LAYER_LUNARG_standard_validation";
@@ -354,42 +450,12 @@ STBVKDEF VkResult stbvk_init_logical_device(stbvk_context_create_info const *cre
         extension_names[iExt] = extension_properties[iExt].extensionName;
     }
 
-    uint32_t queue_family_count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(context->physical_device, &queue_family_count, NULL);
-    VkQueueFamilyProperties *queue_family_properties_all = (VkQueueFamilyProperties*)STBVK_MALLOC(queue_family_count * sizeof(VkQueueFamilyProperties));
-    vkGetPhysicalDeviceQueueFamilyProperties(context->physical_device, &queue_family_count, queue_family_properties_all);
-    VkDeviceQueueCreateInfo device_queue_create_info = {};
-    VkBool32 found_graphics_queue_family = VK_FALSE;
-    for(uint32_t iQF=0; iQF<queue_family_count; iQF+=1) {
-        if ( (queue_family_properties_all[iQF].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0)
-            continue;
-        float *queue_priorities = (float*)STBVK_MALLOC(queue_family_properties_all[iQF].queueCount * sizeof(float));
-        for(uint32_t iQ=0; iQ<queue_family_properties_all[iQF].queueCount; ++iQ) {
-            queue_priorities[iQ] = 1.0f;
-        }
-        device_queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        device_queue_create_info.pNext = NULL;
-        device_queue_create_info.flags = 0;
-        device_queue_create_info.queueFamilyIndex = iQF;
-        device_queue_create_info.queueCount = queue_family_properties_all[iQF].queueCount;
-        device_queue_create_info.pQueuePriorities = queue_priorities;
-
-        context->queue_family_index = iQF;
-        context->queue_family_properties = queue_family_properties_all[iQF];
-        found_graphics_queue_family = VK_TRUE;
-        break;
-    }
-    STBVK_ASSERT(found_graphics_queue_family);
-    STBVK_FREE(queue_family_properties_all);
-
-    // TODO(cort): Logical device creation should really happen after the presentation surface is created.
-    // For now, assume that whatever graphics-capable queue family we found also supports presentation.
     VkDeviceCreateInfo device_create_info = {};
     device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     device_create_info.pNext = NULL;
     device_create_info.flags = 0;
-    device_create_info.queueCreateInfoCount = 1;
-    device_create_info.pQueueCreateInfos = &device_queue_create_info;
+    device_create_info.queueCreateInfoCount = device_queue_create_info_count;
+    device_create_info.pQueueCreateInfos = device_queue_create_infos;
     device_create_info.enabledLayerCount = requested_layer_count;
     device_create_info.ppEnabledLayerNames = requested_layer_names;
     device_create_info.enabledExtensionCount = extension_count;
@@ -398,7 +464,8 @@ STBVKDEF VkResult stbvk_init_logical_device(stbvk_context_create_info const *cre
     STBVK__CHECK( vkCreateDevice(context->physical_device, &device_create_info, context->allocation_callbacks, &context->device) );
     STBVK_FREE(extension_names);
     STBVK_FREE(extension_properties);
-    STBVK_FREE(device_create_info.pQueueCreateInfos->pQueuePriorities);
+    STBVK_FREE(device_create_info.pQueueCreateInfos[0].pQueuePriorities);
+    STBVK_FREE(device_create_info.pQueueCreateInfos[1].pQueuePriorities);
 #if 0
     printf("Created Vulkan logical device with extensions:\n");
     for(uint32_t iExt=0; iExt<device_create_info.enabledExtensionCount; iExt+=1) {
@@ -410,11 +477,10 @@ STBVKDEF VkResult stbvk_init_logical_device(stbvk_context_create_info const *cre
     }
 #endif
 
-    context->queues = (VkQueue*)STBVK_MALLOC(context->queue_family_properties.queueCount * sizeof(VkQueue));
-    for(uint32_t iQ=0; iQ<context->queue_family_properties.queueCount; iQ+=1) {
-        vkGetDeviceQueue(context->device, context->queue_family_index, iQ, &context->queues[iQ]);
-    }
-    vkGetDeviceQueue(context->device, context->queue_family_index, 0, &context->graphics_queue);
+    STBVK_ASSERT(context->present_queue_family_properties.queueCount > 0);
+    vkGetDeviceQueue(context->device, context->present_queue_family_index, 0, &context->present_queue);
+    STBVK_ASSERT(context->graphics_queue_family_properties.queueCount > 0);
+    vkGetDeviceQueue(context->device, context->graphics_queue_family_index, 0, &context->graphics_queue);
 
     return VK_SUCCESS;
 }
@@ -426,7 +492,7 @@ STBVKDEF VkResult stbvk_init_command_pool(stbvk_context_create_info const * /*cr
     command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     command_pool_create_info.pNext = NULL;
     command_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // allows reseting individual command buffers from this pool
-    command_pool_create_info.queueFamilyIndex = context->queue_family_index;
+    command_pool_create_info.queueFamilyIndex = context->graphics_queue_family_index;
     STBVK__CHECK( vkCreateCommandPool(context->device, &command_pool_create_info, context->allocation_callbacks, &context->command_pool) );
 
     // Allocate primary command buffer
@@ -441,20 +507,10 @@ STBVKDEF VkResult stbvk_init_command_pool(stbvk_context_create_info const * /*cr
     return VK_SUCCESS;
 }
 
-STBVKDEF VkResult stbvk_init_swapchain(stbvk_context *context, VkSurfaceKHR present_surface, uint32_t width, uint32_t height)
+STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*create_info*/, stbvk_context *context, uint32_t width, uint32_t height)
 {
-    context->present_surface = present_surface;
-
-    // TODO(cort): Riiight, the present surface needs to be present for physical device selection to ensure
-    // that the physical device can present to it before a logical device is created. So in theory a lot of
-    // this code should move into init_physical_device().
-    VkBool32 queueFamilySupportsPresent = VK_FALSE;
-    STBVK__CHECK( vkGetPhysicalDeviceSurfaceSupportKHR(context->physical_device, context->queue_family_index,
-        present_surface, &queueFamilySupportsPresent) );
-    STBVK_ASSERT(queueFamilySupportsPresent);
-
     VkSurfaceCapabilitiesKHR surfaceCapabilities;
-    STBVK__CHECK( vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physical_device, present_surface, &surfaceCapabilities) );
+    STBVK__CHECK( vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physical_device, context->present_surface, &surfaceCapabilities) );
     VkExtent2D swapchainExtent;
     if (surfaceCapabilities.currentExtent.width == (uint32_t)-1)
     {
@@ -473,9 +529,9 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context *context, VkSurfaceKHR pres
         }
     }
     uint32_t deviceSurfaceFormatCount = 0;
-    STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, present_surface, &deviceSurfaceFormatCount, NULL) );
+    STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->present_surface, &deviceSurfaceFormatCount, NULL) );
     VkSurfaceFormatKHR *deviceSurfaceFormats = (VkSurfaceFormatKHR*)STBVK_MALLOC(deviceSurfaceFormatCount * sizeof(VkSurfaceFormatKHR));
-    STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, present_surface, &deviceSurfaceFormatCount, deviceSurfaceFormats) );
+    STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->present_surface, &deviceSurfaceFormatCount, deviceSurfaceFormats) );
     VkFormat surfaceColorFormat;
     if (deviceSurfaceFormatCount == 1 && deviceSurfaceFormats[0].format == VK_FORMAT_UNDEFINED)
     {
@@ -491,9 +547,9 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context *context, VkSurfaceKHR pres
     STBVK_FREE(deviceSurfaceFormats);
 
     uint32_t deviceSurfacePresentModeCount = 0;
-    STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, present_surface, &deviceSurfacePresentModeCount, NULL) );
+    STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &deviceSurfacePresentModeCount, NULL) );
     VkPresentModeKHR *deviceSurfacePresentModes = (VkPresentModeKHR*)STBVK_MALLOC(deviceSurfacePresentModeCount * sizeof(VkPresentModeKHR));
-    STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, present_surface, &deviceSurfacePresentModeCount, deviceSurfacePresentModes) );
+    STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &deviceSurfacePresentModeCount, deviceSurfacePresentModes) );
     VkPresentModeKHR swapchainPresentMode = VK_PRESENT_MODE_FIFO_KHR; // TODO(cort): make sure this mode is supported, or pick a different one?
     STBVK_FREE(deviceSurfacePresentModes);
 
@@ -516,7 +572,7 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context *context, VkSurfaceKHR pres
     VkSwapchainCreateInfoKHR swapchain_create_info = {};
     swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchain_create_info.pNext = NULL;
-    swapchain_create_info.surface = present_surface;
+    swapchain_create_info.surface = context->present_surface;
     swapchain_create_info.minImageCount = desiredSwapchainImageCount;
     swapchain_create_info.imageFormat = surfaceColorFormat;
     swapchain_create_info.imageColorSpace = surfaceColorSpace;
@@ -603,9 +659,6 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context *context, VkSurfaceKHR pres
 STBVKDEF void stbvk_destroy_context(stbvk_context *context)
 {
     vkDeviceWaitIdle(context->device);
-
-    STBVK_FREE(context->queues);
-    context->queues = NULL;
 
     for(uint32_t iSCI=0; iSCI<context->swapchain_image_count; ++iSCI)
     {
