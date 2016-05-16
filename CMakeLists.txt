@@ -29,7 +29,7 @@ SET(shaders
 FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)
     ADD_CUSTOM_COMMAND(
         OUTPUT ${SPV_FILE}
-        COMMAND $ENV{VK_SDK_PATH}/bin/glslangValidator -V -o ${SPV_FILE} ${SOURCE_FILE}
+        COMMAND $ENV{VULKAN_SDK}/bin/glslangValidator -V -o ${SPV_FILE} ${SOURCE_FILE}
         MAIN_DEPENDENCY ${SOURCE_FILE}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "Compiling ${SOURCE_FILE} -> ${SPV_FILE}"
@@ -41,7 +41,7 @@ ENDFOREACH(SHADER_FILE)
 SOURCE_GROUP(shaders FILES ${shaders})
 
 include_directories(${VULKAN_INCLUDE_DIR})
-#link_directories(${VK_SDK_PATH}/lib)
+#link_directories(${VULKAN_SDK}/lib)
 
 IF(MSVC)
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
