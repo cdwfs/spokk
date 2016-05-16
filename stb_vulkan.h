@@ -757,6 +757,8 @@ STBVKDEF void stbvk_set_image_layout(VkCommandBuffer cmd_buf, VkImage image,
     case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
         img_memory_barrier.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         break;
+    default:
+        break;
     }
 
     switch(new_layout)
@@ -779,6 +781,8 @@ STBVKDEF void stbvk_set_image_layout(VkCommandBuffer cmd_buf, VkImage image,
         // Make sure any Copy or CPU writes to image are flushed
         img_memory_barrier.dstAccessMask |= VK_ACCESS_SHADER_READ_BIT;
         img_memory_barrier.dstAccessMask |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+        break;
+    default:
         break;
     }
 
