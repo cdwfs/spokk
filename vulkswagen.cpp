@@ -761,18 +761,20 @@ int main(int argc, char *argv[]) {
     glfwSetWindowSizeCallback(window, myGlfwWindowSizeCallback);
 #endif
 
+    VkSemaphoreCreateInfo semaphoreCreateInfo = {};
+    semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    semaphoreCreateInfo.pNext = NULL;
+    semaphoreCreateInfo.flags = 0;
+    VkSemaphore swapchainImageReady = VK_NULL_HANDLE;
+    VULKAN_CHECK( vkCreateSemaphore(context.device, &semaphoreCreateInfo, context.allocation_callbacks, &swapchainImageReady) );
+    VkSemaphore renderingComplete = VK_NULL_HANDLE;
+    VULKAN_CHECK( vkCreateSemaphore(context.device, &semaphoreCreateInfo, context.allocation_callbacks, &renderingComplete) );
+
     uint32_t frameIndex = 0;
     while(!glfwWindowShouldClose(window)) {
-        VkSemaphoreCreateInfo semaphoreCreateInfo = {};
-        semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-        semaphoreCreateInfo.pNext = NULL;
-        semaphoreCreateInfo.flags = 0;
-        VkSemaphore presentCompleteSemaphore = VK_NULL_HANDLE;
-        VULKAN_CHECK( vkCreateSemaphore(context.device, &semaphoreCreateInfo, context.allocation_callbacks, &presentCompleteSemaphore) );
-
         // Retrieve the index of the next available swapchain index
         VkFence presentCompleteFence = VK_NULL_HANDLE; // TODO(cort): unused
-        VkResult result = vkAcquireNextImageKHR(context.device, context.swapchain, UINT64_MAX, presentCompleteSemaphore,
+        VkResult result = vkAcquireNextImageKHR(context.device, context.swapchain, UINT64_MAX, swapchainImageReady,
             presentCompleteFence, &context.swapchain_image_index);
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
@@ -879,12 +881,12 @@ int main(int argc, char *argv[]) {
         submitInfoDraw.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfoDraw.pNext = NULL;
         submitInfoDraw.waitSemaphoreCount = 1;
-        submitInfoDraw.pWaitSemaphores = &presentCompleteSemaphore;
+        submitInfoDraw.pWaitSemaphores = &swapchainImageReady;
         submitInfoDraw.pWaitDstStageMask = &pipelineStageFlags;
         submitInfoDraw.commandBufferCount = 1;
         submitInfoDraw.pCommandBuffers = &context.command_buffer_primary;
-        submitInfoDraw.signalSemaphoreCount = 0;
-        submitInfoDraw.pSignalSemaphores = NULL;
+        submitInfoDraw.signalSemaphoreCount = 1;
+        submitInfoDraw.pSignalSemaphores = &renderingComplete;
         VULKAN_CHECK( vkQueueSubmit(context.graphics_queue, 1, &submitInfoDraw, nullFence) );
         VkPresentInfoKHR presentInfo = {};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -892,7 +894,9 @@ int main(int argc, char *argv[]) {
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = &context.swapchain;
         presentInfo.pImageIndices = &context.swapchain_image_index;
-        result = vkQueuePresentKHR(context.graphics_queue, &presentInfo);
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = &renderingComplete;
+        result = vkQueuePresentKHR(context.present_queue, &presentInfo); // TODO(cort): concurrent image access required?
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
         } else if (result == VK_SUBOPTIMAL_KHR) {
@@ -900,15 +904,17 @@ int main(int argc, char *argv[]) {
         } else {
             VULKAN_CHECK(result);
         }
-        VULKAN_CHECK( vkQueueWaitIdle(context.graphics_queue) );
+        VULKAN_CHECK( vkQueueWaitIdle(context.present_queue) );
 
-        // glfwSwapBuffers(window); // Not necessary in Vulkan
         glfwPollEvents();
-        vkDestroySemaphore(context.device, presentCompleteSemaphore, context.allocation_callbacks); // TODO(cort): create/destroy every frame?
         frameIndex += 1;
     }
 
     vkDeviceWaitIdle(context.device);
+
+    vkDestroySemaphore(context.device, swapchainImageReady, context.allocation_callbacks);
+    vkDestroySemaphore(context.device, renderingComplete, context.allocation_callbacks);
+
     for(uint32_t iFB=0; iFB<context.swapchain_image_count; iFB+=1) {
         vkDestroyFramebuffer(context.device, framebuffers[iFB], context.allocation_callbacks);
     }
