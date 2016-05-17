@@ -601,13 +601,6 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     context->swapchain_images = (VkImage*)malloc(context->swapchain_image_count * sizeof(VkImage));
     STBVK__CHECK( vkGetSwapchainImagesKHR(context->device, context->swapchain, &context->swapchain_image_count, context->swapchain_images) );
 
-    VkCommandBufferBeginInfo command_buffer_begin_info = {};
-    command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    command_buffer_begin_info.pNext = NULL;
-    command_buffer_begin_info.flags = 0;
-    command_buffer_begin_info.pInheritanceInfo = NULL; // must be non-NULL for secondary command buffers
-    STBVK__CHECK( vkBeginCommandBuffer(context->command_buffer_primary, &command_buffer_begin_info) );
-
     VkImageViewCreateInfo image_view_create_info = {};
     image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     image_view_create_info.pNext = NULL;
@@ -630,36 +623,9 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     for(uint32_t iSCI=0; iSCI<context->swapchain_image_count; iSCI+=1)
     {
         image_view_create_info.image = context->swapchain_images[iSCI];
-        // Render loop will expect image to have been used before and in
-        // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout and will change to
-        // COLOR_ATTACHMENT_OPTIMAL, so init the image to that state.
-        VkImageSubresourceRange subresource_range = {};
-        subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        subresource_range.baseMipLevel = 0;
-        subresource_range.levelCount = 1;
-        subresource_range.baseArrayLayer = 0;
-        subresource_range.layerCount = 1;
-        stbvk_set_image_layout(context->command_buffer_primary, image_view_create_info.image, subresource_range, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0);
         STBVK__CHECK( vkCreateImageView(context->device, &image_view_create_info, context->allocation_callbacks, &context->swapchain_image_views[iSCI]) );
     }
 
-    // Submit the setup command buffer
-    STBVK__CHECK( vkEndCommandBuffer(context->command_buffer_primary) );
-    VkSubmitInfo submit_info_setup = {};
-    submit_info_setup.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info_setup.pNext = NULL;
-    submit_info_setup.waitSemaphoreCount = 0;
-    submit_info_setup.pWaitSemaphores = NULL;
-    submit_info_setup.pWaitDstStageMask = NULL;
-    submit_info_setup.commandBufferCount = 1;
-    submit_info_setup.pCommandBuffers = &context->command_buffer_primary;
-    submit_info_setup.signalSemaphoreCount = 0;
-    submit_info_setup.pSignalSemaphores = NULL;
-    VkFence submit_fence = VK_NULL_HANDLE;
-    STBVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info_setup, submit_fence) );
-    STBVK__CHECK( vkQueueWaitIdle(context->graphics_queue) );
-
-    //uint32_t swapchainCurrentBufferIndex = 0;
     return VK_SUCCESS;
 }
 

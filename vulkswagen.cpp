@@ -809,7 +809,7 @@ int main(int argc, char *argv[]) {
         swapchainSubresourceRange.layerCount = 1;
         stbvk_set_image_layout(context.command_buffer_primary, context.swapchain_images[context.swapchain_image_index],
             swapchainSubresourceRange,
-            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            VK_IMAGE_LAYOUT_UNDEFINED,
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0);
         // TODO(cort): is a sync point needed here? tri.c submits this layout change as a separate
         // command buffer, then waits for the queue to be idle.
