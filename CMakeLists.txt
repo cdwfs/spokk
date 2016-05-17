@@ -16,6 +16,7 @@ project(vulkswagen)
 SET(headers
     platform.h
     stb_image.h
+    stb_vulkan.h
     )
 SET(sources
     vulkswagen.cpp
