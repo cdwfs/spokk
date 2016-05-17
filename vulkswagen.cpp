@@ -63,7 +63,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallbackFunc(VkFlags msgFlags,
 static VkResult my_stbvk_init_context(stbvk_context_create_info const *createInfo, GLFWwindow *window, stbvk_context *c)
 {
     VkResult result = VK_SUCCESS;
-
+    *c = {};
     c->allocation_callbacks = createInfo->allocation_callbacks;
 
     result = stbvk_init_instance(createInfo, c);
@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
     contextCreateInfo.application_info = &applicationInfo;
     contextCreateInfo.debug_report_callback = debugReportCallbackFunc;
     contextCreateInfo.debug_report_callback_user_data = NULL;
-    stbvk_context context;
+    stbvk_context context = {};
     my_stbvk_init_context(&contextCreateInfo, window, &context);
 
     // Record the setup command buffer

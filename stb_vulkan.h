@@ -374,6 +374,8 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info
         if (found_present_queue_family && found_graphics_queue_family)
         {
             context->physical_device = context->all_physical_devices[iPD];
+            context->graphics_queue_family_index = graphics_queue_family_index;
+            context->present_queue_family_index  = present_queue_family_index;
 
             uint32_t graphics_queue_count = context->graphics_queue_family_properties.queueCount;
             float *graphics_queue_priorities = (float*)STBVK_MALLOC(graphics_queue_count * sizeof(float));
