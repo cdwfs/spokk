@@ -88,7 +88,7 @@ static VkResult my_stbvk_init_context(stbvk_context_create_info const *createInf
         return result;
     }
 
-    result = stbvk_init_swapchain(createInfo, c, kWindowWidthDefault, kWindowHeightDefault);
+    result = stbvk_init_swapchain(createInfo, c, VK_NULL_HANDLE);
 
     return VK_SUCCESS;
 }

@@ -99,7 +99,7 @@ extern "C" {
     STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_info, stbvk_context *c);
     STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info, VkSurfaceKHR present_surface, stbvk_context *c);
     STBVKDEF VkResult stbvk_init_command_pool(stbvk_context_create_info const *create_info, stbvk_context *c);
-    STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const *create_info, stbvk_context *c, uint32_t width, uint32_t height);
+    STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const *create_info, stbvk_context *c, VkSwapchainKHR old_swapchain);
 
 
     //STBVKDEF VkResult stbvk_init_context(stbvk_context_create_info const *createInfo, stbvk_context *c);
@@ -225,6 +225,8 @@ typedef unsigned char validate_uint32[sizeof(stbvk__uint32)==4 ? 1 : -1];
     } while(0)
 #endif
 #define STBVK__CHECK(expr) STBVK__RETVAL_CHECK(VK_SUCCESS, expr)
+
+#define STBVK__CLAMP(x, xmin, xmax) ( ((x)<(xmin)) ? (xmin) : ( ((x)>(xmax)) ? (xmax) : (x) ) )
 
 STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_info, stbvk_context *context)
 {
@@ -507,88 +509,93 @@ STBVKDEF VkResult stbvk_init_command_pool(stbvk_context_create_info const * /*cr
     return VK_SUCCESS;
 }
 
-STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*create_info*/, stbvk_context *context, uint32_t width, uint32_t height)
+STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*create_info*/, stbvk_context *context, VkSwapchainKHR old_swapchain)
 {
-    VkSurfaceCapabilitiesKHR surfaceCapabilities;
-    STBVK__CHECK( vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physical_device, context->present_surface, &surfaceCapabilities) );
-    VkExtent2D swapchainExtent;
-    if (surfaceCapabilities.currentExtent.width == (uint32_t)-1)
+    VkSurfaceCapabilitiesKHR surface_capabilities;
+    STBVK__CHECK( vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physical_device, context->present_surface, &surface_capabilities) );
+    VkExtent2D swapchain_extent;
+    if ( (int32_t)surface_capabilities.currentExtent.width == -1 )
     {
-        STBVK_ASSERT(surfaceCapabilities.currentExtent.height == (uint32_t)-1);
-        swapchainExtent.width = width;
-        swapchainExtent.height = height;
+        STBVK_ASSERT( (int32_t)surface_capabilities.currentExtent.height == -1 );
+        // TODO(cort): better defaults here, when we can't detect the present surface extent?
+        swapchain_extent.width  = STBVK__CLAMP(1280, surface_capabilities.minImageExtent.width,  surface_capabilities.maxImageExtent.width);
+        swapchain_extent.height = STBVK__CLAMP( 720, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
     }
     else
     {
-        swapchainExtent = surfaceCapabilities.currentExtent;
-        if (	swapchainExtent.width  != width
-            ||	swapchainExtent.height != height)
-        {
-            // TODO(cort): update rendering dimensions to match swap chain size. For now, assume this never happens.
-            assert(0);
-        }
+        swapchain_extent = surface_capabilities.currentExtent;
     }
-    uint32_t deviceSurfaceFormatCount = 0;
-    STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->present_surface, &deviceSurfaceFormatCount, NULL) );
-    VkSurfaceFormatKHR *deviceSurfaceFormats = (VkSurfaceFormatKHR*)STBVK_MALLOC(deviceSurfaceFormatCount * sizeof(VkSurfaceFormatKHR));
-    STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->present_surface, &deviceSurfaceFormatCount, deviceSurfaceFormats) );
-    VkFormat surfaceColorFormat;
-    if (deviceSurfaceFormatCount == 1 && deviceSurfaceFormats[0].format == VK_FORMAT_UNDEFINED)
+    uint32_t device_surface_format_count = 0;
+    STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->present_surface, &device_surface_format_count, NULL) );
+    VkSurfaceFormatKHR *device_surface_formats = (VkSurfaceFormatKHR*)STBVK_MALLOC(device_surface_format_count * sizeof(VkSurfaceFormatKHR));
+    STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->present_surface, &device_surface_format_count, device_surface_formats) );
+    VkFormat swapchain_surface_format;
+    if (device_surface_format_count == 1 && device_surface_formats[0].format == VK_FORMAT_UNDEFINED)
     {
         // No preferred format.
-        surfaceColorFormat = VK_FORMAT_B8G8R8A8_UNORM;
+        swapchain_surface_format = VK_FORMAT_B8G8R8A8_UNORM;
     }
     else
     {
-        assert(deviceSurfaceFormatCount >= 1);
-        surfaceColorFormat = deviceSurfaceFormats[0].format;
+        assert(device_surface_format_count >= 1);
+        swapchain_surface_format = device_surface_formats[0].format;
     }
-    VkColorSpaceKHR surfaceColorSpace = deviceSurfaceFormats[0].colorSpace;
-    STBVK_FREE(deviceSurfaceFormats);
+    VkColorSpaceKHR present_surface_color_space = device_surface_formats[0].colorSpace;
+    STBVK_FREE(device_surface_formats);
 
-    uint32_t deviceSurfacePresentModeCount = 0;
-    STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &deviceSurfacePresentModeCount, NULL) );
-    VkPresentModeKHR *deviceSurfacePresentModes = (VkPresentModeKHR*)STBVK_MALLOC(deviceSurfacePresentModeCount * sizeof(VkPresentModeKHR));
-    STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &deviceSurfacePresentModeCount, deviceSurfacePresentModes) );
-    VkPresentModeKHR swapchainPresentMode = VK_PRESENT_MODE_FIFO_KHR; // TODO(cort): make sure this mode is supported, or pick a different one?
-    STBVK_FREE(deviceSurfacePresentModes);
+    uint32_t device_present_mode_count = 0;
+    STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &device_present_mode_count, NULL) );
+    VkPresentModeKHR *device_present_modes = (VkPresentModeKHR*)STBVK_MALLOC(device_present_mode_count * sizeof(VkPresentModeKHR));
+    STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &device_present_mode_count, device_present_modes) );
+    VkPresentModeKHR swapchain_present_mode = VK_PRESENT_MODE_FIFO_KHR; // TODO(cort): make sure this mode is supported, or pick a different one?
+    STBVK_FREE(device_present_modes);
 
-    uint32_t desiredSwapchainImageCount = surfaceCapabilities.minImageCount+1;
-    if (	surfaceCapabilities.maxImageCount > 0
-        &&	desiredSwapchainImageCount > surfaceCapabilities.maxImageCount)
+    uint32_t desired_swapchain_image_count = surface_capabilities.minImageCount+1;
+    if (	surface_capabilities.maxImageCount > 0
+        &&	desired_swapchain_image_count > surface_capabilities.maxImageCount)
     {
-        desiredSwapchainImageCount = surfaceCapabilities.maxImageCount;
+        desired_swapchain_image_count = surface_capabilities.maxImageCount;
     }
-    VkSurfaceTransformFlagBitsKHR preTransform;
-    if (0 != (surfaceCapabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR))
+    VkSurfaceTransformFlagBitsKHR swapchain_surface_transform;
+    if (0 != (surface_capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR))
     {
-        preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+        swapchain_surface_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     }
     else
     {
-        preTransform = surfaceCapabilities.currentTransform;
+        swapchain_surface_transform = surface_capabilities.currentTransform;
+    }
+
+    VkImageUsageFlags swapchain_image_usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if (surface_capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+    {
+        swapchain_image_usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT; // used for image clears
     }
 
     VkSwapchainCreateInfoKHR swapchain_create_info = {};
     swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchain_create_info.pNext = NULL;
     swapchain_create_info.surface = context->present_surface;
-    swapchain_create_info.minImageCount = desiredSwapchainImageCount;
-    swapchain_create_info.imageFormat = surfaceColorFormat;
-    swapchain_create_info.imageColorSpace = surfaceColorSpace;
-    swapchain_create_info.imageExtent.width = swapchainExtent.width;
-    swapchain_create_info.imageExtent.height = swapchainExtent.height;
-    swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    swapchain_create_info.preTransform = preTransform;
+    swapchain_create_info.minImageCount = desired_swapchain_image_count;
+    swapchain_create_info.imageFormat = swapchain_surface_format;
+    swapchain_create_info.imageColorSpace = present_surface_color_space;
+    swapchain_create_info.imageExtent.width = swapchain_extent.width;
+    swapchain_create_info.imageExtent.height = swapchain_extent.height;
+    swapchain_create_info.imageUsage = swapchain_image_usage;
+    swapchain_create_info.preTransform = swapchain_surface_transform;
     swapchain_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    swapchain_create_info.imageArrayLayers = 1;
+    swapchain_create_info.imageArrayLayers = 1; // TODO(cort): >1 for multiview or stereo
     swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapchain_create_info.queueFamilyIndexCount = 0;
     swapchain_create_info.pQueueFamilyIndices = NULL;
-    swapchain_create_info.presentMode = swapchainPresentMode;
+    swapchain_create_info.presentMode = swapchain_present_mode;
     swapchain_create_info.clipped = VK_TRUE;
-    swapchain_create_info.oldSwapchain = VK_NULL_HANDLE;
+    swapchain_create_info.oldSwapchain = old_swapchain;
     STBVK__CHECK( vkCreateSwapchainKHR(context->device, &swapchain_create_info, context->allocation_callbacks, &context->swapchain) );
+    if (old_swapchain != VK_NULL_HANDLE)
+    {
+        vkDestroySwapchainKHR(context->device, old_swapchain, context->allocation_callbacks);
+    }
 
     STBVK__CHECK( vkGetSwapchainImagesKHR(context->device, context->swapchain, &context->swapchain_image_count, NULL) );
     context->swapchain_images = (VkImage*)malloc(context->swapchain_image_count * sizeof(VkImage));
@@ -605,7 +612,7 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     image_view_create_info.pNext = NULL;
     image_view_create_info.flags = 0;
-    image_view_create_info.format = surfaceColorFormat;
+    image_view_create_info.format = swapchain_surface_format;
     image_view_create_info.components = {};
     image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_R;
     image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_G;
