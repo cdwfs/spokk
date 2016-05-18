@@ -322,7 +322,7 @@ int main(int argc, char *argv[]) {
     };
     VkAttachmentDescription attachmentDescriptions[kAttachmentCount] = {};
     attachmentDescriptions[kColorAttachmentIndex].flags = 0;
-    attachmentDescriptions[kColorAttachmentIndex].format = VK_FORMAT_B8G8R8A8_UNORM; // TODO(cort): does this NEED to match the swapchain format?
+    attachmentDescriptions[kColorAttachmentIndex].format = context.swapchain_surface_format.format; // TODO(cort): does this NEED to match the swapchain format?
     attachmentDescriptions[kColorAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
     attachmentDescriptions[kColorAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachmentDescriptions[kColorAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_STORE;

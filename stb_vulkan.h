@@ -81,6 +81,7 @@ extern "C" {
         VkSwapchainKHR swapchain;
         uint32_t swapchain_image_count;
         uint32_t swapchain_image_index;
+        VkSurfaceFormatKHR swapchain_surface_format;
         VkImage *swapchain_images;
         VkImageView *swapchain_image_views;
 
@@ -531,18 +532,17 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->present_surface, &device_surface_format_count, NULL) );
     VkSurfaceFormatKHR *device_surface_formats = (VkSurfaceFormatKHR*)STBVK_MALLOC(device_surface_format_count * sizeof(VkSurfaceFormatKHR));
     STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->present_surface, &device_surface_format_count, device_surface_formats) );
-    VkFormat swapchain_surface_format;
     if (device_surface_format_count == 1 && device_surface_formats[0].format == VK_FORMAT_UNDEFINED)
     {
         // No preferred format.
-        swapchain_surface_format = VK_FORMAT_B8G8R8A8_UNORM;
+        context->swapchain_surface_format.format = VK_FORMAT_B8G8R8A8_UNORM;
+        context->swapchain_surface_format.colorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR;
     }
     else
     {
         assert(device_surface_format_count >= 1);
-        swapchain_surface_format = device_surface_formats[0].format;
+        context->swapchain_surface_format = device_surface_formats[0];
     }
-    VkColorSpaceKHR present_surface_color_space = device_surface_formats[0].colorSpace;
     STBVK_FREE(device_surface_formats);
 
     uint32_t device_present_mode_count = 0;
@@ -579,8 +579,8 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     swapchain_create_info.pNext = NULL;
     swapchain_create_info.surface = context->present_surface;
     swapchain_create_info.minImageCount = desired_swapchain_image_count;
-    swapchain_create_info.imageFormat = swapchain_surface_format;
-    swapchain_create_info.imageColorSpace = present_surface_color_space;
+    swapchain_create_info.imageFormat = context->swapchain_surface_format.format;
+    swapchain_create_info.imageColorSpace = context->swapchain_surface_format.colorSpace;
     swapchain_create_info.imageExtent.width = swapchain_extent.width;
     swapchain_create_info.imageExtent.height = swapchain_extent.height;
     swapchain_create_info.imageUsage = swapchain_image_usage;
@@ -607,7 +607,7 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     image_view_create_info.pNext = NULL;
     image_view_create_info.flags = 0;
-    image_view_create_info.format = swapchain_surface_format;
+    image_view_create_info.format = context->swapchain_surface_format.format;
     image_view_create_info.components = {};
     image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_R;
     image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_G;
