@@ -133,7 +133,7 @@ extern "C" {
 ////   end header file   /////////////////////////////////////////////////////
 #endif // STBVK_INCLUDE_STB_VULKAN_H
 
-#ifdef STB_VULKAN_IMPLEMENTATION
+#if defined(STB_VULKAN_IMPLEMENTATION)
 
 #ifndef STBVK_NO_STDIO
 #   include <stdio.h>
@@ -609,10 +609,10 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     image_view_create_info.flags = 0;
     image_view_create_info.format = context->swapchain_surface_format.format;
     image_view_create_info.components = {};
-    image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_R;
-    image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_G;
-    image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_B;
-    image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_A;
+    image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
     image_view_create_info.subresourceRange = {};
     image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     image_view_create_info.subresourceRange.baseMipLevel = 0;
@@ -667,7 +667,7 @@ STBVKDEF void stbvk_destroy_context(stbvk_context *context)
     context->instance = VK_NULL_HANDLE;
 
     context->allocation_callbacks = NULL;
-    memset(context, 0, sizeof(*context));
+    *context = {};
 }
 
 
@@ -688,7 +688,7 @@ STBVKDEF VkShaderModule stbvk_load_shader_from_file(stbvk_context *c, FILE *f, i
 {
     void *shader_bin = STBVK_MALLOC(len);
     size_t bytes_read = fread(shader_bin, 1, len, f);
-    if (bytes_read != len)
+    if ( (int)bytes_read != len)
     {
         free(shader_bin);
         return VK_NULL_HANDLE;
