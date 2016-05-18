@@ -313,38 +313,55 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK( vkCreatePipelineLayout(context.device, &pipelineLayoutCreateInfo, context.allocation_callbacks, &pipelineLayout) );
 
     // Create render pass
-    VkAttachmentDescription attachmentDescriptions[2];
-    attachmentDescriptions[0] = {};
-    attachmentDescriptions[0].flags = 0;
-    attachmentDescriptions[0].format = VK_FORMAT_B8G8R8A8_UNORM; // TODO(cort): does this need to match the swapchain format?
-    attachmentDescriptions[0].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachmentDescriptions[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachmentDescriptions[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachmentDescriptions[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachmentDescriptions[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescriptions[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    attachmentDescriptions[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    attachmentDescriptions[1] = {};
-    attachmentDescriptions[1].flags = 0;
-    attachmentDescriptions[1].format = surfaceDepthFormat;
-    attachmentDescriptions[1].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachmentDescriptions[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachmentDescriptions[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescriptions[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachmentDescriptions[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescriptions[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    attachmentDescriptions[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    enum
+    {
+        kColorAttachmentIndex = 0,
+        kDepthAttachmentIndex = 1,
+        kTextureAttachmentIndex = 2,
+        kAttachmentCount
+    };
+    VkAttachmentDescription attachmentDescriptions[kAttachmentCount] = {};
+    attachmentDescriptions[kColorAttachmentIndex].flags = 0;
+    attachmentDescriptions[kColorAttachmentIndex].format = VK_FORMAT_B8G8R8A8_UNORM; // TODO(cort): does this NEED to match the swapchain format?
+    attachmentDescriptions[kColorAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachmentDescriptions[kColorAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachmentDescriptions[kColorAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachmentDescriptions[kColorAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachmentDescriptions[kColorAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachmentDescriptions[kColorAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachmentDescriptions[kColorAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    attachmentDescriptions[kDepthAttachmentIndex].flags = 0;
+    attachmentDescriptions[kDepthAttachmentIndex].format = surfaceDepthFormat;
+    attachmentDescriptions[kDepthAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachmentDescriptions[kDepthAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachmentDescriptions[kDepthAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachmentDescriptions[kDepthAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachmentDescriptions[kDepthAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachmentDescriptions[kDepthAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachmentDescriptions[kDepthAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachmentDescriptions[kTextureAttachmentIndex].flags = 0;
+    attachmentDescriptions[kTextureAttachmentIndex].format = VK_FORMAT_R8G8B8A8_UNORM;//surfaceTextureFormat;
+    attachmentDescriptions[kTextureAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachmentDescriptions[kTextureAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    attachmentDescriptions[kTextureAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachmentDescriptions[kTextureAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachmentDescriptions[kTextureAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachmentDescriptions[kTextureAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    attachmentDescriptions[kTextureAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     VkAttachmentReference attachmentReferenceColor = {};
-    attachmentReferenceColor.attachment = 0;
+    attachmentReferenceColor.attachment = kColorAttachmentIndex;
     attachmentReferenceColor.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     VkAttachmentReference attachmentReferenceDepth = {};
-    attachmentReferenceDepth.attachment = 1;
+    attachmentReferenceDepth.attachment = kDepthAttachmentIndex;
     attachmentReferenceDepth.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference attachmentReferenceTexture = {};
+    attachmentReferenceTexture.attachment = kTextureAttachmentIndex;
+    attachmentReferenceTexture.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     VkSubpassDescription subpassDescription = {};
     subpassDescription.flags = 0;
     subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpassDescription.inputAttachmentCount = 0;
-    subpassDescription.pInputAttachments = NULL;
+    subpassDescription.inputAttachmentCount = 1;
+    subpassDescription.pInputAttachments = &attachmentReferenceTexture;
     subpassDescription.colorAttachmentCount = 1;
     subpassDescription.pColorAttachments = &attachmentReferenceColor;
     subpassDescription.pResolveAttachments = NULL;
@@ -715,9 +732,10 @@ int main(int argc, char *argv[]) {
     vkUpdateDescriptorSets(context.device, 1, &writeDescriptorSet, 0, NULL);
 
     // Create framebuffers
-    VkImageView attachmentImageViews[2] = {
+    VkImageView attachmentImageViews[] = {
         VK_NULL_HANDLE, // filled in below
         imageDepthView,
+        textureImageViews[0],
     };
     VkFramebufferCreateInfo framebufferCreateInfo = {};
     framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -799,20 +817,7 @@ int main(int argc, char *argv[]) {
         cmdBufDrawBeginInfo.pNext = NULL;
         cmdBufDrawBeginInfo.flags = 0;
         cmdBufDrawBeginInfo.pInheritanceInfo = &cmdBufDrawInheritanceInfo;
-
         VULKAN_CHECK( vkBeginCommandBuffer(context.command_buffer_primary, &cmdBufDrawBeginInfo) );
-        VkImageSubresourceRange swapchainSubresourceRange = {};
-        swapchainSubresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        swapchainSubresourceRange.baseMipLevel = 0;
-        swapchainSubresourceRange.levelCount = 1;
-        swapchainSubresourceRange.baseArrayLayer = 0;
-        swapchainSubresourceRange.layerCount = 1;
-        stbvk_set_image_layout(context.command_buffer_primary, context.swapchain_images[context.swapchain_image_index],
-            swapchainSubresourceRange,
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0);
-        // TODO(cort): is a sync point needed here? tri.c submits this layout change as a separate
-        // command buffer, then waits for the queue to be idle.
 
         VkClearValue clearValues[2] = {};
         clearValues[0].color.float32[0] = (float)(frameIndex%256)/255.0f,
@@ -855,25 +860,6 @@ int main(int argc, char *argv[]) {
         vkCmdDraw(context.command_buffer_primary, 4,1,0,0);
 
         vkCmdEndRenderPass(context.command_buffer_primary);
-        VkImageMemoryBarrier prePresentBarrier = {};
-        prePresentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        prePresentBarrier.pNext = NULL;
-        prePresentBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        prePresentBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-        prePresentBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        prePresentBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        prePresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        prePresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        prePresentBarrier.subresourceRange = {};
-        prePresentBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        prePresentBarrier.subresourceRange.baseMipLevel = 0;
-        prePresentBarrier.subresourceRange.levelCount = 1;
-        prePresentBarrier.subresourceRange.baseArrayLayer = 0;
-        prePresentBarrier.subresourceRange.layerCount = 1;
-        prePresentBarrier.image = context.swapchain_images[context.swapchain_image_index],
-        vkCmdPipelineBarrier(context.command_buffer_primary, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0,
-            NULL, 1, &prePresentBarrier);
         VULKAN_CHECK( vkEndCommandBuffer(context.command_buffer_primary) );
         VkFence nullFence = VK_NULL_HANDLE;
         const VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
