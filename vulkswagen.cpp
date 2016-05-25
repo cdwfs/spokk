@@ -149,9 +149,40 @@ int main(int argc, char *argv[]) {
     applicationInfo.pEngineName = "Zombo";
     applicationInfo.engineVersion = 0x1001;
     applicationInfo.apiVersion = VK_MAKE_VERSION(1,0,0);
+    const char *required_instance_layers[] = {
+        "VK_LAYER_GOOGLE_threading",
+        "VK_LAYER_LUNARG_parameter_validation",
+        "VK_LAYER_LUNARG_device_limits",
+        "VK_LAYER_LUNARG_object_tracker",
+        "VK_LAYER_LUNARG_image",
+        "VK_LAYER_LUNARG_core_validation",
+        "VK_LAYER_LUNARG_swapchain",
+        "VK_LAYER_GOOGLE_unique_objects",
+    };
+    const char *required_instance_extensions[] = {
+        VK_KHR_SURFACE_EXTENSION_NAME,
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+        VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#elif defined(VK_USE_PLATFORM_XCB_KHR)
+        VK_KHR_XCB_SURFACE_EXTENSION_NAME,
+#elif defined(VK_USE_PLATFORM_ANDROID_KHR)
+        VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
+#else
+#error Unsupported platform
+#endif
+        VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
+    };
+    const char *required_device_extensions[] = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    };
     stbvk_context_create_info contextCreateInfo = {};
     contextCreateInfo.allocation_callbacks = NULL;
-    contextCreateInfo.enable_standard_validation_layers = VK_TRUE;
+    contextCreateInfo.required_instance_layer_count     = sizeof(required_instance_layers) / sizeof(required_instance_layers[0]);
+    contextCreateInfo.required_instance_layer_names     = required_instance_layers;
+    contextCreateInfo.required_instance_extension_count = sizeof(required_instance_extensions) / sizeof(required_instance_extensions[0]);
+    contextCreateInfo.required_instance_extension_names = required_instance_extensions;
+    contextCreateInfo.required_device_extension_count   = sizeof(required_device_extensions) / sizeof(required_device_extensions[0]);
+    contextCreateInfo.required_device_extension_names   = required_device_extensions;
     contextCreateInfo.application_info = &applicationInfo;
     contextCreateInfo.debug_report_callback = debugReportCallbackFunc;
     contextCreateInfo.debug_report_callback_user_data = NULL;
