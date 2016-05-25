@@ -430,70 +430,6 @@ int main(int argc, char *argv[]) {
     assert(fragmentShaderModule != VK_NULL_HANDLE);
 
     // Load textures, create sampler and image view
-    const uint32_t kTextureLayerCount = 32;
-    int texWidth, texHeight, texComp;
-    {
-        uint32_t *pixels = (uint32_t*)stbi_load("trevor/trevor-0.png", &texWidth, &texHeight, &texComp, 4);
-        stbi_image_free(pixels);
-    }
-    VkFormat surfaceTextureFormat = VK_FORMAT_R8G8B8A8_UNORM;
-    VkFormatProperties textureFormatProperties = {0};
-    vkGetPhysicalDeviceFormatProperties(context.physical_device, surfaceTextureFormat, &textureFormatProperties);
-    if (0 == (textureFormatProperties.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
-        // TODO(cort): use a staging pass to transfer the linear source image to a tiled format.
-        fprintf(stderr, "ERROR: linear texture sampling is not supported on this hardware.\n");
-        exit(1);
-    }
-    VkImageCreateInfo imageCreateInfo = {};
-    imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageCreateInfo.pNext = NULL;
-    imageCreateInfo.flags = 0;
-    imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageCreateInfo.format = surfaceTextureFormat;
-    imageCreateInfo.extent = {};
-    imageCreateInfo.extent.width = texWidth;
-    imageCreateInfo.extent.height = texHeight;
-    imageCreateInfo.extent.depth = 1;
-    imageCreateInfo.mipLevels = 1;
-    imageCreateInfo.arrayLayers = kTextureLayerCount;
-    imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    imageCreateInfo.queueFamilyIndexCount = 0;
-    imageCreateInfo.pQueueFamilyIndices = NULL;
-    imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    VkImage textureImage;
-    VkImageFormatProperties imageFormatProperties = {};
-    VULKAN_CHECK( vkGetPhysicalDeviceImageFormatProperties(context.physical_device,
-        imageCreateInfo.format, imageCreateInfo.imageType, imageCreateInfo.tiling,
-        imageCreateInfo.usage, 0, &imageFormatProperties) );
-    assert(kTextureLayerCount <= imageFormatProperties.maxArrayLayers);
-    VULKAN_CHECK( vkCreateImage(context.device, &imageCreateInfo, context.allocation_callbacks, &textureImage) );
-    VkMemoryRequirements memoryRequirements = {};
-    vkGetImageMemoryRequirements(context.device, textureImage, &memoryRequirements);
-    VkMemoryAllocateInfo memoryAllocateInfo = {};
-    memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memoryAllocateInfo.pNext = NULL;
-    memoryAllocateInfo.allocationSize = memoryRequirements.size;
-    memoryAllocateInfo.memoryTypeIndex = 0; // filled in below
-    VkBool32 foundMemoryType = getMemoryTypeFromProperties(&context.physical_device_memory_properties,
-        memoryRequirements.memoryTypeBits,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        &memoryAllocateInfo.memoryTypeIndex);
-    assert(foundMemoryType);
-    VkDeviceMemory textureDeviceMemory = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkAllocateMemory(context.device, &memoryAllocateInfo, context.allocation_callbacks, &textureDeviceMemory) );
-    VkDeviceSize textureMemoryOffset = 0;
-    VULKAN_CHECK( vkBindImageMemory(context.device, textureImage, textureDeviceMemory, textureMemoryOffset) );
-    VkImageSubresourceRange textureImageSubresourceRange = {};
-    textureImageSubresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    textureImageSubresourceRange.baseMipLevel = 0;
-    textureImageSubresourceRange.levelCount = 1;
-    textureImageSubresourceRange.baseArrayLayer = 0;
-    textureImageSubresourceRange.layerCount = kTextureLayerCount;
-    stbvk_set_image_layout(context.command_buffer_primary, textureImage, textureImageSubresourceRange,
-        imageCreateInfo.initialLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0);
     VkSamplerCreateInfo samplerCreateInfo = {};
     samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     samplerCreateInfo.pNext = NULL;
@@ -514,123 +450,59 @@ int main(int argc, char *argv[]) {
     samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
     VkSampler sampler;
     VULKAN_CHECK( vkCreateSampler(context.device, &samplerCreateInfo, context.allocation_callbacks, &sampler) );
-    VkImageViewCreateInfo textureImageViewCreateInfo = {};
-    textureImageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    textureImageViewCreateInfo.pNext = NULL;
-    textureImageViewCreateInfo.flags = 0;
-    textureImageViewCreateInfo.image = VK_NULL_HANDLE; // filled in below
-    textureImageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-    textureImageViewCreateInfo.format = surfaceTextureFormat;
-    textureImageViewCreateInfo.components = {};
-    textureImageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_R;
-    textureImageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_G;
-    textureImageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_B;
-    textureImageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_A;
-    textureImageViewCreateInfo.subresourceRange = {};
-    textureImageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    textureImageViewCreateInfo.subresourceRange.baseMipLevel = 0;
-    textureImageViewCreateInfo.subresourceRange.levelCount = 1;
-    textureImageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-    textureImageViewCreateInfo.subresourceRange.layerCount = kTextureLayerCount;
-    VkImageView textureImageViews[kDemoTextureCount];
-    for(uint32_t iTexture=0; iTexture<kDemoTextureCount; iTexture+=1) {
-        textureImageViewCreateInfo.image = textureImage;
-        VULKAN_CHECK( vkCreateImageView(context.device, &textureImageViewCreateInfo, context.allocation_callbacks, &textureImageViews[iTexture]) );
+
+    const uint32_t kTextureLayerCount = 32;
+    int texWidth, texHeight, texComp;
+    {
+        uint32_t *pixels = (uint32_t*)stbi_load("trevor/trevor-0.png", &texWidth, &texHeight, &texComp, 4);
+        stbi_image_free(pixels);
     }
-
-    // Load individual texture layers into staging textures, and copy them into the final texture.
-    VkImageCreateInfo stagingImageCreateInfo = {};
-    stagingImageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    stagingImageCreateInfo.pNext = NULL;
-    stagingImageCreateInfo.flags = 0;
-    stagingImageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-    stagingImageCreateInfo.format = surfaceTextureFormat;
-    stagingImageCreateInfo.extent = {};
-    stagingImageCreateInfo.extent.width = texWidth;
-    stagingImageCreateInfo.extent.height = texHeight;
-    stagingImageCreateInfo.extent.depth = 1;
-    stagingImageCreateInfo.mipLevels = 1;
-    stagingImageCreateInfo.arrayLayers = 1;
-    stagingImageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    stagingImageCreateInfo.tiling = VK_IMAGE_TILING_LINEAR;
-    stagingImageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    stagingImageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    stagingImageCreateInfo.queueFamilyIndexCount = 0;
-    stagingImageCreateInfo.pQueueFamilyIndices = NULL;
-    stagingImageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
-    VkImage *stagingTextureImages = (VkImage*)malloc(kTextureLayerCount * sizeof(VkImage));
-    for(uint32_t iLayer=0; iLayer<kTextureLayerCount; iLayer += 1) {
-        VULKAN_CHECK( vkCreateImage(context.device, &stagingImageCreateInfo, context.allocation_callbacks, &stagingTextureImages[iLayer]) );
-        VkMemoryRequirements memoryRequirements = {};
-        vkGetImageMemoryRequirements(context.device, stagingTextureImages[iLayer], &memoryRequirements);
-        VkMemoryAllocateInfo memoryAllocateInfo = {};
-        memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        memoryAllocateInfo.pNext = NULL;
-        memoryAllocateInfo.allocationSize = memoryRequirements.size;
-        memoryAllocateInfo.memoryTypeIndex = 0; // filled in below
-        VkBool32 foundMemoryType = getMemoryTypeFromProperties(&context.physical_device_memory_properties,
-            memoryRequirements.memoryTypeBits,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-            &memoryAllocateInfo.memoryTypeIndex);
-        assert(foundMemoryType);
-        VkDeviceMemory textureDeviceMemory = VK_NULL_HANDLE;
-        VULKAN_CHECK( vkAllocateMemory(context.device, &memoryAllocateInfo, context.allocation_callbacks, &textureDeviceMemory) );
-        VkDeviceSize textureMemoryOffset = 0;
-        VULKAN_CHECK( vkBindImageMemory(context.device, stagingTextureImages[iLayer], textureDeviceMemory, textureMemoryOffset) );
-
-        VkImageSubresource textureImageSubresource = {};
-        textureImageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        textureImageSubresource.mipLevel = 0;
-        textureImageSubresource.arrayLayer = 0;
-        VkSubresourceLayout subresourceLayout = {};
-        VkMemoryMapFlags memoryMapFlags = 0;
-        vkGetImageSubresourceLayout(context.device, stagingTextureImages[iLayer], &textureImageSubresource, &subresourceLayout);
-        void *mappedTextureData = NULL;
-        VULKAN_CHECK( vkMapMemory(context.device, textureDeviceMemory, textureMemoryOffset,
-            memoryRequirements.size, memoryMapFlags, &mappedTextureData) );
+    VkImageCreateInfo image_create_info = {};
+    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_create_info.pNext = NULL;
+    image_create_info.flags = 0;
+    image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    image_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+    image_create_info.extent.width = texWidth;
+    image_create_info.extent.height = texHeight;
+    image_create_info.extent.depth = 1;
+    image_create_info.mipLevels = 1;
+    image_create_info.arrayLayers = kTextureLayerCount;
+    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_create_info.queueFamilyIndexCount = 0;
+    image_create_info.pQueueFamilyIndices = NULL;
+    image_create_info.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    stbvk_image texture_image = {};
+    VULKAN_CHECK( stbvk_create_image(&context, &image_create_info, &texture_image) );
+    for(int iLayer=0; iLayer<kTextureLayerCount; ++iLayer)
+    {
+        VkImageSubresource subresource = {};
+        subresource.arrayLayer = iLayer;
+        subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        subresource.mipLevel = 0;
+        VkSubresourceLayout subresource_layout = {};
+        VULKAN_CHECK( stbvk_get_image_subresource_source_layout(&context, &texture_image, subresource, &subresource_layout) );
         char imagePath[128];
         zomboSnprintf(imagePath, 127, "trevor/trevor-%u.png", iLayer);
         imagePath[127] = 0;
         int width=0,height=0,comp=0;
+        uint32_t *padded_pixels = (uint32_t*)malloc(subresource_layout.size);
         uint32_t *pixels = (uint32_t*)stbi_load(imagePath, &width, &height, &comp, 4);
-        for(int32_t iY=0; iY<texHeight; iY+=1) {
-            uint32_t *row = (uint32_t*)( (char*)mappedTextureData + iY*subresourceLayout.rowPitch );
-            for(int32_t iX=0; iX<texWidth; iX+=1) {
+        for(int32_t iY=0; iY<texHeight; iY+=1)
+        {
+            uint32_t *row = (uint32_t*)( (intptr_t)padded_pixels + iY*subresource_layout.rowPitch );
+            for(int32_t iX=0; iX<texWidth; iX+=1)
+            {
                 row[iX] = pixels[iY*texWidth+iX];
             }
         }
         stbi_image_free(pixels);
-        vkUnmapMemory(context.device, textureDeviceMemory);
-        VkImageSubresourceRange stagingImageSubresourceRange = {};
-        stagingImageSubresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        stagingImageSubresourceRange.baseMipLevel = 0;
-        stagingImageSubresourceRange.levelCount = 1;
-        stagingImageSubresourceRange.baseArrayLayer = 0;
-        stagingImageSubresourceRange.layerCount = 1;
-        stbvk_set_image_layout(context.command_buffer_primary, stagingTextureImages[iLayer], stagingImageSubresourceRange,
-            stagingImageCreateInfo.initialLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0);
-
-        VkImageCopy copyRegion = {};
-        copyRegion.srcSubresource = {};
-        copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        copyRegion.srcSubresource.baseArrayLayer = 0;
-        copyRegion.srcSubresource.layerCount = 1;
-        copyRegion.srcSubresource.mipLevel = 0;
-        copyRegion.srcOffset = {0,0,0};
-        copyRegion.dstSubresource = {};
-        copyRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        copyRegion.dstSubresource.baseArrayLayer = iLayer;
-        copyRegion.dstSubresource.layerCount = 1;
-        copyRegion.dstSubresource.mipLevel = 0;
-        copyRegion.dstOffset = {0,0,0};
-        copyRegion.extent = stagingImageCreateInfo.extent;
-        vkCmdCopyImage(context.command_buffer_primary,
-            stagingTextureImages[iLayer], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+        VULKAN_CHECK( stbvk_load_image_subresource(&context, &texture_image, subresource, subresource_layout, padded_pixels) );
+        free(padded_pixels);
     }
-    const VkImageLayout textureImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    stbvk_set_image_layout(context.command_buffer_primary, textureImage, textureImageSubresourceRange,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, textureImageLayout, 0);
 
     // Create Vulkan pipeline & graphics state
     VkDynamicState dynamicStateEnables[VK_DYNAMIC_STATE_RANGE_SIZE] = {}; // filled in below
@@ -761,7 +633,7 @@ int main(int argc, char *argv[]) {
     VkDescriptorImageInfo descriptorImageInfos[kDemoTextureCount] = {0};
     for(uint32_t iTexture=0; iTexture<kDemoTextureCount; iTexture += 1) {
         descriptorImageInfos[iTexture].sampler = sampler;
-        descriptorImageInfos[iTexture].imageView = textureImageViews[iTexture];
+        descriptorImageInfos[iTexture].imageView = texture_image.image_view;
         descriptorImageInfos[iTexture].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     }
     VkWriteDescriptorSet writeDescriptorSet = {};
@@ -780,7 +652,7 @@ int main(int argc, char *argv[]) {
     VkImageView attachmentImageViews[kAttachmentCount] = {};
     attachmentImageViews[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below;
     attachmentImageViews[kDepthAttachmentIndex] = imageDepthView;
-    attachmentImageViews[kTextureAttachmentIndex] = textureImageViews[0];
+    attachmentImageViews[kTextureAttachmentIndex] = texture_image.image_view;
     VkFramebufferCreateInfo framebufferCreateInfo = {};
     framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     framebufferCreateInfo.pNext = NULL;
@@ -963,16 +835,7 @@ int main(int argc, char *argv[]) {
 
     vkDestroyRenderPass(context.device, renderPass, context.allocation_callbacks);
 
-    vkDestroyImage(context.device, textureImage, context.allocation_callbacks);
-    vkFreeMemory(context.device, textureDeviceMemory, context.allocation_callbacks);
-    for(uint32_t iTex=0; iTex<kDemoTextureCount; ++iTex) {
-        vkDestroyImageView(context.device, textureImageViews[iTex], context.allocation_callbacks);
-    }
-    for(uint32_t iLayer=0; iLayer<kTextureLayerCount; ++iLayer) {
-        vkDestroyImage(context.device, stagingTextureImages[iLayer], context.allocation_callbacks);
-        //vkFreeMemory(device, stagingTextureDeviceMemory, allocationCallbacks); // LEAKED!
-    }
-    free(stagingTextureImages);
+    stbvk_destroy_image(&context, &texture_image);
 
     vkDestroySampler(context.device, sampler, context.allocation_callbacks);
 
