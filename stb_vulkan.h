@@ -331,7 +331,7 @@ STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_in
     return VK_SUCCESS;
 }
 
-STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info, VkSurfaceKHR present_surface, stbvk_context *context)
+STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * /*create_info*/, VkSurfaceKHR present_surface, stbvk_context *context)
 {
     uint32_t physical_device_count = 0;
     STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, NULL) );
@@ -713,7 +713,6 @@ STBVKDEF VkShaderModule stbvk_load_shader_from_file(stbvk_context *c, FILE *f, i
     STBVK_FREE(shader_bin);
     return shader_module;
 }
-
 STBVKDEF VkShaderModule stbvk_load_shader(stbvk_context *c, char const *filename)
 {
     FILE *spv_file = stbvk__fopen(filename, "rb");
@@ -728,7 +727,6 @@ STBVKDEF VkShaderModule stbvk_load_shader(stbvk_context *c, char const *filename
     fclose(spv_file);
     return shader_module;
 }
-
 #endif
 
 STBVKDEF VkShaderModule stbvk_load_shader_from_memory(stbvk_context *c, stbvk_uc const *buffer, int len)
