@@ -190,6 +190,22 @@ typedef unsigned char validate_uint32[sizeof(stbvk__uint32)==4 ? 1 : -1];
 #   define STBVK_FREE(p)              free( (void*)(p) )
 #endif
 
+#if !defined(STBVK_LOG)
+# if !defined(STBVK_NO_STDIO)
+#   include <stdarg.h>
+static void stbvk__log_default(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    printf("\n");
+    va_end(args);
+}
+#   define STBVK_LOG(...) stbvk__log_default(__VA_ARGS__)
+# else
+#   define STBVK_LOG(...) (void)(__VA_ARGS)__)
+# endif
+#endif
+
 #ifndef STBVK_REALLOC_SIZED
 #   define STBVK_REALLOC_SIZED(p,oldsz,newsz) STBVK_REALLOC(p,newsz)
 #endif
@@ -207,7 +223,7 @@ typedef unsigned char validate_uint32[sizeof(stbvk__uint32)==4 ? 1 : -1];
     do {  \
         int err = (expr);                             \
         if (err != (expected)) {                                            \
-            printf("%s(%d): error in %s() -- %s returned %d\n", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
+            STBVK_LOG("%s(%d): error in %s() -- %s returned %d", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
             __debugbreak();                                                   \
         }                                                                   \
         assert(err == (expected));                                          \
@@ -220,8 +236,8 @@ typedef unsigned char validate_uint32[sizeof(stbvk__uint32)==4 ? 1 : -1];
     do {  \
         int err = (expr);                                                   \
         if (err != (expected)) {                                            \
-            printf("%s(%d): error in %s() -- %s returned %d\n", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
-            __asm__("int $3"); /*__debugbreak();*/                 \
+            STBVK_LOG("%s(%d): error in %s() -- %s returned %d", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
+            /*__asm__("int $3"); */                 \
         }                                                                   \
         assert(err == (expected));                                          \
     } while(0)
@@ -414,7 +430,7 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info
 
     vkGetPhysicalDeviceProperties(context->physical_device, &context->physical_device_properties);
 #if 0
-    printf("Physical device #%u: '%s', API version %u.%u.%u\n",
+    STBVK_LOG("Physical device #%u: '%s', API version %u.%u.%u",
         0,
         context->physical_device_properties.deviceName,
         VK_VERSION_MAJOR(context->physical_device_properties.apiVersion),
@@ -454,9 +470,9 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info
     STBVK_FREE(device_create_info.pQueueCreateInfos[0].pQueuePriorities);
     STBVK_FREE(device_create_info.pQueueCreateInfos[1].pQueuePriorities);
 #if 0
-    printf("Created Vulkan logical device with extensions:\n");
+    STBVK_LOG("Created Vulkan logical device with extensions:");
     for(uint32_t iExt=0; iExt<device_create_info.enabledExtensionCount; iExt+=1) {
-        printf("- %s\n", device_create_info.ppEnabledExtensionNames[iExt]);
+        STBVK_LOG("- %s", device_create_info.ppEnabledExtensionNames[iExt]);
     }
 #endif
 
