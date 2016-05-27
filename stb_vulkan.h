@@ -426,25 +426,6 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info
 
     vkGetPhysicalDeviceFeatures(context->physical_device, &context->physical_device_features);
 
-#if 0 // Enable to query the device's supported layers
-    {
-        uint32_t device_layer_count = 0;
-        STBVK__CHECK( vkEnumerateDeviceLayerProperties(context->physical_device, &device_layer_count, NULL) );
-        VkLayerProperties *device_layer_properties = (VkLayerProperties*)STBVK_MALLOC(device_layer_count * sizeof(VkLayerProperties));
-        STBVK__CHECK( vkEnumerateDeviceLayerProperties(context->physical_device, &device_layer_count, device_layer_properties) );
-        STBVK_FREE(device_layer_properties);
-    }
-#endif
-
-    uint32_t requested_layer_count = 0;
-    const char **requested_layer_names = NULL;
-    const char *standard_validation_layer = "VK_LAYER_LUNARG_standard_validation";
-    if (create_info->enable_standard_validation_layers)
-    {
-        requested_layer_names = &standard_validation_layer;
-        requested_layer_count += 1;
-    }
-
     uint32_t extension_count = 0;
     const char *extension_layer_name = NULL;
     STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device, extension_layer_name, &extension_count, NULL) );
@@ -462,8 +443,8 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info
     device_create_info.flags = 0;
     device_create_info.queueCreateInfoCount = device_queue_create_info_count;
     device_create_info.pQueueCreateInfos = device_queue_create_infos;
-    device_create_info.enabledLayerCount = requested_layer_count;
-    device_create_info.ppEnabledLayerNames = requested_layer_names;
+    device_create_info.enabledLayerCount = 0;
+    device_create_info.ppEnabledLayerNames = NULL;
     device_create_info.enabledExtensionCount = extension_count;
     device_create_info.ppEnabledExtensionNames = extension_names;
     device_create_info.pEnabledFeatures = &context->physical_device_features;
@@ -476,10 +457,6 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info
     printf("Created Vulkan logical device with extensions:\n");
     for(uint32_t iExt=0; iExt<device_create_info.enabledExtensionCount; iExt+=1) {
         printf("- %s\n", device_create_info.ppEnabledExtensionNames[iExt]);
-    }
-    printf("and device layers:\n");
-    for(uint32_t iLayer=0; iLayer<device_create_info.enabledLayerCount; iLayer+=1) {
-        printf("- %s\n", device_create_info.ppEnabledLayerNames[iLayer]);
     }
 #endif
 
