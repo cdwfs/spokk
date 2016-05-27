@@ -568,6 +568,15 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
         swapchain_image_usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT; // used for image clears
     }
 
+    STBVK_ASSERT(surface_capabilities.supportedCompositeAlpha != 0);
+    VkCompositeAlphaFlagBitsKHR composite_alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    if ( !(surface_capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) )
+    {
+      composite_alpha = VkCompositeAlphaFlagBitsKHR(
+            int(surface_capabilities.supportedCompositeAlpha) &
+            -int(surface_capabilities.supportedCompositeAlpha) );
+    }
+
     VkSwapchainCreateInfoKHR swapchain_create_info = {};
     swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchain_create_info.pNext = NULL;
@@ -579,7 +588,7 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     swapchain_create_info.imageExtent.height = swapchain_extent.height;
     swapchain_create_info.imageUsage = swapchain_image_usage;
     swapchain_create_info.preTransform = swapchain_surface_transform;
-    swapchain_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    swapchain_create_info.compositeAlpha = composite_alpha;
     swapchain_create_info.imageArrayLayers = 1; // TODO(cort): >1 for multiview or stereo
     swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapchain_create_info.queueFamilyIndexCount = 0;
