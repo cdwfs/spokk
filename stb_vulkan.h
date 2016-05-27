@@ -184,6 +184,7 @@ typedef unsigned char validate_uint32[sizeof(stbvk__uint32)==4 ? 1 : -1];
 #endif
 
 #ifndef STBVK_MALLOC
+#   include <stdlib.h>
 #   define STBVK_MALLOC(sz)           malloc(sz)
 #   define STBVK_REALLOC(p,newsz)     realloc((p),(newsz))
 #   define STBVK_FREE(p)              free( (void*)(p) )
