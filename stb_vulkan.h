@@ -28,6 +28,9 @@ distribute, and modify this file as you see fit.
 #ifndef STBVK_INCLUDE_STB_VULKAN_H
 #define STBVK_INCLUDE_STB_VULKAN_H
 
+#if defined(__ANDROID__)
+# define VK_USE_PLATFORM_ANDROID_KHR 1
+#endif
 #include <vulkan/vulkan.h>
 
 #ifndef STBVK_NO_STDIO
@@ -231,6 +234,16 @@ static void stbvk__log_default(const char *format, ...) {
         __pragma(warning(disable:4127))                                 \
         } while(0)                                                      \
     __pragma(warning(pop))
+#elif defined(__ANDROID__)
+#   define STBVK__RETVAL_CHECK(expected, expr) \
+    do {  \
+        int err = (expr);                                                   \
+        if (err != (expected)) {                                            \
+            STBVK_LOG("%s(%d): error in %s() -- %s returned %d", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
+            /*__asm__("int $3"); */                 \
+        }                                                                   \
+        assert(err == (expected));                                          \
+    } while(0)
 #else
 #   define STBVK__RETVAL_CHECK(expected, expr) \
     do {  \
