@@ -31,6 +31,8 @@ extern "C"
 #       error Unsupported platform (non-POSIX Unix)
 #   endif
 #   include <time.h>
+#elif defined(__ANDROID__)
+#   define ZOMBO_PLATFORM_ANDROID
 #else
 #   error Unsupported platform
 #endif

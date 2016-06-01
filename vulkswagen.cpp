@@ -5,12 +5,14 @@
 #include "platform.h"
 
 // Must happen before any vulkan.h include
-#if defined(_MSC_VER)
+#if defined(ZOMBO_PLATFORM_WINDOWS)
 # define VK_USE_PLATFORM_WIN32_KHR 1
-#elif defined(__ANDROID__)
+#elif defined(ZOMBO_PLATFORM_POSIX)
+# define VK_USE_PLATFORM_XCB_KHR 1
+#elif defined(ZOMBO_PLATFORM_ANDROID)
 # define VK_USE_PLATFORM_ANDROID_KHR 1
 #else
-#error Unsupported platform
+# error Unsupported platform
 #endif
 
 #define GLFW_INCLUDE_VULKAN
