@@ -28,9 +28,6 @@ distribute, and modify this file as you see fit.
 #ifndef STBVK_INCLUDE_STB_VULKAN_H
 #define STBVK_INCLUDE_STB_VULKAN_H
 
-#if defined(__ANDROID__)
-# define VK_USE_PLATFORM_ANDROID_KHR 1
-#endif
 #include <vulkan/vulkan.h>
 
 #ifndef STBVK_NO_STDIO

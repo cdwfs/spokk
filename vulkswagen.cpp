@@ -4,6 +4,15 @@
 
 #include "platform.h"
 
+// Must happen before any vulkan.h include
+#if defined(_MSC_VER)
+# define VK_USE_PLATFORM_WIN32_KHR 1
+#elif defined(__ANDROID__)
+# define VK_USE_PLATFORM_ANDROID_KHR 1
+#else
+#error Unsupported platform
+#endif
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
