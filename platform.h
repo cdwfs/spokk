@@ -66,6 +66,8 @@ extern "C"
 #   include <pthread.h>
 #   include <time.h>
 #   include <unistd.h>
+#else
+#   error Unsupported platform
 #endif
 
 // ZOMBO_DEBUGBREAK()

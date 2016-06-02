@@ -215,6 +215,7 @@ int main(int argc, char *argv[]) {
     imageCreateInfoDepth.samples = VK_SAMPLE_COUNT_1_BIT;
     imageCreateInfoDepth.tiling = VK_IMAGE_TILING_OPTIMAL;
     imageCreateInfoDepth.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    imageCreateInfoDepth.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     imageCreateInfoDepth.flags = 0;
     VkImage imageDepth = VK_NULL_HANDLE;
     VULKAN_CHECK( vkCreateImage(context.device, &imageCreateInfoDepth, context.allocation_callbacks, &imageDepth) );
@@ -335,7 +336,7 @@ int main(int argc, char *argv[]) {
     memoryAllocateInfoVertices.allocationSize = memoryRequirementsVertices.size;
     memoryAllocateInfoVertices.memoryTypeIndex = 0;
     VkBool32 foundMemoryTypeVertices = getMemoryTypeFromProperties(&context.physical_device_memory_properties,
-        memoryRequirementsVertices.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+        memoryRequirementsVertices.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         &memoryAllocateInfoVertices.memoryTypeIndex);
     assert(foundMemoryTypeVertices);
     VkDeviceMemory bufferVerticesMemory = VK_NULL_HANDLE;
@@ -546,13 +547,17 @@ int main(int argc, char *argv[]) {
     }
 
     // Create Vulkan pipeline & graphics state
-    VkDynamicState dynamicStateEnables[VK_DYNAMIC_STATE_RANGE_SIZE] = {}; // filled in below
+    VkDynamicState dynamicStateEnables[] = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR,
+    };
     VkPipelineDynamicStateCreateInfo pipelineDynamicStateCreateInfo = {};
     pipelineDynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     pipelineDynamicStateCreateInfo.pNext = NULL;
     pipelineDynamicStateCreateInfo.flags = 0;
-    pipelineDynamicStateCreateInfo.dynamicStateCount = 0; // filled in below
-    pipelineDynamicStateCreateInfo.pDynamicStates = dynamicStateEnables; // filled in below
+    pipelineDynamicStateCreateInfo.dynamicStateCount = sizeof(dynamicStateEnables) / sizeof(dynamicStateEnables[0]);
+    pipelineDynamicStateCreateInfo.pDynamicStates = dynamicStateEnables;
+    assert(pipelineDynamicStateCreateInfo.dynamicStateCount <= VK_DYNAMIC_STATE_RANGE_SIZE);
     VkPipelineInputAssemblyStateCreateInfo pipelineInputAssemblyStateCreateInfo = {};
     pipelineInputAssemblyStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     pipelineInputAssemblyStateCreateInfo.pNext = NULL;
@@ -584,8 +589,6 @@ int main(int argc, char *argv[]) {
     pipelineViewportStateCreateInfo.flags = 0;
     pipelineViewportStateCreateInfo.viewportCount = 1;
     pipelineViewportStateCreateInfo.scissorCount = 1;
-    dynamicStateEnables[pipelineDynamicStateCreateInfo.dynamicStateCount++] = VK_DYNAMIC_STATE_VIEWPORT;
-    dynamicStateEnables[pipelineDynamicStateCreateInfo.dynamicStateCount++] = VK_DYNAMIC_STATE_SCISSOR;
     VkPipelineDepthStencilStateCreateInfo pipelineDepthStencilCreateInfo = {};
     pipelineDepthStencilCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     pipelineDepthStencilCreateInfo.pNext = NULL;
@@ -645,7 +648,8 @@ int main(int argc, char *argv[]) {
     graphicsPipelineCreateInfo.renderPass = renderPass;
     graphicsPipelineCreateInfo.pDynamicState = &pipelineDynamicStateCreateInfo;
     VkPipeline pipelineGraphics = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreateGraphicsPipelines(context.device, pipelineCache, 1, &graphicsPipelineCreateInfo, context.allocation_callbacks, &pipelineGraphics) );
+    VULKAN_CHECK( vkCreateGraphicsPipelines(context.device, pipelineCache, 1, &graphicsPipelineCreateInfo,
+        context.allocation_callbacks, &pipelineGraphics) );
     // These get destroyed now, I guess? The pipeline must keep a reference internally?
     vkDestroyPipelineCache(context.device, pipelineCache, context.allocation_callbacks);
     vkDestroyShaderModule(context.device, vertexShaderModule, context.allocation_callbacks);
@@ -687,7 +691,7 @@ int main(int argc, char *argv[]) {
     vkUpdateDescriptorSets(context.device, 1, &writeDescriptorSet, 0, NULL);
 
     // Create framebuffers
-    // TODO(cort): is it undesirable to create a framebuffer for every swap chain image,
+    // TODO(cort): is it desirable to create a framebuffer for every swap chain image,
     // to decouple the majority of application command buffers from the present queue?
     // Or is that an unnecessary image copy?
     VkImageView attachmentImageViews[kAttachmentCount] = {};
@@ -822,7 +826,7 @@ int main(int argc, char *argv[]) {
         vkCmdEndRenderPass(context.command_buffer_primary);
         VULKAN_CHECK( vkEndCommandBuffer(context.command_buffer_primary) );
         VkFence nullFence = VK_NULL_HANDLE;
-        const VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        const VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_TRANSFER_BIT;
         VkSubmitInfo submitInfoDraw = {};
         submitInfoDraw.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfoDraw.pNext = NULL;
