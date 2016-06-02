@@ -821,7 +821,7 @@ int main(int argc, char *argv[]) {
         vkCmdBindVertexBuffers(context.command_buffer_primary, kVertexBufferBindId,1, &bufferVertices, vertexBufferOffsets);
         const VkDeviceSize indexBufferOffset = 0;
         vkCmdBindIndexBuffer(context.command_buffer_primary, bufferIndices, indexBufferOffset, indexType);
-        vkCmdDrawIndexed(context.command_buffer_primary, 3, 1, 6,0,0);
+        vkCmdDrawIndexed(context.command_buffer_primary, 6, 1, 0,0,0);
 
         vkCmdEndRenderPass(context.command_buffer_primary);
         VULKAN_CHECK( vkEndCommandBuffer(context.command_buffer_primary) );
