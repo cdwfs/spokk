@@ -1,3 +1,6 @@
 [submodule "glfw"]
 	path = glfw
 	url = git@github.com:glfw/glfw
+[submodule "mathfu"]
+	path = mathfu
+	url = https://github.com/google/mathfu

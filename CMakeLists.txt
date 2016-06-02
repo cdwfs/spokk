@@ -75,6 +75,11 @@ cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${headers}" "${sources}")
 add_executable(${exe_name} ${sources} ${shaders} ${headers})
 target_link_libraries(${exe_name} glfw ${GLFW_LIBRARIES} ${libs})
 
+set(mathfu_build_benchmarks OFF CACHE BOOL "")
+set(mathfu_build_tests OFF CACHE BOOL "")
+add_subdirectory(mathfu mathfu)
+mathfu_configure_flags(vulkswagen)
+
 ADD_CUSTOM_COMMAND(
     TARGET ${exe_name} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
