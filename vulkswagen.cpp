@@ -294,19 +294,19 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK( vkBindBufferMemory(context.device, bufferIndices, bufferIndicesMemory, bufferIndicesMemoryOffset) );
 
     // Create vertex buffer
-    const float vertices[] = {
-        //0,1,2: position  4,5,6: texcoord
-        -0.75f, -0.75f, 1.00f,	0.0f, 0.0f, 0.0f,
-         0.75f, -0.75f, 1.00f,	1.0f, 0.0f, 0.25f,
-        -0.75f,  0.75f, 1.00f,	0.0f, 1.0f, 0.5f,
-         0.75f,  0.75f, 1.00f,	1.0f, 1.0f, 0.75f,
+    const float quadVertices[] = {
+        //0,1,2: position  3,4,5: normal, 4,5,6: texcoord
+        -0.75f,-0.75f, 1.00f,	0.0f, 0.0f, 1.0f,   0.0f, 0.0f, 0.0f,
+         0.75f,-0.75f, 1.00f,	0.0f, 0.0f, 1.0f,   1.0f, 0.0f, 0.25f,
+        -0.75f, 0.75f, 1.00f,	0.0f, 0.0f, 1.0f,   0.0f, 1.0f, 0.5f,
+         0.75f, 0.75f, 1.00f,	0.0f, 0.0f, 1.0f,   1.0f, 1.0f, 0.75f,
     };
     const uint32_t kVertexBufferBindId = 0;
     VkVertexInputBindingDescription vertexInputBindingDescription = {};
     vertexInputBindingDescription.binding = kVertexBufferBindId;
-    vertexInputBindingDescription.stride = 3*sizeof(float) + 3*sizeof(float);
+    vertexInputBindingDescription.stride = 3*sizeof(float) + 3*sizeof(float) + 3*sizeof(float);
     vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    VkVertexInputAttributeDescription vertexInputAttributeDescriptions[2] = {};
+    VkVertexInputAttributeDescription vertexInputAttributeDescriptions[3] = {};
     vertexInputAttributeDescriptions[0].binding = kVertexBufferBindId;
     vertexInputAttributeDescriptions[0].location = 0;
     vertexInputAttributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -315,10 +315,14 @@ int main(int argc, char *argv[]) {
     vertexInputAttributeDescriptions[1].location = 1;
     vertexInputAttributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
     vertexInputAttributeDescriptions[1].offset = 3*sizeof(float);
+    vertexInputAttributeDescriptions[2].binding = kVertexBufferBindId;
+    vertexInputAttributeDescriptions[2].location = 2;
+    vertexInputAttributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+    vertexInputAttributeDescriptions[2].offset = 6*sizeof(float);
     VkBufferCreateInfo bufferCreateInfoVertices = {};
     bufferCreateInfoVertices.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferCreateInfoVertices.pNext = NULL;
-    bufferCreateInfoVertices.size = sizeof(vertices);
+    bufferCreateInfoVertices.size = sizeof(quadVertices);
     bufferCreateInfoVertices.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     bufferCreateInfoVertices.flags = 0;
     VkBuffer bufferVertices = VK_NULL_HANDLE;
@@ -341,7 +345,7 @@ int main(int argc, char *argv[]) {
     void *bufferVerticesMapped = NULL;
     VULKAN_CHECK( vkMapMemory(context.device, bufferVerticesMemory, bufferVerticesMemoryOffset,
         memoryAllocateInfoVertices.allocationSize, bufferVerticesMemoryMapFlags, &bufferVerticesMapped) );
-    memcpy(bufferVerticesMapped, vertices, sizeof(vertices));
+    memcpy(bufferVerticesMapped, quadVertices, sizeof(quadVertices));
     //vkUnmapMemory(device, bufferVerticesMapped); // TODO: see if validation layer catches this error
     vkUnmapMemory(context.device, bufferVerticesMemory);
     VULKAN_CHECK( vkBindBufferMemory(context.device, bufferVertices, bufferVerticesMemory, bufferVerticesMemoryOffset) );
