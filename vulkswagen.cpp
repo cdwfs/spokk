@@ -256,6 +256,43 @@ int main(int argc, char *argv[]) {
     stbvk_set_image_layout(context.command_buffer_primary, imageDepth, depthSubresourceRange,
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0);
 
+    // Create index buffer
+    VkIndexType indexType = VK_INDEX_TYPE_UINT32;
+    const uint32_t quadIndices[] = {
+        0,1,2,
+        2,1,3,
+    };
+    VkBufferCreateInfo bufferCreateInfoIndices = {};
+    bufferCreateInfoIndices.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferCreateInfoIndices.pNext = NULL;
+    bufferCreateInfoIndices.size = sizeof(quadIndices);
+    bufferCreateInfoIndices.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    bufferCreateInfoIndices.flags = 0;
+    VkBuffer bufferIndices = VK_NULL_HANDLE;
+    VULKAN_CHECK( vkCreateBuffer(context.device, &bufferCreateInfoIndices, context.allocation_callbacks, &bufferIndices) );
+    VkMemoryRequirements memoryRequirementsIndices;
+    vkGetBufferMemoryRequirements(context.device, bufferIndices, &memoryRequirementsIndices);
+    VkMemoryAllocateInfo memoryAllocateInfoIndices = {};
+    memoryAllocateInfoIndices.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memoryAllocateInfoIndices.pNext = NULL;
+    memoryAllocateInfoIndices.allocationSize = memoryRequirementsIndices.size;
+    memoryAllocateInfoIndices.memoryTypeIndex = 0;
+    VkBool32 foundMemoryTypeIndices = getMemoryTypeFromProperties(&context.physical_device_memory_properties,
+        memoryRequirementsIndices.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &memoryAllocateInfoIndices.memoryTypeIndex);
+    assert(foundMemoryTypeIndices);
+    VkDeviceMemory bufferIndicesMemory = VK_NULL_HANDLE;
+    VULKAN_CHECK( vkAllocateMemory(context.device, &memoryAllocateInfoIndices, context.allocation_callbacks, &bufferIndicesMemory) );
+    VkDeviceSize bufferIndicesMemoryOffset = 0;
+    VkMemoryMapFlags bufferIndicesMemoryMapFlags = 0;
+    void *bufferIndicesMapped = NULL;
+    VULKAN_CHECK( vkMapMemory(context.device, bufferIndicesMemory, bufferIndicesMemoryOffset,
+        memoryAllocateInfoIndices.allocationSize, bufferIndicesMemoryMapFlags, &bufferIndicesMapped) );
+    memcpy(bufferIndicesMapped, quadIndices, sizeof(quadIndices));
+    //vkUnmapMemory(device, bufferIndicesMapped); // TODO: see if validation layer catches this error
+    vkUnmapMemory(context.device, bufferIndicesMemory);
+    VULKAN_CHECK( vkBindBufferMemory(context.device, bufferIndices, bufferIndicesMemory, bufferIndicesMemoryOffset) );
+
     // Create vertex buffer
     const float vertices[] = {
         //0,1,2: position  4,5,6: texcoord
@@ -516,7 +553,7 @@ int main(int argc, char *argv[]) {
     pipelineInputAssemblyStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     pipelineInputAssemblyStateCreateInfo.pNext = NULL;
     pipelineInputAssemblyStateCreateInfo.flags = 0;
-    pipelineInputAssemblyStateCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+    pipelineInputAssemblyStateCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     VkPipelineRasterizationStateCreateInfo pipelineRasterizationStateCreateInfo = {};
     pipelineRasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     pipelineRasterizationStateCreateInfo.pNext = NULL;
@@ -774,7 +811,9 @@ int main(int argc, char *argv[]) {
         vkCmdSetScissor(context.command_buffer_primary, 0,1, &scissorRect);
         const VkDeviceSize vertexBufferOffsets[1] = {};
         vkCmdBindVertexBuffers(context.command_buffer_primary, kVertexBufferBindId,1, &bufferVertices, vertexBufferOffsets);
-        vkCmdDraw(context.command_buffer_primary, 4,1,0,0);
+        const VkDeviceSize indexBufferOffset = 0;
+        vkCmdBindIndexBuffer(context.command_buffer_primary, bufferIndices, indexBufferOffset, indexType);
+        vkCmdDrawIndexed(context.command_buffer_primary, 3, 1, 6,0,0);
 
         vkCmdEndRenderPass(context.command_buffer_primary);
         VULKAN_CHECK( vkEndCommandBuffer(context.command_buffer_primary) );
@@ -829,6 +868,9 @@ int main(int argc, char *argv[]) {
 
     vkFreeMemory(context.device, bufferVerticesMemory, context.allocation_callbacks);
     vkDestroyBuffer(context.device, bufferVertices, context.allocation_callbacks);
+
+    vkFreeMemory(context.device, bufferIndicesMemory, context.allocation_callbacks);
+    vkDestroyBuffer(context.device, bufferIndices, context.allocation_callbacks);
 
     vkDestroyDescriptorSetLayout(context.device, descriptorSetLayout, context.allocation_callbacks);
     vkDestroyDescriptorPool(context.device, descriptorPool, context.allocation_callbacks);
