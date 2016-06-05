@@ -396,75 +396,6 @@ int main(int argc, char *argv[]) {
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     VULKAN_CHECK( vkCreatePipelineLayout(context.device, &pipelineLayoutCreateInfo, context.allocation_callbacks, &pipelineLayout) );
 
-    // Create render pass
-    enum
-    {
-        kColorAttachmentIndex = 0,
-        kDepthAttachmentIndex = 1,
-        kTextureAttachmentIndex = 2,
-        kAttachmentCount
-    };
-    VkAttachmentDescription attachmentDescriptions[kAttachmentCount] = {};
-    attachmentDescriptions[kColorAttachmentIndex].flags = 0;
-    attachmentDescriptions[kColorAttachmentIndex].format = context.swapchain_surface_format.format; // TODO(cort): does this NEED to match the swapchain format?
-    attachmentDescriptions[kColorAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachmentDescriptions[kColorAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachmentDescriptions[kColorAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachmentDescriptions[kColorAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachmentDescriptions[kColorAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescriptions[kColorAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachmentDescriptions[kColorAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    attachmentDescriptions[kDepthAttachmentIndex].flags = 0;
-    attachmentDescriptions[kDepthAttachmentIndex].format = surfaceDepthFormat;
-    attachmentDescriptions[kDepthAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachmentDescriptions[kDepthAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachmentDescriptions[kDepthAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescriptions[kDepthAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachmentDescriptions[kDepthAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescriptions[kDepthAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    attachmentDescriptions[kDepthAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    attachmentDescriptions[kTextureAttachmentIndex].flags = 0;
-    attachmentDescriptions[kTextureAttachmentIndex].format = VK_FORMAT_R8G8B8A8_UNORM;//surfaceTextureFormat;
-    attachmentDescriptions[kTextureAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachmentDescriptions[kTextureAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    attachmentDescriptions[kTextureAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachmentDescriptions[kTextureAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachmentDescriptions[kTextureAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescriptions[kTextureAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    attachmentDescriptions[kTextureAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    VkAttachmentReference attachmentReferenceColor = {};
-    attachmentReferenceColor.attachment = kColorAttachmentIndex;
-    attachmentReferenceColor.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    VkAttachmentReference attachmentReferenceDepth = {};
-    attachmentReferenceDepth.attachment = kDepthAttachmentIndex;
-    attachmentReferenceDepth.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    VkAttachmentReference attachmentReferenceTexture = {};
-    attachmentReferenceTexture.attachment = kTextureAttachmentIndex;
-    attachmentReferenceTexture.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    VkSubpassDescription subpassDescription = {};
-    subpassDescription.flags = 0;
-    subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpassDescription.inputAttachmentCount = 1;
-    subpassDescription.pInputAttachments = &attachmentReferenceTexture;
-    subpassDescription.colorAttachmentCount = 1;
-    subpassDescription.pColorAttachments = &attachmentReferenceColor;
-    subpassDescription.pResolveAttachments = NULL;
-    subpassDescription.pDepthStencilAttachment = &attachmentReferenceDepth;
-    subpassDescription.preserveAttachmentCount = 0;
-    subpassDescription.pPreserveAttachments = NULL;
-    VkRenderPassCreateInfo renderPassCreateInfo = {};
-    renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassCreateInfo.pNext = NULL;
-    renderPassCreateInfo.flags = 0;
-    renderPassCreateInfo.attachmentCount = sizeof(attachmentDescriptions) / sizeof(attachmentDescriptions[0]);
-    renderPassCreateInfo.pAttachments = attachmentDescriptions;
-    renderPassCreateInfo.subpassCount = 1;
-    renderPassCreateInfo.pSubpasses = &subpassDescription;
-    renderPassCreateInfo.dependencyCount = 0;
-    renderPassCreateInfo.pDependencies = NULL;
-    VkRenderPass renderPass = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreateRenderPass(context.device, &renderPassCreateInfo, context.allocation_callbacks, &renderPass) );
-
     // Load shaders
     VkShaderModule vertexShaderModule = stbvk_load_shader(&context, "tri.vert.spv");
     assert(vertexShaderModule != VK_NULL_HANDLE);
@@ -544,6 +475,99 @@ int main(int argc, char *argv[]) {
         stbi_image_free(pixels);
         VULKAN_CHECK( stbvk_load_image_subresource(&context, &texture_image, subresource, subresource_layout, padded_pixels) );
         free(padded_pixels);
+    }
+
+    // Create render pass
+    enum
+    {
+        kColorAttachmentIndex = 0,
+        kDepthAttachmentIndex = 1,
+        kTextureAttachmentIndex = 2,
+        kAttachmentCount
+    };
+    VkAttachmentDescription attachmentDescriptions[kAttachmentCount] = {};
+    attachmentDescriptions[kColorAttachmentIndex].flags = 0;
+    attachmentDescriptions[kColorAttachmentIndex].format = context.swapchain_surface_format.format; // TODO(cort): does this NEED to match the swapchain format?
+    attachmentDescriptions[kColorAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachmentDescriptions[kColorAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachmentDescriptions[kColorAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachmentDescriptions[kColorAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachmentDescriptions[kColorAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachmentDescriptions[kColorAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachmentDescriptions[kColorAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    attachmentDescriptions[kDepthAttachmentIndex].flags = 0;
+    attachmentDescriptions[kDepthAttachmentIndex].format = surfaceDepthFormat;
+    attachmentDescriptions[kDepthAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachmentDescriptions[kDepthAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachmentDescriptions[kDepthAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachmentDescriptions[kDepthAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachmentDescriptions[kDepthAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachmentDescriptions[kDepthAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachmentDescriptions[kDepthAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachmentDescriptions[kTextureAttachmentIndex].flags = 0;
+    attachmentDescriptions[kTextureAttachmentIndex].format = VK_FORMAT_R8G8B8A8_UNORM;//surfaceTextureFormat;
+    attachmentDescriptions[kTextureAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachmentDescriptions[kTextureAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    attachmentDescriptions[kTextureAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachmentDescriptions[kTextureAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachmentDescriptions[kTextureAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachmentDescriptions[kTextureAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    attachmentDescriptions[kTextureAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    VkAttachmentReference attachmentReferenceColor = {};
+    attachmentReferenceColor.attachment = kColorAttachmentIndex;
+    attachmentReferenceColor.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference attachmentReferenceDepth = {};
+    attachmentReferenceDepth.attachment = kDepthAttachmentIndex;
+    attachmentReferenceDepth.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference attachmentReferenceTexture = {};
+    attachmentReferenceTexture.attachment = kTextureAttachmentIndex;
+    attachmentReferenceTexture.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    VkSubpassDescription subpassDescription = {};
+    subpassDescription.flags = 0;
+    subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpassDescription.inputAttachmentCount = 1;
+    subpassDescription.pInputAttachments = &attachmentReferenceTexture;
+    subpassDescription.colorAttachmentCount = 1;
+    subpassDescription.pColorAttachments = &attachmentReferenceColor;
+    subpassDescription.pResolveAttachments = NULL;
+    subpassDescription.pDepthStencilAttachment = &attachmentReferenceDepth;
+    subpassDescription.preserveAttachmentCount = 0;
+    subpassDescription.pPreserveAttachments = NULL;
+    VkRenderPassCreateInfo renderPassCreateInfo = {};
+    renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassCreateInfo.pNext = NULL;
+    renderPassCreateInfo.flags = 0;
+    renderPassCreateInfo.attachmentCount = sizeof(attachmentDescriptions) / sizeof(attachmentDescriptions[0]);
+    renderPassCreateInfo.pAttachments = attachmentDescriptions;
+    renderPassCreateInfo.subpassCount = 1;
+    renderPassCreateInfo.pSubpasses = &subpassDescription;
+    renderPassCreateInfo.dependencyCount = 0;
+    renderPassCreateInfo.pDependencies = NULL;
+    VkRenderPass renderPass = VK_NULL_HANDLE;
+    VULKAN_CHECK( vkCreateRenderPass(context.device, &renderPassCreateInfo, context.allocation_callbacks, &renderPass) );
+
+    // Create framebuffers
+    // TODO(cort): is it desirable to create a framebuffer for every swap chain image,
+    // to decouple the majority of application command buffers from the present queue?
+    // Or is that an unnecessary image copy?
+    VkImageView attachmentImageViews[kAttachmentCount] = {};
+    attachmentImageViews[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below;
+    attachmentImageViews[kDepthAttachmentIndex] = imageDepthView;
+    attachmentImageViews[kTextureAttachmentIndex] = texture_image.image_view;
+    VkFramebufferCreateInfo framebufferCreateInfo = {};
+    framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    framebufferCreateInfo.pNext = NULL;
+    framebufferCreateInfo.flags = 0;
+    framebufferCreateInfo.renderPass = renderPass;
+    framebufferCreateInfo.attachmentCount = sizeof(attachmentImageViews) / sizeof(attachmentImageViews[0]);
+    framebufferCreateInfo.pAttachments = attachmentImageViews;
+    framebufferCreateInfo.width = kWindowWidthDefault;
+    framebufferCreateInfo.height = kWindowHeightDefault;
+    framebufferCreateInfo.layers = 1;
+    VkFramebuffer *framebuffers = (VkFramebuffer*)malloc(context.swapchain_image_count * sizeof(VkFramebuffer));
+    for(uint32_t iFB=0; iFB<context.swapchain_image_count; iFB += 1) {
+        attachmentImageViews[kColorAttachmentIndex] = context.swapchain_image_views[iFB];
+        VULKAN_CHECK( vkCreateFramebuffer(context.device, &framebufferCreateInfo, context.allocation_callbacks, &framebuffers[iFB]) );
     }
 
     // Create Vulkan pipeline & graphics state
@@ -689,30 +713,6 @@ int main(int argc, char *argv[]) {
     writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     writeDescriptorSet.pImageInfo = descriptorImageInfos;
     vkUpdateDescriptorSets(context.device, 1, &writeDescriptorSet, 0, NULL);
-
-    // Create framebuffers
-    // TODO(cort): is it desirable to create a framebuffer for every swap chain image,
-    // to decouple the majority of application command buffers from the present queue?
-    // Or is that an unnecessary image copy?
-    VkImageView attachmentImageViews[kAttachmentCount] = {};
-    attachmentImageViews[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below;
-    attachmentImageViews[kDepthAttachmentIndex] = imageDepthView;
-    attachmentImageViews[kTextureAttachmentIndex] = texture_image.image_view;
-    VkFramebufferCreateInfo framebufferCreateInfo = {};
-    framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    framebufferCreateInfo.pNext = NULL;
-    framebufferCreateInfo.flags = 0;
-    framebufferCreateInfo.renderPass = renderPass;
-    framebufferCreateInfo.attachmentCount = sizeof(attachmentImageViews) / sizeof(attachmentImageViews[0]);
-    framebufferCreateInfo.pAttachments = attachmentImageViews;
-    framebufferCreateInfo.width = kWindowWidthDefault;
-    framebufferCreateInfo.height = kWindowHeightDefault;
-    framebufferCreateInfo.layers = 1;
-    VkFramebuffer *framebuffers = (VkFramebuffer*)malloc(context.swapchain_image_count * sizeof(VkFramebuffer));
-    for(uint32_t iFB=0; iFB<context.swapchain_image_count; iFB += 1) {
-        attachmentImageViews[kColorAttachmentIndex] = context.swapchain_image_views[iFB];
-        VULKAN_CHECK( vkCreateFramebuffer(context.device, &framebufferCreateInfo, context.allocation_callbacks, &framebuffers[iFB]) );
-    }
 
     // Submit the setup command buffer
     VULKAN_CHECK( vkEndCommandBuffer(context.command_buffer_primary) );
