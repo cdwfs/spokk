@@ -30,17 +30,23 @@
 #extension GL_ARB_shading_language_420pack : enable
 layout (location = 0) in vec4 pos;
 layout (location = 1) in vec3 normal;
-layout (location = 2) in vec3 attr;
+layout (location = 2) in vec2 attr;
 layout (location = 0) out vec2 texcoord;
+layout (location = 1) out vec3 norm;
 
 layout (push_constant) uniform PushConsts {
-	vec4 time;
+    vec4 time;
+    mat4 o2w;
+    mat4 proj;
+    mat3 n2w;
 } pushConsts;
 
 void main() {
-   texcoord = attr.xy;
-
-   vec4 outpos = pos;
-   outpos.x += 0.1 * sin(pushConsts.time.x + attr.z) + 0.05*sin(6*pushConsts.time.x + attr.z*3);
-   gl_Position = outpos;
+    texcoord = attr;
+    norm = pushConsts.n2w * normal;
+    
+    vec4 outpos = pos;
+    outpos = pushConsts.proj * pushConsts.o2w * pos ;
+    //outpos.x += 0.1 * sin(pushConsts.time.x + attr.z) + 0.05*sin(6*pushConsts.time.x + attr.z*3);
+    gl_Position = outpos;
 }

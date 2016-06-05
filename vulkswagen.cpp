@@ -31,6 +31,9 @@
 #define STB_VULKAN_IMPLEMENTATION
 #include "stb_vulkan.h"
 
+#include <mathfu/vector.h>
+#include <mathfu/glsl_mappings.h>
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -224,14 +227,18 @@ int main(int argc, char *argv[]) {
 
     // Create index buffer
     VkIndexType indexType = VK_INDEX_TYPE_UINT32;
-    const uint32_t quadIndices[] = {
-        0,1,2,
-        2,1,3,
+    const uint32_t cubeIndices[] = {
+        0,1,2,      2,1,3,
+        4,5,6,      6,5,7,
+        8,9,10,     10,9,11,
+        12,13,14,   14,13,15,
+        16,17,18,   18,17,19,
+        20,21,22,   22,21,23,
     };
     VkBufferCreateInfo bufferCreateInfoIndices = {};
     bufferCreateInfoIndices.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferCreateInfoIndices.pNext = NULL;
-    bufferCreateInfoIndices.size = sizeof(quadIndices);
+    bufferCreateInfoIndices.size = sizeof(cubeIndices);
     bufferCreateInfoIndices.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
     bufferCreateInfoIndices.flags = 0;
     VkBuffer bufferIndices = VK_NULL_HANDLE;
@@ -254,41 +261,53 @@ int main(int argc, char *argv[]) {
     void *bufferIndicesMapped = NULL;
     VULKAN_CHECK( vkMapMemory(context.device, bufferIndicesMemory, bufferIndicesMemoryOffset,
         memoryAllocateInfoIndices.allocationSize, bufferIndicesMemoryMapFlags, &bufferIndicesMapped) );
-    memcpy(bufferIndicesMapped, quadIndices, sizeof(quadIndices));
+    memcpy(bufferIndicesMapped, cubeIndices, sizeof(cubeIndices));
     //vkUnmapMemory(device, bufferIndicesMapped); // TODO: see if validation layer catches this error
     vkUnmapMemory(context.device, bufferIndicesMemory);
     VULKAN_CHECK( vkBindBufferMemory(context.device, bufferIndices, bufferIndicesMemory, bufferIndicesMemoryOffset) );
 
     // Create vertex buffer
-    const float quadVertices[] = {
-        //0,1,2: position  3,4,5: normal, 4,5,6: texcoord
-        -0.75f,-0.75f, 1.00f,	0.0f, 0.0f, 1.0f,   0.0f, 0.0f, 0.0f,
-         0.75f,-0.75f, 1.00f,	0.0f, 0.0f, 1.0f,   1.0f, 0.0f, 0.25f,
-        -0.75f, 0.75f, 1.00f,	0.0f, 0.0f, 1.0f,   0.0f, 1.0f, 0.5f,
-         0.75f, 0.75f, 1.00f,	0.0f, 0.0f, 1.0f,   1.0f, 1.0f, 0.75f,
+    typedef struct 
+    {
+        float pos[3];
+        float norm[3];
+        float texcoord[2];
+    } Vertex;
+    const Vertex cubeVertices[] = {
+        { {+1,-1,+1},   {+1,+0,+0},   {+0,+0} },   // +X
+        { {+1,-1,-1},   {+1,+0,+0},   {+1,+0} },
+        { {+1,+1,+1},   {+1,+0,+0},   {+0,+1} },
+        { {+1,+1,-1},   {+1,+0,+0},   {+1,+1} },
+
+        { {-1,-1,-1},   {-1,+0,+0},   {+0,+0} },   // -X
+        { {-1,-1,+1},   {-1,+0,+0},   {+1,+0} },
+        { {-1,+1,-1},   {-1,+0,+0},   {+0,+1} },
+        { {-1,+1,+1},   {-1,+0,+0},   {+1,+1} },
+
+        { {-1,+1,+1},   {+0,+1,+0},   {+0,+0} },   // +Y
+        { {+1,+1,+1},   {+0,+1,+0},   {+1,+0} },
+        { {-1,+1,-1},   {+0,+1,+0},   {+0,+1} },
+        { {+1,+1,-1},   {+0,+1,+0},   {+1,+1} },
+
+        { {-1,-1,-1},   {+0,-1,+0},   {+0,+0} },   // -Y
+        { {+1,-1,-1},   {+0,-1,+0},   {+1,+0} },
+        { {-1,-1,+1},   {+0,-1,+0},   {+0,+1} },
+        { {+1,-1,+1},   {+0,-1,+0},   {+1,+1} },
+
+        { {-1,-1,+1},   {+0,+0,+1},   {+0,+0} },   // +Z
+        { {+1,-1,+1},   {+0,+0,+1},   {+1,+0} },
+        { {-1,+1,+1},   {+0,+0,+1},   {+0,+1} },
+        { {+1,+1,+1},   {+0,+0,+1},   {+1,+1} },
+
+        { {+1,-1,-1},   {+0,+0,-1},   {+0,+0} },   // -Z
+        { {-1,-1,-1},   {+0,+0,-1},   {+1,+0} },
+        { {+1,+1,-1},   {+0,+0,-1},   {+0,+1} },
+        { {-1,+1,-1},   {+0,+0,-1},   {+1,+1} },
     };
-    const uint32_t kVertexBufferBindId = 0;
-    VkVertexInputBindingDescription vertexInputBindingDescription = {};
-    vertexInputBindingDescription.binding = kVertexBufferBindId;
-    vertexInputBindingDescription.stride = 3*sizeof(float) + 3*sizeof(float) + 3*sizeof(float);
-    vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    VkVertexInputAttributeDescription vertexInputAttributeDescriptions[3] = {};
-    vertexInputAttributeDescriptions[0].binding = kVertexBufferBindId;
-    vertexInputAttributeDescriptions[0].location = 0;
-    vertexInputAttributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    vertexInputAttributeDescriptions[0].offset = 0;
-    vertexInputAttributeDescriptions[1].binding = kVertexBufferBindId;
-    vertexInputAttributeDescriptions[1].location = 1;
-    vertexInputAttributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    vertexInputAttributeDescriptions[1].offset = 3*sizeof(float);
-    vertexInputAttributeDescriptions[2].binding = kVertexBufferBindId;
-    vertexInputAttributeDescriptions[2].location = 2;
-    vertexInputAttributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
-    vertexInputAttributeDescriptions[2].offset = 6*sizeof(float);
     VkBufferCreateInfo bufferCreateInfoVertices = {};
     bufferCreateInfoVertices.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferCreateInfoVertices.pNext = NULL;
-    bufferCreateInfoVertices.size = sizeof(quadVertices);
+    bufferCreateInfoVertices.size = sizeof(cubeVertices);
     bufferCreateInfoVertices.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     bufferCreateInfoVertices.flags = 0;
     VkBuffer bufferVertices = VK_NULL_HANDLE;
@@ -311,10 +330,27 @@ int main(int argc, char *argv[]) {
     void *bufferVerticesMapped = NULL;
     VULKAN_CHECK( vkMapMemory(context.device, bufferVerticesMemory, bufferVerticesMemoryOffset,
         memoryAllocateInfoVertices.allocationSize, bufferVerticesMemoryMapFlags, &bufferVerticesMapped) );
-    memcpy(bufferVerticesMapped, quadVertices, sizeof(quadVertices));
-    //vkUnmapMemory(device, bufferVerticesMapped); // TODO: see if validation layer catches this error
+    memcpy(bufferVerticesMapped, cubeVertices, sizeof(cubeVertices));
     vkUnmapMemory(context.device, bufferVerticesMemory);
     VULKAN_CHECK( vkBindBufferMemory(context.device, bufferVertices, bufferVerticesMemory, bufferVerticesMemoryOffset) );
+    const uint32_t kVertexBufferBindId = 0;
+    VkVertexInputBindingDescription vertexInputBindingDescription = {};
+    vertexInputBindingDescription.binding = kVertexBufferBindId;
+    vertexInputBindingDescription.stride = sizeof(cubeVertices[0]);
+    vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    VkVertexInputAttributeDescription vertexInputAttributeDescriptions[3] = {};
+    vertexInputAttributeDescriptions[0].binding = kVertexBufferBindId;
+    vertexInputAttributeDescriptions[0].location = 0;
+    vertexInputAttributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    vertexInputAttributeDescriptions[0].offset = offsetof(Vertex, pos);
+    vertexInputAttributeDescriptions[1].binding = kVertexBufferBindId;
+    vertexInputAttributeDescriptions[1].location = 1;
+    vertexInputAttributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    vertexInputAttributeDescriptions[1].offset = offsetof(Vertex, norm);
+    vertexInputAttributeDescriptions[2].binding = kVertexBufferBindId;
+    vertexInputAttributeDescriptions[2].location = 2;
+    vertexInputAttributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+    vertexInputAttributeDescriptions[2].offset = offsetof(Vertex, texcoord);
     VkPipelineVertexInputStateCreateInfo pipelineVertexInputStateCreateInfo = {};
     pipelineVertexInputStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     pipelineVertexInputStateCreateInfo.pNext = NULL;
@@ -327,6 +363,9 @@ int main(int argc, char *argv[]) {
     // Create push constants
     struct {
         float time[4]; // .x=seconds, .yzw=???
+        mathfu::mat4 o2w;
+        mathfu::mat4 proj;
+        mathfu::mat3 n2w;
     } pushConstants = {};
     assert(sizeof(pushConstants) <= context.physical_device_properties.limits.maxPushConstantsSize);
     uint64_t counterStart = zomboClockTicks();
@@ -766,6 +805,21 @@ int main(int argc, char *argv[]) {
         vkCmdBindPipeline(context.command_buffer_primary, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineGraphics);
         vkCmdBindDescriptorSets(context.command_buffer_primary, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,1,&descriptorSet, 0,NULL);
         pushConstants.time[0] = (float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) );
+        mathfu::quat q = mathfu::quat::FromAngleAxis(pushConstants.time[0], mathfu::vec3(1,1,0));
+        pushConstants.o2w = mathfu::mat4::Identity()
+            * mathfu::mat4::FromTranslationVector( mathfu::vec3(0,0,-4.75f) )
+            * q.ToMatrix4()
+            //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
+            ;
+        pushConstants.proj = mathfu::mat4::Perspective(
+            (float)M_PI_4,
+            (float)kWindowWidthDefault/(float)kWindowHeightDefault,
+            0.001f, 100.0f);
+        pushConstants.n2w = mathfu::mat3::Identity()
+            * q.ToMatrix()
+            //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
+            ;
+        pushConstants.n2w = pushConstants.n2w.Inverse().Transpose();
         vkCmdPushConstants(context.command_buffer_primary, pipelineLayout, pushConstantRange.stageFlags,
             pushConstantRange.offset, pushConstantRange.size, &pushConstants);
         VkViewport viewport = {};
@@ -784,7 +838,9 @@ int main(int argc, char *argv[]) {
         vkCmdBindVertexBuffers(context.command_buffer_primary, kVertexBufferBindId,1, &bufferVertices, vertexBufferOffsets);
         const VkDeviceSize indexBufferOffset = 0;
         vkCmdBindIndexBuffer(context.command_buffer_primary, bufferIndices, indexBufferOffset, indexType);
-        vkCmdDrawIndexed(context.command_buffer_primary, 6, 1, 0,0,0);
+        const uint32_t indexCount = sizeof(cubeIndices) / sizeof(cubeIndices[0]);
+        const uint32_t instanceCount = 1;
+        vkCmdDrawIndexed(context.command_buffer_primary, indexCount, instanceCount, 0,0,0);
 
         vkCmdEndRenderPass(context.command_buffer_primary);
         VULKAN_CHECK( vkEndCommandBuffer(context.command_buffer_primary) );
