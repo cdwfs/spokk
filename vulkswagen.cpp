@@ -348,7 +348,7 @@ int main(int argc, char *argv[]) {
         float time[4]; // .x=seconds, .yzw=???
         mathfu::mat4 o2w;
         mathfu::mat4 proj;
-        mathfu::mat3 n2w;
+        mathfu::mat4 n2w;
     } pushConstants = {};
     assert(sizeof(pushConstants) <= context.physical_device_properties.limits.maxPushConstantsSize);
     uint64_t counterStart = zomboClockTicks();
@@ -642,8 +642,8 @@ int main(int argc, char *argv[]) {
             (float)M_PI_4,
             (float)kWindowWidthDefault/(float)kWindowHeightDefault,
             0.01f, 100.0f);
-        pushConstants.n2w = mathfu::mat3::Identity()
-            * q.ToMatrix()
+        pushConstants.n2w = mathfu::mat4::Identity()
+            * q.ToMatrix4()
             //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
             ;
         pushConstants.n2w = pushConstants.n2w.Inverse().Transpose();

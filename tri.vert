@@ -38,12 +38,16 @@ layout (push_constant) uniform PushConsts {
     vec4 time;
     mat4 o2w;
     mat4 proj;
-    mat3 n2w;
+    mat4 n2w;
 } pushConsts;
 
 void main() {
     texcoord = attr;
-    norm = pushConsts.n2w * normal;
+
+    // TODO(cort): figure out the appropriate packing/layout qualifier to pass a mathfu mat3
+    // directly into GLSL, eliminating the need for this mat4-to-mat3 typecast.
+    mat3 n2w = mat3(pushConsts.n2w);
+    norm = n2w * normal;
     
     vec4 outpos = pushConsts.proj * pushConsts.o2w * vec4(pos,1);
     gl_Position = outpos;
