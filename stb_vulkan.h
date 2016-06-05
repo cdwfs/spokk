@@ -76,7 +76,6 @@ extern "C" {
         VkQueue present_queue;
 
         VkCommandPool command_pool;
-        VkCommandBuffer command_buffer_primary;
 
         VkSwapchainKHR swapchain;
         uint32_t swapchain_image_count;
@@ -87,7 +86,6 @@ extern "C" {
 
         VkPhysicalDevice *all_physical_devices;
     } stbvk_context;
-
 
     typedef struct
     {
@@ -594,15 +592,6 @@ STBVKDEF VkResult stbvk_init_command_pool(stbvk_context_create_info const * /*cr
     command_pool_create_info.queueFamilyIndex = context->graphics_queue_family_index;
     STBVK__CHECK( vkCreateCommandPool(context->device, &command_pool_create_info, context->allocation_callbacks, &context->command_pool) );
 
-    // Allocate primary command buffer
-    VkCommandBufferAllocateInfo command_buffer_allocate_info = {};
-    command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    command_buffer_allocate_info.pNext = NULL;
-    command_buffer_allocate_info.commandPool = context->command_pool;
-    command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    command_buffer_allocate_info.commandBufferCount = 1;
-    STBVK__CHECK( vkAllocateCommandBuffers(context->device, &command_buffer_allocate_info, &context->command_buffer_primary) );
-
     return VK_SUCCESS;
 }
 
@@ -747,8 +736,6 @@ STBVKDEF void stbvk_destroy_context(stbvk_context *context)
     STBVK_FREE(context->swapchain_images);
     context->swapchain_images = NULL;
     vkDestroySwapchainKHR(context->device, context->swapchain, context->allocation_callbacks);
-
-    vkFreeCommandBuffers(context->device, context->command_pool, 1, &context->command_buffer_primary);
 
     vkDestroyCommandPool(context->device, context->command_pool, context->allocation_callbacks);
     context->command_pool = NULL;

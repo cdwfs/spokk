@@ -194,13 +194,23 @@ int main(int argc, char *argv[]) {
     stbvk_context context = {};
     my_stbvk_init_context(&contextCreateInfo, window, &context);
 
+    // Allocate command buffer
+    VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
+    commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    commandBufferAllocateInfo.pNext = NULL;
+    commandBufferAllocateInfo.commandPool = context.command_pool;
+    commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    commandBufferAllocateInfo.commandBufferCount = 1;
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    VULKAN_CHECK( vkAllocateCommandBuffers(context.device, &commandBufferAllocateInfo, &commandBuffer) );
+
     // Record the setup command buffer
     VkCommandBufferBeginInfo commandBufferBeginInfo = {};
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     commandBufferBeginInfo.pNext = NULL;
     commandBufferBeginInfo.flags = 0;
     commandBufferBeginInfo.pInheritanceInfo = NULL; // must be non-NULL for secondary command buffers
-    VULKAN_CHECK( vkBeginCommandBuffer(context.command_buffer_primary, &commandBufferBeginInfo) );
+    VULKAN_CHECK( vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo) );
 
     // Create depth buffer
     stbvk_image_create_info depth_image_create_info = {};
@@ -222,7 +232,7 @@ int main(int argc, char *argv[]) {
     depthSubresourceRange.levelCount = 1;
     depthSubresourceRange.baseArrayLayer = 0;
     depthSubresourceRange.layerCount = 1;
-    stbvk_set_image_layout(context.command_buffer_primary, depth_image.image, depthSubresourceRange,
+    stbvk_set_image_layout(commandBuffer, depth_image.image, depthSubresourceRange,
         depth_image_create_info.initial_layout, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0);
 
     // Create index buffer
@@ -717,7 +727,7 @@ int main(int argc, char *argv[]) {
     vkUpdateDescriptorSets(context.device, 1, &writeDescriptorSet, 0, NULL);
 
     // Submit the setup command buffer
-    VULKAN_CHECK( vkEndCommandBuffer(context.command_buffer_primary) );
+    VULKAN_CHECK( vkEndCommandBuffer(commandBuffer) );
     VkSubmitInfo submitInfoSetup = {};
     submitInfoSetup.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfoSetup.pNext = NULL;
@@ -725,7 +735,7 @@ int main(int argc, char *argv[]) {
     submitInfoSetup.pWaitSemaphores = NULL;
     submitInfoSetup.pWaitDstStageMask = NULL;
     submitInfoSetup.commandBufferCount = 1;
-    submitInfoSetup.pCommandBuffers = &context.command_buffer_primary;
+    submitInfoSetup.pCommandBuffers = &commandBuffer;
     submitInfoSetup.signalSemaphoreCount = 0;
     submitInfoSetup.pSignalSemaphores = NULL;
     VkFence submitFence = VK_NULL_HANDLE;
@@ -781,7 +791,7 @@ int main(int argc, char *argv[]) {
         cmdBufDrawBeginInfo.pNext = NULL;
         cmdBufDrawBeginInfo.flags = 0;
         cmdBufDrawBeginInfo.pInheritanceInfo = &cmdBufDrawInheritanceInfo;
-        VULKAN_CHECK( vkBeginCommandBuffer(context.command_buffer_primary, &cmdBufDrawBeginInfo) );
+        VULKAN_CHECK( vkBeginCommandBuffer(commandBuffer, &cmdBufDrawBeginInfo) );
 
         VkClearValue clearValues[2] = {};
         clearValues[0].color.float32[0] = (float)(frameIndex%256)/255.0f,
@@ -801,9 +811,9 @@ int main(int argc, char *argv[]) {
         renderPassBeginInfo.renderArea.extent.height = kWindowHeightDefault;
         renderPassBeginInfo.clearValueCount = 2;
         renderPassBeginInfo.pClearValues = clearValues;
-        vkCmdBeginRenderPass(context.command_buffer_primary, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-        vkCmdBindPipeline(context.command_buffer_primary, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineGraphics);
-        vkCmdBindDescriptorSets(context.command_buffer_primary, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,1,&descriptorSet, 0,NULL);
+        vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineGraphics);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,1,&descriptorSet, 0,NULL);
         pushConstants.time[0] = (float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) );
         mathfu::quat q = mathfu::quat::FromAngleAxis(pushConstants.time[0], mathfu::vec3(1,1,0));
         pushConstants.o2w = mathfu::mat4::Identity()
@@ -820,30 +830,30 @@ int main(int argc, char *argv[]) {
             //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
             ;
         pushConstants.n2w = pushConstants.n2w.Inverse().Transpose();
-        vkCmdPushConstants(context.command_buffer_primary, pipelineLayout, pushConstantRange.stageFlags,
+        vkCmdPushConstants(commandBuffer, pipelineLayout, pushConstantRange.stageFlags,
             pushConstantRange.offset, pushConstantRange.size, &pushConstants);
         VkViewport viewport = {};
         viewport.width  = (float)kWindowWidthDefault;
         viewport.height = (float)kWindowHeightDefault;
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
-        vkCmdSetViewport(context.command_buffer_primary, 0,1, &viewport);
+        vkCmdSetViewport(commandBuffer, 0,1, &viewport);
         VkRect2D scissorRect = {};
         scissorRect.extent.width  = kWindowWidthDefault;
         scissorRect.extent.height = kWindowHeightDefault;
         scissorRect.offset.x = 0;
         scissorRect.offset.y = 0;
-        vkCmdSetScissor(context.command_buffer_primary, 0,1, &scissorRect);
+        vkCmdSetScissor(commandBuffer, 0,1, &scissorRect);
         const VkDeviceSize vertexBufferOffsets[1] = {};
-        vkCmdBindVertexBuffers(context.command_buffer_primary, kVertexBufferBindId,1, &bufferVertices, vertexBufferOffsets);
+        vkCmdBindVertexBuffers(commandBuffer, kVertexBufferBindId,1, &bufferVertices, vertexBufferOffsets);
         const VkDeviceSize indexBufferOffset = 0;
-        vkCmdBindIndexBuffer(context.command_buffer_primary, bufferIndices, indexBufferOffset, indexType);
+        vkCmdBindIndexBuffer(commandBuffer, bufferIndices, indexBufferOffset, indexType);
         const uint32_t indexCount = sizeof(cubeIndices) / sizeof(cubeIndices[0]);
         const uint32_t instanceCount = 1;
-        vkCmdDrawIndexed(context.command_buffer_primary, indexCount, instanceCount, 0,0,0);
+        vkCmdDrawIndexed(commandBuffer, indexCount, instanceCount, 0,0,0);
 
-        vkCmdEndRenderPass(context.command_buffer_primary);
-        VULKAN_CHECK( vkEndCommandBuffer(context.command_buffer_primary) );
+        vkCmdEndRenderPass(commandBuffer);
+        VULKAN_CHECK( vkEndCommandBuffer(commandBuffer) );
         VkFence nullFence = VK_NULL_HANDLE;
         const VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_TRANSFER_BIT;
         VkSubmitInfo submitInfoDraw = {};
@@ -853,7 +863,7 @@ int main(int argc, char *argv[]) {
         submitInfoDraw.pWaitSemaphores = &swapchainImageReady;
         submitInfoDraw.pWaitDstStageMask = &pipelineStageFlags;
         submitInfoDraw.commandBufferCount = 1;
-        submitInfoDraw.pCommandBuffers = &context.command_buffer_primary;
+        submitInfoDraw.pCommandBuffers = &commandBuffer;
         submitInfoDraw.signalSemaphoreCount = 1;
         submitInfoDraw.pSignalSemaphores = &renderingComplete;
         VULKAN_CHECK( vkQueueSubmit(context.graphics_queue, 1, &submitInfoDraw, nullFence) );
@@ -907,6 +917,8 @@ int main(int argc, char *argv[]) {
 
     vkDestroyPipelineLayout(context.device, pipelineLayout, context.allocation_callbacks);
     vkDestroyPipeline(context.device, pipelineGraphics, context.allocation_callbacks);
+
+    vkFreeCommandBuffers(context.device, context.command_pool, 1, &commandBuffer);
 
     glfwTerminate();
     stbvk_destroy_context(&context);
