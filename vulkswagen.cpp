@@ -650,14 +650,6 @@ int main(int argc, char *argv[]) {
     pipelineMultisampleStateCreateInfo.pSampleMask = sampleMask;
     pipelineMultisampleStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
     pipelineMultisampleStateCreateInfo.sampleShadingEnable = VK_FALSE;
-    VkPipelineCacheCreateInfo pipelineCacheCreateInfo = {};
-    pipelineCacheCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-    pipelineCacheCreateInfo.pNext = NULL;
-    pipelineCacheCreateInfo.flags = 0;
-    pipelineCacheCreateInfo.initialDataSize = 0;
-    pipelineCacheCreateInfo.pInitialData = NULL;
-    VkPipelineCache pipelineCache = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreatePipelineCache(context.device, &pipelineCacheCreateInfo, context.allocation_callbacks, &pipelineCache) );
     VkPipelineShaderStageCreateInfo pipelineShaderStageCreateInfos[2] = {};
     pipelineShaderStageCreateInfos[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     pipelineShaderStageCreateInfos[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -684,12 +676,8 @@ int main(int argc, char *argv[]) {
     graphicsPipelineCreateInfo.renderPass = renderPass;
     graphicsPipelineCreateInfo.pDynamicState = &pipelineDynamicStateCreateInfo;
     VkPipeline pipelineGraphics = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreateGraphicsPipelines(context.device, pipelineCache, 1, &graphicsPipelineCreateInfo,
+    VULKAN_CHECK( vkCreateGraphicsPipelines(context.device, context.pipeline_cache, 1, &graphicsPipelineCreateInfo,
         context.allocation_callbacks, &pipelineGraphics) );
-    // These get destroyed now, I guess? The pipeline must keep a reference internally?
-    vkDestroyPipelineCache(context.device, pipelineCache, context.allocation_callbacks);
-    vkDestroyShaderModule(context.device, vertexShaderModule, context.allocation_callbacks);
-    vkDestroyShaderModule(context.device, fragmentShaderModule, context.allocation_callbacks);
 
     // Create Vulkan descriptor pool and descriptor set
     VkDescriptorPoolSize descriptorPoolSize = {};
@@ -911,6 +899,9 @@ int main(int argc, char *argv[]) {
     vkDestroyDescriptorPool(context.device, descriptorPool, context.allocation_callbacks);
 
     vkDestroyRenderPass(context.device, renderPass, context.allocation_callbacks);
+
+    vkDestroyShaderModule(context.device, vertexShaderModule, context.allocation_callbacks);
+    vkDestroyShaderModule(context.device, fragmentShaderModule, context.allocation_callbacks);
 
     stbvk_image_destroy(&context, &texture_image);
     vkDestroySampler(context.device, sampler, context.allocation_callbacks);

@@ -76,6 +76,7 @@ extern "C" {
         VkQueue present_queue;
 
         VkCommandPool command_pool;
+        VkPipelineCache pipeline_cache;
 
         VkSwapchainKHR swapchain;
         uint32_t swapchain_image_count;
@@ -579,6 +580,14 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
     STBVK_ASSERT(context->graphics_queue_family_properties.queueCount > 0);
     vkGetDeviceQueue(context->device, context->graphics_queue_family_index, 0, &context->graphics_queue);
 
+    VkPipelineCacheCreateInfo pipeline_cache_create_info = {};
+    pipeline_cache_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    pipeline_cache_create_info.pNext = NULL;
+    pipeline_cache_create_info.flags = 0;
+    pipeline_cache_create_info.initialDataSize = 0;
+    pipeline_cache_create_info.pInitialData = NULL;
+    STBVK__CHECK( vkCreatePipelineCache(context->device, &pipeline_cache_create_info, context->allocation_callbacks, &context->pipeline_cache) );
+
     return VK_SUCCESS;
 }
 
@@ -739,6 +748,8 @@ STBVKDEF void stbvk_destroy_context(stbvk_context *context)
 
     vkDestroyCommandPool(context->device, context->command_pool, context->allocation_callbacks);
     context->command_pool = NULL;
+
+    vkDestroyPipelineCache(context->device, context->pipeline_cache, context->allocation_callbacks);
 
     vkDestroyDevice(context->device, context->allocation_callbacks);
     context->device = VK_NULL_HANDLE;
