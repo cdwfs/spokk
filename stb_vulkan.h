@@ -112,13 +112,28 @@ extern "C" {
 
     typedef struct
     {
+        VkImageType image_type;
+        VkFormat format;
+        VkExtent3D extent;
+        uint32_t mip_levels;
+        uint32_t array_layers;
+        VkSampleCountFlagBits samples;
+        VkImageTiling tiling;
+        VkImageUsageFlags usage;
+        VkImageLayout final_layout; // not including the staging process
+        VkImageViewType view_type;
+    } stbvk_image_create_info;
+    typedef struct
+    {
+        stbvk_image_create_info create_info;
         VkImageCreateInfo image_create_info;
+        VkImageViewCreateInfo image_view_create_info;
         VkImage image;
         VkDeviceMemory device_memory;
         VkMemoryRequirements memory_requirements;
         VkImageView image_view; // Default view based on create_info; users can create additional views at their leisure.
     } stbvk_image;
-    STBVKDEF VkResult stbvk_create_image(stbvk_context const *context, VkImageCreateInfo const *image_create_info, stbvk_image *out_image);
+    STBVKDEF VkResult stbvk_create_image(stbvk_context const *context, stbvk_image_create_info const *create_info, stbvk_image *out_image);
     STBVKDEF VkResult stbvk_get_image_subresource_source_layout(stbvk_context const *context, stbvk_image const *image,
         VkImageSubresource subresource, VkSubresourceLayout *out_layout);
     STBVKDEF VkResult stbvk_load_image_subresource(stbvk_context const *context, stbvk_image const *image,
@@ -624,7 +639,7 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &device_present_mode_count, NULL) );
     VkPresentModeKHR *device_present_modes = (VkPresentModeKHR*)STBVK_MALLOC(device_present_mode_count * sizeof(VkPresentModeKHR));
     STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &device_present_mode_count, device_present_modes) );
-    VkPresentModeKHR swapchain_present_mode = VK_PRESENT_MODE_FIFO_KHR; // TODO(cort): make sure this mode is supported, or pick a different one?
+    VkPresentModeKHR swapchain_present_mode = VK_PRESENT_MODE_FIFO_KHR;
     STBVK_FREE(device_present_modes);
 
     uint32_t desired_swapchain_image_count = surface_capabilities.minImageCount+1;
@@ -670,7 +685,7 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     swapchain_create_info.imageUsage = swapchain_image_usage;
     swapchain_create_info.preTransform = swapchain_surface_transform;
     swapchain_create_info.compositeAlpha = composite_alpha;
-    swapchain_create_info.imageArrayLayers = 1; // TODO(cort): >1 for multiview or stereo
+    swapchain_create_info.imageArrayLayers = 1;
     swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapchain_create_info.queueFamilyIndexCount = 0;
     swapchain_create_info.pQueueFamilyIndices = NULL;
@@ -787,38 +802,59 @@ static VkBool32 get_memory_type_from_properties(VkPhysicalDeviceMemoryProperties
 
 
 
-STBVKDEF VkResult stbvk_create_image(stbvk_context const *context, VkImageCreateInfo const *image_create_info, stbvk_image *out_image)
+STBVKDEF VkResult stbvk_create_image(stbvk_context const *context, stbvk_image_create_info const *create_info, stbvk_image *out_image)
 {
     // TODO: take a bitfield of requested format features, and make sure the physical device supports them in tiled mode.
     VkFormatProperties texture_format_properties = {};
-    vkGetPhysicalDeviceFormatProperties(context->physical_device, image_create_info->format, &texture_format_properties);
+    vkGetPhysicalDeviceFormatProperties(context->physical_device, create_info->format, &texture_format_properties);
     if (0 == (texture_format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
-        fprintf(stderr, "ERROR: physical device does not support sampling format %d with optimal tiling.\n", image_create_info->format);
+        fprintf(stderr, "ERROR: physical device does not support sampling format %d with optimal tiling.\n", create_info->format);
         return VK_ERROR_FORMAT_NOT_SUPPORTED;
     }
 
+    VkImageCreateFlags image_create_flags = (VkImageCreateFlags)0;
+    if (create_info->view_type == VK_IMAGE_VIEW_TYPE_CUBE ||
+        create_info->view_type == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY)
+    {
+        image_create_flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    }
     VkImageFormatProperties image_format_properties = {};
     STBVK__CHECK( vkGetPhysicalDeviceImageFormatProperties(context->physical_device,
-        image_create_info->format, image_create_info->imageType, image_create_info->tiling,
-        image_create_info->usage, image_create_info->flags, &image_format_properties) );
-    if (image_create_info->arrayLayers   > image_format_properties.maxArrayLayers ||
-        image_create_info->mipLevels     > image_format_properties.maxMipLevels ||
-        image_create_info->extent.width  > image_format_properties.maxExtent.width ||
-        image_create_info->extent.height > image_format_properties.maxExtent.height ||
-        image_create_info->extent.depth  > image_format_properties.maxExtent.depth)
+        create_info->format, create_info->image_type, create_info->tiling,
+        create_info->usage, image_create_flags, &image_format_properties) );
+    if (create_info->array_layers  > image_format_properties.maxArrayLayers ||
+        create_info->mip_levels    > image_format_properties.maxMipLevels ||
+        create_info->extent.width  > image_format_properties.maxExtent.width ||
+        create_info->extent.height > image_format_properties.maxExtent.height ||
+        create_info->extent.depth  > image_format_properties.maxExtent.depth)
     {
         return VK_ERROR_INITIALIZATION_FAILED;
     }
-    if ( (VkSampleCountFlagBits)(image_create_info->samples & image_format_properties.sampleCounts) != image_create_info->samples )
+    if ( (VkSampleCountFlagBits)(create_info->samples & image_format_properties.sampleCounts) != create_info->samples )
     {
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
-    out_image->image_create_info = *image_create_info;
+    out_image->create_info = *create_info;
 
-    VkImageCreateInfo image_create_info_copy = *image_create_info;
-    image_create_info_copy.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    STBVK__CHECK( vkCreateImage(context->device, &image_create_info_copy, context->allocation_callbacks, &out_image->image) );
+    out_image->image_create_info = {};
+    out_image->image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    out_image->image_create_info.pNext = NULL;
+    out_image->image_create_info.flags = image_create_flags;
+    out_image->image_create_info.imageType = create_info->image_type;
+    out_image->image_create_info.format = create_info->format;
+    out_image->image_create_info.extent = create_info->extent;
+    out_image->image_create_info.mipLevels = create_info->mip_levels;
+    out_image->image_create_info.arrayLayers = create_info->array_layers;
+    out_image->image_create_info.samples = create_info->samples;
+    out_image->image_create_info.tiling = create_info->tiling;
+    out_image->image_create_info.usage = create_info->usage;
+    out_image->image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    out_image->image_create_info.queueFamilyIndexCount = 0;
+    out_image->image_create_info.pQueueFamilyIndices = NULL;
+    out_image->image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    STBVK__CHECK( vkCreateImage(context->device, &out_image->image_create_info, context->allocation_callbacks, &out_image->image) );
 
     vkGetImageMemoryRequirements(context->device, out_image->image, &out_image->memory_requirements);
     if (out_image->memory_requirements.size > image_format_properties.maxResourceSize)
@@ -842,25 +878,23 @@ STBVKDEF VkResult stbvk_create_image(stbvk_context const *context, VkImageCreate
     VkDeviceSize memory_offset = 0;
     STBVK__CHECK( vkBindImageMemory(context->device, out_image->image, out_image->device_memory, memory_offset) );
 
-    VkImageViewCreateInfo image_view_create_info = {};
-    image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    image_view_create_info.pNext = NULL;
-    image_view_create_info.flags = 0;
-    image_view_create_info.image = out_image->image;
-    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY; // TODO(cort): generalize!
-    image_view_create_info.format = image_create_info->format;
-    image_view_create_info.components = {};
-    image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-    image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-    image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-    image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-    image_view_create_info.subresourceRange = {};
-    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // TODO(cort): generalize?
-    image_view_create_info.subresourceRange.baseMipLevel = 0;
-    image_view_create_info.subresourceRange.levelCount = image_create_info->mipLevels;
-    image_view_create_info.subresourceRange.baseArrayLayer = 0;
-    image_view_create_info.subresourceRange.layerCount = image_create_info->arrayLayers;
-    STBVK__CHECK( vkCreateImageView(context->device, &image_view_create_info, context->allocation_callbacks, &out_image->image_view) );
+    out_image->image_view_create_info = {};
+    out_image->image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    out_image->image_view_create_info.pNext = NULL;
+    out_image->image_view_create_info.flags = 0;
+    out_image->image_view_create_info.image = out_image->image;
+    out_image->image_view_create_info.viewType = create_info->view_type;
+    out_image->image_view_create_info.format = create_info->format;
+    out_image->image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    out_image->image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    out_image->image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    out_image->image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+    out_image->image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // TODO(cort): generalize?
+    out_image->image_view_create_info.subresourceRange.baseMipLevel = 0;
+    out_image->image_view_create_info.subresourceRange.levelCount = create_info->mip_levels;
+    out_image->image_view_create_info.subresourceRange.baseArrayLayer = 0;
+    out_image->image_view_create_info.subresourceRange.layerCount = create_info->array_layers;
+    STBVK__CHECK( vkCreateImageView(context->device, &out_image->image_view_create_info, context->allocation_callbacks, &out_image->image_view) );
 
     return VK_SUCCESS;
 }
@@ -957,7 +991,7 @@ STBVKDEF VkResult stbvk_load_image_subresource(stbvk_context const *context, stb
     STBVK__CHECK( vkBeginCommandBuffer(cmd_buf_staging, &cmd_buf_begin_info) );
 
     VkImageSubresourceRange staging_image_subresource_range = {};
-    staging_image_subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    staging_image_subresource_range.aspectMask = image->image_view_create_info.subresourceRange.aspectMask;
     staging_image_subresource_range.baseMipLevel = 0;
     staging_image_subresource_range.levelCount = 1;
     staging_image_subresource_range.baseArrayLayer = 0;
@@ -965,7 +999,7 @@ STBVKDEF VkResult stbvk_load_image_subresource(stbvk_context const *context, stb
     stbvk_set_image_layout(cmd_buf_staging, staging_image, staging_image_subresource_range,
         VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0);
     VkImageSubresourceRange dst_image_subresource_range = {};
-    dst_image_subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    dst_image_subresource_range.aspectMask = image->image_view_create_info.subresourceRange.aspectMask;
     dst_image_subresource_range.baseMipLevel = subresource.mipLevel;
     dst_image_subresource_range.levelCount = 1;
     dst_image_subresource_range.baseArrayLayer = subresource.arrayLayer;
@@ -994,7 +1028,7 @@ STBVKDEF VkResult stbvk_load_image_subresource(stbvk_context const *context, stb
         image->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
 
     stbvk_set_image_layout(cmd_buf_staging, image->image, dst_image_subresource_range,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, image->image_create_info.initialLayout, 0);
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, image->create_info.final_layout, 0);
 
     STBVK__CHECK( vkEndCommandBuffer(cmd_buf_staging) );
     VkSubmitInfo submit_info = {};

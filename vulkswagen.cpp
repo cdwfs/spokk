@@ -430,24 +430,19 @@ int main(int argc, char *argv[]) {
         uint32_t *pixels = (uint32_t*)stbi_load("trevor/trevor-0.png", &texWidth, &texHeight, &texComp, 4);
         stbi_image_free(pixels);
     }
-    VkImageCreateInfo image_create_info = {};
-    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    image_create_info.pNext = NULL;
-    image_create_info.flags = 0;
-    image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    stbvk_image_create_info image_create_info = {};
+    image_create_info.image_type = VK_IMAGE_TYPE_2D;
     image_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
     image_create_info.extent.width = texWidth;
     image_create_info.extent.height = texHeight;
     image_create_info.extent.depth = 1;
-    image_create_info.mipLevels = 1;
-    image_create_info.arrayLayers = kTextureLayerCount;
+    image_create_info.mip_levels = 1;
+    image_create_info.array_layers = kTextureLayerCount;
     image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    image_create_info.queueFamilyIndexCount = 0;
-    image_create_info.pQueueFamilyIndices = NULL;
-    image_create_info.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    image_create_info.final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     stbvk_image texture_image = {};
     VULKAN_CHECK( stbvk_create_image(&context, &image_create_info, &texture_image) );
     for(int iLayer=0; iLayer<kTextureLayerCount; ++iLayer)
