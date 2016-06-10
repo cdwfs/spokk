@@ -212,7 +212,7 @@ int main(int argc, char *argv[]) {
     depth_image_create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
     depth_image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
     stbvk_image depth_image;
-    VULKAN_CHECK( stbvk_create_image(&context, &depth_image_create_info, &depth_image) );
+    VULKAN_CHECK( stbvk_image_create(&context, &depth_image_create_info, &depth_image) );
     VkImageSubresourceRange depthSubresourceRange = {};
     depthSubresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     depthSubresourceRange.baseMipLevel = 0;
@@ -409,7 +409,7 @@ int main(int argc, char *argv[]) {
     image_create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
     image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     stbvk_image texture_image = {};
-    VULKAN_CHECK( stbvk_create_image(&context, &image_create_info, &texture_image) );
+    VULKAN_CHECK( stbvk_image_create(&context, &image_create_info, &texture_image) );
     for(int iLayer=0; iLayer<kTextureLayerCount; ++iLayer)
     {
         VkImageSubresource subresource = {};
@@ -417,7 +417,7 @@ int main(int argc, char *argv[]) {
         subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         subresource.mipLevel = 0;
         VkSubresourceLayout subresource_layout = {};
-        VULKAN_CHECK( stbvk_get_image_subresource_source_layout(&context, &texture_image, subresource, &subresource_layout) );
+        VULKAN_CHECK( stbvk_image_get_subresource_source_layout(&context, &texture_image, subresource, &subresource_layout) );
         char imagePath[128];
         zomboSnprintf(imagePath, 127, "trevor/trevor-%u.png", iLayer);
         imagePath[127] = 0;
@@ -433,7 +433,7 @@ int main(int argc, char *argv[]) {
             }
         }
         stbi_image_free(pixels);
-        VULKAN_CHECK( stbvk_load_image_subresource(&context, &texture_image, subresource, subresource_layout,
+        VULKAN_CHECK( stbvk_image_load_subresource(&context, &texture_image, subresource, subresource_layout,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, padded_pixels) );
         free(padded_pixels);
     }
@@ -831,7 +831,7 @@ int main(int argc, char *argv[]) {
     }
     free(framebuffers);
 
-    stbvk_destroy_image(&context, &depth_image);
+    stbvk_image_destroy(&context, &depth_image);
 
     vkFreeMemory(context.device, bufferVerticesMemory, context.allocation_callbacks);
     vkDestroyBuffer(context.device, bufferVertices, context.allocation_callbacks);
@@ -844,8 +844,7 @@ int main(int argc, char *argv[]) {
 
     vkDestroyRenderPass(context.device, renderPass, context.allocation_callbacks);
 
-    stbvk_destroy_image(&context, &texture_image);
-
+    stbvk_image_destroy(&context, &texture_image);
     vkDestroySampler(context.device, sampler, context.allocation_callbacks);
 
     vkDestroyPipelineLayout(context.device, pipelineLayout, context.allocation_callbacks);

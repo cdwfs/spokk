@@ -133,16 +133,16 @@ extern "C" {
         VkMemoryRequirements memory_requirements;
         VkImageView image_view; // Default view based on create_info; users can create additional views at their leisure.
     } stbvk_image;
-    STBVKDEF VkResult stbvk_create_image(stbvk_context const *context, stbvk_image_create_info const *create_info, stbvk_image *out_image);
-    STBVKDEF VkResult stbvk_get_image_subresource_source_layout(stbvk_context const *context, stbvk_image const *image,
+    STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_create_info const *create_info, stbvk_image *out_image);
+    STBVKDEF VkResult stbvk_image_get_subresource_source_layout(stbvk_context const *context, stbvk_image const *image,
         VkImageSubresource subresource, VkSubresourceLayout *out_layout);
-    STBVKDEF VkResult stbvk_load_image_subresource(stbvk_context const *context, stbvk_image const *image,
+    STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, stbvk_image const *image,
         VkImageSubresource subresource, VkSubresourceLayout subresource_layout, VkImageLayout final_image_layout,
         void const *pixels);
-    STBVKDEF void stbvk_destroy_image(stbvk_context const *context, stbvk_image *image);
+    STBVKDEF void stbvk_image_destroy(stbvk_context const *context, stbvk_image *image);
 
-    STBVKDEF int stbvk_load_image_from_dds_file(stbvk_context const *context, char const *dds_file_path, stbvk_image *out_image);
-    STBVKDEF int stbvk_load_image_from_dds_buffer(stbvk_context const *context, void const *dds_file_data, size_t dds_file_size, stbvk_image *out_image);
+    STBVKDEF int stbvk_image_load_from_dds_file(stbvk_context const *context, char const *dds_file_path, stbvk_image *out_image);
+    STBVKDEF int stbvk_image_load_from_dds_buffer(stbvk_context const *context, void const *dds_file_data, size_t dds_file_size, stbvk_image *out_image);
 
     typedef struct
     {
@@ -806,7 +806,7 @@ static VkBool32 get_memory_type_from_properties(VkPhysicalDeviceMemoryProperties
 
 
 
-STBVKDEF VkResult stbvk_create_image(stbvk_context const *context, stbvk_image_create_info const *create_info, stbvk_image *out_image)
+STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_create_info const *create_info, stbvk_image *out_image)
 {
     // TODO: take a bitfield of requested format features, and make sure the physical device supports them in tiled mode.
     VkFormatProperties texture_format_properties = {};
@@ -936,7 +936,7 @@ static VkResult stbvk__create_staging_image(stbvk_context const *context, stbvk_
     return VK_SUCCESS;
 }
 
-STBVKDEF VkResult stbvk_get_image_subresource_source_layout(stbvk_context const *context, stbvk_image const *image, VkImageSubresource subresource,
+STBVKDEF VkResult stbvk_image_get_subresource_source_layout(stbvk_context const *context, stbvk_image const *image, VkImageSubresource subresource,
     VkSubresourceLayout *out_layout)
 {
     // TODO(cort): validate subresource against image bounds
@@ -947,7 +947,7 @@ STBVKDEF VkResult stbvk_get_image_subresource_source_layout(stbvk_context const 
     return VK_SUCCESS;
 }
 
-STBVKDEF VkResult stbvk_load_image_subresource(stbvk_context const *context, stbvk_image const *image,
+STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, stbvk_image const *image,
     VkImageSubresource subresource, VkSubresourceLayout subresource_layout, VkImageLayout final_image_layout,
     void const *pixels)
 {
@@ -1071,7 +1071,7 @@ STBVKDEF VkResult stbvk_load_image_subresource(stbvk_context const *context, stb
     return VK_SUCCESS;
 }
 
-STBVKDEF void stbvk_destroy_image(stbvk_context const *context, stbvk_image *image)
+STBVKDEF void stbvk_image_destroy(stbvk_context const *context, stbvk_image *image)
 {
     vkFreeMemory(context->device, image->device_memory, context->allocation_callbacks);
     vkDestroyImageView(context->device, image->image_view, context->allocation_callbacks);
@@ -1872,7 +1872,7 @@ static bool ContainsCompressedTexture(const DdsHeader *header, const DdsHeader10
 	return false;
 }
 
-STBVKDEF int stbvk_load_image_from_dds_file(stbvk_context const *context, char const *dds_file_path, stbvk_image *out_image)
+STBVKDEF int stbvk_image_load_from_dds_file(stbvk_context const *context, char const *dds_file_path, stbvk_image *out_image)
 {
 	FILE *dds_file = stbvk__fopen(dds_file_path, "rb");
 	if (dds_file == NULL)
@@ -1894,12 +1894,12 @@ STBVKDEF int stbvk_load_image_from_dds_file(stbvk_context const *context, char c
 	}
 	fclose(dds_file);
 
-    int retval = stbvk_load_image_from_dds_buffer(context, dds_file_data, dds_file_size, out_image);
+    int retval = stbvk_image_load_from_dds_buffer(context, dds_file_data, dds_file_size, out_image);
 	free(dds_file_data);
 	return retval;
 }
 
-STBVKDEF int stbvk_load_image_from_dds_buffer(stbvk_context const *context, void const *dds_file_data, size_t dds_file_size, stbvk_image *out_image)
+STBVKDEF int stbvk_image_load_from_dds_buffer(stbvk_context const *context, void const *dds_file_data, size_t dds_file_size, stbvk_image *out_image)
 {
 	const uint8_t *dds_bytes = (const uint8_t*)dds_file_data;
 
@@ -2075,7 +2075,7 @@ STBVKDEF int stbvk_load_image_from_dds_buffer(stbvk_context const *context, void
             create_info.image_type = VK_IMAGE_TYPE_2D;
             create_info.view_type = (create_info.array_layers > 1) ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
         }
-        stbvk_create_image(context, &create_info, out_image);
+        stbvk_image_create(context, &create_info, out_image);
 		for(uint32_t iMip=0; iMip<create_info.mip_levels; ++iMip)
 		{
 			uint32_t mip_width  = max(header->width >> iMip, 1U);
@@ -2091,7 +2091,7 @@ STBVKDEF int stbvk_load_image_from_dds_buffer(stbvk_context const *context, void
                 subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
                 subresource.mipLevel = iMip;
                 VkSubresourceLayout subresource_layout = {};
-                STBVK__CHECK( stbvk_get_image_subresource_source_layout(context, out_image, subresource, &subresource_layout) );
+                STBVK__CHECK( stbvk_image_get_subresource_source_layout(context, out_image, subresource, &subresource_layout) );
                 uint32_t *padded_pixels = (uint32_t*)STBVK_MALLOC(subresource_layout.size);
                 STBVK_ASSERT(mip_pitch <= subresource_layout.rowPitch);
                 for(uint32_t iY=0; iY<num_rows; iY+=1)
@@ -2100,7 +2100,7 @@ STBVKDEF int stbvk_load_image_from_dds_buffer(stbvk_context const *context, void
                     void *dst_row = (void*)( (intptr_t)padded_pixels + iY*subresource_layout.rowPitch );
                     memcpy(dst_row, src_row, mip_pitch);
                 }
-                STBVK__CHECK( stbvk_load_image_subresource(context, out_image, subresource, subresource_layout,
+                STBVK__CHECK( stbvk_image_load_subresource(context, out_image, subresource, subresource_layout,
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, padded_pixels) );
                 STBVK_FREE(padded_pixels);
 			    next_src_surface += surface_size;
