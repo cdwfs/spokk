@@ -356,9 +356,9 @@ int main(int argc, char *argv[]) {
 
     // Create push constants
     struct {
-        float time[4]; // .x=seconds, .yzw=???
+        mathfu::vec4_packed time; // .x=seconds, .yzw=???
         mathfu::mat4 o2w;
-        mathfu::mat4 proj;
+        mathfu::mat4 viewproj;
         mathfu::mat4 n2w;
     } pushConstants = {};
     assert(sizeof(pushConstants) <= context.physical_device_properties.limits.maxPushConstantsSize);
@@ -642,17 +642,23 @@ int main(int argc, char *argv[]) {
         vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineGraphics);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,1,&descriptorSet, 0,NULL);
-        pushConstants.time[0] = (float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) );
-        mathfu::quat q = mathfu::quat::FromAngleAxis(pushConstants.time[0], mathfu::vec3(0,1,0));
+        pushConstants.time = mathfu::vec4((float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) ), 0, 0, 0);
+        mathfu::quat q = mathfu::quat::FromAngleAxis(pushConstants.time.data[0], mathfu::vec3(0,1,0));
         pushConstants.o2w = mathfu::mat4::Identity()
             * mathfu::mat4::FromTranslationVector( mathfu::vec3(0, -1.25f, -3.5f) )
             * q.ToMatrix4()
             //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
             ;
-        pushConstants.proj = clip_fixup * mathfu::mat4::Perspective(
+        mathfu::vec3 eye = mathfu::vec3(0,0,0);
+        mathfu::mat4 w2v = mathfu::mat4::LookAt(
+            pushConstants.o2w.TranslationVector3D(),
+            eye,
+            mathfu::vec3(0,1,0),
+            1.0f);
+        pushConstants.viewproj = clip_fixup * mathfu::mat4::Perspective(
             (float)M_PI_4,
             (float)kWindowWidthDefault/(float)kWindowHeightDefault,
-            0.01f, 100.0f);
+            0.01f, 100.0f) * w2v;
         pushConstants.n2w = mathfu::mat4::Identity()
             * q.ToMatrix4()
             //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )

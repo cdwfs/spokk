@@ -32,11 +32,6 @@ layout (binding = 0) uniform sampler2DArray tex;
 layout (location = 0) in vec2 texcoord;
 layout (location = 1) in vec3 norm;
 layout (location = 0) out vec4 uFragColor;
-layout (push_constant) uniform PushConsts {
-    vec4 time;
-    mat4 o2w;
-    mat4 proj;
-} pushConsts;
 void main() {
     float frame = mod( pushConsts.time.x*16.0, 32.0);
     vec3 uv = vec3(texcoord, frame);

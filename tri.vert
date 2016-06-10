@@ -37,7 +37,7 @@ layout (location = 1) out vec3 norm;
 layout (push_constant) uniform PushConsts {
     vec4 time;
     mat4 o2w;
-    mat4 proj;
+    mat4 viewproj;
     mat4 n2w;
 } pushConsts;
 
@@ -49,6 +49,7 @@ void main() {
     mat3 n2w = mat3(pushConsts.n2w);
     norm = n2w * normal;
     
-    vec4 outpos = pushConsts.proj * pushConsts.o2w * vec4(pos,1);
+    vec4 posw = pushConsts.o2w * vec4(pos,1);
+    vec4 outpos = pushConsts.viewproj * posw;
     gl_Position = outpos;
 }
