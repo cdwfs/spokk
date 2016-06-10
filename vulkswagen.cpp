@@ -441,7 +441,7 @@ int main(int argc, char *argv[]) {
     image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    image_create_info.final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    image_create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
     image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     stbvk_image texture_image = {};
     VULKAN_CHECK( stbvk_create_image(&context, &image_create_info, &texture_image) );
@@ -468,7 +468,8 @@ int main(int argc, char *argv[]) {
             }
         }
         stbi_image_free(pixels);
-        VULKAN_CHECK( stbvk_load_image_subresource(&context, &texture_image, subresource, subresource_layout, padded_pixels) );
+        VULKAN_CHECK( stbvk_load_image_subresource(&context, &texture_image, subresource, subresource_layout,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, padded_pixels) );
         free(padded_pixels);
     }
 

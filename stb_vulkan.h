@@ -120,7 +120,7 @@ extern "C" {
         VkSampleCountFlagBits samples;
         VkImageTiling tiling;
         VkImageUsageFlags usage;
-        VkImageLayout final_layout; // not including the staging process
+        VkImageLayout initial_layout;
         VkImageViewType view_type;
     } stbvk_image_create_info;
     typedef struct
@@ -137,7 +137,8 @@ extern "C" {
     STBVKDEF VkResult stbvk_get_image_subresource_source_layout(stbvk_context const *context, stbvk_image const *image,
         VkImageSubresource subresource, VkSubresourceLayout *out_layout);
     STBVKDEF VkResult stbvk_load_image_subresource(stbvk_context const *context, stbvk_image const *image,
-        VkImageSubresource subresource, VkSubresourceLayout subresource_layout, void const *pixels);
+        VkImageSubresource subresource, VkSubresourceLayout subresource_layout, VkImageLayout final_image_layout,
+        void const *pixels);
     STBVKDEF void stbvk_destroy_image(stbvk_context const *context, stbvk_image *image);
 
     STBVKDEF int stbvk_load_image_from_dds_file(stbvk_context const *context, char const *dds_file_path, stbvk_image *out_image);
@@ -855,7 +856,7 @@ STBVKDEF VkResult stbvk_create_image(stbvk_context const *context, stbvk_image_c
     out_image->image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     out_image->image_create_info.queueFamilyIndexCount = 0;
     out_image->image_create_info.pQueueFamilyIndices = NULL;
-    out_image->image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    out_image->image_create_info.initialLayout = create_info->initial_layout;
 
     STBVK__CHECK( vkCreateImage(context->device, &out_image->image_create_info, context->allocation_callbacks, &out_image->image) );
 
@@ -933,7 +934,8 @@ STBVKDEF VkResult stbvk_get_image_subresource_source_layout(stbvk_context const 
 }
 
 STBVKDEF VkResult stbvk_load_image_subresource(stbvk_context const *context, stbvk_image const *image,
-    VkImageSubresource subresource, VkSubresourceLayout subresource_layout, void const *pixels)
+    VkImageSubresource subresource, VkSubresourceLayout subresource_layout, VkImageLayout final_image_layout,
+    void const *pixels)
 {
     VkImage staging_image;
     STBVK__CHECK( stbvk__create_staging_image(context, image, subresource, &staging_image) );
@@ -1031,7 +1033,7 @@ STBVKDEF VkResult stbvk_load_image_subresource(stbvk_context const *context, stb
         image->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
 
     stbvk_set_image_layout(cmd_buf_staging, image->image, dst_image_subresource_range,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, image->create_info.final_layout, 0);
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, final_image_layout, 0);
 
     STBVK__CHECK( vkEndCommandBuffer(cmd_buf_staging) );
     VkSubmitInfo submit_info = {};
@@ -1982,7 +1984,7 @@ STBVKDEF int stbvk_load_image_from_dds_buffer(stbvk_context const *context, void
     create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT; // TODO(cort): generalize
-    create_info.final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // TODO(cort): generalize
+    create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
     //create_info.view_type = 0;
 	const uint8_t *next_src_surface = dds_bytes + pixel_offset;
 	if (is_cube_map)
@@ -2084,7 +2086,8 @@ STBVKDEF int stbvk_load_image_from_dds_buffer(stbvk_context const *context, void
                     void *dst_row = (void*)( (intptr_t)padded_pixels + iY*subresource_layout.rowPitch );
                     memcpy(dst_row, src_row, mip_pitch);
                 }
-                STBVK__CHECK( stbvk_load_image_subresource(context, out_image, subresource, subresource_layout, padded_pixels) );
+                STBVK__CHECK( stbvk_load_image_subresource(context, out_image, subresource, subresource_layout,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, padded_pixels) );
                 STBVK_FREE(padded_pixels);
 			    next_src_surface += surface_size;
 		    }
