@@ -1025,6 +1025,7 @@ static VkResult stbvk__create_staging_image(stbvk_context const *context, stbvk_
     VkImageSubresource subresource, VkImage *out_staging_image)
 {
     VkImageCreateInfo staging_image_create_info = image->image_create_info;
+    staging_image_create_info.flags &= ~VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
     staging_image_create_info.tiling = VK_IMAGE_TILING_LINEAR;
     staging_image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     staging_image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -2136,62 +2137,7 @@ STBVKDEF int stbvk_image_load_from_dds_buffer(stbvk_context const *context, void
     create_info.memory_properties_mask = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     //create_info.view_type = 0;
     const uint8_t *next_src_surface = dds_bytes + pixel_offset;
-    if (is_cube_map)
-    {
-        create_info.image_type = VK_IMAGE_TYPE_2D;
-        create_info.view_type = (create_info.array_layers > 1) ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
-        create_info.array_layers *= 6;
-#if 0
-        glTarget = GL_TEXTURE_CUBE_MAP;
-        ZomboLite::GenTexture(outTex, "Currently-loading Texture");
-        glBindTexture(GL_TEXTURE_CUBE_MAP, *outTex);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, mipMapCount > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR );
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_BASE_LEVEL, 0);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, mipMapCount-1);
-        glTexStorage2D(GL_TEXTURE_CUBE_MAP, mipMapCount, glInternalFormat, header->width, header->height);
-        const GLenum faceTargets[6] = {
-            GL_TEXTURE_CUBE_MAP_POSITIVE_X,
-            GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
-            GL_TEXTURE_CUBE_MAP_POSITIVE_Y,
-            GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
-            GL_TEXTURE_CUBE_MAP_POSITIVE_Z,
-            GL_TEXTURE_CUBE_MAP_NEGATIVE_Z,
-        };
-        for(uint32_t iFace=0; iFace<6; ++iFace)
-        {
-            GLenum faceTarget = faceTargets[iFace];
-            for(uint32_t iMip=0; iMip<mipMapCount; ++iMip)
-            {
-                uint32_t mipWidth  = max(header->width >> iMip, 1U);
-                uint32_t mipHeight = max(header->height >> iMip, 1U);
-                uint32_t mipPitch  = is_compressed ? ((mipWidth+3)/4)*block_size : mipWidth*block_size;
-                uint32_t numRows = is_compressed ? ((mipHeight+3)/4) : mipHeight;
-                uint32_t surfaceSize = mipPitch*numRows;
-                ZOMBOLITE_ASSERT(nextSrcSurface + surfaceSize <= dds_bytes + ddsBufferSize, "mip %d surface is out of range in DDS data.", iMip);
-                if (is_compressed)
-                {
-                    glCompressedTexSubImage2D(faceTarget, iMip, 0,0, mipWidth,mipHeight, glInternalFormat, surfaceSize, nextSrcSurface);
-#if defined(_DEBUG)
-                    GLint param = 0;
-                    glGetTexLevelParameteriv(faceTarget, iMip, GL_TEXTURE_COMPRESSED, &param);
-                    ZOMBOLITE_ASSERT(param != 0, "OpenGL doesn't think compressed mip is compressed!");
-#endif
-                }
-                else
-                {
-                    glTexSubImage2D(faceTarget, iMip, 0,0, mipWidth,mipHeight, glFormat, glType, next_src_surface);
-                }
-                next_src_surface += surfaceSize;
-            }
-        }
-        glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
-#endif
-    }
-    else if (is_volume_texture)
+if (is_volume_texture)
     {
 #if 0
         glTarget = GL_TEXTURE_3D;
@@ -2200,7 +2146,13 @@ STBVKDEF int stbvk_image_load_from_dds_buffer(stbvk_context const *context, void
     }
     else
     {
-        if (create_info.extent.height == 1)
+        if (is_cube_map)
+        {
+            create_info.image_type = VK_IMAGE_TYPE_2D;
+            create_info.view_type = (create_info.array_layers > 1) ? VK_IMAGE_VIEW_TYPE_CUBE_ARRAY : VK_IMAGE_VIEW_TYPE_CUBE;
+            create_info.array_layers *= 6;
+        }
+        else if (create_info.extent.height == 1)
         {
             create_info.image_type = VK_IMAGE_TYPE_1D;
             create_info.view_type = (create_info.array_layers > 1) ? VK_IMAGE_VIEW_TYPE_1D_ARRAY : VK_IMAGE_VIEW_TYPE_1D;
@@ -2211,15 +2163,15 @@ STBVKDEF int stbvk_image_load_from_dds_buffer(stbvk_context const *context, void
             create_info.view_type = (create_info.array_layers > 1) ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
         }
         stbvk_image_create(context, &create_info, out_image);
-        for(uint32_t iMip=0; iMip<create_info.mip_levels; ++iMip)
+        for(uint32_t iLayer=0; iLayer<create_info.array_layers; ++iLayer)
         {
-            uint32_t mip_width  = stbvk__max(header->width >> iMip, 1U);
-            uint32_t mip_height = stbvk__max(header->height >> iMip, 1U);
-            uint32_t mip_pitch  = is_compressed ? ((mip_width+3)/4)*block_size : mip_width*block_size;
-            uint32_t num_rows = is_compressed ? ((mip_height+3)/4) : mip_height;
-            uint32_t surface_size = mip_pitch*num_rows;
-            for(uint32_t iLayer=0; iLayer<create_info.array_layers; ++iLayer)
+            for(uint32_t iMip=0; iMip<create_info.mip_levels; ++iMip)
             {
+                uint32_t mip_width  = stbvk__max(header->width >> iMip, 1U);
+                uint32_t mip_height = stbvk__max(header->height >> iMip, 1U);
+                uint32_t mip_pitch  = is_compressed ? ((mip_width+3)/4)*block_size : mip_width*block_size;
+                uint32_t num_rows = is_compressed ? ((mip_height+3)/4) : mip_height;
+                uint32_t surface_size = mip_pitch*num_rows;
                 STBVK_ASSERT(next_src_surface + surface_size <= dds_bytes + dds_file_size);
                 VkImageSubresource subresource = {};
                 subresource.arrayLayer = iLayer;
