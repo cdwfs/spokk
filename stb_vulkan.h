@@ -140,6 +140,9 @@ extern "C" {
         VkImageSubresource subresource, VkSubresourceLayout subresource_layout, void const *pixels);
     STBVKDEF void stbvk_destroy_image(stbvk_context const *context, stbvk_image *image);
 
+    STBVKDEF int stbvk_load_image_from_dds_file(stbvk_context const *context, char const *dds_file_path, stbvk_image *out_image);
+    STBVKDEF int stbvk_load_image_from_dds_buffer(stbvk_context const *context, void const *dds_file_data, size_t dds_file_size, stbvk_image *out_image);
+
     typedef struct
     {
        int      (*read)  (void *user,char *data,int size);   // fill 'data' with 'size' bytes.  return number of bytes actually read
@@ -1175,5 +1178,920 @@ STBVKDEF void stbvk_set_image_layout(VkCommandBuffer cmd_buf, VkImage image,
         buffer_memory_barrier_count, buffer_memory_barriers,
         image_memory_barrier_count, &img_memory_barrier);
 }
+
+///////////////////////////////////////// DDS loader code //////////////////////////////
+
+static const uint32_t kDdsPrefixMagic = 0x20534444;
+
+typedef struct
+{
+	uint32_t structSize;
+	uint32_t flags;
+	uint32_t code4;
+	uint32_t numBitsRGB;
+	uint32_t maskR;
+	uint32_t maskG;
+	uint32_t maskB;
+	uint32_t maskA;
+}  DdsPixelFormat;
+
+typedef enum
+{
+	PF_FLAGS_CODE4     = 0x00000004,  // DDPF_FOURCC
+	PF_FLAGS_RGB       = 0x00000040,  // DDPF_RGB
+	PF_FLAGS_RGBA      = 0x00000041,  // DDPF_RGB | DDPF_ALPHAPIXELS
+	PF_FLAGS_LUMINANCE = 0x00020000,  // DDPF_LUMINANCE
+	PF_FLAGS_ALPHA     = 0x00000002,  // DDPF_ALPHA
+}  DdsPixelFormatFlags;
+
+static stbvk_inline uint32_t stbvk__make_code4(char c0, char c1, char c2, char c3)
+{
+    return
+        ((uint32_t)(uint8_t)(c0) <<  0) |
+        ((uint32_t)(uint8_t)(c1) <<  8) |
+        ((uint32_t)(uint8_t)(c2) << 16) |
+        ((uint32_t)(uint8_t)(c3) << 24);
+}
+
+static const DdsPixelFormat PF_DXT1 = 
+{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, stbvk__make_code4('D','X','T','1'), 0, 0, 0, 0, 0 };
+static const DdsPixelFormat PF_DXT2 = 
+{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, stbvk__make_code4('D','X','T','2'), 0, 0, 0, 0, 0 };
+static const DdsPixelFormat PF_DXT3 = 
+{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, stbvk__make_code4('D','X','T','3'), 0, 0, 0, 0, 0 };
+static const DdsPixelFormat PF_DXT4 = 
+{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, stbvk__make_code4('D','X','T','4'), 0, 0, 0, 0, 0 };
+static const DdsPixelFormat PF_DXT5 = 
+{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, stbvk__make_code4('D','X','T','5'), 0, 0, 0, 0, 0 };
+
+static const DdsPixelFormat PF_A8R8G8B8 =
+{ sizeof(DdsPixelFormat), PF_FLAGS_RGBA, 0, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000 };
+
+static const DdsPixelFormat PF_A8B8G8R8 =
+{ sizeof(DdsPixelFormat), PF_FLAGS_RGBA, 0, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 };
+
+static const DdsPixelFormat PF_A1R5G5B5 =
+{ sizeof(DdsPixelFormat), PF_FLAGS_RGBA, 0, 16, 0x00007c00, 0x000003e0, 0x0000001f, 0x00008000 };
+
+static const DdsPixelFormat PF_A4R4G4B4 =
+{ sizeof(DdsPixelFormat), PF_FLAGS_RGBA, 0, 16, 0x00000f00, 0x000000f0, 0x0000000f, 0x0000f000 };
+
+static const DdsPixelFormat PF_R8G8B8 =
+{ sizeof(DdsPixelFormat), PF_FLAGS_RGB, 0, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0x00000000 };
+
+static const DdsPixelFormat PF_R8G8B8A8 =
+{ sizeof(DdsPixelFormat), PF_FLAGS_RGBA, 0, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 };
+
+static const DdsPixelFormat PF_B8G8R8 =
+{ sizeof(DdsPixelFormat), PF_FLAGS_RGB, 0, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0x00000000 };
+
+static const DdsPixelFormat PF_R5G6B5 =
+{ sizeof(DdsPixelFormat), PF_FLAGS_RGB, 0, 16, 0x0000f800, 0x000007e0, 0x0000001f, 0x00000000 };
+
+static const DdsPixelFormat PF_L16 =
+{ sizeof(DdsPixelFormat), PF_FLAGS_LUMINANCE, 0, 16, 0x0000ffff, 0x00000000, 0x00000000, 0x00000000 };
+
+static const DdsPixelFormat PF_L8 =
+{ sizeof(DdsPixelFormat), PF_FLAGS_LUMINANCE, 0, 8, 0x000000ff, 0x00000000, 0x00000000, 0x00000000 };
+
+static const DdsPixelFormat PF_R32F =
+{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, 114, 0, 0, 0, 0, 0 };
+
+static const DdsPixelFormat PF_R16FG16FB16FA16F =
+{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, 36, 0, 0, 0, 0, 0 };
+
+static const DdsPixelFormat PF_R32FG32FB32FA32F =
+{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, 116, 0, 0, 0, 0, 0 };
+
+// This indicates the DDS_HEADER_DXT10 extension is present (the format is in the extended header's dxFormat field)
+static const DdsPixelFormat PF_DX10 =
+{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, stbvk__make_code4('D','X','1','0'), 0, 0, 0, 0, 0 };
+
+enum DdsHeaderFlag
+{
+	HEADER_FLAGS_CAPS        = 0x00000001,
+	HEADER_FLAGS_HEIGHT      = 0x00000002,
+	HEADER_FLAGS_WIDTH       = 0x00000004,
+	HEADER_FLAGS_PITCH       = 0x00000008,
+	HEADER_FLAGS_PIXELFORMAT = 0x00001000,
+	HEADER_FLAGS_LINEARSIZE  = 0x00080000,
+	HEADER_FLAGS_DEPTH       = 0x00800000,
+	HEADER_FLAGS_TEXTURE     = 0x00001007,  // CAPS | HEIGHT | WIDTH | PIXELFORMAT 
+	HEADER_FLAGS_MIPMAP      = 0x00020000,  
+};
+
+enum DdsSurfaceFlags
+{
+	SURFACE_FLAGS_TEXTURE = 0x00001000, // HEADER_FLAGS_TEXTURE
+	SURFACE_FLAGS_MIPMAP  = 0x00400008, // COMPLEX | MIPMAP
+	SURFACE_FLAGS_COMPLEX = 0x00000008, // COMPLEX
+};
+
+enum DdsCubemapFlags
+{
+	CUBEMAP_FLAG_ISCUBEMAP = 0x00000200, // CUBEMAP
+	CUBEMAP_FLAG_POSITIVEX = 0x00000600, // CUBEMAP | POSITIVEX
+	CUBEMAP_FLAG_NEGATIVEX = 0x00000a00, // CUBEMAP | NEGATIVEX
+	CUBEMAP_FLAG_POSITIVEY = 0x00001200, // CUBEMAP | POSITIVEY
+	CUBEMAP_FLAG_NEGATIVEY = 0x00002200, // CUBEMAP | NEGATIVEY
+	CUBEMAP_FLAG_POSITIVEZ = 0x00004200, // CUBEMAP | POSITIVEZ
+	CUBEMAP_FLAG_NEGATIVEZ = 0x00008200, // CUBEMAP | NEGATIVEZ
+	CUBEMAP_FLAG_VOLUME    = 0x00200000, // VOLUME
+};
+const uint32_t kCubemapFlagAllFaces =
+    CUBEMAP_FLAG_ISCUBEMAP |
+    CUBEMAP_FLAG_POSITIVEX | CUBEMAP_FLAG_NEGATIVEX |
+    CUBEMAP_FLAG_POSITIVEY | CUBEMAP_FLAG_NEGATIVEY |
+	CUBEMAP_FLAG_POSITIVEZ | CUBEMAP_FLAG_NEGATIVEZ;
+
+typedef enum
+{
+	DIMENSIONS_UNKNOWN   = 0,
+	DIMENSIONS_BUFFER    = 1,
+	DIMENSIONS_TEXTURE1D = 2,
+	DIMENSIONS_TEXTURE2D = 3,
+	DIMENSIONS_TEXTURE3D = 4,
+} DdsDimensions;
+
+typedef enum
+{
+	DX_FORMAT_UNKNOWN	                  = 0,      
+	DX_FORMAT_R32G32B32A32_TYPELESS       = 1,     
+	DX_FORMAT_R32G32B32A32_FLOAT          = 2,     
+	DX_FORMAT_R32G32B32A32_UINT           = 3,     
+	DX_FORMAT_R32G32B32A32_SINT           = 4,     
+	DX_FORMAT_R32G32B32_TYPELESS          = 5,     
+	DX_FORMAT_R32G32B32_FLOAT             = 6,     
+	DX_FORMAT_R32G32B32_UINT              = 7,     
+	DX_FORMAT_R32G32B32_SINT              = 8,     
+	DX_FORMAT_R16G16B16A16_TYPELESS       = 9,     
+	DX_FORMAT_R16G16B16A16_FLOAT          = 10,
+	DX_FORMAT_R16G16B16A16_UNORM          = 11,
+	DX_FORMAT_R16G16B16A16_UINT           = 12,
+	DX_FORMAT_R16G16B16A16_SNORM          = 13,
+	DX_FORMAT_R16G16B16A16_SINT           = 14,
+	DX_FORMAT_R32G32_TYPELESS             = 15,
+	DX_FORMAT_R32G32_FLOAT                = 16,
+	DX_FORMAT_R32G32_UINT                 = 17,
+	DX_FORMAT_R32G32_SINT                 = 18,
+	DX_FORMAT_R32G8X24_TYPELESS           = 19,
+	DX_FORMAT_D32_FLOAT_S8X24_UINT        = 20,
+	DX_FORMAT_R32_FLOAT_X8X24_TYPELESS    = 21,
+	DX_FORMAT_X32_TYPELESS_G8X24_UINT     = 22,
+	DX_FORMAT_R10G10B10A2_TYPELESS        = 23,
+	DX_FORMAT_R10G10B10A2_UNORM           = 24,
+	DX_FORMAT_R10G10B10A2_UINT            = 25,
+	DX_FORMAT_R11G11B10_FLOAT             = 26,
+	DX_FORMAT_R8G8B8A8_TYPELESS           = 27,
+	DX_FORMAT_R8G8B8A8_UNORM              = 28,
+	DX_FORMAT_R8G8B8A8_UNORM_SRGB         = 29,
+	DX_FORMAT_R8G8B8A8_UINT               = 30,
+	DX_FORMAT_R8G8B8A8_SNORM              = 31,
+	DX_FORMAT_R8G8B8A8_SINT               = 32,
+	DX_FORMAT_R16G16_TYPELESS             = 33,
+	DX_FORMAT_R16G16_FLOAT                = 34,
+	DX_FORMAT_R16G16_UNORM                = 35,
+	DX_FORMAT_R16G16_UINT                 = 36,
+	DX_FORMAT_R16G16_SNORM                = 37,
+	DX_FORMAT_R16G16_SINT                 = 38,
+	DX_FORMAT_R32_TYPELESS                = 39,
+	DX_FORMAT_D32_FLOAT                   = 40,
+	DX_FORMAT_R32_FLOAT                   = 41,
+	DX_FORMAT_R32_UINT                    = 42,
+	DX_FORMAT_R32_SINT                    = 43,
+	DX_FORMAT_R24G8_TYPELESS              = 44,
+	DX_FORMAT_D24_UNORM_S8_UINT           = 45,
+	DX_FORMAT_R24_UNORM_X8_TYPELESS       = 46,
+	DX_FORMAT_X24_TYPELESS_G8_UINT        = 47,
+	DX_FORMAT_R8G8_TYPELESS               = 48,
+	DX_FORMAT_R8G8_UNORM                  = 49,
+	DX_FORMAT_R8G8_UINT                   = 50,
+	DX_FORMAT_R8G8_SNORM                  = 51,
+	DX_FORMAT_R8G8_SINT                   = 52,
+	DX_FORMAT_R16_TYPELESS                = 53,
+	DX_FORMAT_R16_FLOAT                   = 54,
+	DX_FORMAT_D16_UNORM                   = 55,
+	DX_FORMAT_R16_UNORM                   = 56,
+	DX_FORMAT_R16_UINT                    = 57,
+	DX_FORMAT_R16_SNORM                   = 58,
+	DX_FORMAT_R16_SINT                    = 59,
+	DX_FORMAT_R8_TYPELESS                 = 60,
+	DX_FORMAT_R8_UNORM                    = 61,
+	DX_FORMAT_R8_UINT                     = 62,
+	DX_FORMAT_R8_SNORM                    = 63,
+	DX_FORMAT_R8_SINT                     = 64,
+	DX_FORMAT_A8_UNORM                    = 65,
+	DX_FORMAT_R1_UNORM                    = 66,
+	DX_FORMAT_R9G9B9E5_SHAREDEXP          = 67,
+	DX_FORMAT_R8G8_B8G8_UNORM             = 68,
+	DX_FORMAT_G8R8_G8B8_UNORM             = 69,
+	DX_FORMAT_BC1_TYPELESS                = 70,
+	DX_FORMAT_BC1_UNORM                   = 71,
+	DX_FORMAT_BC1_UNORM_SRGB              = 72,
+	DX_FORMAT_BC2_TYPELESS                = 73,
+	DX_FORMAT_BC2_UNORM                   = 74,
+	DX_FORMAT_BC2_UNORM_SRGB              = 75,
+	DX_FORMAT_BC3_TYPELESS                = 76,
+	DX_FORMAT_BC3_UNORM                   = 77,
+	DX_FORMAT_BC3_UNORM_SRGB              = 78,
+	DX_FORMAT_BC4_TYPELESS                = 79,
+	DX_FORMAT_BC4_UNORM                   = 80,
+	DX_FORMAT_BC4_SNORM                   = 81,
+	DX_FORMAT_BC5_TYPELESS                = 82,
+	DX_FORMAT_BC5_UNORM                   = 83,
+	DX_FORMAT_BC5_SNORM                   = 84,
+	DX_FORMAT_B5G6R5_UNORM                = 85,
+	DX_FORMAT_B5G5R5A1_UNORM              = 86,
+	DX_FORMAT_B8G8R8A8_UNORM              = 87,
+	DX_FORMAT_B8G8R8X8_UNORM              = 88,
+	DX_FORMAT_R10G10B10_XR_BIAS_A2_UNORM  = 89,
+	DX_FORMAT_B8G8R8A8_TYPELESS           = 90,
+	DX_FORMAT_B8G8R8A8_UNORM_SRGB         = 91,
+	DX_FORMAT_B8G8R8X8_TYPELESS           = 92,
+	DX_FORMAT_B8G8R8X8_UNORM_SRGB         = 93,
+	DX_FORMAT_BC6H_TYPELESS               = 94,
+	DX_FORMAT_BC6H_UF16                   = 95,
+	DX_FORMAT_BC6H_SF16                   = 96,
+	DX_FORMAT_BC7_TYPELESS                = 97,
+	DX_FORMAT_BC7_UNORM                   = 98,
+	DX_FORMAT_BC7_UNORM_SRGB              = 99,
+} DxFormat;
+
+static stbvk_inline bool stbvk__is_pf_mask(const DdsPixelFormat &pf, uint32_t r, uint32_t g, uint32_t b, uint32_t a)
+{
+    return (pf.maskR == r && pf.maskG == g && pf.maskB == b && pf.maskA == a);
+}
+static bool DDSPFtoVKFormat( const DdsPixelFormat& pf, uint32_t *outBlockSize, VkFormat *outFormat )
+{
+	if( pf.flags & PF_FLAGS_RGBA )
+	{
+		switch (pf.numBitsRGB)
+		{
+		case 32:
+			*outBlockSize = 4;
+			if( stbvk__is_pf_mask(pf, 0x00ff0000,0x0000ff00,0x000000ff,0xff000000) ) // BGRA
+			{
+                *outFormat = VK_FORMAT_B8G8R8A8_UNORM; return true;
+			}
+			else if( stbvk__is_pf_mask(pf, 0x00ff0000,0x0000ff00,0x000000ff,0x00000000) ) // BGRX
+			{
+                *outFormat = VK_FORMAT_B8G8R8A8_UNORM; return true;
+			}
+			else if( stbvk__is_pf_mask(pf, 0x000000ff,0x0000ff00,0x00ff0000,0xff000000) )
+			{
+                *outFormat = VK_FORMAT_R8G8B8A8_UNORM; return true;
+			}
+			else if( stbvk__is_pf_mask(pf, 0x000000ff,0x0000ff00,0x00ff0000,0x00000000) )
+			{
+                *outFormat = VK_FORMAT_R8G8B8A8_UNORM; return true;
+			}
+
+			// Note that many common DDS reader/writers swap the
+			// the RED/BLUE masks for 10:10:10:2 formats. We assume
+			// below that the 'correct' header mask is being used
+			else if( stbvk__is_pf_mask(pf, 0x3ff00000,0x000ffc00,0x000003ff,0xc0000000) )
+			{
+                *outFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32; return true;
+			}
+			else if( stbvk__is_pf_mask(pf, 0x000003ff,0x000ffc00,0x3ff00000,0xc0000000) )
+			{
+                *outFormat = VK_FORMAT_A2R10G10B10_UNORM_PACK32; return true;
+			}
+
+			else if( stbvk__is_pf_mask(pf, 0xffffffff,0x00000000,0x00000000,0x00000000) )
+			{
+                *outFormat = VK_FORMAT_R32_UINT; return true;
+			}
+			else if( stbvk__is_pf_mask(pf, 0x0000ffff,0xffff0000,0x00000000,0x00000000) )
+			{
+                *outFormat = VK_FORMAT_R16G16_UNORM; return true;
+			}
+			break;
+
+		case 24:
+			*outBlockSize = 3;
+			if( stbvk__is_pf_mask(pf, 0x00ff0000,0x0000ff00,0x000000ff,0x00000000) )
+			{
+                *outFormat = VK_FORMAT_R8G8B8_UNORM; return true;
+			}
+			break;
+
+		case 16:
+			*outBlockSize = 2;
+			if( stbvk__is_pf_mask(pf, 0x0000f800,0x000007e0,0x0000001f,0x00000000) )
+			{
+                *outFormat = VK_FORMAT_R5G6B5_UNORM_PACK16; return true;
+			}
+			else if( stbvk__is_pf_mask(pf, 0x00007c00,0x000003e0,0x0000001f,0x00000000) )
+			{
+                *outFormat = VK_FORMAT_R5G5B5A1_UNORM_PACK16; return true;
+			}
+			else if( stbvk__is_pf_mask(pf, 0x00007c00,0x000003e0,0x0000001f,0x00008000) )
+			{
+                *outFormat = VK_FORMAT_B5G5R5A1_UNORM_PACK16; return true;
+			}
+			else if( stbvk__is_pf_mask(pf, 0x00000f00,0x000000f0,0x0000000f,0x0000f000) )
+			{
+                *outFormat = VK_FORMAT_R4G4B4A4_UNORM_PACK16; return true;
+			}
+			else if( stbvk__is_pf_mask(pf, 0x00000f00,0x000000f0,0x0000000f,0x00000000) )
+			{
+                *outFormat = VK_FORMAT_B4G4R4A4_UNORM_PACK16; return true;
+			}
+			break;
+
+		case 8:
+			*outBlockSize = 1;
+ 			if( stbvk__is_pf_mask(pf, 0x000000ff,0x00000000,0x00000000,0x00000000) )
+			{
+                *outFormat = VK_FORMAT_R8_UNORM; return true;
+			}
+			break;
+		}
+	}
+	else if( pf.flags & PF_FLAGS_LUMINANCE )
+	{
+		if( 8 == pf.numBitsRGB )
+		{
+			if( stbvk__is_pf_mask(pf, 0x000000ff,0x00000000,0x00000000,0x00000000) ) // L8
+			{
+                *outFormat = VK_FORMAT_R8_UNORM; *outBlockSize = 1; return true;
+			}
+		}
+		else if( 16 == pf.numBitsRGB )
+		{
+			if( stbvk__is_pf_mask(pf, 0x0000ffff,0x00000000,0x00000000,0x00000000) ) // L16
+			{
+                *outFormat = VK_FORMAT_R16_UNORM; *outBlockSize = 2; return true;
+			}
+		}
+	}
+	else if( pf.flags & PF_FLAGS_ALPHA )
+	{
+	}
+	else if( pf.flags & PF_FLAGS_CODE4 )
+	{
+		if(      stbvk__make_code4( 'D', 'X', 'T', '1' ) == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_BC1_RGB_UNORM_BLOCK; *outBlockSize = 8; return true;
+		}
+		else if( stbvk__make_code4( 'D', 'X', 'T', '2' ) == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_BC2_UNORM_BLOCK; *outBlockSize = 16; return true;
+		}
+		else if( stbvk__make_code4( 'D', 'X', 'T', '3' ) == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_BC2_UNORM_BLOCK; *outBlockSize = 16; return true;
+		}
+		else if( stbvk__make_code4( 'D', 'X', 'T', '4' ) == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_BC3_UNORM_BLOCK; *outBlockSize = 16; return true;
+		}
+		else if( stbvk__make_code4( 'D', 'X', 'T', '5' ) == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_BC3_UNORM_BLOCK; *outBlockSize = 16; return true;
+		}
+		else if( stbvk__make_code4( 'B', 'C', '4', 'U' ) == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_BC4_UNORM_BLOCK; *outBlockSize = 8; return true;
+		}
+		else if( stbvk__make_code4( 'B', 'C', '4', 'S' ) == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_BC4_SNORM_BLOCK; *outBlockSize = 8; return true;
+		}
+		else if( stbvk__make_code4( 'B', 'C', '5', 'U' ) == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_BC5_UNORM_BLOCK; *outBlockSize = 16; return true;
+		}
+		else if( stbvk__make_code4( 'B', 'C', '5', 'S' ) == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_BC5_SNORM_BLOCK; *outBlockSize = 16; return true;
+		}
+
+		// Certain values are hard-coded into the FourCC field for specific formats
+		else if ( 110 == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_R16G16B16A16_SNORM; *outBlockSize = 8; return true;
+		}
+		else if ( 111 == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_R16_SFLOAT; *outBlockSize = 2; return true;
+		}
+		else if ( 112 == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_R16G16_SFLOAT; *outBlockSize = 4; return true;
+		}
+		else if ( 113 == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_R16G16B16A16_SFLOAT; *outBlockSize = 8; return true;
+		}
+		else if ( 114 == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_R32_SFLOAT; *outBlockSize = 4; return true;
+		}
+		if ( 115 == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_R32G32_SFLOAT; *outBlockSize = 8; return true;
+		}
+		else if ( 116 == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_R32G32B32A32_SFLOAT; *outBlockSize = 16; return true;
+		}
+		else if ( 36 == pf.code4 )
+		{
+            *outFormat = VK_FORMAT_R16G16B16A16_UINT; *outBlockSize = 8; return true;
+		}
+	}
+
+	*outFormat = VK_FORMAT_UNDEFINED;
+	*outBlockSize = 0;
+	return false; // unknown/unsupported DDSPF format
+}
+
+static bool DXtoVKFormat(DxFormat dxFmt, uint32_t *outBlockSize, VkFormat *outFormat)
+{
+	switch(dxFmt)
+	{
+	case DX_FORMAT_UNKNOWN:
+	case DX_FORMAT_R32G32B32A32_TYPELESS:
+	case DX_FORMAT_R32G32B32_TYPELESS:
+	case DX_FORMAT_R16G16B16A16_TYPELESS:
+	case DX_FORMAT_R32G32_TYPELESS:
+	case DX_FORMAT_R32G8X24_TYPELESS:
+	case DX_FORMAT_R32_FLOAT_X8X24_TYPELESS:
+	case DX_FORMAT_X32_TYPELESS_G8X24_UINT:
+	case DX_FORMAT_R10G10B10A2_TYPELESS:
+	case DX_FORMAT_R8G8B8A8_TYPELESS:
+	case DX_FORMAT_R16G16_TYPELESS:
+	case DX_FORMAT_R32_TYPELESS:
+	case DX_FORMAT_R24G8_TYPELESS:
+	case DX_FORMAT_R24_UNORM_X8_TYPELESS:
+	case DX_FORMAT_X24_TYPELESS_G8_UINT:
+	case DX_FORMAT_R8G8_TYPELESS:
+	case DX_FORMAT_R16_TYPELESS:
+	case DX_FORMAT_R8_TYPELESS:
+	case DX_FORMAT_D32_FLOAT_S8X24_UINT:
+	case DX_FORMAT_D24_UNORM_S8_UINT:
+	case DX_FORMAT_R9G9B9E5_SHAREDEXP:
+	case DX_FORMAT_R8G8_B8G8_UNORM:
+	case DX_FORMAT_G8R8_G8B8_UNORM:
+	case DX_FORMAT_R10G10B10_XR_BIAS_A2_UNORM:
+	case DX_FORMAT_B8G8R8A8_TYPELESS:
+	case DX_FORMAT_B8G8R8X8_TYPELESS:
+	case DX_FORMAT_R1_UNORM:
+	case DX_FORMAT_A8_UNORM:
+		break;
+	case DX_FORMAT_R32G32B32A32_FLOAT:
+        *outFormat = VK_FORMAT_R32G32B32A32_SFLOAT; *outBlockSize = 16; return true;
+	case DX_FORMAT_R32G32B32A32_UINT:
+        *outFormat = VK_FORMAT_R32G32B32A32_UINT; *outBlockSize = 16; return true;
+	case DX_FORMAT_R32G32B32A32_SINT:
+        *outFormat = VK_FORMAT_R32G32B32A32_SINT; *outBlockSize = 16; return true;
+	case DX_FORMAT_R32G32B32_FLOAT:
+        *outFormat = VK_FORMAT_R32G32B32_SFLOAT; *outBlockSize = 12; return true;
+	case DX_FORMAT_R32G32B32_UINT:
+        *outFormat = VK_FORMAT_R32G32B32_UINT; *outBlockSize = 12; return true;
+	case DX_FORMAT_R32G32B32_SINT:
+        *outFormat = VK_FORMAT_R32G32B32_SINT; *outBlockSize = 16; return true;
+	case DX_FORMAT_R16G16B16A16_FLOAT:
+        *outFormat = VK_FORMAT_R16G16B16A16_SFLOAT; *outBlockSize = 8; return true;
+	case DX_FORMAT_R16G16B16A16_UNORM:
+        *outFormat = VK_FORMAT_R16G16B16A16_UNORM; *outBlockSize = 8; return true;
+	case DX_FORMAT_R16G16B16A16_UINT:
+        *outFormat = VK_FORMAT_R16G16B16A16_UINT; *outBlockSize = 8; return true;
+	case DX_FORMAT_R16G16B16A16_SNORM:
+        *outFormat = VK_FORMAT_R16G16B16A16_SNORM; *outBlockSize = 8; return true;
+	case DX_FORMAT_R16G16B16A16_SINT:
+        *outFormat = VK_FORMAT_R16G16B16A16_SINT; *outBlockSize = 8; return true;
+	case DX_FORMAT_R32G32_FLOAT:
+        *outFormat = VK_FORMAT_R32G32_SFLOAT; *outBlockSize = 8; return true;
+	case DX_FORMAT_R32G32_UINT:
+        *outFormat = VK_FORMAT_R32G32_UINT; *outBlockSize = 8; return true;
+	case DX_FORMAT_R32G32_SINT:
+        *outFormat = VK_FORMAT_R32G32_SINT; *outBlockSize = 8; return true;
+	case DX_FORMAT_R10G10B10A2_UNORM:
+        *outFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32; *outBlockSize = 4; return true;
+	case DX_FORMAT_R10G10B10A2_UINT:
+        *outFormat = VK_FORMAT_A2B10G10R10_UINT_PACK32; *outBlockSize = 4; return true;
+	case DX_FORMAT_R11G11B10_FLOAT:
+        *outFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32; *outBlockSize = 4; return true;
+	case DX_FORMAT_R8G8B8A8_UNORM:
+        *outFormat = VK_FORMAT_R8G8B8A8_UNORM; *outBlockSize = 4; return true;
+	case DX_FORMAT_R8G8B8A8_UNORM_SRGB:
+        *outFormat = VK_FORMAT_R8G8B8A8_SRGB; *outBlockSize = 4; return true;
+	case DX_FORMAT_R8G8B8A8_UINT:
+        *outFormat = VK_FORMAT_R8G8B8A8_UINT; *outBlockSize = 4; return true;
+	case DX_FORMAT_R8G8B8A8_SNORM:
+        *outFormat = VK_FORMAT_R8G8B8A8_SNORM; *outBlockSize = 4; return true;
+	case DX_FORMAT_R8G8B8A8_SINT:
+        *outFormat = VK_FORMAT_R8G8B8A8_SINT; *outBlockSize = 4; return true;
+	case DX_FORMAT_R16G16_FLOAT:
+        *outFormat = VK_FORMAT_R16G16_SFLOAT; *outBlockSize = 4; return true;
+	case DX_FORMAT_R16G16_UNORM:
+        *outFormat = VK_FORMAT_R16G16_UNORM; *outBlockSize = 4; return true;
+	case DX_FORMAT_R16G16_UINT:
+        *outFormat = VK_FORMAT_R16G16_UINT; *outBlockSize = 4; return true;
+	case DX_FORMAT_R16G16_SNORM:
+        *outFormat = VK_FORMAT_R16G16_SNORM; *outBlockSize = 4; return true;
+	case DX_FORMAT_R16G16_SINT:
+        *outFormat = VK_FORMAT_R16G16_SINT; *outBlockSize = 4; return true;
+	case DX_FORMAT_D32_FLOAT:
+        *outFormat = VK_FORMAT_D32_SFLOAT; *outBlockSize = 4; return true;
+	case DX_FORMAT_R32_FLOAT:
+        *outFormat = VK_FORMAT_R32_SFLOAT; *outBlockSize = 4; return true;
+	case DX_FORMAT_R32_UINT:
+        *outFormat = VK_FORMAT_R32_UINT; *outBlockSize = 4; return true;
+	case DX_FORMAT_R32_SINT:
+        *outFormat = VK_FORMAT_R32_SINT; *outBlockSize = 4; return true;
+	case DX_FORMAT_R8G8_UNORM:
+        *outFormat = VK_FORMAT_R8G8_UNORM; *outBlockSize = 2; return true;
+	case DX_FORMAT_R8G8_UINT:
+        *outFormat = VK_FORMAT_R8G8_UINT; *outBlockSize = 2; return true;
+	case DX_FORMAT_R8G8_SNORM:
+        *outFormat = VK_FORMAT_R8G8_SNORM; *outBlockSize = 2; return true;
+	case DX_FORMAT_R8G8_SINT:
+        *outFormat = VK_FORMAT_R8G8_SINT; *outBlockSize = 2; return true;
+	case DX_FORMAT_R16_FLOAT:
+        *outFormat = VK_FORMAT_R16_SFLOAT; *outBlockSize = 2; return true;
+	case DX_FORMAT_D16_UNORM:
+        *outFormat = VK_FORMAT_D16_UNORM; *outBlockSize = 2; return true;
+	case DX_FORMAT_R16_UNORM:
+        *outFormat = VK_FORMAT_R16_UNORM; *outBlockSize = 2; return true;
+	case DX_FORMAT_R16_UINT:
+        *outFormat = VK_FORMAT_R16_UINT; *outBlockSize = 2; return true;
+	case DX_FORMAT_R16_SNORM:
+        *outFormat = VK_FORMAT_R16_SNORM; *outBlockSize = 2; return true;
+	case DX_FORMAT_R16_SINT:
+        *outFormat = VK_FORMAT_R16_SINT; *outBlockSize = 2; return true;
+	case DX_FORMAT_R8_UNORM:
+        *outFormat = VK_FORMAT_R8_UNORM; *outBlockSize = 1; return true;
+	case DX_FORMAT_R8_UINT:
+        *outFormat = VK_FORMAT_R8_UINT; *outBlockSize = 1; return true;
+	case DX_FORMAT_R8_SNORM:
+        *outFormat = VK_FORMAT_R8_SNORM; *outBlockSize = 1; return true;
+	case DX_FORMAT_R8_SINT:
+        *outFormat = VK_FORMAT_R8_SINT; *outBlockSize = 1; return true;
+	case DX_FORMAT_BC1_TYPELESS:
+	case DX_FORMAT_BC1_UNORM:
+        *outFormat = VK_FORMAT_BC1_RGBA_UNORM_BLOCK; *outBlockSize = 8; return true;
+	case DX_FORMAT_BC1_UNORM_SRGB:
+        *outFormat = VK_FORMAT_BC1_RGBA_SRGB_BLOCK; *outBlockSize = 8; return true;
+	case DX_FORMAT_BC2_TYPELESS:
+	case DX_FORMAT_BC2_UNORM:
+        *outFormat = VK_FORMAT_BC2_UNORM_BLOCK; *outBlockSize = 16; return true;
+	case DX_FORMAT_BC2_UNORM_SRGB:
+        *outFormat = VK_FORMAT_BC2_SRGB_BLOCK; *outBlockSize = 16; return true;
+	case DX_FORMAT_BC3_TYPELESS:
+	case DX_FORMAT_BC3_UNORM:
+        *outFormat = VK_FORMAT_BC3_UNORM_BLOCK; *outBlockSize = 16; return true;
+	case DX_FORMAT_BC3_UNORM_SRGB:
+        *outFormat = VK_FORMAT_BC3_SRGB_BLOCK; *outBlockSize = 16; return true;
+	case DX_FORMAT_BC4_TYPELESS:
+	case DX_FORMAT_BC4_UNORM:
+        *outFormat = VK_FORMAT_BC4_UNORM_BLOCK; *outBlockSize = 8; return true;
+	case DX_FORMAT_BC4_SNORM:
+        *outFormat = VK_FORMAT_BC4_SNORM_BLOCK; *outBlockSize = 8; return true;
+	case DX_FORMAT_BC5_TYPELESS:
+	case DX_FORMAT_BC5_UNORM:
+        *outFormat = VK_FORMAT_BC5_UNORM_BLOCK; *outBlockSize = 16; return true;
+	case DX_FORMAT_BC5_SNORM:
+        *outFormat = VK_FORMAT_BC5_SNORM_BLOCK; *outBlockSize = 16; return true;
+	case DX_FORMAT_BC6H_UF16:
+        *outFormat = VK_FORMAT_BC6H_UFLOAT_BLOCK; *outBlockSize = 16; return true;
+	case DX_FORMAT_BC6H_SF16:
+        *outFormat = VK_FORMAT_BC6H_SFLOAT_BLOCK; *outBlockSize = 16; return true;
+	case DX_FORMAT_BC7_UNORM:
+        *outFormat = VK_FORMAT_BC7_UNORM_BLOCK; *outBlockSize = 16; return true;
+	case DX_FORMAT_BC7_UNORM_SRGB:
+        *outFormat = VK_FORMAT_BC7_SRGB_BLOCK; *outBlockSize = 16; return true;
+	case DX_FORMAT_B5G6R5_UNORM:
+        *outFormat = VK_FORMAT_R5G6B5_UNORM_PACK16; *outBlockSize = 2; return true;
+	case DX_FORMAT_B5G5R5A1_UNORM:
+        *outFormat = VK_FORMAT_B5G5R5A1_UNORM_PACK16; *outBlockSize = 2; return true;
+	case DX_FORMAT_B8G8R8A8_UNORM:
+	case DX_FORMAT_B8G8R8X8_UNORM:
+        *outFormat = VK_FORMAT_B8G8R8A8_UNORM; *outBlockSize = 4; return true;
+	case DX_FORMAT_B8G8R8A8_UNORM_SRGB:
+	case DX_FORMAT_B8G8R8X8_UNORM_SRGB:
+        *outFormat = VK_FORMAT_B8G8R8A8_SRGB; *outBlockSize = 4; return true;
+	default:
+		break;
+	}
+
+	*outFormat = VK_FORMAT_UNDEFINED;
+	*outBlockSize = 4;
+	return false; // unknown/unsupported format
+}
+
+struct DdsHeader
+{
+	uint32_t structSize;
+	DdsHeaderFlag flags;
+	uint32_t height;
+	uint32_t width;
+	uint32_t pitchOrLinearSize;
+	uint32_t depth; // only if HEADER_FLAGS_VOLUME is set in flags
+	uint32_t mipCount;
+	uint32_t unused1[11];
+	DdsPixelFormat pixelFormat;
+	uint32_t caps;
+	uint32_t caps2;
+	uint32_t unused2[3];
+};
+
+struct DdsHeader10
+{
+	DxFormat dxgiFormat;
+	DdsDimensions resourceDimension;
+	uint32_t flag;
+	uint32_t arraySize;
+	uint32_t unused;
+};
+
+static bool ContainsCompressedTexture(const DdsHeader *header, const DdsHeader10 *header10)
+{
+	if (header10 != NULL)
+	{
+		switch(header10->dxgiFormat)
+		{
+		case DX_FORMAT_BC1_TYPELESS:
+		case DX_FORMAT_BC1_UNORM:
+		case DX_FORMAT_BC1_UNORM_SRGB:
+		case DX_FORMAT_BC2_TYPELESS:
+		case DX_FORMAT_BC2_UNORM:
+		case DX_FORMAT_BC2_UNORM_SRGB:
+		case DX_FORMAT_BC3_TYPELESS:
+		case DX_FORMAT_BC3_UNORM:
+		case DX_FORMAT_BC3_UNORM_SRGB:
+		case DX_FORMAT_BC4_TYPELESS:
+		case DX_FORMAT_BC4_UNORM:
+		case DX_FORMAT_BC4_SNORM:
+		case DX_FORMAT_BC5_TYPELESS:
+		case DX_FORMAT_BC5_UNORM:
+		case DX_FORMAT_BC5_SNORM:
+		case DX_FORMAT_BC6H_UF16:
+		case DX_FORMAT_BC6H_SF16:
+		case DX_FORMAT_BC7_UNORM:
+		case DX_FORMAT_BC7_UNORM_SRGB:
+			return true;
+		default:
+			return false;
+		}
+	}
+	else if( header->pixelFormat.flags & PF_FLAGS_CODE4 )
+	{
+		return
+			stbvk__make_code4( 'D', 'X', 'T', '1' ) == header->pixelFormat.code4 ||
+			stbvk__make_code4( 'D', 'X', 'T', '2' ) == header->pixelFormat.code4 ||
+			stbvk__make_code4( 'D', 'X', 'T', '3' ) == header->pixelFormat.code4 ||
+			stbvk__make_code4( 'D', 'X', 'T', '4' ) == header->pixelFormat.code4 ||
+			stbvk__make_code4( 'D', 'X', 'T', '5' ) == header->pixelFormat.code4 ||
+			stbvk__make_code4( 'B', 'C', '4', 'U' ) == header->pixelFormat.code4 ||
+			stbvk__make_code4( 'B', 'C', '4', 'S' ) == header->pixelFormat.code4 ||
+			stbvk__make_code4( 'B', 'C', '5', 'U' ) == header->pixelFormat.code4 ||
+			stbvk__make_code4( 'B', 'C', '5', 'S' ) == header->pixelFormat.code4 ||
+			stbvk__make_code4( 'A', 'T', 'I', '1' ) == header->pixelFormat.code4 ||
+			stbvk__make_code4( 'A', 'T', 'I', '2' ) == header->pixelFormat.code4;
+	}
+	return false;
+}
+
+STBVKDEF int stbvk_load_image_from_dds_file(stbvk_context const *context, char const *dds_file_path, stbvk_image *out_image)
+{
+	FILE *dds_file = stbvk__fopen(dds_file_path, "rb");
+	if (dds_file == NULL)
+		return -1; // File load error
+	fseek(dds_file, 0, SEEK_END);
+	size_t dds_file_size = ftell(dds_file);
+	fseek(dds_file, 0, SEEK_SET);
+	if (dds_file_size < sizeof(DdsHeader)+sizeof(uint32_t))
+	{
+		fclose(dds_file);
+		return -2; // File too small to contain a valid DDS
+	}
+	uint8_t *dds_file_data = (uint8_t*)STBVK_MALLOC(dds_file_size);
+	if (fread(dds_file_data, dds_file_size, 1, dds_file) != 1)
+	{
+		fclose(dds_file);
+		free(dds_file_data);
+		return -3; // fread size mismatch
+	}
+	fclose(dds_file);
+
+    int retval = stbvk_load_image_from_dds_buffer(context, dds_file_data, dds_file_size, out_image);
+	free(dds_file_data);
+	return retval;
+}
+
+STBVKDEF int stbvk_load_image_from_dds_buffer(stbvk_context const *context, void const *dds_file_data, size_t dds_file_size, stbvk_image *out_image)
+{
+	const uint8_t *dds_bytes = (const uint8_t*)dds_file_data;
+
+	// Check magic number and header validity
+	const uint32_t *magic = (const uint32_t*)dds_bytes;
+	if (*magic != kDdsPrefixMagic)
+	{
+		return -4; // Incorrect magic number
+	}
+	const DdsHeader *header = (const DdsHeader*)(dds_bytes + sizeof(uint32_t));
+	if (header->structSize != sizeof(DdsHeader) || header->pixelFormat.structSize != sizeof(DdsPixelFormat))
+	{
+		return -5; // Incorrect header size
+	}
+	if ((header->flags & (HEADER_FLAGS_WIDTH | HEADER_FLAGS_HEIGHT)) != (HEADER_FLAGS_WIDTH | HEADER_FLAGS_HEIGHT))
+	{
+		// technically DDSD_CAPS and DDSD_PIXELFORMAT are required as well, but their absence is so widespread that they can't be relied upon.
+		return -6; // Required flag is missing from header
+	}
+
+	// Note according to msdn:  when you read a .dds file, you should not rely on the DDSCAPS_TEXTURE 
+	//	and DDSCAPS_COMPLEX flags being set because some writers of such a file might not set these flags.
+	//if ((header->caps & SURFACE_FLAGS_TEXTURE) == 0)
+	//{
+	//	free(ddsFileData);
+	//	return -7; // Required flag is missing from header
+	//}
+	uint32_t pixel_offset = sizeof(uint32_t) + sizeof(DdsHeader);
+
+	// Check for DX10 header
+	const DdsHeader10 *header10 = NULL;
+	if ( (header->pixelFormat.flags & PF_FLAGS_CODE4) && (stbvk__make_code4( 'D', 'X', '1', '0' ) == header->pixelFormat.code4) )
+	{
+		// Must be long enough for both headers and magic value
+		if( dds_file_size < (sizeof(DdsHeader)+sizeof(uint32_t)+sizeof(DdsHeader10)) )
+		{
+			return -8; // File too small to contain a valid DX10 DDS
+		}
+		header10 = (const DdsHeader10*)(dds_bytes + sizeof(uint32_t) + sizeof(DdsHeader));
+		pixel_offset += sizeof(DdsHeader10);
+	}
+	
+	// Check if the contents are a cubemap.  If so, all six faces must be present.
+	bool is_cube_map = false;
+	if ((header->caps & SURFACE_FLAGS_COMPLEX) && (header->caps2 & CUBEMAP_FLAG_ISCUBEMAP))
+	{
+		if ((header->caps2 & kCubemapFlagAllFaces) != kCubemapFlagAllFaces)
+		{
+			return -9; // The cubemap is missing one or more faces.
+		}
+		is_cube_map = true;
+	}
+
+	// Check if the contents are a volume texture.
+	bool is_volume_texture = false;
+	if ((header->flags & HEADER_FLAGS_DEPTH) && (header->caps2 & CUBEMAP_FLAG_VOLUME)) // (header->dwCaps & SURFACE_FLAGS_COMPLEX) -- doesn't always seem to be set?
+	{
+		if (header->depth == 0)
+		{
+			return -10; // The file is marked as a volume texture, but depth is <1
+		}
+		is_volume_texture = true;
+	}
+
+	bool is_compressed = ContainsCompressedTexture(header, header10);
+
+	uint32_t mipMapCount = 1;
+	if ((header->flags & HEADER_FLAGS_MIPMAP) == HEADER_FLAGS_MIPMAP)
+	{
+		mipMapCount = header->mipCount;
+	}
+
+	// Begin VK-specific code!
+	uint32_t block_size = 0;
+    VkFormat vk_format = VK_FORMAT_UNDEFINED;
+	if (header10 != NULL)
+	{
+		DXtoVKFormat(header10->dxgiFormat, &block_size, &vk_format);
+	}
+	else
+	{
+		DDSPFtoVKFormat(header->pixelFormat, &block_size, &vk_format);
+	}
+	if (vk_format == VK_FORMAT_UNDEFINED)
+	{
+		return -11; // It is either unknown or unsupported format
+	}
+    stbvk_image_create_info create_info = {};
+    //create_info.image_type = 0;
+    create_info.format = vk_format;
+    create_info.extent.width  = stbvk__max(1U, header->width);
+    create_info.extent.height = stbvk__max(1U, header->height);
+    create_info.extent.depth  = stbvk__max(1U, header->depth);
+    create_info.mip_levels = header->mipCount;
+    create_info.array_layers = header10 ? header10->arraySize : 1;
+    create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT; // TODO(cort): generalize
+    create_info.final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // TODO(cort): generalize
+    //create_info.view_type = 0;
+	const uint8_t *next_src_surface = dds_bytes + pixel_offset;
+	if (is_cube_map)
+	{
+        create_info.image_type = VK_IMAGE_TYPE_2D;
+        create_info.view_type = (create_info.array_layers > 1) ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
+        create_info.array_layers *= 6;
+#if 0
+		glTarget = GL_TEXTURE_CUBE_MAP;
+		ZomboLite::GenTexture(outTex, "Currently-loading Texture");
+		glBindTexture(GL_TEXTURE_CUBE_MAP, *outTex);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, mipMapCount > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR );
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_BASE_LEVEL, 0);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, mipMapCount-1);
+		glTexStorage2D(GL_TEXTURE_CUBE_MAP, mipMapCount, glInternalFormat, header->width, header->height);
+		const GLenum faceTargets[6] = {
+			GL_TEXTURE_CUBE_MAP_POSITIVE_X,
+			GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
+			GL_TEXTURE_CUBE_MAP_POSITIVE_Y,
+			GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
+			GL_TEXTURE_CUBE_MAP_POSITIVE_Z,
+			GL_TEXTURE_CUBE_MAP_NEGATIVE_Z,
+		};
+		for(uint32_t iFace=0; iFace<6; ++iFace)
+		{
+			GLenum faceTarget = faceTargets[iFace];
+			for(uint32_t iMip=0; iMip<mipMapCount; ++iMip)
+			{
+				uint32_t mipWidth  = max(header->width >> iMip, 1U);
+				uint32_t mipHeight = max(header->height >> iMip, 1U);
+				uint32_t mipPitch  = is_compressed ? ((mipWidth+3)/4)*block_size : mipWidth*block_size;
+				uint32_t numRows = is_compressed ? ((mipHeight+3)/4) : mipHeight;
+				uint32_t surfaceSize = mipPitch*numRows;
+				ZOMBOLITE_ASSERT(nextSrcSurface + surfaceSize <= dds_bytes + ddsBufferSize, "mip %d surface is out of range in DDS data.", iMip);
+				if (is_compressed)
+				{
+					glCompressedTexSubImage2D(faceTarget, iMip, 0,0, mipWidth,mipHeight, glInternalFormat, surfaceSize, nextSrcSurface);
+#if defined(_DEBUG)
+					GLint param = 0;
+					glGetTexLevelParameteriv(faceTarget, iMip, GL_TEXTURE_COMPRESSED, &param);
+					ZOMBOLITE_ASSERT(param != 0, "OpenGL doesn't think compressed mip is compressed!");
+#endif
+				}
+				else
+				{
+					glTexSubImage2D(faceTarget, iMip, 0,0, mipWidth,mipHeight, glFormat, glType, next_src_surface);
+				}
+				next_src_surface += surfaceSize;
+			}
+		}
+		glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+#endif
+    }
+	else if (is_volume_texture)
+	{
+#if 0
+        glTarget = GL_TEXTURE_3D;
+		// TODO
+#endif
+    }
+	else
+	{
+        if (create_info.extent.height == 1)
+        {
+            create_info.image_type = VK_IMAGE_TYPE_1D;
+            create_info.view_type = (create_info.array_layers > 1) ? VK_IMAGE_VIEW_TYPE_1D_ARRAY : VK_IMAGE_VIEW_TYPE_1D;
+        }
+        else
+        {
+            create_info.image_type = VK_IMAGE_TYPE_2D;
+            create_info.view_type = (create_info.array_layers > 1) ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+        }
+        stbvk_create_image(context, &create_info, out_image);
+		for(uint32_t iMip=0; iMip<create_info.mip_levels; ++iMip)
+		{
+			uint32_t mip_width  = max(header->width >> iMip, 1U);
+			uint32_t mip_height = max(header->height >> iMip, 1U);
+			uint32_t mip_pitch  = is_compressed ? ((mip_width+3)/4)*block_size : mip_width*block_size;
+			uint32_t num_rows = is_compressed ? ((mip_height+3)/4) : mip_height;
+			uint32_t surface_size = mip_pitch*num_rows;
+            for(uint32_t iLayer=0; iLayer<create_info.array_layers; ++iLayer)
+            {
+			    STBVK_ASSERT(next_src_surface + surface_size <= dds_bytes + dds_file_size);
+                VkImageSubresource subresource = {};
+                subresource.arrayLayer = iLayer;
+                subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                subresource.mipLevel = iMip;
+                VkSubresourceLayout subresource_layout = {};
+                STBVK__CHECK( stbvk_get_image_subresource_source_layout(context, out_image, subresource, &subresource_layout) );
+                uint32_t *padded_pixels = (uint32_t*)STBVK_MALLOC(subresource_layout.size);
+                STBVK_ASSERT(mip_pitch <= subresource_layout.rowPitch);
+                for(uint32_t iY=0; iY<num_rows; iY+=1)
+                {
+                    const void *src_row = (void*)( intptr_t(next_src_surface) + iY*mip_pitch );
+                    void *dst_row = (void*)( (intptr_t)padded_pixels + iY*subresource_layout.rowPitch );
+                    memcpy(dst_row, src_row, mip_pitch);
+                }
+                STBVK__CHECK( stbvk_load_image_subresource(context, out_image, subresource, subresource_layout, padded_pixels) );
+                STBVK_FREE(padded_pixels);
+			    next_src_surface += surface_size;
+		    }
+	    }
+    }
+	return 0;
+}
+
 
 #endif // STB_VULKAN_IMPLEMENTATION
