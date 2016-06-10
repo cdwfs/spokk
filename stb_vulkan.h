@@ -882,6 +882,20 @@ STBVKDEF VkResult stbvk_create_image(stbvk_context const *context, stbvk_image_c
     VkDeviceSize memory_offset = 0;
     STBVK__CHECK( vkBindImageMemory(context->device, out_image->image, out_image->device_memory, memory_offset) );
 
+    VkImageAspectFlagBits image_aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+    switch(create_info->format)
+    {
+    case VK_FORMAT_D16_UNORM:
+    case VK_FORMAT_D16_UNORM_S8_UINT:
+    case VK_FORMAT_D32_SFLOAT:
+    case VK_FORMAT_D32_SFLOAT_S8_UINT:
+    case VK_FORMAT_D24_UNORM_S8_UINT:
+        image_aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+        break;
+    default:
+        break;
+    }
+
     out_image->image_view_create_info = {};
     out_image->image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     out_image->image_view_create_info.pNext = NULL;
@@ -893,7 +907,7 @@ STBVKDEF VkResult stbvk_create_image(stbvk_context const *context, stbvk_image_c
     out_image->image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
     out_image->image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
     out_image->image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-    out_image->image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // TODO(cort): generalize?
+    out_image->image_view_create_info.subresourceRange.aspectMask = image_aspect;
     out_image->image_view_create_info.subresourceRange.baseMipLevel = 0;
     out_image->image_view_create_info.subresourceRange.levelCount = create_info->mip_levels;
     out_image->image_view_create_info.subresourceRange.baseArrayLayer = 0;
@@ -1020,7 +1034,7 @@ STBVKDEF VkResult stbvk_load_image_subresource(stbvk_context const *context, stb
     copy_region.srcSubresource.mipLevel = 0;
     copy_region.srcOffset = {0,0,0};
     copy_region.dstSubresource = {};
-    copy_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    copy_region.dstSubresource.aspectMask = image->image_view_create_info.subresourceRange.aspectMask;
     copy_region.dstSubresource.baseArrayLayer = subresource.arrayLayer;
     copy_region.dstSubresource.layerCount = 1;
     copy_region.dstSubresource.mipLevel = subresource.mipLevel;

@@ -200,62 +200,27 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK( vkBeginCommandBuffer(context.command_buffer_primary, &commandBufferBeginInfo) );
 
     // Create depth buffer
-    VkFormat surfaceDepthFormat = VK_FORMAT_D16_UNORM;
-    VkImageCreateInfo imageCreateInfoDepth = {};
-    imageCreateInfoDepth.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageCreateInfoDepth.pNext = NULL;
-    imageCreateInfoDepth.imageType = VK_IMAGE_TYPE_2D;
-    imageCreateInfoDepth.format = surfaceDepthFormat;
-    imageCreateInfoDepth.extent = {};
-    imageCreateInfoDepth.extent.width = kWindowWidthDefault;
-    imageCreateInfoDepth.extent.height = kWindowHeightDefault;
-    imageCreateInfoDepth.extent.depth = 1;
-    imageCreateInfoDepth.mipLevels = 1;
-    imageCreateInfoDepth.arrayLayers = 1;
-    imageCreateInfoDepth.samples = VK_SAMPLE_COUNT_1_BIT;
-    imageCreateInfoDepth.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageCreateInfoDepth.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    imageCreateInfoDepth.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageCreateInfoDepth.flags = 0;
-    VkImage imageDepth = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreateImage(context.device, &imageCreateInfoDepth, context.allocation_callbacks, &imageDepth) );
-    VkMemoryRequirements memoryRequirementsDepth;
-    vkGetImageMemoryRequirements(context.device, imageDepth, &memoryRequirementsDepth);
-    VkMemoryAllocateInfo memoryAllocateInfoDepth = {};
-    memoryAllocateInfoDepth.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memoryAllocateInfoDepth.pNext = NULL;
-    memoryAllocateInfoDepth.allocationSize = memoryRequirementsDepth.size;
-    memoryAllocateInfoDepth.memoryTypeIndex = 0; // filled in below
-    VkBool32 foundMemoryTypeDepth = getMemoryTypeFromProperties(&context.physical_device_memory_properties,
-        memoryRequirementsDepth.memoryTypeBits, 0, &memoryAllocateInfoDepth.memoryTypeIndex);
-    assert(foundMemoryTypeDepth);
-    VkDeviceMemory imageDepthMemory = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkAllocateMemory(context.device, &memoryAllocateInfoDepth, context.allocation_callbacks, &imageDepthMemory) );
-    VkDeviceSize imageDepthMemoryOffset = 0;
-    VULKAN_CHECK( vkBindImageMemory(context.device, imageDepth, imageDepthMemory, imageDepthMemoryOffset) );
-    VkImageViewCreateInfo imageViewCreateInfoDepth = {};
-    imageViewCreateInfoDepth.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    imageViewCreateInfoDepth.pNext = NULL;
-    imageViewCreateInfoDepth.image = imageDepth;
-    imageViewCreateInfoDepth.format = surfaceDepthFormat;
-    imageViewCreateInfoDepth.subresourceRange = {};
-    imageViewCreateInfoDepth.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    imageViewCreateInfoDepth.subresourceRange.baseMipLevel = 0;
-    imageViewCreateInfoDepth.subresourceRange.levelCount = 1;
-    imageViewCreateInfoDepth.subresourceRange.baseArrayLayer = 0;
-    imageViewCreateInfoDepth.subresourceRange.layerCount = 1;
-    imageViewCreateInfoDepth.flags = 0;
-    imageViewCreateInfoDepth.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    VkImageView imageDepthView;
-    VULKAN_CHECK( vkCreateImageView(context.device, &imageViewCreateInfoDepth, context.allocation_callbacks, &imageDepthView) );
+    stbvk_image_create_info depth_image_create_info = {};
+    depth_image_create_info.image_type = VK_IMAGE_TYPE_2D;
+    depth_image_create_info.format = VK_FORMAT_D16_UNORM;
+    depth_image_create_info.extent = {kWindowWidthDefault, kWindowHeightDefault, 1};
+    depth_image_create_info.mip_levels = 1;
+    depth_image_create_info.array_layers = 1;
+    depth_image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    depth_image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    depth_image_create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    depth_image_create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depth_image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
+    stbvk_image depth_image;
+    VULKAN_CHECK( stbvk_create_image(&context, &depth_image_create_info, &depth_image) );
     VkImageSubresourceRange depthSubresourceRange = {};
     depthSubresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     depthSubresourceRange.baseMipLevel = 0;
     depthSubresourceRange.levelCount = 1;
     depthSubresourceRange.baseArrayLayer = 0;
     depthSubresourceRange.layerCount = 1;
-    stbvk_set_image_layout(context.command_buffer_primary, imageDepth, depthSubresourceRange,
-        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0);
+    stbvk_set_image_layout(context.command_buffer_primary, depth_image.image, depthSubresourceRange,
+        depth_image_create_info.initial_layout, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0);
 
     // Create index buffer
     VkIndexType indexType = VK_INDEX_TYPE_UINT32;
@@ -492,7 +457,7 @@ int main(int argc, char *argv[]) {
     attachmentDescriptions[kColorAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     attachmentDescriptions[kColorAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     attachmentDescriptions[kDepthAttachmentIndex].flags = 0;
-    attachmentDescriptions[kDepthAttachmentIndex].format = surfaceDepthFormat;
+    attachmentDescriptions[kDepthAttachmentIndex].format = depth_image.image_view_create_info.format;
     attachmentDescriptions[kDepthAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
     attachmentDescriptions[kDepthAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachmentDescriptions[kDepthAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -548,7 +513,7 @@ int main(int argc, char *argv[]) {
     // Or is that an unnecessary image copy?
     VkImageView attachmentImageViews[kAttachmentCount] = {};
     attachmentImageViews[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below;
-    attachmentImageViews[kDepthAttachmentIndex] = imageDepthView;
+    attachmentImageViews[kDepthAttachmentIndex] = depth_image.image_view;
     attachmentImageViews[kTextureAttachmentIndex] = texture_image.image_view;
     VkFramebufferCreateInfo framebufferCreateInfo = {};
     framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -866,9 +831,7 @@ int main(int argc, char *argv[]) {
     }
     free(framebuffers);
 
-    vkDestroyImageView(context.device, imageDepthView, context.allocation_callbacks);
-    vkFreeMemory(context.device, imageDepthMemory, context.allocation_callbacks);
-    vkDestroyImage(context.device, imageDepth, context.allocation_callbacks);
+    stbvk_destroy_image(&context, &depth_image);
 
     vkFreeMemory(context.device, bufferVerticesMemory, context.allocation_callbacks);
     vkDestroyBuffer(context.device, bufferVertices, context.allocation_callbacks);
