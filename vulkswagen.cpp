@@ -573,7 +573,9 @@ int main(int argc, char *argv[]) {
     pipelineViewportStateCreateInfo.pNext = NULL;
     pipelineViewportStateCreateInfo.flags = 0;
     pipelineViewportStateCreateInfo.viewportCount = 1;
+    pipelineViewportStateCreateInfo.pViewports = NULL;
     pipelineViewportStateCreateInfo.scissorCount = 1;
+    pipelineViewportStateCreateInfo.pScissors = NULL;
     VkPipelineDepthStencilStateCreateInfo pipelineDepthStencilCreateInfo = {};
     pipelineDepthStencilCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     pipelineDepthStencilCreateInfo.pNext = NULL;
