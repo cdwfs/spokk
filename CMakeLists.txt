@@ -14,6 +14,7 @@ include_directories(glfw/include)
 project(vulkswagen)
 
 SET(headers
+    cds_mesh.h
     platform.h
     stb_image.h
     stb_vulkan.h

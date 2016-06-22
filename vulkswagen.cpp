@@ -31,6 +31,9 @@
 #define STB_VULKAN_IMPLEMENTATION
 #include "stb_vulkan.h"
 
+#define CDS_MESH_IMPLEMENTATION
+#include "cds_mesh.h"
+
 #include <mathfu/vector.h>
 #include <mathfu/glsl_mappings.h>
 
@@ -219,20 +222,54 @@ int main(int argc, char *argv[]) {
       depth_image_create_info.initial_layout,
       VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0);
 
+    cdsm_metadata_t mesh_metadata = {};
+    size_t mesh_vertices_size = 0, mesh_indices_size = 0;
+    enum
+    {
+        MESH_TYPE_CUBE     = 0,
+        MESH_TYPE_SPHERE   = 1,
+        MESH_TYPE_AXES     = 3,
+        MESH_TYPE_CYLINDER = 2,
+    } meshType = MESH_TYPE_SPHERE;
+    cdsm_cube_recipe_t cube_recipe = {};
+    cube_recipe.min_extent = {-1,-1,-1};
+    cube_recipe.max_extent = {+1,+1,+1};
+    cdsm_sphere_recipe_t sphere_recipe = {};
+    sphere_recipe.latitudinal_segments = 300;
+    sphere_recipe.longitudinal_segments = 300;
+    sphere_recipe.radius = 0.5f;
+    cdsm_cylinder_recipe_t cylinder_recipe = {};
+    cylinder_recipe.length = 1.0f;
+    cylinder_recipe.axial_segments = 3;
+    cylinder_recipe.radial_segments = 60;
+    cylinder_recipe.radius0 = -1.0f;
+    cylinder_recipe.radius1 = 1.0f;
+    cdsm_axes_recipe_t axes_recipe = {};
+    axes_recipe.length = 1.0f;
+    if      (meshType == MESH_TYPE_CUBE)
+        cdsm_create_cube(&mesh_metadata, NULL, &mesh_vertices_size, NULL, &mesh_indices_size, &cube_recipe);
+    else if (meshType == MESH_TYPE_SPHERE)
+        cdsm_create_sphere(&mesh_metadata, NULL, &mesh_vertices_size, NULL, &mesh_indices_size, &sphere_recipe);
+    else if (meshType == MESH_TYPE_AXES)
+        cdsm_create_axes(&mesh_metadata, NULL, &mesh_vertices_size, NULL, &mesh_indices_size, &axes_recipe);
+    else if (meshType == MESH_TYPE_CYLINDER)
+        cdsm_create_cylinder(&mesh_metadata, NULL, &mesh_vertices_size, NULL, &mesh_indices_size, &cylinder_recipe);
+    VkPrimitiveTopology primitive_topology = VK_PRIMITIVE_TOPOLOGY_RANGE_SIZE;
+    if (mesh_metadata.primitive_type == CDSM_PRIMITIVE_TYPE_TRIANGLE_LIST)
+        primitive_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    else if (mesh_metadata.primitive_type == CDSM_PRIMITIVE_TYPE_LINE_LIST)
+        primitive_topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    else
+    {
+        assert(0); // unknown primitive topology
+    }
+
     // Create index buffer
     VkIndexType indexType = VK_INDEX_TYPE_UINT32;
-    const uint32_t cubeIndices[] = {
-        0,1,2,      2,1,3,
-        4,5,6,      6,5,7,
-        8,9,10,     10,9,11,
-        12,13,14,   14,13,15,
-        16,17,18,   18,17,19,
-        20,21,22,   22,21,23,
-    };
     VkBufferCreateInfo bufferCreateInfoIndices = {};
     bufferCreateInfoIndices.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferCreateInfoIndices.pNext = NULL;
-    bufferCreateInfoIndices.size = sizeof(cubeIndices);
+    bufferCreateInfoIndices.size = mesh_indices_size;
     bufferCreateInfoIndices.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
     bufferCreateInfoIndices.flags = 0;
     VkBuffer bufferIndices = VK_NULL_HANDLE;
@@ -251,57 +288,13 @@ int main(int argc, char *argv[]) {
     VkDeviceMemory bufferIndicesMemory = VK_NULL_HANDLE;
     VULKAN_CHECK( vkAllocateMemory(context.device, &memoryAllocateInfoIndices, context.allocation_callbacks, &bufferIndicesMemory) );
     VkDeviceSize bufferIndicesMemoryOffset = 0;
-    VkMemoryMapFlags bufferIndicesMemoryMapFlags = 0;
-    void *bufferIndicesMapped = NULL;
-    VULKAN_CHECK( vkMapMemory(context.device, bufferIndicesMemory, bufferIndicesMemoryOffset,
-        memoryAllocateInfoIndices.allocationSize, bufferIndicesMemoryMapFlags, &bufferIndicesMapped) );
-    memcpy(bufferIndicesMapped, cubeIndices, sizeof(cubeIndices));
-    //vkUnmapMemory(device, bufferIndicesMapped); // TODO: see if validation layer catches this error
-    vkUnmapMemory(context.device, bufferIndicesMemory);
     VULKAN_CHECK( vkBindBufferMemory(context.device, bufferIndices, bufferIndicesMemory, bufferIndicesMemoryOffset) );
 
     // Create vertex buffer
-    typedef struct 
-    {
-        float pos[3];
-        float norm[3];
-        float texcoord[2];
-    } Vertex;
-    const Vertex cubeVertices[] = {
-        { {+1,-1,+1},   {+1,+0,+0},   {+0,+1} },   // +X
-        { {+1,-1,-1},   {+1,+0,+0},   {+1,+1} },
-        { {+1,+1,+1},   {+1,+0,+0},   {+0,+0} },
-        { {+1,+1,-1},   {+1,+0,+0},   {+1,+0} },
-
-        { {-1,-1,-1},   {-1,+0,+0},   {+0,+1} },   // -X
-        { {-1,-1,+1},   {-1,+0,+0},   {+1,+1} },
-        { {-1,+1,-1},   {-1,+0,+0},   {+0,+0} },
-        { {-1,+1,+1},   {-1,+0,+0},   {+1,+0} },
-
-        { {-1,+1,+1},   {+0,+1,+0},   {+0,+1} },   // +Y
-        { {+1,+1,+1},   {+0,+1,+0},   {+1,+1} },
-        { {-1,+1,-1},   {+0,+1,+0},   {+0,+0} },
-        { {+1,+1,-1},   {+0,+1,+0},   {+1,+0} },
-
-        { {-1,-1,-1},   {+0,-1,+0},   {+0,+1} },   // -Y
-        { {+1,-1,-1},   {+0,-1,+0},   {+1,+1} },
-        { {-1,-1,+1},   {+0,-1,+0},   {+0,+0} },
-        { {+1,-1,+1},   {+0,-1,+0},   {+1,+0} },
-
-        { {-1,-1,+1},   {+0,+0,+1},   {+0,+1} },   // +Z
-        { {+1,-1,+1},   {+0,+0,+1},   {+1,+1} },
-        { {-1,+1,+1},   {+0,+0,+1},   {+0,+0} },
-        { {+1,+1,+1},   {+0,+0,+1},   {+1,+0} },
-
-        { {+1,-1,-1},   {+0,+0,-1},   {+0,+1} },   // -Z
-        { {-1,-1,-1},   {+0,+0,-1},   {+1,+1} },
-        { {+1,+1,-1},   {+0,+0,-1},   {+0,+0} },
-        { {-1,+1,-1},   {+0,+0,-1},   {+1,+0} },
-    };
     VkBufferCreateInfo bufferCreateInfoVertices = {};
     bufferCreateInfoVertices.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferCreateInfoVertices.pNext = NULL;
-    bufferCreateInfoVertices.size = sizeof(cubeVertices);
+    bufferCreateInfoVertices.size = mesh_vertices_size;
     bufferCreateInfoVertices.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     bufferCreateInfoVertices.flags = 0;
     VkBuffer bufferVertices = VK_NULL_HANDLE;
@@ -320,28 +313,46 @@ int main(int argc, char *argv[]) {
     VkDeviceMemory bufferVerticesMemory = VK_NULL_HANDLE;
     VULKAN_CHECK( vkAllocateMemory(context.device, &memoryAllocateInfoVertices, context.allocation_callbacks, &bufferVerticesMemory) );
     VkDeviceSize bufferVerticesMemoryOffset = 0;
-    VkMemoryMapFlags bufferVerticesMemoryMapFlags = 0;
-    void *bufferVerticesMapped = NULL;
-    VULKAN_CHECK( vkMapMemory(context.device, bufferVerticesMemory, bufferVerticesMemoryOffset,
-        memoryAllocateInfoVertices.allocationSize, bufferVerticesMemoryMapFlags, &bufferVerticesMapped) );
-    memcpy(bufferVerticesMapped, cubeVertices, sizeof(cubeVertices));
-    vkUnmapMemory(context.device, bufferVerticesMemory);
     VULKAN_CHECK( vkBindBufferMemory(context.device, bufferVertices, bufferVerticesMemory, bufferVerticesMemoryOffset) );
     stbvk_vertex_buffer_layout vertexBufferLayout = {};
-    vertexBufferLayout.stride = sizeof(Vertex);
+    vertexBufferLayout.stride = sizeof(cdsm_vertex_t);
     vertexBufferLayout.attribute_count = 3;
     vertexBufferLayout.attributes[0].binding = 0;
     vertexBufferLayout.attributes[0].location = 0;
     vertexBufferLayout.attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    vertexBufferLayout.attributes[0].offset = offsetof(Vertex, pos);
+    vertexBufferLayout.attributes[0].offset = offsetof(cdsm_vertex_t, position);
     vertexBufferLayout.attributes[1].binding = 0;
     vertexBufferLayout.attributes[1].location = 1;
     vertexBufferLayout.attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    vertexBufferLayout.attributes[1].offset = offsetof(Vertex, norm);
+    vertexBufferLayout.attributes[1].offset = offsetof(cdsm_vertex_t, normal);
     vertexBufferLayout.attributes[2].binding = 0;
     vertexBufferLayout.attributes[2].location = 2;
     vertexBufferLayout.attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
-    vertexBufferLayout.attributes[2].offset = offsetof(Vertex, texcoord);
+    vertexBufferLayout.attributes[2].offset = offsetof(cdsm_vertex_t, texcoord);
+
+    // Populate vertex/index buffers
+    VkMemoryMapFlags bufferIndicesMemoryMapFlags = 0;
+    void *bufferIndicesMapped = NULL;
+    VULKAN_CHECK( vkMapMemory(context.device, bufferIndicesMemory, bufferIndicesMemoryOffset,
+        memoryAllocateInfoIndices.allocationSize, bufferIndicesMemoryMapFlags, &bufferIndicesMapped) );
+    VkMemoryMapFlags bufferVerticesMemoryMapFlags = 0;
+    void *bufferVerticesMapped = NULL;
+    VULKAN_CHECK( vkMapMemory(context.device, bufferVerticesMemory, bufferVerticesMemoryOffset,
+        memoryAllocateInfoVertices.allocationSize, bufferVerticesMemoryMapFlags, &bufferVerticesMapped) );
+    if      (meshType == MESH_TYPE_CUBE)
+        cdsm_create_cube(&mesh_metadata, (cdsm_vertex_t*)bufferVerticesMapped, &mesh_vertices_size,
+            (cdsm_index_t*)bufferIndicesMapped, &mesh_indices_size, &cube_recipe);
+    else if (meshType == MESH_TYPE_SPHERE)
+        cdsm_create_sphere(&mesh_metadata, (cdsm_vertex_t*)bufferVerticesMapped, &mesh_vertices_size,
+            (cdsm_index_t*)bufferIndicesMapped, &mesh_indices_size, &sphere_recipe);
+    else if (meshType == MESH_TYPE_AXES)
+        cdsm_create_axes(&mesh_metadata, (cdsm_vertex_t*)bufferVerticesMapped, &mesh_vertices_size,
+            (cdsm_index_t*)bufferIndicesMapped, &mesh_indices_size, &axes_recipe);
+    else if (meshType == MESH_TYPE_CYLINDER)
+        cdsm_create_cylinder(&mesh_metadata, (cdsm_vertex_t*)bufferVerticesMapped, &mesh_vertices_size,
+            (cdsm_index_t*)bufferIndicesMapped, &mesh_indices_size, &cylinder_recipe);
+    vkUnmapMemory(context.device, bufferIndicesMemory);
+    vkUnmapMemory(context.device, bufferVerticesMemory);
 
     // Create push constants
     struct {
@@ -351,7 +362,6 @@ int main(int argc, char *argv[]) {
         mathfu::mat4 n2w;
     } pushConstants = {};
     assert(sizeof(pushConstants) <= context.physical_device_properties.limits.maxPushConstantsSize);
-    uint64_t counterStart = zomboClockTicks();
     VkPushConstantRange pushConstantRange = {};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
@@ -515,7 +525,7 @@ int main(int argc, char *argv[]) {
         | (1<<VK_DYNAMIC_STATE_VIEWPORT)
         | (1<<VK_DYNAMIC_STATE_SCISSOR)
         ;
-    graphicsPipelineSettings.primitive_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    graphicsPipelineSettings.primitive_topology = primitive_topology;
     graphicsPipelineSettings.pipeline_layout = pipelineLayout;
     graphicsPipelineSettings.render_pass = renderPass;
     graphicsPipelineSettings.subpass = 0;
@@ -589,6 +599,7 @@ int main(int argc, char *argv[]) {
         +0.0f, +0.0f, +0.5f, +0.5f,
         +0.0f, +0.0f, +0.0f, +1.0f);
 
+    uint64_t counterStart = zomboClockTicks();
     while(!glfwWindowShouldClose(window)) {
         // Retrieve the index of the next available swapchain index
         VkFence presentCompleteFence = VK_NULL_HANDLE; // TODO(cort): unused
@@ -632,9 +643,9 @@ int main(int argc, char *argv[]) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineGraphics);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,1,&descriptorSet, 0,NULL);
         pushConstants.time[0] = (float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) );
-        mathfu::quat q = mathfu::quat::FromAngleAxis(pushConstants.time[0], mathfu::vec3(1,1,0));
+        mathfu::quat q = mathfu::quat::FromAngleAxis(pushConstants.time[0], mathfu::vec3(0,1,0));
         pushConstants.o2w = mathfu::mat4::Identity()
-            * mathfu::mat4::FromTranslationVector( mathfu::vec3(5, 2*sinf(float(M_PI*pushConstants.time[0])), -10.5f) )
+            * mathfu::mat4::FromTranslationVector( mathfu::vec3(0, -1.25f, -3.5f) )
             * q.ToMatrix4()
             //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
             ;
@@ -665,7 +676,7 @@ int main(int argc, char *argv[]) {
         vkCmdBindVertexBuffers(commandBuffer, 0,1, &bufferVertices, vertexBufferOffsets);
         const VkDeviceSize indexBufferOffset = 0;
         vkCmdBindIndexBuffer(commandBuffer, bufferIndices, indexBufferOffset, indexType);
-        const uint32_t indexCount = sizeof(cubeIndices) / sizeof(cubeIndices[0]);
+        const uint32_t indexCount = mesh_metadata.index_count;
         const uint32_t instanceCount = 1;
         vkCmdDrawIndexed(commandBuffer, indexCount, instanceCount, 0,0,0);
 
