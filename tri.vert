@@ -28,7 +28,7 @@
 #version 400
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_ARB_shading_language_420pack : enable
-layout (location = 0) in vec4 pos;
+layout (location = 0) in vec3 pos;
 layout (location = 1) in vec3 normal;
 layout (location = 2) in vec2 attr;
 layout (location = 0) out vec2 texcoord;
@@ -45,8 +45,6 @@ void main() {
     texcoord = attr;
     norm = pushConsts.n2w * normal;
     
-    vec4 outpos = pos;
-    outpos = pushConsts.proj * pushConsts.o2w * pos ;
-    //outpos.x += 0.1 * sin(pushConsts.time.x + attr.z) + 0.05*sin(6*pushConsts.time.x + attr.z*3);
+    vec4 outpos = pushConsts.proj * pushConsts.o2w * vec4(pos,1);
     gl_Position = outpos;
 }

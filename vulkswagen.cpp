@@ -284,35 +284,35 @@ int main(int argc, char *argv[]) {
         float texcoord[2];
     } Vertex;
     const Vertex cubeVertices[] = {
-        { {+1,-1,+1},   {+1,+0,+0},   {+0,+0} },   // +X
-        { {+1,-1,-1},   {+1,+0,+0},   {+1,+0} },
-        { {+1,+1,+1},   {+1,+0,+0},   {+0,+1} },
-        { {+1,+1,-1},   {+1,+0,+0},   {+1,+1} },
+        { {+1,-1,+1},   {+1,+0,+0},   {+0,+1} },   // +X
+        { {+1,-1,-1},   {+1,+0,+0},   {+1,+1} },
+        { {+1,+1,+1},   {+1,+0,+0},   {+0,+0} },
+        { {+1,+1,-1},   {+1,+0,+0},   {+1,+0} },
 
-        { {-1,-1,-1},   {-1,+0,+0},   {+0,+0} },   // -X
-        { {-1,-1,+1},   {-1,+0,+0},   {+1,+0} },
-        { {-1,+1,-1},   {-1,+0,+0},   {+0,+1} },
-        { {-1,+1,+1},   {-1,+0,+0},   {+1,+1} },
+        { {-1,-1,-1},   {-1,+0,+0},   {+0,+1} },   // -X
+        { {-1,-1,+1},   {-1,+0,+0},   {+1,+1} },
+        { {-1,+1,-1},   {-1,+0,+0},   {+0,+0} },
+        { {-1,+1,+1},   {-1,+0,+0},   {+1,+0} },
 
-        { {-1,+1,+1},   {+0,+1,+0},   {+0,+0} },   // +Y
-        { {+1,+1,+1},   {+0,+1,+0},   {+1,+0} },
-        { {-1,+1,-1},   {+0,+1,+0},   {+0,+1} },
-        { {+1,+1,-1},   {+0,+1,+0},   {+1,+1} },
+        { {-1,+1,+1},   {+0,+1,+0},   {+0,+1} },   // +Y
+        { {+1,+1,+1},   {+0,+1,+0},   {+1,+1} },
+        { {-1,+1,-1},   {+0,+1,+0},   {+0,+0} },
+        { {+1,+1,-1},   {+0,+1,+0},   {+1,+0} },
 
-        { {-1,-1,-1},   {+0,-1,+0},   {+0,+0} },   // -Y
-        { {+1,-1,-1},   {+0,-1,+0},   {+1,+0} },
-        { {-1,-1,+1},   {+0,-1,+0},   {+0,+1} },
-        { {+1,-1,+1},   {+0,-1,+0},   {+1,+1} },
+        { {-1,-1,-1},   {+0,-1,+0},   {+0,+1} },   // -Y
+        { {+1,-1,-1},   {+0,-1,+0},   {+1,+1} },
+        { {-1,-1,+1},   {+0,-1,+0},   {+0,+0} },
+        { {+1,-1,+1},   {+0,-1,+0},   {+1,+0} },
 
-        { {-1,-1,+1},   {+0,+0,+1},   {+0,+0} },   // +Z
-        { {+1,-1,+1},   {+0,+0,+1},   {+1,+0} },
-        { {-1,+1,+1},   {+0,+0,+1},   {+0,+1} },
-        { {+1,+1,+1},   {+0,+0,+1},   {+1,+1} },
+        { {-1,-1,+1},   {+0,+0,+1},   {+0,+1} },   // +Z
+        { {+1,-1,+1},   {+0,+0,+1},   {+1,+1} },
+        { {-1,+1,+1},   {+0,+0,+1},   {+0,+0} },
+        { {+1,+1,+1},   {+0,+0,+1},   {+1,+0} },
 
-        { {+1,-1,-1},   {+0,+0,-1},   {+0,+0} },   // -Z
-        { {-1,-1,-1},   {+0,+0,-1},   {+1,+0} },
-        { {+1,+1,-1},   {+0,+0,-1},   {+0,+1} },
-        { {-1,+1,-1},   {+0,+0,-1},   {+1,+1} },
+        { {+1,-1,-1},   {+0,+0,-1},   {+0,+1} },   // -Z
+        { {-1,-1,-1},   {+0,+0,-1},   {+1,+1} },
+        { {+1,+1,-1},   {+0,+0,-1},   {+0,+0} },
+        { {-1,+1,-1},   {+0,+0,-1},   {+1,+0} },
     };
     VkBufferCreateInfo bufferCreateInfoVertices = {};
     bufferCreateInfoVertices.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -603,7 +603,7 @@ int main(int argc, char *argv[]) {
     pipelineRasterizationStateCreateInfo.flags = 0;
     pipelineRasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;
     pipelineRasterizationStateCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-    pipelineRasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    pipelineRasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     pipelineRasterizationStateCreateInfo.depthClampEnable = VK_FALSE;
     pipelineRasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;
     pipelineRasterizationStateCreateInfo.depthBiasEnable = VK_FALSE;
@@ -751,6 +751,13 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK( vkCreateSemaphore(context.device, &semaphoreCreateInfo, context.allocation_callbacks, &renderingComplete) );
 
     uint32_t frameIndex = 0;
+
+    const mathfu::mat4 clip_fixup(
+        +1.0f, +0.0f, +0.0f, +0.0f,
+        +0.0f, -1.0f, +0.0f, +0.0f,
+        +0.0f, +0.0f, +0.5f, +0.5f,
+        +0.0f, +0.0f, +0.0f, +1.0f);
+
     while(!glfwWindowShouldClose(window)) {
         // Retrieve the index of the next available swapchain index
         VkFence presentCompleteFence = VK_NULL_HANDLE; // TODO(cort): unused
@@ -805,14 +812,14 @@ int main(int argc, char *argv[]) {
         pushConstants.time[0] = (float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) );
         mathfu::quat q = mathfu::quat::FromAngleAxis(pushConstants.time[0], mathfu::vec3(1,1,0));
         pushConstants.o2w = mathfu::mat4::Identity()
-            * mathfu::mat4::FromTranslationVector( mathfu::vec3(0,0,-4.75f) )
+            * mathfu::mat4::FromTranslationVector( mathfu::vec3(5, 2*sinf(float(M_PI*pushConstants.time[0])), -10.5f) )
             * q.ToMatrix4()
             //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
             ;
-        pushConstants.proj = mathfu::mat4::Perspective(
+        pushConstants.proj = clip_fixup * mathfu::mat4::Perspective(
             (float)M_PI_4,
             (float)kWindowWidthDefault/(float)kWindowHeightDefault,
-            0.001f, 100.0f);
+            0.01f, 100.0f);
         pushConstants.n2w = mathfu::mat3::Identity()
             * q.ToMatrix()
             //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
