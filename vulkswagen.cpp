@@ -226,14 +226,10 @@ int main(int argc, char *argv[]) {
     depth_image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
     stbvk_image depth_image;
     VULKAN_CHECK( stbvk_image_create(&context, &depth_image_create_info, &depth_image) );
-    VkImageSubresourceRange depthSubresourceRange = {};
-    depthSubresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    depthSubresourceRange.baseMipLevel = 0;
-    depthSubresourceRange.levelCount = 1;
-    depthSubresourceRange.baseArrayLayer = 0;
-    depthSubresourceRange.layerCount = 1;
-    stbvk_set_image_layout(commandBuffer, depth_image.image, depthSubresourceRange,
-        depth_image_create_info.initial_layout, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0);
+    stbvk_set_image_layout(commandBuffer, depth_image.image,
+      depth_image.image_view_create_info.subresourceRange,
+      depth_image_create_info.initial_layout,
+      VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0);
 
     // Create index buffer
     VkIndexType indexType = VK_INDEX_TYPE_UINT32;
