@@ -357,6 +357,7 @@ int main(int argc, char *argv[]) {
     // Create push constants
     struct {
         mathfu::vec4_packed time; // .x=seconds, .yzw=???
+        mathfu::vec4_packed eye;  // .xyz=world-space eye position, .w=???
         mathfu::mat4 o2w;
         mathfu::mat4 viewproj;
         mathfu::mat4 n2w;
@@ -404,15 +405,15 @@ int main(int argc, char *argv[]) {
     samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     samplerCreateInfo.pNext = NULL;
     samplerCreateInfo.flags = 0;
-    samplerCreateInfo.magFilter = VK_FILTER_NEAREST;
-    samplerCreateInfo.minFilter = VK_FILTER_NEAREST;
-    samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+    samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+    samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
     samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     samplerCreateInfo.mipLodBias = 0.0f;
-    samplerCreateInfo.anisotropyEnable = VK_FALSE;
-    samplerCreateInfo.maxAnisotropy = 1;
+    samplerCreateInfo.anisotropyEnable = VK_TRUE;
+    samplerCreateInfo.maxAnisotropy = 16;
     samplerCreateInfo.compareOp = VK_COMPARE_OP_NEVER;
     samplerCreateInfo.minLod = 0.0f;
     samplerCreateInfo.maxLod = 0.0f;
@@ -422,7 +423,7 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK( vkCreateSampler(context.device, &samplerCreateInfo, context.allocation_callbacks, &sampler) );
 
     stbvk_image texture_image = {};
-    int texture_load_error = stbvk_image_load_from_dds_file(&context, "trevor/trevor.dds", &texture_image);
+    int texture_load_error = stbvk_image_load_from_dds_file(&context, "trevor/cube04.dds", &texture_image);
     assert(texture_load_error == 0);
 
     // Create render pass
@@ -645,14 +646,18 @@ int main(int argc, char *argv[]) {
         pushConstants.time = mathfu::vec4((float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) ), 0, 0, 0);
         mathfu::quat q = mathfu::quat::FromAngleAxis(pushConstants.time.data[0], mathfu::vec3(0,1,0));
         pushConstants.o2w = mathfu::mat4::Identity()
-            * mathfu::mat4::FromTranslationVector( mathfu::vec3(0, -1.25f, -3.5f) )
+            * mathfu::mat4::FromTranslationVector( mathfu::vec3(0, sinf(pushConstants.time.data[0]), 0) )
             * q.ToMatrix4()
             //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
             ;
-        mathfu::vec3 eye = mathfu::vec3(0,0,0);
+        pushConstants.eye = mathfu::vec4(
+            1.0f * cosf(pushConstants.time.data[0]),
+            0.0f,
+            1.0f * sinf(pushConstants.time.data[0]),
+            0);
         mathfu::mat4 w2v = mathfu::mat4::LookAt(
             pushConstants.o2w.TranslationVector3D(),
-            eye,
+            mathfu::vec4(pushConstants.eye).xyz(),
             mathfu::vec3(0,1,0),
             1.0f);
         pushConstants.viewproj = clip_fixup * mathfu::mat4::Perspective(

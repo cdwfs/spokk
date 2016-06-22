@@ -1,41 +1,14 @@
-/*
- * Copyright (c) 2015-2016 The Khronos Group Inc.
- * Copyright (c) 2015-2016 Valve Corporation
- * Copyright (c) 2015-2016 LunarG, Inc.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and/or associated documentation files (the "Materials"), to
- * deal in the Materials without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Materials, and to permit persons to whom the Materials are
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice(s) and this permission notice shall be included in
- * all copies or substantial portions of the Materials.
- *
- * THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- *
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE MATERIALS OR THE
- * USE OR OTHER DEALINGS IN THE MATERIALS.
- */
-/*
- * Vertex shader used by tri demo.
- */
-#version 400
-#extension GL_ARB_separate_shader_objects : enable
-#extension GL_ARB_shading_language_420pack : enable
+#version 450
 layout (location = 0) in vec3 pos;
 layout (location = 1) in vec3 normal;
 layout (location = 2) in vec2 attr;
 layout (location = 0) out vec2 texcoord;
 layout (location = 1) out vec3 norm;
+layout (location = 2) out vec3 fromEye;
 
 layout (push_constant) uniform PushConsts {
     vec4 time;
+    vec4 eye;
     mat4 o2w;
     mat4 viewproj;
     mat4 n2w;
@@ -50,6 +23,8 @@ void main() {
     norm = n2w * normal;
     
     vec4 posw = pushConsts.o2w * vec4(pos,1);
+    fromEye = posw.xyz - pushConsts.eye.xyz;
     vec4 outpos = pushConsts.viewproj * posw;
     gl_Position = outpos;
+
 }
