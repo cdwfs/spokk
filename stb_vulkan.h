@@ -1995,7 +1995,7 @@ STBVKDEF int stbvk_image_load_from_dds_buffer(stbvk_context const *context, void
     create_info.array_layers = header10 ? header10->arraySize : 1;
     create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT; // TODO(cort): generalize
+    create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT; // TODO(cort): generalize
     create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
     //create_info.view_type = 0;
 	const uint8_t *next_src_surface = dds_bytes + pixel_offset;
