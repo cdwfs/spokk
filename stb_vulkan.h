@@ -2076,8 +2076,8 @@ STBVKDEF int stbvk_image_load_from_dds_buffer(stbvk_context const *context, void
         stbvk_image_create(context, &create_info, out_image);
 		for(uint32_t iMip=0; iMip<create_info.mip_levels; ++iMip)
 		{
-			uint32_t mip_width  = max(header->width >> iMip, 1U);
-			uint32_t mip_height = max(header->height >> iMip, 1U);
+			uint32_t mip_width  = stbvk__max(header->width >> iMip, 1U);
+			uint32_t mip_height = stbvk__max(header->height >> iMip, 1U);
 			uint32_t mip_pitch  = is_compressed ? ((mip_width+3)/4)*block_size : mip_width*block_size;
 			uint32_t num_rows = is_compressed ? ((mip_height+3)/4) : mip_height;
 			uint32_t surface_size = mip_pitch*num_rows;
