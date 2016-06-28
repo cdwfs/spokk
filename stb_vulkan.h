@@ -109,6 +109,9 @@ extern "C" {
     STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const *create_info, stbvk_context *c, VkSwapchainKHR old_swapchain);
     STBVKDEF void stbvk_destroy_context(stbvk_context *c);
 
+    STBVKDEF VkBool32 stbvk_get_memory_type_from_properties(VkPhysicalDeviceMemoryProperties const *memory_properties,
+        uint32_t memory_type_bits, VkFlags requirements_mask, uint32_t *out_memory_type_index);
+
     typedef struct
     {
         VkImageType image_type;
@@ -787,7 +790,7 @@ static FILE *stbvk__fopen(char const *filename, char const *mode)
 }
 #endif
 
-static VkBool32 get_memory_type_from_properties(VkPhysicalDeviceMemoryProperties const *memory_properties,
+STBVKDEF VkBool32 stbvk_get_memory_type_from_properties(VkPhysicalDeviceMemoryProperties const *memory_properties,
     uint32_t memory_type_bits, VkFlags requirements_mask, uint32_t *out_memory_type_index)
 {
     STBVK_ASSERT(sizeof(memory_type_bits)*8 == VK_MAX_MEMORY_TYPES);
@@ -874,7 +877,7 @@ STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_c
     memory_allocate_info.pNext = NULL;
     memory_allocate_info.allocationSize = out_image->memory_requirements.size;
     memory_allocate_info.memoryTypeIndex = 0; // filled in below
-    VkBool32 found_memory_type = get_memory_type_from_properties(
+    VkBool32 found_memory_type = stbvk_get_memory_type_from_properties(
         &context->physical_device_memory_properties,
         out_image->memory_requirements.memoryTypeBits,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -1015,7 +1018,7 @@ STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, stb
     memory_allocate_info.pNext = NULL;
     memory_allocate_info.allocationSize = memory_requirements.size;
     memory_allocate_info.memoryTypeIndex = 0; // filled in below
-    VkBool32 found_memory_type = get_memory_type_from_properties(&context->physical_device_memory_properties,
+    VkBool32 found_memory_type = stbvk_get_memory_type_from_properties(&context->physical_device_memory_properties,
         memory_requirements.memoryTypeBits,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         &memory_allocate_info.memoryTypeIndex);

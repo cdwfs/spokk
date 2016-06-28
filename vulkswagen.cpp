@@ -108,19 +108,6 @@ static VkResult my_stbvk_init_context(stbvk_context_create_info const *createInf
 }
 
 
-static VkBool32 getMemoryTypeFromProperties(const VkPhysicalDeviceMemoryProperties *memoryProperties,
-    uint32_t memoryTypeBits, VkFlags requirementsMask, uint32_t *outMemoryTypeIndex) {
-    assert(sizeof(memoryTypeBits)*8 == VK_MAX_MEMORY_TYPES);
-    for(uint32_t iMemType=0; iMemType<VK_MAX_MEMORY_TYPES; iMemType+=1) {
-        if (	(memoryTypeBits & (1<<iMemType)) != 0
-            &&	(memoryProperties->memoryTypes[iMemType].propertyFlags & requirementsMask) == requirementsMask) {
-            *outMemoryTypeIndex = iMemType;
-            return VK_TRUE;
-        }
-    }
-    return VK_FALSE;
-}
-
 int main(int argc, char *argv[]) {
     (void)argc;
 (    void)argv;
@@ -256,7 +243,7 @@ int main(int argc, char *argv[]) {
     memoryAllocateInfoIndices.pNext = NULL;
     memoryAllocateInfoIndices.allocationSize = memoryRequirementsIndices.size;
     memoryAllocateInfoIndices.memoryTypeIndex = 0;
-    VkBool32 foundMemoryTypeIndices = getMemoryTypeFromProperties(&context.physical_device_memory_properties,
+    VkBool32 foundMemoryTypeIndices = stbvk_get_memory_type_from_properties(&context.physical_device_memory_properties,
         memoryRequirementsIndices.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         &memoryAllocateInfoIndices.memoryTypeIndex);
     assert(foundMemoryTypeIndices);
@@ -325,7 +312,7 @@ int main(int argc, char *argv[]) {
     memoryAllocateInfoVertices.pNext = NULL;
     memoryAllocateInfoVertices.allocationSize = memoryRequirementsVertices.size;
     memoryAllocateInfoVertices.memoryTypeIndex = 0;
-    VkBool32 foundMemoryTypeVertices = getMemoryTypeFromProperties(&context.physical_device_memory_properties,
+    VkBool32 foundMemoryTypeVertices = stbvk_get_memory_type_from_properties(&context.physical_device_memory_properties,
         memoryRequirementsVertices.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         &memoryAllocateInfoVertices.memoryTypeIndex);
     assert(foundMemoryTypeVertices);
