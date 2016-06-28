@@ -36,7 +36,7 @@ FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)
         COMMENT "Compiling ${SOURCE_FILE} -> ${SPV_FILE}"
         )
 ENDFUNCTION(SHADER_BUILD_RULE SHADER_FILE SPV_FILE)
-FOREACH(SHADER_FILE tri.vert tri.frag)
+FOREACH(SHADER_FILE IN LISTS shaders)
     SHADER_BUILD_RULE(${SHADER_FILE} ${CMAKE_BINARY_DIR}/${SHADER_FILE}.spv)
 ENDFOREACH(SHADER_FILE)
 SOURCE_GROUP(shaders FILES ${shaders})
@@ -77,6 +77,7 @@ target_link_libraries(${exe_name} glfw ${GLFW_LIBRARIES} ${libs})
 
 set(mathfu_build_benchmarks OFF CACHE BOOL "")
 set(mathfu_build_tests OFF CACHE BOOL "")
+set(mathfu_enable_simd OFF CACHE BOOL "")
 add_subdirectory(mathfu mathfu)
 mathfu_configure_flags(vulkswagen)
 
