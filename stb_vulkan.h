@@ -840,6 +840,9 @@ STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_c
 
     out_image->create_info = *create_info;
 
+    VkImageLayout create_image_layout = (create_info->initial_layout == VK_IMAGE_LAYOUT_PREINITIALIZED)
+        ? VK_IMAGE_LAYOUT_PREINITIALIZED
+        : VK_IMAGE_LAYOUT_UNDEFINED;
     out_image->image_create_info = {};
     out_image->image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     out_image->image_create_info.pNext = NULL;
@@ -855,7 +858,7 @@ STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_c
     out_image->image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     out_image->image_create_info.queueFamilyIndexCount = 0;
     out_image->image_create_info.pQueueFamilyIndices = NULL;
-    out_image->image_create_info.initialLayout = create_info->initial_layout;
+    out_image->image_create_info.initialLayout = create_image_layout;
 
     STBVK__CHECK( vkCreateImage(context->device, &out_image->image_create_info, context->allocation_callbacks, &out_image->image) );
 
@@ -912,6 +915,58 @@ STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_c
     out_image->image_view_create_info.subresourceRange.baseArrayLayer = 0;
     out_image->image_view_create_info.subresourceRange.layerCount = create_info->array_layers;
     STBVK__CHECK( vkCreateImageView(context->device, &out_image->image_view_create_info, context->allocation_callbacks, &out_image->image_view) );
+
+    // If the requested initial layout was something besides PREINITALIZED or UNDEFINED, convert it here.
+    if (create_info->initial_layout != VK_IMAGE_LAYOUT_PREINITIALIZED &&
+        create_info->initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
+    {
+        VkFenceCreateInfo fence_create_info = {};
+        fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fence_create_info.pNext = nullptr;
+        fence_create_info.flags = 0;
+        VkFence fence = VK_NULL_HANDLE;
+        STBVK__CHECK( vkCreateFence(context->device, &fence_create_info, context->allocation_callbacks, &fence) );
+
+        VkCommandBufferAllocateInfo command_buffer_allocate_info = {};
+        command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        command_buffer_allocate_info.pNext = NULL;
+        command_buffer_allocate_info.commandPool = context->command_pool;
+        command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        command_buffer_allocate_info.commandBufferCount = 1;
+        VkCommandBuffer cmd_buf = {};
+        STBVK__CHECK( vkAllocateCommandBuffers(context->device, &command_buffer_allocate_info, &cmd_buf) );
+        VkCommandBufferBeginInfo cmd_buf_begin_info = {};
+        cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cmd_buf_begin_info.pNext = nullptr;
+        cmd_buf_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
+        cmd_buf_begin_info.pInheritanceInfo = nullptr;
+        STBVK__CHECK( vkBeginCommandBuffer(cmd_buf, &cmd_buf_begin_info) );
+
+        VkImageSubresourceRange dst_image_subresource_range = {};
+        dst_image_subresource_range.aspectMask = out_image->image_view_create_info.subresourceRange.aspectMask;
+        dst_image_subresource_range.baseMipLevel = 0;
+        dst_image_subresource_range.levelCount = VK_REMAINING_MIP_LEVELS;
+        dst_image_subresource_range.baseArrayLayer = 0;
+        dst_image_subresource_range.layerCount = VK_REMAINING_ARRAY_LAYERS;
+        stbvk_set_image_layout(cmd_buf, out_image->image, dst_image_subresource_range,
+            VK_IMAGE_LAYOUT_UNDEFINED, create_info->initial_layout, 0);
+
+        STBVK__CHECK( vkEndCommandBuffer(cmd_buf) );
+        VkSubmitInfo submit_info = {};
+        submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit_info.pNext = NULL;
+        submit_info.waitSemaphoreCount = 0;
+        submit_info.pWaitSemaphores = NULL;
+        submit_info.pWaitDstStageMask = NULL;
+        submit_info.commandBufferCount = 1;
+        submit_info.pCommandBuffers = &cmd_buf;
+        submit_info.signalSemaphoreCount = 0;
+        submit_info.pSignalSemaphores = NULL;
+        STBVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence) );
+        STBVK__CHECK( vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX) );
+        vkFreeCommandBuffers(context->device, context->command_pool, 1, &cmd_buf);
+        vkDestroyFence(context->device, fence, context->allocation_callbacks);
+    }
 
     return VK_SUCCESS;
 }
