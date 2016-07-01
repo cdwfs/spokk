@@ -437,7 +437,7 @@ int main(int argc, char *argv[]) {
     image_create_info.array_layers = kTextureLayerCount;
     image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
     image_create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
     image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     stbvk_image texture_image = {};
