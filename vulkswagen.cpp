@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
     applicationInfo.applicationVersion = 0x1000;
     applicationInfo.pEngineName = "Zombo";
     applicationInfo.engineVersion = 0x1001;
-    applicationInfo.apiVersion = VK_MAKE_VERSION(1,0,0);
+    applicationInfo.apiVersion = VK_MAKE_VERSION(1,0,17);
     const char *required_instance_layers[] = {
         "VK_LAYER_GOOGLE_threading",
         "VK_LAYER_LUNARG_parameter_validation",
