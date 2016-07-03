@@ -108,7 +108,7 @@ extern "C" {
     STBVKDEF void stbvk_destroy_context(stbvk_context *c);
 
     STBVKDEF VkBool32 stbvk_get_memory_type_from_properties(VkPhysicalDeviceMemoryProperties const *memory_properties,
-        uint32_t memory_type_bits, VkFlags requirements_mask, uint32_t *out_memory_type_index);
+        uint32_t memory_type_bits, VkMemoryPropertyFlags memory_properties_mask, uint32_t *out_memory_type_index);
 
     typedef struct
     {
@@ -121,6 +121,7 @@ extern "C" {
         VkImageTiling tiling;
         VkImageUsageFlags usage;
         VkImageLayout initial_layout;
+        VkMemoryPropertyFlags memory_properties_mask;
         VkImageViewType view_type;
     } stbvk_image_create_info;
     typedef struct
@@ -792,13 +793,13 @@ static FILE *stbvk__fopen(char const *filename, char const *mode)
 #endif
 
 STBVKDEF VkBool32 stbvk_get_memory_type_from_properties(VkPhysicalDeviceMemoryProperties const *memory_properties,
-    uint32_t memory_type_bits, VkFlags requirements_mask, uint32_t *out_memory_type_index)
+    uint32_t memory_type_bits, VkMemoryPropertyFlags memory_properties_mask, uint32_t *out_memory_type_index)
 {
     STBVK_ASSERT(sizeof(memory_type_bits)*8 == VK_MAX_MEMORY_TYPES);
     for(uint32_t iMemType=0; iMemType<VK_MAX_MEMORY_TYPES; iMemType+=1)
     {
         if (	(memory_type_bits & (1<<iMemType)) != 0
-            &&	(memory_properties->memoryTypes[iMemType].propertyFlags & requirements_mask) == requirements_mask)
+            &&	(memory_properties->memoryTypes[iMemType].propertyFlags & memory_properties_mask) == memory_properties_mask)
         {
             *out_memory_type_index = iMemType;
             return VK_TRUE;
@@ -881,14 +882,14 @@ STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_c
     VkBool32 found_memory_type = stbvk_get_memory_type_from_properties(
         &context->physical_device_memory_properties,
         out_image->memory_requirements.memoryTypeBits,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        create_info->memory_properties_mask,
         &memory_allocate_info.memoryTypeIndex);
     STBVK_ASSERT(found_memory_type);
     STBVK__CHECK( vkAllocateMemory(context->device, &memory_allocate_info, context->allocation_callbacks, &out_image->device_memory) );
     VkDeviceSize memory_offset = 0;
     STBVK__CHECK( vkBindImageMemory(context->device, out_image->image, out_image->device_memory, memory_offset) );
 
-    VkImageAspectFlagBits image_aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+    VkImageAspectFlags image_aspect = VK_IMAGE_ASPECT_COLOR_BIT;
     switch(create_info->format)
     {
     case VK_FORMAT_D16_UNORM:
@@ -2087,6 +2088,7 @@ STBVKDEF int stbvk_image_load_from_dds_buffer(stbvk_context const *context, void
     create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT; // TODO(cort): generalize
     create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    create_info.memory_properties_mask = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     //create_info.view_type = 0;
     const uint8_t *next_src_surface = dds_bytes + pixel_offset;
     if (is_cube_map)

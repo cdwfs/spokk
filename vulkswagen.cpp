@@ -210,6 +210,7 @@ int main(int argc, char *argv[]) {
     depth_image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     depth_image_create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     depth_image_create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depth_image_create_info.memory_properties_mask = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     depth_image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
     stbvk_image depth_image;
     VULKAN_CHECK( stbvk_image_create(&context, &depth_image_create_info, &depth_image) );
@@ -439,6 +440,7 @@ int main(int argc, char *argv[]) {
     image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
     image_create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    image_create_info.memory_properties_mask = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
     image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     stbvk_image texture_image = {};
     VULKAN_CHECK( stbvk_image_create(&context, &image_create_info, &texture_image) );
