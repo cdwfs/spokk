@@ -158,6 +158,9 @@ extern "C" {
     STBVKDEF VkShaderModule stbvk_load_shader_from_file(stbvk_context *c, FILE *f, int len);
 #endif
 
+    STBVKDEF VkResult stbvk_create_descriptor_pool(stbvk_context const *c, const VkDescriptorSetLayoutCreateInfo *layout_ci, uint32_t max_sets,
+        VkDescriptorPoolCreateFlags flags, VkDescriptorPool *out_pool);
+
     STBVKDEF void stbvk_set_image_layout(VkCommandBuffer cmd_buf, VkImage image,
         VkImageSubresourceRange subresource_range, VkImageLayout old_layout, VkImageLayout new_layout,
         VkAccessFlags src_access_mask);
@@ -1182,6 +1185,36 @@ STBVKDEF VkShaderModule stbvk_load_shader_from_callbacks(stbvk_context * /*c*/, 
     return VK_NULL_HANDLE;
 }
 
+STBVKDEF VkResult stbvk_create_descriptor_pool(stbvk_context const *c, const VkDescriptorSetLayoutCreateInfo *layout_ci, uint32_t max_sets,
+    VkDescriptorPoolCreateFlags flags, VkDescriptorPool *out_pool)
+{
+    // TODO(cort): should this function take an array of layout_cis and set its sizes based on the total descriptor counts
+    // across all sets? That would allow one monolithic pool for each thread, instead of one per descriptor set.
+    // max_sets would need to be an array as well most likely: the number of instances of each set.
+	VkDescriptorPoolSize pool_sizes[VK_DESCRIPTOR_TYPE_RANGE_SIZE];
+	for(int iType=0; iType<VK_DESCRIPTOR_TYPE_RANGE_SIZE; ++iType)
+	{
+		pool_sizes[iType].descriptorCount = 0;
+        pool_sizes[iType].type = (VkDescriptorType)iType;
+	}
+	for(uint32_t iBinding=0; iBinding<layout_ci->bindingCount; iBinding+=1)
+    {
+        STBVK_ASSERT(
+            layout_ci->pBindings[iBinding].descriptorType >= VK_DESCRIPTOR_TYPE_BEGIN_RANGE &&
+            layout_ci->pBindings[iBinding].descriptorType <= VK_DESCRIPTOR_TYPE_END_RANGE);
+		pool_sizes[ layout_ci->pBindings[iBinding].descriptorType ].descriptorCount +=
+            layout_ci->pBindings[iBinding].descriptorCount;
+	}
+
+	VkDescriptorPoolCreateInfo pool_ci = {};
+    pool_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_ci.pNext = NULL;
+    pool_ci.flags = flags;
+	pool_ci.maxSets = max_sets;
+    pool_ci.poolSizeCount = VK_DESCRIPTOR_TYPE_RANGE_SIZE;
+    pool_ci.pPoolSizes = pool_sizes;
+    return vkCreateDescriptorPool(c->device, &pool_ci, c->allocation_callbacks, out_pool);
+}
 
 STBVKDEF void stbvk_set_image_layout(VkCommandBuffer cmd_buf, VkImage image,
         VkImageSubresourceRange subresource_range, VkImageLayout old_layout, VkImageLayout new_layout,
