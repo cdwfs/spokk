@@ -713,16 +713,6 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK( vkQueueSubmit(context.graphics_queue, 1, &submitInfoSetup, submitFence) );
     VULKAN_CHECK( vkQueueWaitIdle(context.graphics_queue) );
 
-#if 0
-    // Set a callback to receive keyboard input
-    glfwSetKeyCallback(window, myGlfwKeyCallback);
-    // Set callbacks for mouse input
-    g_camera = new ZomboLite::CameraMaya(kWindowWidthDefault, kWindowHeightDefault);
-    glfwSetMouseButtonCallback(window, myGlfwMouseButtonCallback);
-    glfwSetCursorPosCallback(window, myGlfwCursorPosCallback);
-    glfwSetWindowSizeCallback(window, myGlfwWindowSizeCallback);
-#endif
-
     // Create the semaphores used to synchronize access to swapchain images
     VkSemaphoreCreateInfo semaphoreCreateInfo = {};
     semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -755,20 +745,11 @@ int main(int argc, char *argv[]) {
         }
 
         // Draw!
-        VkCommandBufferInheritanceInfo cmdBufDrawInheritanceInfo = {};
-        cmdBufDrawInheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-        cmdBufDrawInheritanceInfo.pNext = NULL;
-        cmdBufDrawInheritanceInfo.renderPass = VK_NULL_HANDLE;
-        cmdBufDrawInheritanceInfo.subpass = 0;
-        cmdBufDrawInheritanceInfo.framebuffer = VK_NULL_HANDLE;
-        cmdBufDrawInheritanceInfo.occlusionQueryEnable = VK_FALSE;
-        cmdBufDrawInheritanceInfo.queryFlags = 0;
-        cmdBufDrawInheritanceInfo.pipelineStatistics = 0;
         VkCommandBufferBeginInfo cmdBufDrawBeginInfo = {};
         cmdBufDrawBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         cmdBufDrawBeginInfo.pNext = NULL;
         cmdBufDrawBeginInfo.flags = 0;
-        cmdBufDrawBeginInfo.pInheritanceInfo = &cmdBufDrawInheritanceInfo;
+        cmdBufDrawBeginInfo.pInheritanceInfo = NULL;
         VULKAN_CHECK( vkBeginCommandBuffer(commandBuffer, &cmdBufDrawBeginInfo) );
 
         VkClearValue clearValues[2] = {};
