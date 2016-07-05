@@ -422,55 +422,9 @@ int main(int argc, char *argv[]) {
     VkSampler sampler;
     VULKAN_CHECK( vkCreateSampler(context.device, &samplerCreateInfo, context.allocation_callbacks, &sampler) );
 
-    const uint32_t kTextureLayerCount = 32;
-    int texWidth, texHeight, texComp;
-    {
-        uint32_t *pixels = (uint32_t*)stbi_load("trevor/trevor-0.png", &texWidth, &texHeight, &texComp, 4);
-        stbi_image_free(pixels);
-    }
-    stbvk_image_create_info image_create_info = {};
-    image_create_info.image_type = VK_IMAGE_TYPE_2D;
-    image_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-    image_create_info.extent.width = texWidth;
-    image_create_info.extent.height = texHeight;
-    image_create_info.extent.depth = 1;
-    image_create_info.mip_levels = 1;
-    image_create_info.array_layers = kTextureLayerCount;
-    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
-    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
-    image_create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-    image_create_info.memory_properties_mask = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
-    image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     stbvk_image texture_image = {};
-    VULKAN_CHECK( stbvk_image_create(&context, &image_create_info, &texture_image) );
-    for(int iLayer=0; iLayer<kTextureLayerCount; ++iLayer)
-    {
-        VkImageSubresource subresource = {};
-        subresource.arrayLayer = iLayer;
-        subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        subresource.mipLevel = 0;
-        VkSubresourceLayout subresource_layout = {};
-        VULKAN_CHECK( stbvk_image_get_subresource_source_layout(&context, &texture_image, subresource, &subresource_layout) );
-        char imagePath[128];
-        zomboSnprintf(imagePath, 127, "trevor/trevor-%u.png", iLayer);
-        imagePath[127] = 0;
-        int width=0,height=0,comp=0;
-        uint32_t *padded_pixels = (uint32_t*)malloc(subresource_layout.size);
-        uint32_t *pixels = (uint32_t*)stbi_load(imagePath, &width, &height, &comp, 4);
-        for(int32_t iY=0; iY<texHeight; iY+=1)
-        {
-            uint32_t *row = (uint32_t*)( (intptr_t)padded_pixels + iY*subresource_layout.rowPitch );
-            for(int32_t iX=0; iX<texWidth; iX+=1)
-            {
-                row[iX] = pixels[iY*texWidth+iX];
-            }
-        }
-        stbi_image_free(pixels);
-        VULKAN_CHECK( stbvk_image_load_subresource(&context, &texture_image, subresource, subresource_layout,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, padded_pixels) );
-        free(padded_pixels);
-    }
+    int texture_load_error = stbvk_image_load_from_dds_file(&context, "trevor/trevor.dds", &texture_image);
+    assert(texture_load_error == 0);
 
     // Create render pass
     enum
