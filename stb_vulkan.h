@@ -84,8 +84,6 @@ extern "C" {
         VkSurfaceFormatKHR swapchain_surface_format;
         VkImage *swapchain_images;
         VkImageView *swapchain_image_views;
-
-        VkPhysicalDevice *all_physical_devices;
     } stbvk_context;
 
     typedef struct
@@ -416,8 +414,8 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
     uint32_t physical_device_count = 0;
     STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, NULL) );
     STBVK_ASSERT(physical_device_count > 0);
-    context->all_physical_devices = (VkPhysicalDevice*)STBVK_MALLOC(physical_device_count * sizeof(VkPhysicalDevice));
-    STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, context->all_physical_devices) );
+    VkPhysicalDevice *all_physical_devices = (VkPhysicalDevice*)STBVK_MALLOC(physical_device_count * sizeof(VkPhysicalDevice));
+    STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, all_physical_devices) );
 
     // Select a physical device.
     // Loop over all physical devices and all queue families of each device, looking for at least
@@ -441,15 +439,15 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
         present_queue_family_index = UINT32_MAX;
 
         uint32_t queue_family_count = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(context->all_physical_devices[iPD], &queue_family_count, NULL);
+        vkGetPhysicalDeviceQueueFamilyProperties(all_physical_devices[iPD], &queue_family_count, NULL);
         VkQueueFamilyProperties *queue_family_properties_all = (VkQueueFamilyProperties*)STBVK_MALLOC(queue_family_count * sizeof(VkQueueFamilyProperties));
-        vkGetPhysicalDeviceQueueFamilyProperties(context->all_physical_devices[iPD], &queue_family_count, queue_family_properties_all);
+        vkGetPhysicalDeviceQueueFamilyProperties(all_physical_devices[iPD], &queue_family_count, queue_family_properties_all);
 
         for(uint32_t iQF=0; iQF<queue_family_count; ++iQF)
         {
             bool queue_supports_graphics = (queue_family_properties_all[iQF].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
             VkBool32 queue_supports_present = VK_FALSE;
-            STBVK__CHECK( vkGetPhysicalDeviceSurfaceSupportKHR(context->all_physical_devices[iPD], iQF,
+            STBVK__CHECK( vkGetPhysicalDeviceSurfaceSupportKHR(all_physical_devices[iPD], iQF,
                 present_surface, &queue_supports_present) );
             if (queue_supports_graphics && queue_supports_present)
             {
@@ -484,7 +482,7 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
 
         if (found_present_queue_family && found_graphics_queue_family)
         {
-            context->physical_device = context->all_physical_devices[iPD];
+            context->physical_device = all_physical_devices[iPD];
             context->graphics_queue_family_index = graphics_queue_family_index;
             context->present_queue_family_index  = present_queue_family_index;
 
@@ -519,6 +517,7 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
         }
     }
     STBVK_ASSERT(found_graphics_queue_family && found_present_queue_family);
+    STBVK_FREE(all_physical_devices);
     context->present_surface = present_surface;
 
     vkGetPhysicalDeviceProperties(context->physical_device, &context->physical_device_properties);
@@ -757,7 +756,6 @@ STBVKDEF void stbvk_destroy_context(stbvk_context *context)
 
     vkDestroyDevice(context->device, context->allocation_callbacks);
     context->device = VK_NULL_HANDLE;
-    STBVK_FREE(context->all_physical_devices);
 
     if (context->debug_report_callback != VK_NULL_HANDLE)
     {
