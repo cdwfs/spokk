@@ -692,7 +692,7 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &device_present_mode_count, NULL) );
     VkPresentModeKHR *device_present_modes = (VkPresentModeKHR*)STBVK_MALLOC(device_present_mode_count * sizeof(VkPresentModeKHR));
     STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &device_present_mode_count, device_present_modes) );
-    VkPresentModeKHR swapchain_present_mode = VK_PRESENT_MODE_FIFO_KHR;
+    VkPresentModeKHR swapchain_present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
     STBVK_FREE(device_present_modes);
 
     uint32_t desired_swapchain_image_count = surface_capabilities.minImageCount+1;
