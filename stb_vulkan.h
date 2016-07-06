@@ -80,7 +80,6 @@ extern "C" {
 
         VkSwapchainKHR swapchain;
         uint32_t swapchain_image_count;
-        uint32_t swapchain_image_index;
         VkSurfaceFormatKHR swapchain_surface_format;
         VkImage *swapchain_images;
         VkImageView *swapchain_image_views;

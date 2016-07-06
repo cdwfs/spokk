@@ -184,15 +184,15 @@ int main(int argc, char *argv[]) {
     stbvk_context context = {};
     my_stbvk_init_context(&contextCreateInfo, window, &context);
 
-    // Allocate command buffer
+    // Allocate command buffers
     VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
     commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     commandBufferAllocateInfo.pNext = NULL;
     commandBufferAllocateInfo.commandPool = context.command_pool;
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    commandBufferAllocateInfo.commandBufferCount = 1;
-    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkAllocateCommandBuffers(context.device, &commandBufferAllocateInfo, &commandBuffer) );
+    commandBufferAllocateInfo.commandBufferCount = context.swapchain_image_count;
+    VkCommandBuffer *commandBuffers = (VkCommandBuffer*)malloc(context.swapchain_image_count * sizeof(VkCommandBuffer));
+    VULKAN_CHECK( vkAllocateCommandBuffers(context.device, &commandBufferAllocateInfo, commandBuffers) );
 
     // Create depth buffer
     stbvk_image_create_info depth_image_create_info = {};
@@ -471,9 +471,6 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK( vkCreateRenderPass(context.device, &renderPassCreateInfo, context.allocation_callbacks, &renderPass) );
 
     // Create framebuffers
-    // TODO(cort): is it desirable to create a framebuffer for every swap chain image,
-    // to decouple the majority of application command buffers from the present queue?
-    // Or is that an unnecessary image copy?
     VkImageView attachmentImageViews[kAttachmentCount] = {};
     attachmentImageViews[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below;
     attachmentImageViews[kDepthAttachmentIndex] = depth_image.image_view;
@@ -514,7 +511,9 @@ int main(int argc, char *argv[]) {
         &graphicsPipelineCreateInfo.graphics_pipeline_create_info,
         context.allocation_callbacks, &pipelineGraphics) );
 
-    // Create Vulkan descriptor pool and descriptor set
+    // Create Vulkan descriptor pool and descriptor set.
+    // TODO(cort): the current descriptors are constant; we'd need a set per swapchain if it was going to change
+    // per-frame.
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     VULKAN_CHECK( stbvk_create_descriptor_pool(&context, &descriptorSetLayoutCreateInfo, 1, 0, &descriptorPool) );
     VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
@@ -550,6 +549,18 @@ int main(int argc, char *argv[]) {
     VkSemaphore renderingComplete = VK_NULL_HANDLE;
     VULKAN_CHECK( vkCreateSemaphore(context.device, &semaphoreCreateInfo, context.allocation_callbacks, &renderingComplete) );
 
+    // Create the fences used to wait for each swapchain image's command buffer to be submitted.
+    // This prevents re-writing the command buffer contents before it's been submitted and processed.
+    VkFenceCreateInfo fence_create_info = {};
+    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_create_info.pNext = NULL;
+    fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    VkFence *queue_submitted_fences = (VkFence*)malloc(context.swapchain_image_count * sizeof(VkFence));
+    for(uint32_t iFence=0; iFence<context.swapchain_image_count; ++iFence)
+    {
+        VULKAN_CHECK( vkCreateFence(context.device, &fence_create_info, context.allocation_callbacks,
+           &queue_submitted_fences[iFence]) );
+    }
     uint32_t frameIndex = 0;
 
     const mathfu::mat4 clip_fixup(
@@ -558,7 +569,7 @@ int main(int argc, char *argv[]) {
         +0.0f, +0.0f, +0.5f, +0.5f,
         +0.0f, +0.0f, +0.0f, +1.0f);
 
-    // Create timestamp query pool
+    // Create timestamp query pools (one per swapchain image).
     typedef enum
     {
         TIMESTAMP_ID_BEGIN_FRAME = 0,
@@ -572,16 +583,19 @@ int main(int argc, char *argv[]) {
     timestamp_query_pool_create_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
     timestamp_query_pool_create_info.queryCount = TIMESTAMP_ID_RANGE_SIZE;
     timestamp_query_pool_create_info.pipelineStatistics = 0;
-    VkQueryPool timestamp_query_pool = VK_NULL_HANDLE;
-    VULKAN_CHECK(vkCreateQueryPool(context.device, &timestamp_query_pool_create_info, context.allocation_callbacks, &timestamp_query_pool));
-
+    VkQueryPool *timestamp_query_pools = (VkQueryPool*)malloc(context.swapchain_image_count * sizeof(VkQueryPool));
+    for(uint32_t iPool=0; iPool<context.swapchain_image_count; ++iPool) {
+        VULKAN_CHECK(vkCreateQueryPool(context.device, &timestamp_query_pool_create_info,
+            context.allocation_callbacks, &timestamp_query_pools[iPool]));
+    }
     uint64_t counterStart = zomboClockTicks();
     double timestampSecondsPrevious[TIMESTAMP_ID_RANGE_SIZE] = {};
     while(!glfwWindowShouldClose(window)) {
         // Retrieve the index of the next available swapchain index
-        VkFence presentCompleteFence = VK_NULL_HANDLE; // TODO(cort): unused
+        uint32_t swapchain_image_index = UINT32_MAX;
+        VkFence image_acquired_fence = VK_NULL_HANDLE; // currently unused, but if you want the CPU to wait for an image to be acquired...
         VkResult result = vkAcquireNextImageKHR(context.device, context.swapchain, UINT64_MAX, swapchainImageReady,
-            presentCompleteFence, &context.swapchain_image_index);
+            image_acquired_fence, &swapchain_image_index);
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
         } else if (result == VK_SUBOPTIMAL_KHR) {
@@ -590,6 +604,31 @@ int main(int argc, char *argv[]) {
             VULKAN_CHECK(result);
         }
 
+        // Wait for the command buffer previously used to generate this swapchain image to be submitted.
+        // TODO(cort): this does not guarantee memory accesses from that submission will be visible on the host;
+        // there'd need to be a memory barrier for that.
+        vkWaitForFences(context.device, 1, &queue_submitted_fences[swapchain_image_index], VK_TRUE, UINT64_MAX);
+        vkResetFences(context.device, 1, &queue_submitted_fences[swapchain_image_index]);
+        // The host can now safely reset and rebuild this command buffer, even if the GPU hasn't finished presenting the
+        // resulting frame yet. The swapchainImageReady semaphore handles waiting for the present to complete before the
+        // new command buffer contents are submitted.
+        // The host could also wait for the previous present to complete by passing a VkFence to vkAcquireNextImageKHR()
+        // and waiting on it, but that would only be necessary if the host were going to be modifying/destroying the
+        // swapchain image or using its contents.
+        VkCommandBuffer commandBuffer = commandBuffers[swapchain_image_index];
+        VkQueryPool timestamp_query_pool = timestamp_query_pools[swapchain_image_index];
+
+        // Read the timestamp query results from the frame that was just presented. We'll process and report them later,
+        // but we need to get the old data out before we reuse the query pool for the current frame.
+        // TODO(cort): We can't pass VK_QUERY_RESULT_WAIT_BIT, because it hangs forever on the first frame.
+        // We either need to seed some dummy values or just accept that the result for the first few frames may be VK_NOT_READY.
+        uint64_t timestamps[TIMESTAMP_ID_RANGE_SIZE] = {};
+        VkQueryResultFlags query_result_flags = VK_QUERY_RESULT_64_BIT;
+        VkResult get_timestamps_result = vkGetQueryPoolResults(context.device, timestamp_query_pool,
+            0,TIMESTAMP_ID_RANGE_SIZE, sizeof(timestamps),
+            timestamps, sizeof(timestamps[0]), query_result_flags);
+        assert(get_timestamps_result == VK_SUCCESS || get_timestamps_result == VK_NOT_READY);
+
         // Draw!
         VkCommandBufferBeginInfo cmdBufDrawBeginInfo = {};
         cmdBufDrawBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -597,6 +636,7 @@ int main(int argc, char *argv[]) {
         cmdBufDrawBeginInfo.flags = 0;
         cmdBufDrawBeginInfo.pInheritanceInfo = NULL;
         VULKAN_CHECK( vkBeginCommandBuffer(commandBuffer, &cmdBufDrawBeginInfo) );
+        vkCmdResetQueryPool(commandBuffer, timestamp_query_pool, 0, TIMESTAMP_ID_RANGE_SIZE);
         vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestamp_query_pool, TIMESTAMP_ID_BEGIN_FRAME);
 
         VkClearValue clearValues[2] = {};
@@ -610,7 +650,7 @@ int main(int argc, char *argv[]) {
         renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.pNext = NULL;
         renderPassBeginInfo.renderPass = renderPass;
-        renderPassBeginInfo.framebuffer = framebuffers[context.swapchain_image_index];
+        renderPassBeginInfo.framebuffer = framebuffers[swapchain_image_index];
         renderPassBeginInfo.renderArea.offset.x = 0;
         renderPassBeginInfo.renderArea.offset.y = 0;
         renderPassBeginInfo.renderArea.extent.width  = kWindowWidthDefault;
@@ -671,25 +711,24 @@ int main(int argc, char *argv[]) {
         vkCmdEndRenderPass(commandBuffer);
         vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool, TIMESTAMP_ID_END_FRAME);
         VULKAN_CHECK( vkEndCommandBuffer(commandBuffer) );
-        VkFence nullFence = VK_NULL_HANDLE;
         const VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        VkSubmitInfo submitInfoDraw = {};
-        submitInfoDraw.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfoDraw.pNext = NULL;
-        submitInfoDraw.waitSemaphoreCount = 1;
-        submitInfoDraw.pWaitSemaphores = &swapchainImageReady;
-        submitInfoDraw.pWaitDstStageMask = &pipelineStageFlags;
-        submitInfoDraw.commandBufferCount = 1;
-        submitInfoDraw.pCommandBuffers = &commandBuffer;
-        submitInfoDraw.signalSemaphoreCount = 1;
-        submitInfoDraw.pSignalSemaphores = &renderingComplete;
-        VULKAN_CHECK( vkQueueSubmit(context.graphics_queue, 1, &submitInfoDraw, nullFence) );
+        VkSubmitInfo submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.pNext = NULL;
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = &swapchainImageReady;
+        submitInfo.pWaitDstStageMask = &pipelineStageFlags;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer;
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = &renderingComplete;
+        VULKAN_CHECK( vkQueueSubmit(context.graphics_queue, 1, &submitInfo, queue_submitted_fences[swapchain_image_index]) );
         VkPresentInfoKHR presentInfo = {};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.pNext = NULL;
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = &context.swapchain;
-        presentInfo.pImageIndices = &context.swapchain_image_index;
+        presentInfo.pImageIndices = &swapchain_image_index;
         presentInfo.waitSemaphoreCount = 1;
         presentInfo.pWaitSemaphores = &renderingComplete;
         result = vkQueuePresentKHR(context.present_queue, &presentInfo); // TODO(cort): concurrent image access required?
@@ -701,29 +740,43 @@ int main(int argc, char *argv[]) {
             VULKAN_CHECK(result);
         }
 
-        VULKAN_CHECK( vkQueueWaitIdle(context.present_queue) );
+        // TODO(cort): Now that the CPU and GPU execution is decoupled, we may need to emit a memory barrier to
+        // make these query results visible to the host at the end of the submit.
+        if (get_timestamps_result == VK_SUCCESS)
+        {
+            double timestampSeconds[TIMESTAMP_ID_RANGE_SIZE] = {};
+            for(int iTS=0; iTS<TIMESTAMP_ID_RANGE_SIZE; ++iTS)
+            {
+                if (context.graphics_queue_family_properties.timestampValidBits < sizeof(timestamps[0])*8)
+                    timestamps[iTS] &= ((1ULL<<context.graphics_queue_family_properties.timestampValidBits)-1);
+                timestampSeconds[iTS] = (double)(timestamps[iTS]) * (double)context.physical_device_properties.limits.timestampPeriod / 1e9;
+            }
+            if ((frameIndex % 100)==0)
+                printf("GPU T2B=%10.6f\tT2T=%10.6f\n", (timestampSeconds[TIMESTAMP_ID_END_FRAME] - timestampSeconds[TIMESTAMP_ID_BEGIN_FRAME])*1000.0,
+                    (timestampSeconds[TIMESTAMP_ID_BEGIN_FRAME] - timestampSecondsPrevious[TIMESTAMP_ID_BEGIN_FRAME])*1000.0);
+            memcpy(timestampSecondsPrevious, timestampSeconds, sizeof(timestampSecondsPrevious));
+        }
+
         glfwPollEvents();
         frameIndex += 1;
-        uint64_t timestamps[TIMESTAMP_ID_RANGE_SIZE] = {};
-        VkQueryResultFlags query_result_flags = VK_QUERY_RESULT_64_BIT;
-        VULKAN_CHECK(vkGetQueryPoolResults(context.device, timestamp_query_pool, 0,TIMESTAMP_ID_RANGE_SIZE, sizeof(timestamps),
-            timestamps, sizeof(timestamps[0]), query_result_flags));
-        double timestampSeconds[TIMESTAMP_ID_RANGE_SIZE] = {};
-        for(int iTS=0; iTS<TIMESTAMP_ID_RANGE_SIZE; ++iTS)
-        {
-            if (context.graphics_queue_family_properties.timestampValidBits < sizeof(timestamps[0])*8)
-                timestamps[iTS] &= ((1ULL<<context.graphics_queue_family_properties.timestampValidBits)-1);
-            timestampSeconds[iTS] = (double)(timestamps[iTS]) * (double)context.physical_device_properties.limits.timestampPeriod / 1e9;
-        }
-        if ((frameIndex % 100)==0)
-            printf("GPU T2B=%10.6f\tT2T=%10.6f\n", (timestampSeconds[TIMESTAMP_ID_END_FRAME] - timestampSeconds[TIMESTAMP_ID_BEGIN_FRAME])*1000.0,
-                (timestampSeconds[TIMESTAMP_ID_BEGIN_FRAME] - timestampSecondsPrevious[TIMESTAMP_ID_BEGIN_FRAME])*1000.0);
-        memcpy(timestampSecondsPrevious, timestampSeconds, sizeof(timestampSecondsPrevious));
     }
 
+    // NOTE: vkDeviceWaitIdle() only waits for all queue operations to complete; swapchain images may still be
+    // queued for presentation when this function returns. To avoid a race condition when freeing them and
+    // their associated semaphores, the host needs to...acquire each swapchain image, passing a VkFence and
+    // immediately waiting on it? Is that sufficient? I don't think so; no guarantee of acquiring all images.
+    // It looks like this is still under discussion (Khronos Vulkan issue #243, #245)
     vkDeviceWaitIdle(context.device);
 
-    vkDestroyQueryPool(context.device, timestamp_query_pool, context.allocation_callbacks);
+    for(uint32_t iPool=0; iPool<context.swapchain_image_count; ++iPool) {
+        vkDestroyQueryPool(context.device, timestamp_query_pools[iPool], context.allocation_callbacks);
+    }
+    free(timestamp_query_pools);
+
+    for(uint32_t iFence=0; iFence<context.swapchain_image_count; ++iFence) {
+        vkDestroyFence(context.device, queue_submitted_fences[iFence], context.allocation_callbacks);
+    }
+    free(queue_submitted_fences);
 
     vkDestroySemaphore(context.device, swapchainImageReady, context.allocation_callbacks);
     vkDestroySemaphore(context.device, renderingComplete, context.allocation_callbacks);
@@ -755,7 +808,7 @@ int main(int argc, char *argv[]) {
     vkDestroyPipelineLayout(context.device, pipelineLayout, context.allocation_callbacks);
     vkDestroyPipeline(context.device, pipelineGraphics, context.allocation_callbacks);
 
-    vkFreeCommandBuffers(context.device, context.command_pool, 1, &commandBuffer);
+    free(commandBuffers);
 
     glfwTerminate();
     stbvk_destroy_context(&context);
