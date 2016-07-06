@@ -572,7 +572,25 @@ int main(int argc, char *argv[]) {
         +0.0f, +0.0f, +0.5f, +0.5f,
         +0.0f, +0.0f, +0.0f, +1.0f);
 
+    // Create timestamp query pool
+    typedef enum
+    {
+        TIMESTAMP_ID_BEGIN_FRAME = 0,
+        TIMESTAMP_ID_END_FRAME = 1,
+        TIMESTAMP_ID_RANGE_SIZE
+    } TimestampId;
+    VkQueryPoolCreateInfo timestamp_query_pool_create_info = {};
+    timestamp_query_pool_create_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+    timestamp_query_pool_create_info.pNext = NULL;
+    timestamp_query_pool_create_info.flags = 0;
+    timestamp_query_pool_create_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    timestamp_query_pool_create_info.queryCount = TIMESTAMP_ID_RANGE_SIZE;
+    timestamp_query_pool_create_info.pipelineStatistics = 0;
+    VkQueryPool timestamp_query_pool = VK_NULL_HANDLE;
+    VULKAN_CHECK(vkCreateQueryPool(context.device, &timestamp_query_pool_create_info, context.allocation_callbacks, &timestamp_query_pool));
+
     uint64_t counterStart = zomboClockTicks();
+    double timestampSecondsPrevious[TIMESTAMP_ID_RANGE_SIZE] = {};
     while(!glfwWindowShouldClose(window)) {
         // Retrieve the index of the next available swapchain index
         VkFence presentCompleteFence = VK_NULL_HANDLE; // TODO(cort): unused
@@ -593,6 +611,7 @@ int main(int argc, char *argv[]) {
         cmdBufDrawBeginInfo.flags = 0;
         cmdBufDrawBeginInfo.pInheritanceInfo = NULL;
         VULKAN_CHECK( vkBeginCommandBuffer(commandBuffer, &cmdBufDrawBeginInfo) );
+        vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestamp_query_pool, TIMESTAMP_ID_BEGIN_FRAME);
 
         VkClearValue clearValues[2] = {};
         clearValues[0].color.float32[0] = (float)(frameIndex%256)/255.0f,
@@ -664,6 +683,7 @@ int main(int argc, char *argv[]) {
         vkCmdDrawIndexed(commandBuffer, indexCount, instanceCount, 0,0,0);
 
         vkCmdEndRenderPass(commandBuffer);
+        vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool, TIMESTAMP_ID_END_FRAME);
         VULKAN_CHECK( vkEndCommandBuffer(commandBuffer) );
         VkFence nullFence = VK_NULL_HANDLE;
         const VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -694,13 +714,30 @@ int main(int argc, char *argv[]) {
         } else {
             VULKAN_CHECK(result);
         }
-        VULKAN_CHECK( vkQueueWaitIdle(context.present_queue) );
 
+        VULKAN_CHECK( vkQueueWaitIdle(context.present_queue) );
         glfwPollEvents();
         frameIndex += 1;
+        uint64_t timestamps[TIMESTAMP_ID_RANGE_SIZE] = {};
+        VkQueryResultFlags query_result_flags = VK_QUERY_RESULT_64_BIT;
+        VULKAN_CHECK(vkGetQueryPoolResults(context.device, timestamp_query_pool, 0,TIMESTAMP_ID_RANGE_SIZE, sizeof(timestamps),
+            timestamps, sizeof(timestamps[0]), query_result_flags));
+        double timestampSeconds[TIMESTAMP_ID_RANGE_SIZE] = {};
+        for(int iTS=0; iTS<TIMESTAMP_ID_RANGE_SIZE; ++iTS)
+        {
+            if (context.graphics_queue_family_properties.timestampValidBits < sizeof(timestamps[0])*8)
+                timestamps[iTS] &= ((1ULL<<context.graphics_queue_family_properties.timestampValidBits)-1);
+            timestampSeconds[iTS] = (double)(timestamps[iTS]) * (double)context.physical_device_properties.limits.timestampPeriod / 1e9;
+        }
+        if ((frameIndex % 100)==0)
+            printf("GPU T2B=%10.6f\tT2T=%10.6f\n", (timestampSeconds[TIMESTAMP_ID_END_FRAME] - timestampSeconds[TIMESTAMP_ID_BEGIN_FRAME])*1000.0,
+                (timestampSeconds[TIMESTAMP_ID_BEGIN_FRAME] - timestampSecondsPrevious[TIMESTAMP_ID_BEGIN_FRAME])*1000.0);
+        memcpy(timestampSecondsPrevious, timestampSeconds, sizeof(timestampSecondsPrevious));
     }
 
     vkDeviceWaitIdle(context.device);
+
+    vkDestroyQueryPool(context.device, timestamp_query_pool, context.allocation_callbacks);
 
     vkDestroySemaphore(context.device, swapchainImageReady, context.allocation_callbacks);
     vkDestroySemaphore(context.device, renderingComplete, context.allocation_callbacks);
