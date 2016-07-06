@@ -194,14 +194,6 @@ int main(int argc, char *argv[]) {
     VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
     VULKAN_CHECK( vkAllocateCommandBuffers(context.device, &commandBufferAllocateInfo, &commandBuffer) );
 
-    // Record the setup command buffer
-    VkCommandBufferBeginInfo commandBufferBeginInfo = {};
-    commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    commandBufferBeginInfo.pNext = NULL;
-    commandBufferBeginInfo.flags = 0;
-    commandBufferBeginInfo.pInheritanceInfo = NULL; // must be non-NULL for secondary command buffers
-    VULKAN_CHECK( vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo) );
-
     // Create depth buffer
     stbvk_image_create_info depth_image_create_info = {};
     depth_image_create_info.image_type = VK_IMAGE_TYPE_2D;
@@ -212,15 +204,11 @@ int main(int argc, char *argv[]) {
     depth_image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     depth_image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     depth_image_create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    depth_image_create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depth_image_create_info.initial_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     depth_image_create_info.memory_properties_mask = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     depth_image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
     stbvk_image depth_image;
     VULKAN_CHECK( stbvk_image_create(&context, &depth_image_create_info, &depth_image) );
-    stbvk_set_image_layout(commandBuffer, depth_image.image,
-      depth_image.image_view_create_info.subresourceRange,
-      depth_image_create_info.initial_layout,
-      VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0);
 
     cdsm_metadata_t mesh_metadata = {};
     size_t mesh_vertices_size = 0, mesh_indices_size = 0;
@@ -565,22 +553,6 @@ int main(int argc, char *argv[]) {
     writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     writeDescriptorSet.pImageInfo = descriptorImageInfos;
     vkUpdateDescriptorSets(context.device, 1, &writeDescriptorSet, 0, NULL);
-
-    // Submit the setup command buffer
-    VULKAN_CHECK( vkEndCommandBuffer(commandBuffer) );
-    VkSubmitInfo submitInfoSetup = {};
-    submitInfoSetup.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfoSetup.pNext = NULL;
-    submitInfoSetup.waitSemaphoreCount = 0;
-    submitInfoSetup.pWaitSemaphores = NULL;
-    submitInfoSetup.pWaitDstStageMask = NULL;
-    submitInfoSetup.commandBufferCount = 1;
-    submitInfoSetup.pCommandBuffers = &commandBuffer;
-    submitInfoSetup.signalSemaphoreCount = 0;
-    submitInfoSetup.pSignalSemaphores = NULL;
-    VkFence submitFence = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkQueueSubmit(context.graphics_queue, 1, &submitInfoSetup, submitFence) );
-    VULKAN_CHECK( vkQueueWaitIdle(context.graphics_queue) );
 
     // Create the semaphores used to synchronize access to swapchain images
     VkSemaphoreCreateInfo semaphoreCreateInfo = {};
