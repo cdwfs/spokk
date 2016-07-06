@@ -134,6 +134,12 @@ extern "C"
         const cdsm_cylinder_recipe_t *recipe);
 
 
+    /* Export functions */
+    CDSM_DEF
+    cdsm_error_t cdsm_export_to_header(const char *filename, const char *prefix,
+        cdsm_metadata_t const *metadata,
+        cdsm_vertex_t const *vertices, cdsm_index_t const *indices);
+
 #ifdef __cplusplus
 }
 #endif
@@ -151,6 +157,9 @@ extern "C"
 #include <assert.h>
 #include <math.h>
 #include <stdint.h>
+#if !defined(CDSM_NO_STDIO)
+#include <stdio.h>
+#endif
 
 #define CDSM__MIN(a,b) ( (a)<(b) ? (a) : (b) )
 #define CDSM__UNUSED(x) ((void)x)
@@ -612,20 +621,143 @@ cdsm_error_t cdsm_create_cylinder(cdsm_metadata_t *out_metadata,
     return 0;
 }
 
+#ifndef CDSM_NO_STDIO
+static FILE *cdsm__fopen(char const *filename, char const *mode)
+{
+   FILE *f;
+#if defined(_MSC_VER) && _MSC_VER >= 1400
+   if (0 != fopen_s(&f, filename, mode))
+      f=0;
+#else
+   f = fopen(filename, mode);
+#endif
+   return f;
+}
+#endif
+
+CDSM_DEF
+cdsm_error_t cdsm_export_to_header(const char *filename, const char *prefix,
+    cdsm_metadata_t const *metadata,
+    cdsm_vertex_t const *vertices, cdsm_index_t const *indices)
+{
+    FILE *f = cdsm__fopen(filename, "w");
+    
+    const char *primitive_type = "UNKNOWN";
+    if (metadata->primitive_type == CDSM_PRIMITIVE_TYPE_TRIANGLE_LIST)
+        primitive_type = "TRIANGLE_LIST";
+    else if (metadata->primitive_type == CDSM_PRIMITIVE_TYPE_LINE_LIST)
+        primitive_type = "LINE_LIST";
+    fprintf(f, "/* Primitive type is %s */\n", primitive_type);
+
+    fprintf(f, "static int %svertex_count = %d;\n", prefix, metadata->vertex_count);
+    fprintf(f, "static int %sindex_count = %d;\n", prefix, metadata->index_count);
+
+    const char *vertex_type ="\
+struct {\n\
+    float position[3];\n\
+    float normal[3];\n\
+    float texcoord[2];\n\
+}";
+    fprintf(f, "static %s %svertices[%d] = {\n", vertex_type, prefix, metadata->vertex_count);
+    for(cdsm_s32 iVert=0; iVert<metadata->vertex_count; ++iVert)
+    {
+        fprintf(f, "\t%.9ff,%.9ff,%.9ff, %.9ff,%.9ff,%.9ff, %.9ff,%.9ff,\n",
+            vertices[iVert].position[0], vertices[iVert].position[1], vertices[iVert].position[2],
+            vertices[iVert].normal[0], vertices[iVert].normal[1], vertices[iVert].normal[2],
+            vertices[iVert].texcoord[0], vertices[iVert].texcoord[1]);
+    }
+    fprintf(f, "};\n");
+
+    size_t index_size = sizeof(cdsm_index_t);
+    if (index_size == sizeof(uint16_t))
+    {
+        fprintf(f, "static %s %sindices[] = {\n", "uint16_t", prefix, metadata->index_count);
+        cdsm_s32 i=0;
+        for(i; i<metadata->index_count-11; i+=12)
+        {
+            fprintf(f, "\t%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,\n",
+                indices[i+ 0], indices[i+ 1], indices[i+ 2], indices[i+ 3], 
+                indices[i+ 4], indices[i+ 5], indices[i+ 6], indices[i+ 7], 
+                indices[i+ 8], indices[i+ 9], indices[i+10], indices[i+11]);
+        }
+        if (i < metadata->index_count)
+        {
+            fprintf(f, "\t");
+            for(i; i<metadata->index_count; i+=1)
+            {
+                fprintf(f, "%5u,", indices[i]);
+            }
+            fprintf(f, "\n");
+        }
+    }
+    else if (index_size == sizeof(uint32_t))
+    {
+        fprintf(f, "static %s %s_indices[] = {\n", "uint32_t", prefix, metadata->index_count);
+        cdsm_s32 i=0;
+        for(i; i<metadata->index_count-5; i+=6)
+        {
+            fprintf(f, "\t%10u,%10u,%10u,%10u,%10u,%10u,\n",
+                indices[i+ 0], indices[i+ 1], indices[i+ 2],
+                indices[i+ 3], indices[i+ 4], indices[i+ 5]);
+        }
+        if (i < metadata->index_count)
+        {
+            fprintf(f, "\t");
+            for(i; i<metadata->index_count; i+=1)
+            {
+                fprintf(f, "%10u,", indices[i]);
+            }
+            fprintf(f, "\n");
+        }
+    }
+    fprintf(f, "};\n");
+
+    fclose(f);
+    return 0;
+}
+
+
 #endif /*------------- end implementation section ---------------*/
 
 #if defined(CDS_MESH_TEST)
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
+
+//#include "cube_mesh.h"
 
 int main(int argc, char *argv[])
 {
     CDSM__UNUSED(argc);
     CDSM__UNUSED(argv);
+
+    cdsm_cube_recipe_t recipe;
+    recipe.front_face = CDSM_FRONT_FACE_CCW;
+    recipe.min_extent.x = -0.5f;
+    recipe.min_extent.y = -0.5f;
+    recipe.min_extent.z = -0.5f;
+    recipe.max_extent.x = +0.5f;
+    recipe.max_extent.y = +0.5f;
+    recipe.max_extent.z = +0.5f;
+    cdsm_metadata_t metadata;
+    size_t vertices_size = 0, indices_size = 0;
+    cdsm_error_t result;
+    
+    result = cdsm_create_cube(&metadata, NULL, &vertices_size, NULL, &indices_size, &recipe);
+    assert(result == 0);
+    cdsm_vertex_t *vertices = (cdsm_vertex_t*)malloc(vertices_size);
+    cdsm_index_t *indices = (cdsm_index_t*)malloc(indices_size);
+    result = cdsm_create_cube(&metadata, vertices, &vertices_size, indices, &indices_size, &recipe);
+    assert(result == 0);
+
+    result = cdsm_export_to_header("cube_mesh.h", "cube_", &metadata, vertices, indices);
+    assert(result == 0);
+
+    free(vertices);
+    free(indices);
     return 0;
 }
 #endif /*------------------- send self-test section ------------*/
