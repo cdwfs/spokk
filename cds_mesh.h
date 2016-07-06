@@ -743,7 +743,7 @@ int main(int argc, char *argv[])
         MESH_TYPE_AXES     = 3,
         MESH_TYPE_CYLINDER = 2,
     } meshType = MESH_TYPE_SPHERE;
-    cdsm_cube_recipe_t cube_recipe = {};
+    cdsm_cube_recipe_t cube_recipe;
     cube_recipe.min_extent.x = -0.5f;
     cube_recipe.min_extent.y = -0.5f;
     cube_recipe.min_extent.z = -0.5f;
@@ -751,22 +751,22 @@ int main(int argc, char *argv[])
     cube_recipe.max_extent.y = +0.5f;
     cube_recipe.max_extent.z = +0.5f;
     cube_recipe.front_face = CDSM_FRONT_FACE_CCW;
-    cdsm_sphere_recipe_t sphere_recipe = {};
+    cdsm_sphere_recipe_t sphere_recipe;
     sphere_recipe.latitudinal_segments = 30;
     sphere_recipe.longitudinal_segments = 30;
     sphere_recipe.radius = 0.5f;
-    cdsm_cylinder_recipe_t cylinder_recipe = {};
+    cdsm_cylinder_recipe_t cylinder_recipe;
     cylinder_recipe.length = 1.0f;
     cylinder_recipe.axial_segments = 3;
     cylinder_recipe.radial_segments = 60;
     cylinder_recipe.radius0 = -1.0f;
     cylinder_recipe.radius1 = 1.0f;
-    cdsm_axes_recipe_t axes_recipe = {};
+    cdsm_axes_recipe_t axes_recipe;
     axes_recipe.length = 1.0f;
 
     cdsm_metadata_t metadata;
     size_t vertices_size = 0, indices_size = 0;
-    cdsm_error_t result;
+    cdsm_error_t result = 0;
     if      (meshType == MESH_TYPE_CUBE)
       result = cdsm_create_cube(&metadata, NULL, &vertices_size, NULL, &indices_size, &cube_recipe);
     else if (meshType == MESH_TYPE_SPHERE)
