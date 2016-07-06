@@ -419,7 +419,6 @@ int main(int argc, char *argv[]) {
     {
         kColorAttachmentIndex = 0,
         kDepthAttachmentIndex = 1,
-        kTextureAttachmentIndex = 2,
         kAttachmentCount
     };
     VkAttachmentDescription attachmentDescriptions[kAttachmentCount] = {};
@@ -441,29 +440,17 @@ int main(int argc, char *argv[]) {
     attachmentDescriptions[kDepthAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachmentDescriptions[kDepthAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     attachmentDescriptions[kDepthAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    attachmentDescriptions[kTextureAttachmentIndex].flags = 0;
-    attachmentDescriptions[kTextureAttachmentIndex].format = VK_FORMAT_R8G8B8A8_UNORM;//surfaceTextureFormat;
-    attachmentDescriptions[kTextureAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachmentDescriptions[kTextureAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    attachmentDescriptions[kTextureAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachmentDescriptions[kTextureAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachmentDescriptions[kTextureAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescriptions[kTextureAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    attachmentDescriptions[kTextureAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     VkAttachmentReference attachmentReferenceColor = {};
     attachmentReferenceColor.attachment = kColorAttachmentIndex;
     attachmentReferenceColor.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     VkAttachmentReference attachmentReferenceDepth = {};
     attachmentReferenceDepth.attachment = kDepthAttachmentIndex;
     attachmentReferenceDepth.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    VkAttachmentReference attachmentReferenceTexture = {};
-    attachmentReferenceTexture.attachment = kTextureAttachmentIndex;
-    attachmentReferenceTexture.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     VkSubpassDescription subpassDescription = {};
     subpassDescription.flags = 0;
     subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpassDescription.inputAttachmentCount = 1;
-    subpassDescription.pInputAttachments = &attachmentReferenceTexture;
+    subpassDescription.inputAttachmentCount = 0;
+    subpassDescription.pInputAttachments = NULL;
     subpassDescription.colorAttachmentCount = 1;
     subpassDescription.pColorAttachments = &attachmentReferenceColor;
     subpassDescription.pResolveAttachments = NULL;
@@ -490,7 +477,6 @@ int main(int argc, char *argv[]) {
     VkImageView attachmentImageViews[kAttachmentCount] = {};
     attachmentImageViews[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below;
     attachmentImageViews[kDepthAttachmentIndex] = depth_image.image_view;
-    attachmentImageViews[kTextureAttachmentIndex] = texture_image.image_view;
     VkFramebufferCreateInfo framebufferCreateInfo = {};
     framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     framebufferCreateInfo.pNext = NULL;
