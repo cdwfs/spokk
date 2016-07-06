@@ -204,7 +204,7 @@ int main(int argc, char *argv[]) {
     depth_image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     depth_image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     depth_image_create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    depth_image_create_info.initial_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depth_image_create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
     depth_image_create_info.memory_properties_mask = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     depth_image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
     stbvk_image depth_image;
@@ -438,7 +438,7 @@ int main(int argc, char *argv[]) {
     attachmentDescriptions[kDepthAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachmentDescriptions[kDepthAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachmentDescriptions[kDepthAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescriptions[kDepthAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachmentDescriptions[kDepthAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     attachmentDescriptions[kDepthAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     VkAttachmentReference attachmentReferenceColor = {};
     attachmentReferenceColor.attachment = kColorAttachmentIndex;
