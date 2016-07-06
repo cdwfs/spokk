@@ -506,6 +506,8 @@ int main(int argc, char *argv[]) {
     graphicsPipelineSettings.fragment_shader = fragmentShaderModule;
     stbvk_graphics_pipeline_create_info graphicsPipelineCreateInfo = {};
     stbvk_prepare_graphics_pipeline_create_info_vsps(&graphicsPipelineSettings, &graphicsPipelineCreateInfo);
+    if (mesh_metadata.front_face == CDSM_FRONT_FACE_CW)
+        graphicsPipelineCreateInfo.rasterization_state_create_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
     VkPipeline pipelineGraphics = VK_NULL_HANDLE;
     VULKAN_CHECK( vkCreateGraphicsPipelines(context.device, context.pipeline_cache, 1,
         &graphicsPipelineCreateInfo.graphics_pipeline_create_info,

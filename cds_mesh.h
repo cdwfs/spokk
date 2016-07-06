@@ -69,17 +69,18 @@ extern "C"
         CDSM_PRIMITIVE_TYPE_LINE_LIST     = 1,
     } cdsm_primitive_type_t;
 
-    typedef struct
-    {
-        cdsm_primitive_type_t primitive_type;
-        cdsm_s32 vertex_count;
-        cdsm_s32 index_count;
-    } cdsm_metadata_t;
-
     typedef enum {
         CDSM_FRONT_FACE_CCW = 0,
         CDSM_FRONT_FACE_CW  = 1,
     } cdsm_front_face_t;
+
+    typedef struct
+    {
+        cdsm_primitive_type_t primitive_type;
+        cdsm_front_face_t front_face;
+        cdsm_s32 vertex_count;
+        cdsm_s32 index_count;
+    } cdsm_metadata_t;
 
     typedef struct
     {
@@ -148,6 +149,7 @@ extern "C"
 #ifdef CDS_MESH_IMPLEMENTATION
 
 #include <assert.h>
+#include <math.h>
 #include <stdint.h>
 
 #define CDSM__MIN(a,b) ( (a)<(b) ? (a) : (b) )
@@ -166,6 +168,7 @@ cdsm_error_t cdsm_create_cube(cdsm_metadata_t *out_metadata,
     out_metadata->index_count  = 3 * 2 * 6;
     out_metadata->vertex_count = 4 * 6;
     out_metadata->primitive_type = CDSM_PRIMITIVE_TYPE_TRIANGLE_LIST;
+    out_metadata->front_face = recipe->front_face;
 
     const size_t min_vertices_size = out_metadata->vertex_count * sizeof(cdsm_vertex_t);
     const size_t min_indices_size  = out_metadata->index_count  * sizeof(cdsm_index_t);
@@ -280,6 +283,7 @@ cdsm_error_t cdsm_create_sphere(cdsm_metadata_t *out_metadata,
     // Every latitudinal segment adds one vertex per longitudinal segment.
     out_metadata->vertex_count = (recipe->latitudinal_segments+1) * recipe->longitudinal_segments;
     out_metadata->primitive_type = CDSM_PRIMITIVE_TYPE_TRIANGLE_LIST;
+    out_metadata->front_face = CDSM_FRONT_FACE_CCW;
 
     const size_t min_vertices_size = out_metadata->vertex_count * sizeof(cdsm_vertex_t);
     const size_t min_indices_size  = out_metadata->index_count  * sizeof(cdsm_index_t);
@@ -370,7 +374,8 @@ cdsm_error_t cdsm_create_axes(cdsm_metadata_t *out_metadata,
     out_metadata->index_count  = 2 * 3;
     out_metadata->vertex_count = 2 * 3;
     out_metadata->primitive_type = CDSM_PRIMITIVE_TYPE_LINE_LIST;
-
+    out_metadata->front_face = CDSM_FRONT_FACE_CCW;
+    
     const size_t min_vertices_size = out_metadata->vertex_count * sizeof(cdsm_vertex_t);
     const size_t min_indices_size  = out_metadata->index_count  * sizeof(cdsm_index_t);
     if (out_vertices == 0 || out_indices == 0)
@@ -458,7 +463,8 @@ cdsm_error_t cdsm_create_cylinder(cdsm_metadata_t *out_metadata,
     out_metadata->vertex_count = 2
         + (recipe->radial_segments * (recipe->axial_segments + 1 + 2));
     out_metadata->primitive_type = CDSM_PRIMITIVE_TYPE_TRIANGLE_LIST;
-
+    out_metadata->front_face = CDSM_FRONT_FACE_CCW;
+    
     const size_t min_vertices_size = out_metadata->vertex_count * sizeof(cdsm_vertex_t);
     const size_t min_indices_size  = out_metadata->index_count  * sizeof(cdsm_index_t);
     if (out_vertices == 0 || out_indices == 0)
