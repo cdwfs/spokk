@@ -224,9 +224,9 @@ int main(int argc, char *argv[]) {
     cube_recipe.min_extent = {-1,-1,-1};
     cube_recipe.max_extent = {+1,+1,+1};
     cdsm_sphere_recipe_t sphere_recipe = {};
-    sphere_recipe.latitudinal_segments = 300;
-    sphere_recipe.longitudinal_segments = 300;
-    sphere_recipe.radius = 0.5f;
+    sphere_recipe.latitudinal_segments = 30;
+    sphere_recipe.longitudinal_segments = 30;
+    sphere_recipe.radius = 0.2f;
     cdsm_cylinder_recipe_t cylinder_recipe = {};
     cylinder_recipe.length = 1.0f;
     cylinder_recipe.axial_segments = 3;
@@ -311,13 +311,24 @@ int main(int argc, char *argv[]) {
     free(index_buffer_contents);
     free(vertex_buffer_contents);
 
+    // Create buffer of per-mesh object-to-world matrices
+    const uint32_t mesh_count = 1024;
+    VkBufferCreateInfo o2w_buffer_create_info = {};
+    o2w_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    o2w_buffer_create_info.pNext = NULL;
+    o2w_buffer_create_info.size = mesh_count * sizeof(mathfu::mat4);
+    o2w_buffer_create_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    o2w_buffer_create_info.flags = 0;
+    stbvk_buffer o2w_buffer = {};
+    VULKAN_CHECK( stbvk_buffer_create(&context, &o2w_buffer_create_info,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &o2w_buffer) );
+
     // Create push constants
     struct {
         mathfu::vec4_packed time; // .x=seconds, .yzw=???
         mathfu::vec4_packed eye;  // .xyz=world-space eye position, .w=???
-        mathfu::mat4 o2w;
         mathfu::mat4 viewproj;
-        mathfu::mat4 n2w;
     } pushConstants = {};
     assert(sizeof(pushConstants) <= context.physical_device_properties.limits.maxPushConstantsSize);
     VkPushConstantRange pushConstantRange = {};
@@ -326,18 +337,23 @@ int main(int argc, char *argv[]) {
     pushConstantRange.size = sizeof(pushConstants);
 
     // Create Vulkan descriptor layout & pipeline layout
-    VkDescriptorSetLayoutBinding descriptorSetLayoutBinding = {};
-    descriptorSetLayoutBinding.binding = 0;
-    descriptorSetLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    descriptorSetLayoutBinding.descriptorCount = kDemoTextureCount;
-    descriptorSetLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    descriptorSetLayoutBinding.pImmutableSamplers = NULL;
+    VkDescriptorSetLayoutBinding descriptorSetLayoutBindings[2] = {};
+    descriptorSetLayoutBindings[0].binding = 0;
+    descriptorSetLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptorSetLayoutBindings[0].descriptorCount = kDemoTextureCount;
+    descriptorSetLayoutBindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    descriptorSetLayoutBindings[0].pImmutableSamplers = NULL;
+    descriptorSetLayoutBindings[1].binding = 1;
+    descriptorSetLayoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorSetLayoutBindings[1].descriptorCount = 1;
+    descriptorSetLayoutBindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    descriptorSetLayoutBindings[1].pImmutableSamplers = NULL;
     VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {};
     descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     descriptorSetLayoutCreateInfo.pNext = NULL;
     descriptorSetLayoutCreateInfo.flags = 0;
-    descriptorSetLayoutCreateInfo.bindingCount = 1;
-    descriptorSetLayoutCreateInfo.pBindings = &descriptorSetLayoutBinding;
+    descriptorSetLayoutCreateInfo.bindingCount = sizeof(descriptorSetLayoutBindings) / sizeof(descriptorSetLayoutBindings[0]);
+    descriptorSetLayoutCreateInfo.pBindings = descriptorSetLayoutBindings;
     VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
     VULKAN_CHECK( vkCreateDescriptorSetLayout(context.device, &descriptorSetLayoutCreateInfo, context.allocation_callbacks, &descriptorSetLayout) );
     VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {};
@@ -505,10 +521,20 @@ int main(int argc, char *argv[]) {
     writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     writeDescriptorSet.pNext = NULL;
     writeDescriptorSet.dstSet = descriptorSet;
+    writeDescriptorSet.dstBinding = 0;
     writeDescriptorSet.descriptorCount = kDemoTextureCount;
     writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     writeDescriptorSet.pImageInfo = descriptorImageInfos;
     vkUpdateDescriptorSets(context.device, 1, &writeDescriptorSet, 0, NULL);
+    VkDescriptorBufferInfo descriptorBufferInfo = {};
+    descriptorBufferInfo.buffer = o2w_buffer.buffer;
+    descriptorBufferInfo.offset = 0;
+    descriptorBufferInfo.range = VK_WHOLE_SIZE;
+    writeDescriptorSet.dstBinding = 1;
+    writeDescriptorSet.descriptorCount = 1;
+    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writeDescriptorSet.pBufferInfo = &descriptorBufferInfo;
+    vkUpdateDescriptorSets(context.device, 1,&writeDescriptorSet, 0,NULL);
 
     // Create the semaphores used to synchronize access to swapchain images
     VkSemaphoreCreateInfo semaphoreCreateInfo = {};
@@ -600,6 +626,29 @@ int main(int argc, char *argv[]) {
             timestamps, sizeof(timestamps[0]), query_result_flags);
         assert(get_timestamps_result == VK_SUCCESS || get_timestamps_result == VK_NOT_READY);
 
+        // Update object-to-world matrices.
+        // TODO(cort): multi-buffer this data. And maybe make it device-local, with a staging buffer?
+        // No memory barrier needed if it's HOST_COHERENT.
+        const float seconds_elapsed = (float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) );
+        VkMemoryMapFlags o2w_buffer_map_flags = 0;
+        mathfu::mat4 *mapped_o2w_buffer = NULL;
+        VULKAN_CHECK(vkMapMemory(context.device, o2w_buffer.device_memory, 0, o2w_buffer.memory_requirements.size,
+            o2w_buffer_map_flags, (void**)&mapped_o2w_buffer));
+        for(int iMesh=0; iMesh<mesh_count; ++iMesh)
+        {
+            mathfu::quat q = mathfu::quat::FromAngleAxis(seconds_elapsed + (float)iMesh, mathfu::vec3(0,1,0));
+            mapped_o2w_buffer[iMesh] = mathfu::mat4::Identity()
+                * mathfu::mat4::FromTranslationVector(mathfu::vec3(
+                    4.0f * cosf((1.0f+0.001f*iMesh) * seconds_elapsed + float(149*iMesh) + 0.0f) + 0.0f,
+                    2.5f * sinf(1.5f * seconds_elapsed + float(13*iMesh) + 5.0f) + 0.0f,
+                    3.0f * sinf(0.25f * seconds_elapsed + float(51*iMesh) + 2.0f) - 2.0f
+                    ))
+                * q.ToMatrix4()
+                //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
+                ;
+        }
+        vkUnmapMemory(context.device, o2w_buffer.device_memory);
+
         // Draw!
         VkCommandBufferBeginInfo cmdBufDrawBeginInfo = {};
         cmdBufDrawBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -631,32 +680,21 @@ int main(int argc, char *argv[]) {
         vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineGraphics);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,1,&descriptorSet, 0,NULL);
-        pushConstants.time = mathfu::vec4((float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) ), 0, 0, 0);
-        mathfu::quat q = mathfu::quat::FromAngleAxis(pushConstants.time.data[0], mathfu::vec3(0,1,0));
-        pushConstants.o2w = mathfu::mat4::Identity()
-            * mathfu::mat4::FromTranslationVector( mathfu::vec3(0, sinf(pushConstants.time.data[0]), 0) )
-            * q.ToMatrix4()
-            //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
-            ;
+        pushConstants.time = mathfu::vec4(seconds_elapsed, 0, 0, 0);
         pushConstants.eye = mathfu::vec4(
-            1.0f * cosf(pushConstants.time.data[0]),
             0.0f,
-            1.0f * sinf(pushConstants.time.data[0]),
+            2.0f,
+            6.0f,
             0);
         mathfu::mat4 w2v = mathfu::mat4::LookAt(
-            pushConstants.o2w.TranslationVector3D(),
+            mathfu::vec3(0,0,0), // target
             mathfu::vec4(pushConstants.eye).xyz(),
-            mathfu::vec3(0,1,0),
-            1.0f);
+            mathfu::vec3(0,1,0), // up
+            1.0f); // right-handed
         pushConstants.viewproj = clip_fixup * mathfu::mat4::Perspective(
             (float)M_PI_4,
             (float)kWindowWidthDefault/(float)kWindowHeightDefault,
             0.01f, 100.0f) * w2v;
-        pushConstants.n2w = mathfu::mat4::Identity()
-            * q.ToMatrix4()
-            //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
-            ;
-        pushConstants.n2w = pushConstants.n2w.Inverse().Transpose();
         vkCmdPushConstants(commandBuffer, pipelineLayout, pushConstantRange.stageFlags,
             pushConstantRange.offset, pushConstantRange.size, &pushConstants);
         VkViewport viewport = {};
@@ -676,8 +714,8 @@ int main(int argc, char *argv[]) {
         const VkDeviceSize indexBufferOffset = 0;
         vkCmdBindIndexBuffer(commandBuffer, bufferIndices.buffer, indexBufferOffset, indexType);
         const uint32_t indexCount = mesh_metadata.index_count;
-        const uint32_t instanceCount = 1;
-        vkCmdDrawIndexed(commandBuffer, indexCount, instanceCount, 0,0,0);
+        const uint32_t instance_count = mesh_count;
+        vkCmdDrawIndexed(commandBuffer, indexCount, instance_count, 0,0,0);
 
         vkCmdEndRenderPass(commandBuffer);
         vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool, TIMESTAMP_ID_END_FRAME);
@@ -759,6 +797,7 @@ int main(int argc, char *argv[]) {
 
     stbvk_image_destroy(&context, &depth_image);
 
+    stbvk_buffer_destroy(&context, &o2w_buffer);
     stbvk_buffer_destroy(&context, &bufferIndices);
     stbvk_buffer_destroy(&context, &bufferVertices);
 
