@@ -7,7 +7,7 @@ layout (location = 1) out vec3 norm;
 layout (location = 2) out vec3 fromEye;
 
 layout (set = 0, binding = 1) uniform ObjectToWorld {
-    mat4 o2w_matrices[1024];
+    vec4 matrix_columns[4*1024];
 };
 
 layout (push_constant) uniform PushConsts {
@@ -19,7 +19,11 @@ layout (push_constant) uniform PushConsts {
 void main() {
     texcoord = attr;
 
-    mat4 o2w = o2w_matrices[gl_InstanceIndex];
+    mat4 o2w = mat4(
+        matrix_columns[4*gl_InstanceIndex+0],
+        matrix_columns[4*gl_InstanceIndex+1],
+        matrix_columns[4*gl_InstanceIndex+2],
+        matrix_columns[4*gl_InstanceIndex+3]);
 
     mat3 n2w = mat3(o2w);
     norm = n2w * normal;

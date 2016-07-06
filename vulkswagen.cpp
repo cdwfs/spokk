@@ -631,13 +631,13 @@ int main(int argc, char *argv[]) {
         // No memory barrier needed if it's HOST_COHERENT.
         const float seconds_elapsed = (float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) );
         VkMemoryMapFlags o2w_buffer_map_flags = 0;
-        mathfu::mat4 *mapped_o2w_buffer = NULL;
+        mathfu::vec4 *mapped_o2w_buffer = NULL;
         VULKAN_CHECK(vkMapMemory(context.device, o2w_buffer.device_memory, 0, o2w_buffer.memory_requirements.size,
             o2w_buffer_map_flags, (void**)&mapped_o2w_buffer));
         for(int iMesh=0; iMesh<mesh_count; ++iMesh)
         {
             mathfu::quat q = mathfu::quat::FromAngleAxis(seconds_elapsed + (float)iMesh, mathfu::vec3(0,1,0));
-            mapped_o2w_buffer[iMesh] = mathfu::mat4::Identity()
+            mathfu::mat4 o2w = mathfu::mat4::Identity()
                 * mathfu::mat4::FromTranslationVector(mathfu::vec3(
                     4.0f * cosf((1.0f+0.001f*iMesh) * seconds_elapsed + float(149*iMesh) + 0.0f) + 0.0f,
                     2.5f * sinf(1.5f * seconds_elapsed + float(13*iMesh) + 5.0f) + 0.0f,
@@ -646,6 +646,10 @@ int main(int argc, char *argv[]) {
                 * q.ToMatrix4()
                 //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
                 ;
+            mapped_o2w_buffer[iMesh*4+0] = mathfu::vec4(o2w[ 0], o2w[ 1], o2w[ 2], o2w[ 3]);
+            mapped_o2w_buffer[iMesh*4+1] = mathfu::vec4(o2w[ 4], o2w[ 5], o2w[ 6], o2w[ 7]);
+            mapped_o2w_buffer[iMesh*4+2] = mathfu::vec4(o2w[ 8], o2w[ 9], o2w[10], o2w[11]);
+            mapped_o2w_buffer[iMesh*4+3] = mathfu::vec4(o2w[12], o2w[13], o2w[14], o2w[15]);
         }
         vkUnmapMemory(context.device, o2w_buffer.device_memory);
 
