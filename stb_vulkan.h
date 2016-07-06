@@ -110,6 +110,20 @@ extern "C" {
 
     typedef struct
     {
+        VkBufferCreateInfo buffer_create_info;
+        VkBuffer buffer;
+        VkDeviceMemory device_memory;
+        VkMemoryRequirements memory_requirements;
+        VkMemoryPropertyFlags memory_properties_mask;
+    } stbvk_buffer;
+    STBVKDEF VkResult stbvk_buffer_create(stbvk_context const *context, VkBufferCreateInfo const *create_info,
+        VkMemoryPropertyFlags memory_properties_mask, stbvk_buffer *out_buffer);
+    STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, stbvk_buffer const *dst_buffer,
+        void const *src_data, VkDeviceSize size, VkDeviceSize dst_offset = 0);
+    STBVKDEF void stbvk_buffer_destroy(stbvk_context const *context, stbvk_buffer *buffer);
+
+    typedef struct
+    {
         VkImageType image_type;
         VkFormat format;
         VkExtent3D extent;
@@ -361,9 +375,9 @@ static void stbvk__host_free(void *ptr, const VkAllocationCallbacks *pAllocator)
 STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_info, stbvk_context *context)
 {
     uint32_t instance_extension_count = 0;
-    STBVK__CHECK( vkEnumerateInstanceExtensionProperties(nullptr, &instance_extension_count, nullptr) );
+    STBVK__CHECK( vkEnumerateInstanceExtensionProperties(NULL, &instance_extension_count, NULL) );
     std::vector<VkExtensionProperties> instance_extension_properties(instance_extension_count);
-    STBVK__CHECK( vkEnumerateInstanceExtensionProperties(nullptr, &instance_extension_count, instance_extension_properties.data()) );
+    STBVK__CHECK( vkEnumerateInstanceExtensionProperties(NULL, &instance_extension_count, instance_extension_properties.data()) );
     std::vector<std::string> all_instance_extension_names(instance_extension_count);
     for(uint32_t iExt=0; iExt<instance_extension_count; iExt+=1)
     {
@@ -371,7 +385,7 @@ STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_in
     }
 
     uint32_t instance_layer_count = 0;
-    STBVK__CHECK( vkEnumerateInstanceLayerProperties(&instance_layer_count, nullptr) );
+    STBVK__CHECK( vkEnumerateInstanceLayerProperties(&instance_layer_count, NULL) );
     std::vector<VkLayerProperties> instance_layer_properties(instance_layer_count);
     STBVK__CHECK( vkEnumerateInstanceLayerProperties(&instance_layer_count, instance_layer_properties.data()) );
     std::vector<std::string> all_instance_layer_names(instance_layer_count);
@@ -381,7 +395,7 @@ STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_in
 
         uint32_t layer_extension_count = 0;
         STBVK__CHECK( vkEnumerateInstanceExtensionProperties(instance_layer_properties[iLayer].layerName,
-            &layer_extension_count, nullptr) );
+            &layer_extension_count, NULL) );
         std::vector<VkExtensionProperties> layer_extension_properties(layer_extension_count);
         STBVK__CHECK( vkEnumerateInstanceExtensionProperties(instance_layer_properties[iLayer].layerName,
             &layer_extension_count, layer_extension_properties.data()) );
@@ -596,9 +610,9 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
     vkGetPhysicalDeviceFeatures(context->physical_device, &context->physical_device_features);
 
     uint32_t device_extension_count = 0;
-    STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device, nullptr, &device_extension_count, nullptr) );
+    STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device, NULL, &device_extension_count, NULL) );
     std::vector<VkExtensionProperties> device_extension_properties(device_extension_count);
-    STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device, nullptr, &device_extension_count, device_extension_properties.data()) );
+    STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device, NULL, &device_extension_count, device_extension_properties.data()) );
     std::vector<std::string> all_device_extension_names(device_extension_count);
     for(uint32_t iExt=0; iExt<device_extension_count; iExt+=1)
     {
@@ -878,6 +892,111 @@ STBVKDEF uint32_t stbvk_find_memory_type_index(VkPhysicalDeviceMemoryProperties 
 
 
 
+STBVKDEF VkResult stbvk_buffer_create(stbvk_context const *context, VkBufferCreateInfo const *create_info,
+    VkMemoryPropertyFlags memory_properties_mask, stbvk_buffer *out_buffer)
+{
+    *out_buffer = {};
+    out_buffer->buffer_create_info = *create_info;
+    out_buffer->memory_properties_mask = memory_properties_mask;
+
+    STBVK__CHECK( vkCreateBuffer(context->device, create_info, context->allocation_callbacks, &out_buffer->buffer) );
+    vkGetBufferMemoryRequirements(context->device, out_buffer->buffer, &out_buffer->memory_requirements);
+    VkMemoryAllocateInfo memory_allocate_info = {};
+    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memory_allocate_info.pNext = NULL;
+    memory_allocate_info.allocationSize = out_buffer->memory_requirements.size;
+    memory_allocate_info.memoryTypeIndex = stbvk_find_memory_type_index(&context->physical_device_memory_properties,
+        &out_buffer->memory_requirements, memory_properties_mask);
+    STBVK_ASSERT(memory_allocate_info.memoryTypeIndex < VK_MAX_MEMORY_TYPES);
+    STBVK__CHECK( vkAllocateMemory(context->device, &memory_allocate_info, context->allocation_callbacks, &out_buffer->device_memory) );
+    VkDeviceSize memory_offset = 0;
+    STBVK__CHECK( vkBindBufferMemory(context->device, out_buffer->buffer, out_buffer->device_memory, memory_offset) );
+    return VK_SUCCESS;
+}
+
+STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, stbvk_buffer const *dst_buffer,
+    const void *src_data, VkDeviceSize size, VkDeviceSize src_offset)
+{
+    STBVK_ASSERT(src_offset+size <= dst_buffer->memory_requirements.size);
+    STBVK_ASSERT(dst_buffer->buffer_create_info.usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+
+    VkBufferCreateInfo staging_buffer_create_info = {};
+    staging_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    staging_buffer_create_info.pNext = NULL;
+    staging_buffer_create_info.flags = 0;
+    staging_buffer_create_info.size = dst_buffer->memory_requirements.size;
+    staging_buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    staging_buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    staging_buffer_create_info.queueFamilyIndexCount = 0;
+    staging_buffer_create_info.pQueueFamilyIndices = NULL;
+    stbvk_buffer staging_buffer = {};
+    STBVK__CHECK( stbvk_buffer_create(context, &staging_buffer_create_info,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &staging_buffer) );
+
+    void *mapped_data = NULL;
+    VkMemoryMapFlags map_flags = 0;
+    STBVK__CHECK( vkMapMemory(context->device, staging_buffer.device_memory, 0, size, map_flags, &mapped_data) );
+    memcpy(mapped_data, src_data, size);
+    vkUnmapMemory(context->device, staging_buffer.device_memory);
+
+    VkFenceCreateInfo fence_create_info = {};
+    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_create_info.pNext = NULL;
+    fence_create_info.flags = 0;
+    VkFence fence = VK_NULL_HANDLE;
+    STBVK__CHECK( vkCreateFence(context->device, &fence_create_info, context->allocation_callbacks, &fence) );
+
+    VkCommandBufferAllocateInfo command_buffer_allocate_info = {};
+    command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    command_buffer_allocate_info.pNext = NULL;
+    command_buffer_allocate_info.commandPool = context->command_pool;
+    command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    command_buffer_allocate_info.commandBufferCount = 1;
+    VkCommandBuffer cmd_buf = {};
+    STBVK__CHECK( vkAllocateCommandBuffers(context->device, &command_buffer_allocate_info, &cmd_buf) );
+    VkCommandBufferBeginInfo cmd_buf_begin_info = {};
+    cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cmd_buf_begin_info.pNext = NULL;
+    cmd_buf_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
+    cmd_buf_begin_info.pInheritanceInfo = NULL;
+    STBVK__CHECK( vkBeginCommandBuffer(cmd_buf, &cmd_buf_begin_info) );
+
+    VkBufferCopy buffer_copy_region = {};
+    buffer_copy_region.srcOffset = 0;
+    buffer_copy_region.dstOffset = src_offset;
+    buffer_copy_region.size = size;
+    vkCmdCopyBuffer(cmd_buf, staging_buffer.buffer, dst_buffer->buffer, 1, &buffer_copy_region);
+
+    STBVK__CHECK( vkEndCommandBuffer(cmd_buf) );
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.pNext = NULL;
+    submit_info.waitSemaphoreCount = 0;
+    submit_info.pWaitSemaphores = NULL;
+    submit_info.pWaitDstStageMask = NULL;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &cmd_buf;
+    submit_info.signalSemaphoreCount = 0;
+    submit_info.pSignalSemaphores = NULL;
+    STBVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence) );
+    STBVK__CHECK( vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX) );
+    vkFreeCommandBuffers(context->device, context->command_pool, 1, &cmd_buf);
+    vkDestroyFence(context->device, fence, context->allocation_callbacks);
+    stbvk_buffer_destroy(context, &staging_buffer);
+
+    return VK_SUCCESS;
+}
+
+
+STBVKDEF void stbvk_buffer_destroy(stbvk_context const *context, stbvk_buffer *buffer)
+{
+    vkFreeMemory(context->device, buffer->device_memory, context->allocation_callbacks);
+    vkDestroyBuffer(context->device, buffer->buffer, context->allocation_callbacks);
+}
+
+    
+    
 STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_create_info const *create_info, stbvk_image *out_image)
 {
     // TODO: take a bitfield of requested format features, and make sure the physical device supports them in tiled mode.
@@ -993,7 +1112,7 @@ STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_c
     {
         VkFenceCreateInfo fence_create_info = {};
         fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fence_create_info.pNext = nullptr;
+        fence_create_info.pNext = NULL;
         fence_create_info.flags = 0;
         VkFence fence = VK_NULL_HANDLE;
         STBVK__CHECK( vkCreateFence(context->device, &fence_create_info, context->allocation_callbacks, &fence) );
@@ -1008,9 +1127,9 @@ STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_c
         STBVK__CHECK( vkAllocateCommandBuffers(context->device, &command_buffer_allocate_info, &cmd_buf) );
         VkCommandBufferBeginInfo cmd_buf_begin_info = {};
         cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        cmd_buf_begin_info.pNext = nullptr;
+        cmd_buf_begin_info.pNext = NULL;
         cmd_buf_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
-        cmd_buf_begin_info.pInheritanceInfo = nullptr;
+        cmd_buf_begin_info.pInheritanceInfo = NULL;
         STBVK__CHECK( vkBeginCommandBuffer(cmd_buf, &cmd_buf_begin_info) );
 
         stbvk_set_image_layout(
@@ -1108,7 +1227,7 @@ STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, stb
 
     VkFenceCreateInfo fence_create_info = {};
     fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_create_info.pNext = nullptr;
+    fence_create_info.pNext = NULL;
     fence_create_info.flags = 0;
     VkFence staging_fence = VK_NULL_HANDLE;
     STBVK__CHECK( vkCreateFence(context->device, &fence_create_info, context->allocation_callbacks, &staging_fence) );
@@ -1123,9 +1242,9 @@ STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, stb
     STBVK__CHECK( vkAllocateCommandBuffers(context->device, &command_buffer_allocate_info, &cmd_buf_staging) );
     VkCommandBufferBeginInfo cmd_buf_begin_info = {};
     cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cmd_buf_begin_info.pNext = nullptr;
+    cmd_buf_begin_info.pNext = NULL;
     cmd_buf_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
-    cmd_buf_begin_info.pInheritanceInfo = nullptr;
+    cmd_buf_begin_info.pInheritanceInfo = NULL;
     STBVK__CHECK( vkBeginCommandBuffer(cmd_buf_staging, &cmd_buf_begin_info) );
 
     VkImageSubresourceRange staging_image_subresource_range = {};

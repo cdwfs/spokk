@@ -259,46 +259,22 @@ int main(int argc, char *argv[]) {
     bufferCreateInfoIndices.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferCreateInfoIndices.pNext = NULL;
     bufferCreateInfoIndices.size = mesh_indices_size;
-    bufferCreateInfoIndices.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    bufferCreateInfoIndices.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferCreateInfoIndices.flags = 0;
-    VkBuffer bufferIndices = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreateBuffer(context.device, &bufferCreateInfoIndices, context.allocation_callbacks, &bufferIndices) );
-    VkMemoryRequirements memoryRequirementsIndices;
-    vkGetBufferMemoryRequirements(context.device, bufferIndices, &memoryRequirementsIndices);
-    VkMemoryAllocateInfo memoryAllocateInfoIndices = {};
-    memoryAllocateInfoIndices.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memoryAllocateInfoIndices.pNext = NULL;
-    memoryAllocateInfoIndices.allocationSize = memoryRequirementsIndices.size;
-    memoryAllocateInfoIndices.memoryTypeIndex = stbvk_find_memory_type_index(&context.physical_device_memory_properties,
-        &memoryRequirementsIndices, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    assert(memoryAllocateInfoIndices.memoryTypeIndex < VK_MAX_MEMORY_TYPES);
-    VkDeviceMemory bufferIndicesMemory = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkAllocateMemory(context.device, &memoryAllocateInfoIndices, context.allocation_callbacks, &bufferIndicesMemory) );
-    VkDeviceSize bufferIndicesMemoryOffset = 0;
-    VULKAN_CHECK( vkBindBufferMemory(context.device, bufferIndices, bufferIndicesMemory, bufferIndicesMemoryOffset) );
+    stbvk_buffer bufferIndices = {};
+    VULKAN_CHECK( stbvk_buffer_create(&context, &bufferCreateInfoIndices,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &bufferIndices) );
 
     // Create vertex buffer
     VkBufferCreateInfo bufferCreateInfoVertices = {};
     bufferCreateInfoVertices.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferCreateInfoVertices.pNext = NULL;
     bufferCreateInfoVertices.size = mesh_vertices_size;
-    bufferCreateInfoVertices.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferCreateInfoVertices.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferCreateInfoVertices.flags = 0;
-    VkBuffer bufferVertices = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreateBuffer(context.device, &bufferCreateInfoVertices, context.allocation_callbacks, &bufferVertices) );
-    VkMemoryRequirements memoryRequirementsVertices;
-    vkGetBufferMemoryRequirements(context.device, bufferVertices, &memoryRequirementsVertices);
-    VkMemoryAllocateInfo memoryAllocateInfoVertices = {};
-    memoryAllocateInfoVertices.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memoryAllocateInfoVertices.pNext = NULL;
-    memoryAllocateInfoVertices.allocationSize = memoryRequirementsVertices.size;
-    memoryAllocateInfoVertices.memoryTypeIndex = stbvk_find_memory_type_index(&context.physical_device_memory_properties,
-        &memoryRequirementsVertices, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    assert(memoryAllocateInfoVertices.memoryTypeIndex < VK_MAX_MEMORY_TYPES);
-    VkDeviceMemory bufferVerticesMemory = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkAllocateMemory(context.device, &memoryAllocateInfoVertices, context.allocation_callbacks, &bufferVerticesMemory) );
-    VkDeviceSize bufferVerticesMemoryOffset = 0;
-    VULKAN_CHECK( vkBindBufferMemory(context.device, bufferVertices, bufferVerticesMemory, bufferVerticesMemoryOffset) );
+    stbvk_buffer bufferVertices = {};
+    VULKAN_CHECK( stbvk_buffer_create(&context, &bufferCreateInfoVertices,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &bufferVertices) );
     stbvk_vertex_buffer_layout vertexBufferLayout = {};
     vertexBufferLayout.stride = sizeof(cdsm_vertex_t);
     vertexBufferLayout.attribute_count = 3;
@@ -316,28 +292,24 @@ int main(int argc, char *argv[]) {
     vertexBufferLayout.attributes[2].offset = offsetof(cdsm_vertex_t, texcoord);
 
     // Populate vertex/index buffers
-    VkMemoryMapFlags bufferIndicesMemoryMapFlags = 0;
-    void *bufferIndicesMapped = NULL;
-    VULKAN_CHECK( vkMapMemory(context.device, bufferIndicesMemory, bufferIndicesMemoryOffset,
-        memoryAllocateInfoIndices.allocationSize, bufferIndicesMemoryMapFlags, &bufferIndicesMapped) );
-    VkMemoryMapFlags bufferVerticesMemoryMapFlags = 0;
-    void *bufferVerticesMapped = NULL;
-    VULKAN_CHECK( vkMapMemory(context.device, bufferVerticesMemory, bufferVerticesMemoryOffset,
-        memoryAllocateInfoVertices.allocationSize, bufferVerticesMemoryMapFlags, &bufferVerticesMapped) );
+    void *index_buffer_contents  = malloc(mesh_indices_size);
+    void *vertex_buffer_contents = malloc(mesh_vertices_size);
     if      (meshType == MESH_TYPE_CUBE)
-        cdsm_create_cube(&mesh_metadata, (cdsm_vertex_t*)bufferVerticesMapped, &mesh_vertices_size,
-            (cdsm_index_t*)bufferIndicesMapped, &mesh_indices_size, &cube_recipe);
+        cdsm_create_cube(&mesh_metadata, (cdsm_vertex_t*)vertex_buffer_contents, &mesh_vertices_size,
+            (cdsm_index_t*)index_buffer_contents, &mesh_indices_size, &cube_recipe);
     else if (meshType == MESH_TYPE_SPHERE)
-        cdsm_create_sphere(&mesh_metadata, (cdsm_vertex_t*)bufferVerticesMapped, &mesh_vertices_size,
-            (cdsm_index_t*)bufferIndicesMapped, &mesh_indices_size, &sphere_recipe);
+        cdsm_create_sphere(&mesh_metadata, (cdsm_vertex_t*)vertex_buffer_contents, &mesh_vertices_size,
+            (cdsm_index_t*)index_buffer_contents, &mesh_indices_size, &sphere_recipe);
     else if (meshType == MESH_TYPE_AXES)
-        cdsm_create_axes(&mesh_metadata, (cdsm_vertex_t*)bufferVerticesMapped, &mesh_vertices_size,
-            (cdsm_index_t*)bufferIndicesMapped, &mesh_indices_size, &axes_recipe);
+        cdsm_create_axes(&mesh_metadata, (cdsm_vertex_t*)vertex_buffer_contents, &mesh_vertices_size,
+            (cdsm_index_t*)index_buffer_contents, &mesh_indices_size, &axes_recipe);
     else if (meshType == MESH_TYPE_CYLINDER)
-        cdsm_create_cylinder(&mesh_metadata, (cdsm_vertex_t*)bufferVerticesMapped, &mesh_vertices_size,
-            (cdsm_index_t*)bufferIndicesMapped, &mesh_indices_size, &cylinder_recipe);
-    vkUnmapMemory(context.device, bufferIndicesMemory);
-    vkUnmapMemory(context.device, bufferVerticesMemory);
+        cdsm_create_cylinder(&mesh_metadata, (cdsm_vertex_t*)vertex_buffer_contents, &mesh_vertices_size,
+            (cdsm_index_t*)index_buffer_contents, &mesh_indices_size, &cylinder_recipe);
+    VULKAN_CHECK( stbvk_buffer_load_contents(&context, &bufferIndices, index_buffer_contents, mesh_indices_size) );
+    VULKAN_CHECK( stbvk_buffer_load_contents(&context, &bufferVertices, vertex_buffer_contents, mesh_vertices_size) );
+    free(index_buffer_contents);
+    free(vertex_buffer_contents);
 
     // Create push constants
     struct {
@@ -700,9 +672,9 @@ int main(int argc, char *argv[]) {
         scissorRect.offset.y = 0;
         vkCmdSetScissor(commandBuffer, 0,1, &scissorRect);
         const VkDeviceSize vertexBufferOffsets[1] = {};
-        vkCmdBindVertexBuffers(commandBuffer, 0,1, &bufferVertices, vertexBufferOffsets);
+        vkCmdBindVertexBuffers(commandBuffer, 0,1, &bufferVertices.buffer, vertexBufferOffsets);
         const VkDeviceSize indexBufferOffset = 0;
-        vkCmdBindIndexBuffer(commandBuffer, bufferIndices, indexBufferOffset, indexType);
+        vkCmdBindIndexBuffer(commandBuffer, bufferIndices.buffer, indexBufferOffset, indexType);
         const uint32_t indexCount = mesh_metadata.index_count;
         const uint32_t instanceCount = 1;
         vkCmdDrawIndexed(commandBuffer, indexCount, instanceCount, 0,0,0);
@@ -787,11 +759,8 @@ int main(int argc, char *argv[]) {
 
     stbvk_image_destroy(&context, &depth_image);
 
-    vkFreeMemory(context.device, bufferVerticesMemory, context.allocation_callbacks);
-    vkDestroyBuffer(context.device, bufferVertices, context.allocation_callbacks);
-
-    vkFreeMemory(context.device, bufferIndicesMemory, context.allocation_callbacks);
-    vkDestroyBuffer(context.device, bufferIndices, context.allocation_callbacks);
+    stbvk_buffer_destroy(&context, &bufferIndices);
+    stbvk_buffer_destroy(&context, &bufferVertices);
 
     vkDestroyDescriptorSetLayout(context.device, descriptorSetLayout, context.allocation_callbacks);
     vkDestroyDescriptorPool(context.device, descriptorPool, context.allocation_callbacks);
