@@ -24,10 +24,7 @@
 #if !defined(CDSM_INCLUDE_CDS_MESH_H)
 #define CDSM_INCLUDE_CDS_MESH_H
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+#include <stddef.h>
 
 #if defined(CDSM_STATIC)
 #   define CDSM_DEF static
@@ -36,22 +33,27 @@ extern "C"
 #endif
 
 #if defined(_MSC_VER) && (_MSC_VER < 1700)
-    /* no stdint.h in VS2010 and earlier.
-     * LONG and DWORD are guaranteed to be 32 bits forever, though.
-     */
-    typedef INT8  cdsm_s8;
-    typedef BYTE  cdsm_u8;
-    typedef LONG  cdsm_s32;
-    typedef DWORD cdsm_u32;
+/* no stdint.h in VS2010 and earlier.
+ * LONG and DWORD are guaranteed to be 32 bits forever, though.
+ */
+typedef INT8  cdsm_s8;
+typedef BYTE  cdsm_u8;
+typedef LONG  cdsm_s32;
+typedef DWORD cdsm_u32;
 #else
 #   include <stdint.h>
-    typedef  int8_t  cdsm_s8;
-    typedef uint8_t  cdsm_u8;
-    typedef  int32_t cdsm_s32;
-    typedef uint32_t cdsm_u32;
+typedef  int8_t  cdsm_s8;
+typedef uint8_t  cdsm_u8;
+typedef  int32_t cdsm_s32;
+typedef uint32_t cdsm_u32;
 #endif
-    typedef cdsm_s32 cdsm_error_t;
-    typedef cdsm_u32 cdsm_index_t;
+typedef cdsm_s32 cdsm_error_t;
+typedef cdsm_u32 cdsm_index_t;
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
     typedef struct
     {
@@ -673,7 +675,7 @@ struct {\n\
     {
         fprintf(f, "static %s %sindices[%d] = {\n", "uint16_t", prefix, metadata->index_count);
         cdsm_s32 i=0;
-        for(i; i<metadata->index_count-11; i+=12)
+        for(; i<metadata->index_count-11; i+=12)
         {
             fprintf(f, "\t%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,\n",
                 indices[i+ 0], indices[i+ 1], indices[i+ 2], indices[i+ 3], 
@@ -683,7 +685,7 @@ struct {\n\
         if (i < metadata->index_count)
         {
             fprintf(f, "\t");
-            for(i; i<metadata->index_count; i+=1)
+            for(; i<metadata->index_count; i+=1)
             {
                 fprintf(f, "%5u,", indices[i]);
             }
@@ -694,7 +696,7 @@ struct {\n\
     {
         fprintf(f, "static %s %s_indices[%d] = {\n", "uint32_t", prefix, metadata->index_count);
         cdsm_s32 i=0;
-        for(i; i<metadata->index_count-5; i+=6)
+        for(; i<metadata->index_count-5; i+=6)
         {
             fprintf(f, "\t%10u,%10u,%10u,%10u,%10u,%10u,\n",
                 indices[i+ 0], indices[i+ 1], indices[i+ 2],
@@ -703,7 +705,7 @@ struct {\n\
         if (i < metadata->index_count)
         {
             fprintf(f, "\t");
-            for(i; i<metadata->index_count; i+=1)
+            for(; i<metadata->index_count; i+=1)
             {
                 fprintf(f, "%10u,", indices[i]);
             }
@@ -727,33 +729,68 @@ struct {\n\
 #include <stdlib.h>
 #include <string.h>
 
-//#include "cube_mesh.h"
+//#include "test_cds_mesh_cube_mesh.h"
 
 int main(int argc, char *argv[])
 {
     CDSM__UNUSED(argc);
     CDSM__UNUSED(argv);
 
-    cdsm_cube_recipe_t recipe;
-    recipe.front_face = CDSM_FRONT_FACE_CCW;
-    recipe.min_extent.x = -0.5f;
-    recipe.min_extent.y = -0.5f;
-    recipe.min_extent.z = -0.5f;
-    recipe.max_extent.x = +0.5f;
-    recipe.max_extent.y = +0.5f;
-    recipe.max_extent.z = +0.5f;
+    enum
+    {
+        MESH_TYPE_CUBE     = 0,
+        MESH_TYPE_SPHERE   = 1,
+        MESH_TYPE_AXES     = 3,
+        MESH_TYPE_CYLINDER = 2,
+    } meshType = MESH_TYPE_SPHERE;
+    cdsm_cube_recipe_t cube_recipe = {};
+    cube_recipe.min_extent.x = -0.5f;
+    cube_recipe.min_extent.y = -0.5f;
+    cube_recipe.min_extent.z = -0.5f;
+    cube_recipe.max_extent.x = +0.5f;
+    cube_recipe.max_extent.y = +0.5f;
+    cube_recipe.max_extent.z = +0.5f;
+    cube_recipe.front_face = CDSM_FRONT_FACE_CCW;
+    cdsm_sphere_recipe_t sphere_recipe = {};
+    sphere_recipe.latitudinal_segments = 30;
+    sphere_recipe.longitudinal_segments = 30;
+    sphere_recipe.radius = 0.5f;
+    cdsm_cylinder_recipe_t cylinder_recipe = {};
+    cylinder_recipe.length = 1.0f;
+    cylinder_recipe.axial_segments = 3;
+    cylinder_recipe.radial_segments = 60;
+    cylinder_recipe.radius0 = -1.0f;
+    cylinder_recipe.radius1 = 1.0f;
+    cdsm_axes_recipe_t axes_recipe = {};
+    axes_recipe.length = 1.0f;
+
     cdsm_metadata_t metadata;
     size_t vertices_size = 0, indices_size = 0;
     cdsm_error_t result;
-    
-    result = cdsm_create_cube(&metadata, NULL, &vertices_size, NULL, &indices_size, &recipe);
-    assert(result == 0);
-    cdsm_vertex_t *vertices = (cdsm_vertex_t*)malloc(vertices_size);
-    cdsm_index_t *indices = (cdsm_index_t*)malloc(indices_size);
-    result = cdsm_create_cube(&metadata, vertices, &vertices_size, indices, &indices_size, &recipe);
+    if      (meshType == MESH_TYPE_CUBE)
+      result = cdsm_create_cube(&metadata, NULL, &vertices_size, NULL, &indices_size, &cube_recipe);
+    else if (meshType == MESH_TYPE_SPHERE)
+      result = cdsm_create_sphere(&metadata, NULL, &vertices_size, NULL, &indices_size, &sphere_recipe);
+    else if (meshType == MESH_TYPE_AXES)
+      result = cdsm_create_axes(&metadata, NULL, &vertices_size, NULL, &indices_size, &axes_recipe);
+    else if (meshType == MESH_TYPE_CYLINDER)
+      result = cdsm_create_cylinder(&metadata, NULL, &vertices_size, NULL, &indices_size, &cylinder_recipe);
     assert(result == 0);
 
-    result = cdsm_export_to_header("cube_mesh.h", "cube_", &metadata, vertices, indices);
+    cdsm_vertex_t *vertices = (cdsm_vertex_t*)malloc(vertices_size);
+    cdsm_index_t *indices = (cdsm_index_t*)malloc(indices_size);
+    if      (meshType == MESH_TYPE_CUBE)
+      result = cdsm_create_cube(&metadata, vertices, &vertices_size, indices, &indices_size, &cube_recipe);
+    else if (meshType == MESH_TYPE_SPHERE)
+      result = cdsm_create_sphere(&metadata, vertices, &vertices_size, indices, &indices_size, &sphere_recipe);
+    else if (meshType == MESH_TYPE_AXES)
+      result = cdsm_create_axes(&metadata, vertices, &vertices_size, indices, &indices_size, &axes_recipe);
+    else if (meshType == MESH_TYPE_CYLINDER)
+      result = cdsm_create_cylinder(&metadata, vertices, &vertices_size, indices, &indices_size, &cylinder_recipe);
+    assert(result == 0);
+
+    result = cdsm_export_to_header("test_cds_mesh_output.h", "mesh_",
+        &metadata, vertices, indices);
     assert(result == 0);
 
     free(vertices);
