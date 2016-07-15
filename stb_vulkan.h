@@ -992,14 +992,10 @@ STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_c
         cmd_buf_begin_info.pInheritanceInfo = nullptr;
         STBVK__CHECK( vkBeginCommandBuffer(cmd_buf, &cmd_buf_begin_info) );
 
-        VkImageSubresourceRange dst_image_subresource_range = {};
-        dst_image_subresource_range.aspectMask = out_image->image_view_create_info.subresourceRange.aspectMask;
-        dst_image_subresource_range.baseMipLevel = 0;
-        dst_image_subresource_range.levelCount = VK_REMAINING_MIP_LEVELS;
-        dst_image_subresource_range.baseArrayLayer = 0;
-        dst_image_subresource_range.layerCount = VK_REMAINING_ARRAY_LAYERS;
-        stbvk_set_image_layout(cmd_buf, out_image->image, dst_image_subresource_range,
-            VK_IMAGE_LAYOUT_UNDEFINED, create_info->initial_layout, 0);
+        stbvk_set_image_layout(
+              cmd_buf, out_image->image,
+              out_image->image_view_create_info.subresourceRange,
+              VK_IMAGE_LAYOUT_UNDEFINED, create_info->initial_layout, 0);
 
         STBVK__CHECK( vkEndCommandBuffer(cmd_buf) );
         VkSubmitInfo submit_info = {};
