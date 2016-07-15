@@ -671,7 +671,7 @@ struct {\n\
     size_t index_size = sizeof(cdsm_index_t);
     if (index_size == sizeof(uint16_t))
     {
-        fprintf(f, "static %s %sindices[] = {\n", "uint16_t", prefix, metadata->index_count);
+        fprintf(f, "static %s %sindices[%d] = {\n", "uint16_t", prefix, metadata->index_count);
         cdsm_s32 i=0;
         for(i; i<metadata->index_count-11; i+=12)
         {
@@ -692,7 +692,7 @@ struct {\n\
     }
     else if (index_size == sizeof(uint32_t))
     {
-        fprintf(f, "static %s %s_indices[] = {\n", "uint32_t", prefix, metadata->index_count);
+        fprintf(f, "static %s %s_indices[%d] = {\n", "uint32_t", prefix, metadata->index_count);
         cdsm_s32 i=0;
         for(i; i<metadata->index_count-5; i+=6)
         {
