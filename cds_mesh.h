@@ -7,7 +7,7 @@
  * implementations.
  *
  * For a unit test on gcc/Clang:
- *   cc -Wall -std=c89 -D_POSIX_C_SOURCE=199309L -g -x c -DCDS_MESH_TEST -o test_cds_mesh.exe cds_mesh.h
+ *   cc -Wall -std=c89 -g -x c -DCDS_MESH_TEST -o test_cds_mesh.exe cds_mesh.h -lm
  *
  * For a unit test on Visual C++:
  *   "%VS120COMNTOOLS%\..\..\VC\vcvarsall.bat"
@@ -174,7 +174,7 @@ cdsm_error_t cdsm_create_cube(cdsm_metadata_t *out_metadata,
 {
     if (!( (out_vertices && out_indices) || (!out_vertices && !out_indices) ))
     {
-        return -1; // both must be NULL or both must be non-NULL.
+        return -1; /* both must be NULL or both must be non-NULL. */
     }
     out_metadata->index_count  = 3 * 2 * 6;
     out_metadata->vertex_count = 4 * 6;
@@ -195,7 +195,7 @@ cdsm_error_t cdsm_create_cube(cdsm_metadata_t *out_metadata,
         return -2;
     }
 
-    // min = 0,1,2,  max = 3,4,5,
+    /* min = 0,1,2,  max = 3,4,5, */
     float face_pos[6];
     face_pos[0] = recipe->min_extent.x;
     face_pos[1] = recipe->min_extent.y;
@@ -205,12 +205,12 @@ cdsm_error_t cdsm_create_cube(cdsm_metadata_t *out_metadata,
     face_pos[5] = recipe->max_extent.z;
 
     const int face_pos_indices[] = {
-        3,1,5,  3,1,2,  3,4,5,  3,4,2, // +X
-        0,1,2,  0,1,5,  0,4,2,  0,4,5, // -X
-        0,4,5,  3,4,5,  0,4,2,  3,4,2, // +Y
-        0,1,2,  3,1,2,  0,1,5,  3,1,5, // -Y
-        0,1,5,  3,1,5,  0,4,5,  3,4,5, // +Z
-        3,1,2,  0,1,2,  3,4,2,  0,4,2, // -Z
+        3,1,5,  3,1,2,  3,4,5,  3,4,2, /* +X */
+        0,1,2,  0,1,5,  0,4,2,  0,4,5, /* -X */
+        0,4,5,  3,4,5,  0,4,2,  3,4,2, /* +Y */
+        0,1,2,  3,1,2,  0,1,5,  3,1,5, /* -Y */
+        0,1,5,  3,1,5,  0,4,5,  3,4,5, /* +Z */
+        3,1,2,  0,1,2,  3,4,2,  0,4,2, /* -Z */
     };
     const float face_uvs[] = {
         0,1, 1,1, 0,0, 1,0,
@@ -282,7 +282,7 @@ cdsm_error_t cdsm_create_sphere(cdsm_metadata_t *out_metadata,
 {
     if (!( (out_vertices && out_indices) || (!out_vertices && !out_indices) ))
     {
-        return -1; // both must be NULL or both must be non-NULL.
+        return -1; /* both must be NULL or both must be non-NULL. */
     }
     if (recipe->latitudinal_segments < 2 || recipe->longitudinal_segments < 3)
     {
@@ -380,7 +380,7 @@ cdsm_error_t cdsm_create_axes(cdsm_metadata_t *out_metadata,
 {
     if (!( (out_vertices && out_indices) || (!out_vertices && !out_indices) ))
     {
-        return -1; // both must be NULL or both must be non-NULL.
+        return -1; /* both must be NULL or both must be non-NULL. */
     }
     out_metadata->index_count  = 2 * 3;
     out_metadata->vertex_count = 2 * 3;
@@ -457,7 +457,7 @@ cdsm_error_t cdsm_create_cylinder(cdsm_metadata_t *out_metadata,
 {
     if (!( (out_vertices && out_indices) || (!out_vertices && !out_indices) ))
     {
-        return -1; // both must be NULL or both must be non-NULL.
+        return -1; /* both must be NULL or both must be non-NULL. */
     }
     if (recipe->radial_segments < 3 || recipe->axial_segments < 1)
     {
