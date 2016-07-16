@@ -938,7 +938,8 @@ STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_c
     {
     case VK_FORMAT_D16_UNORM:
     case VK_FORMAT_D32_SFLOAT:
-      image_aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+        image_aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+        break;
     case VK_FORMAT_D16_UNORM_S8_UINT:
     case VK_FORMAT_D32_SFLOAT_S8_UINT:
     case VK_FORMAT_D24_UNORM_S8_UINT:
