@@ -663,7 +663,7 @@ struct {\n\
     fprintf(f, "static const %s %svertices[%d] = {\n", vertex_type, prefix, metadata->vertex_count);
     for(cdsm_s32 iVert=0; iVert<metadata->vertex_count; ++iVert)
     {
-        fprintf(f, "\t%.9ff,%.9ff,%.9ff, %.9ff,%.9ff,%.9ff, %.9ff,%.9ff,\n",
+        fprintf(f, "\t{\t{%.9ff, %.9ff, %.9ff},\n\t\t{%.9ff, %.9ff, %.9ff},\n\t\t{%.9ff, %.9ff} },\n",
             vertices[iVert].position[0], vertices[iVert].position[1], vertices[iVert].position[2],
             vertices[iVert].normal[0], vertices[iVert].normal[1], vertices[iVert].normal[2],
             vertices[iVert].texcoord[0], vertices[iVert].texcoord[1]);
@@ -678,8 +678,8 @@ struct {\n\
         for(; i<metadata->index_count-11; i+=12)
         {
             fprintf(f, "\t%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,%5u,\n",
-                indices[i+ 0], indices[i+ 1], indices[i+ 2], indices[i+ 3], 
-                indices[i+ 4], indices[i+ 5], indices[i+ 6], indices[i+ 7], 
+                indices[i+ 0], indices[i+ 1], indices[i+ 2], indices[i+ 3],
+                indices[i+ 4], indices[i+ 5], indices[i+ 6], indices[i+ 7],
                 indices[i+ 8], indices[i+ 9], indices[i+10], indices[i+11]);
         }
         if (i < metadata->index_count)
@@ -694,7 +694,7 @@ struct {\n\
     }
     else if (index_size == sizeof(uint32_t))
     {
-        fprintf(f, "static const %s %s_indices[%d] = {\n", "uint32_t", prefix, metadata->index_count);
+        fprintf(f, "static const %s %sindices[%d] = {\n", "uint32_t", prefix, metadata->index_count);
         cdsm_s32 i=0;
         for(; i<metadata->index_count-5; i+=6)
         {
