@@ -651,8 +651,8 @@ cdsm_error_t cdsm_export_to_header(const char *filename, const char *prefix,
         primitive_type = "LINE_LIST";
     fprintf(f, "/* Primitive type is %s */\n", primitive_type);
 
-    fprintf(f, "static int %svertex_count = %d;\n", prefix, metadata->vertex_count);
-    fprintf(f, "static int %sindex_count = %d;\n", prefix, metadata->index_count);
+    fprintf(f, "static const int %svertex_count = %d;\n", prefix, metadata->vertex_count);
+    fprintf(f, "static const int %sindex_count = %d;\n", prefix, metadata->index_count);
 
     const char *vertex_type ="\
 struct {\n\
@@ -660,7 +660,7 @@ struct {\n\
     float normal[3];\n\
     float texcoord[2];\n\
 }";
-    fprintf(f, "static %s %svertices[%d] = {\n", vertex_type, prefix, metadata->vertex_count);
+    fprintf(f, "static const %s %svertices[%d] = {\n", vertex_type, prefix, metadata->vertex_count);
     for(cdsm_s32 iVert=0; iVert<metadata->vertex_count; ++iVert)
     {
         fprintf(f, "\t%.9ff,%.9ff,%.9ff, %.9ff,%.9ff,%.9ff, %.9ff,%.9ff,\n",
@@ -673,7 +673,7 @@ struct {\n\
     size_t index_size = sizeof(cdsm_index_t);
     if (index_size == sizeof(uint16_t))
     {
-        fprintf(f, "static %s %sindices[%d] = {\n", "uint16_t", prefix, metadata->index_count);
+        fprintf(f, "static const %s %sindices[%d] = {\n", "uint16_t", prefix, metadata->index_count);
         cdsm_s32 i=0;
         for(; i<metadata->index_count-11; i+=12)
         {
@@ -694,7 +694,7 @@ struct {\n\
     }
     else if (index_size == sizeof(uint32_t))
     {
-        fprintf(f, "static %s %s_indices[%d] = {\n", "uint32_t", prefix, metadata->index_count);
+        fprintf(f, "static const %s %s_indices[%d] = {\n", "uint32_t", prefix, metadata->index_count);
         cdsm_s32 i=0;
         for(; i<metadata->index_count-5; i+=6)
         {
