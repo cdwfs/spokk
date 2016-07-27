@@ -223,6 +223,38 @@ extern "C" {
         stbvk_graphics_pipeline_settings_vsps const *settings,
         stbvk_graphics_pipeline_create_info *out_create_info);
 
+    // Device memory arena
+    typedef VkResult stbvk_pfn_device_memory_arena_alloc(void *user_data, const VkMemoryAllocateInfo *alloc_info,
+	    VkDeviceSize alignment, VkDeviceMemory *out_mem, VkDeviceSize *out_offset);
+    typedef void stbvk_pfn_device_memory_arena_free(void *user_data, VkDeviceMemory mem, VkDeviceSize offset);
+    typedef struct stbvk_device_memory_arena
+    {
+	    void *user_data;
+	    stbvk_pfn_device_memory_arena_alloc *allocate_func;
+	    stbvk_pfn_device_memory_arena_free *free_func;
+    } stbvk_device_memory_arena;
+    
+    typedef enum stbvk_device_memory_arena_flag_bits
+    {
+        STBVK_DEVICE_MEMORY_ARENA_SINGLE_THREAD_BIT = 1,
+        STBVK_MEMORY_MEMORY_ARENA_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
+    } stbvk_device_memory_arena_flag_bits;
+    typedef VkFlags stbvk_device_memory_arena_flags;
+
+    typedef struct stbvk_device_memory_arena_flat_create_info
+    {
+        VkMemoryAllocateInfo alloc_info;
+        stbvk_device_memory_arena_flags flags;
+    } stbvk_device_memory_arena_flat_create_info;
+    VkResult stbvk_create_device_memory_arena_flat(VkDevice device,
+        const stbvk_device_memory_arena_flat_create_info *ci,
+        VkAllocationCallbacks *allocation_callbacks,
+        stbvk_device_memory_arena *out_arena);
+    void stbvk_destroy_device_memory_arena_flat(VkDevice device,
+        const stbvk_device_memory_arena *arena,
+        const VkAllocationCallbacks *allocation_callbacks);
+
+
 #ifdef __cplusplus
 }
 #endif
@@ -2480,6 +2512,101 @@ STBVKDEF int stbvk_prepare_graphics_pipeline_create_info_vsps(
     return 0;
 }
 
+
+//////////////////////////// stbvk_memory_device_arena_flat
+
+typedef struct stbvk_device_memory_arena_flat_data
+{
+	VkDeviceMemory mem;
+	VkDeviceSize base_offset;
+	VkDeviceSize max_offset;
+	uint32_t memory_type_index;
+	stbvk_device_memory_arena_flags flags;
+	VkDeviceSize top; // separate cache line. Always between base_offset and max_offset.
+} stbvk_device_memory_arena_flat_data;
+
+static VkResult stbvk__device_memory_arena_flat_alloc(void *user_data, const VkMemoryAllocateInfo *alloc_info,
+    VkDeviceSize alignment, VkDeviceMemory *out_mem, VkDeviceSize *out_offset)
+{
+    stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)user_data;
+	if (alloc_info->memoryTypeIndex != arena_data->memory_type_index)
+		return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    VkResult result = VK_SUCCESS;
+    for(;;) {
+        VkDeviceSize top = arena_data->top;
+        VkDeviceSize aligned_top = (top + alignment - 1) & ~(alignment-1);
+        VkDeviceSize new_top = aligned_top + alloc_info->allocationSize;
+        if (new_top >= aligned_top &&
+				new_top <= arena_data->max_offset &&
+				new_top >= arena_data->base_offset) { // size didn't wrap & allocation fits
+            if (arena_data->flags & STBVK_DEVICE_MEMORY_ARENA_SINGLE_THREAD_BIT) {
+                arena_data->top = new_top;
+				*out_mem = arena_data->mem;
+                *out_offset = aligned_top;
+                break;
+            } else {
+                // TODO(cort): atomic compare-and-swap new_top onto stack->top,
+                // and break if successful.
+                arena_data->top = new_top;
+				*out_mem = arena_data->mem;
+                *out_offset = aligned_top;
+                break;
+            }
+        } else {
+            result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            break;
+        }
+    }
+    return result;
+}
+
+static void stbvk__device_memory_arena_flat_free(void *user_data, VkDeviceMemory mem, VkDeviceSize offset)
+{
+    stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)user_data;
+    STBVK_ASSERT(mem == arena_data->mem);
+    STBVK_ASSERT(offset >= arena_data->base_offset && offset < arena_data->max_offset);
+    (void)arena_data;
+}
+
+VkResult stbvk_create_device_memory_arena_flat(VkDevice device,
+    const stbvk_device_memory_arena_flat_create_info *ci,
+    VkAllocationCallbacks *allocation_callbacks,
+    stbvk_device_memory_arena *out_arena)
+{
+    VkDeviceMemory mem = VK_NULL_HANDLE;
+    STBVK__CHECK(vkAllocateMemory(device, &ci->alloc_info, allocation_callbacks, &mem));
+    if (mem == VK_NULL_HANDLE)
+        return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+
+    stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)stbvk__host_alloc(
+        sizeof(stbvk_device_memory_arena_flat_data), sizeof(VkDeviceMemory),
+        VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, allocation_callbacks);
+    if (!arena_data)
+    {
+        vkFreeMemory(device, mem, allocation_callbacks);
+        return VK_ERROR_OUT_OF_HOST_MEMORY;
+    }
+    arena_data->mem = mem;
+    arena_data->base_offset = 0;
+    arena_data->max_offset = ci->alloc_info.allocationSize;
+    arena_data->memory_type_index = ci->alloc_info.memoryTypeIndex;
+    arena_data->flags = ci->flags; // TODO(cort): validate flags
+    arena_data->top = arena_data->base_offset;
+
+    out_arena->user_data = (void*)arena_data;
+    out_arena->allocate_func = stbvk__device_memory_arena_flat_alloc;
+    out_arena->free_func = stbvk__device_memory_arena_flat_free;
+    return VK_SUCCESS;
+}
+
+void stbvk_destroy_device_memory_arena_flat(VkDevice device,
+    const stbvk_device_memory_arena *arena,
+    const VkAllocationCallbacks *allocation_callbacks)
+{
+    stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)(arena->user_data);
+    vkFreeMemory(device, arena_data->mem, allocation_callbacks);
+    stbvk__host_free(arena_data, allocation_callbacks);
+}
 
 
 #endif // STB_VULKAN_IMPLEMENTATION
