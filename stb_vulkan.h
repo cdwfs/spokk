@@ -572,9 +572,11 @@ STBVKDEF VkResult stbvk_name_instance(VkDevice device, VkInstance name_me, const
 {
     return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT, (uint64_t)name_me, name);
 }
-STBVKDEF VkResult stbvk_name_physical_device(VkDevice device, VkPhysicalDevice name_me, const char *name)
+STBVKDEF VkResult stbvk_name_physical_device(VkDevice /*device*/, VkPhysicalDevice /*name_me*/, const char * /*name*/)
 {
-    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT, (uint64_t)name_me, name);
+    // TODO(cort): not working?
+    return VK_SUCCESS;
+    //return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT, (uint64_t)name_me, name);
 }
 STBVKDEF VkResult stbvk_name_device(VkDevice device, VkDevice name_me, const char *name)
 {
@@ -668,9 +670,11 @@ STBVKDEF VkResult stbvk_name_command_pool(VkDevice device, VkCommandPool name_me
 {
     return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT, (uint64_t)name_me, name);
 }
-STBVKDEF VkResult stbvk_name_surface(VkDevice device, VkSurfaceKHR name_me, const char *name)
+STBVKDEF VkResult stbvk_name_surface(VkDevice /*device*/, VkSurfaceKHR /*name_me*/, const char * /*name*/)
 {
-    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT, (uint64_t)name_me, name);
+    // TODO(cort): not working?
+    return VK_SUCCESS;
+    //return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT, (uint64_t)name_me, name);
 }
 STBVKDEF VkResult stbvk_name_swapchain(VkDevice device, VkSwapchainKHR name_me, const char *name)
 {
@@ -802,10 +806,9 @@ STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_in
     // Filter available layers by what was required/optional
     std::vector<const char*> layer_names_c;
     layer_names_c.reserve(all_instance_layer_names.size());
-    for(uint32_t iLayer = 0; iLayer<create_info->required_instance_layer_count; iLayer += 1)
-    {
-        layer_names_c.push_back( create_info->required_instance_layer_names[iLayer] );
-    }
+    // Optional layers come first, as a quick hack to ensure that GOOGLE_unique_objects is last in the list.
+    // TODO(cort): LAYER_GOOGLE_unique_objects must be last in the last. For now, hack around this by listing
+    // optional layers first, but this is not terribly robust.
     for(uint32_t iLayer = 0; iLayer<create_info->optional_instance_layer_count; iLayer += 1)
     {
         if (std::find(all_instance_layer_names.begin(), all_instance_layer_names.end(),
@@ -815,6 +818,10 @@ STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_in
             continue;  // optional layer missing; ignore it.
         }
         layer_names_c.push_back( create_info->optional_instance_layer_names[iLayer] );
+    }
+    for(uint32_t iLayer = 0; iLayer<create_info->required_instance_layer_count; iLayer += 1)
+    {
+        layer_names_c.push_back( create_info->required_instance_layer_names[iLayer] );
     }
 
     // Query all core extensions
@@ -1144,8 +1151,7 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
     pipeline_cache_create_info.flags = 0;
     pipeline_cache_create_info.initialDataSize = 0;
     pipeline_cache_create_info.pInitialData = NULL;
-    STBVK__CHECK( vkCreatePipelineCache(context->device, &pipeline_cache_create_info, context->allocation_callbacks, &context->pipeline_cache) );
-    STBVK__CHECK(stbvk_name_pipeline_cache(context->device, context->pipeline_cache, "stbvk_context pipeline cache"));
+    context->pipeline_cache = stbvk_create_pipeline_cache(context, &pipeline_cache_create_info, "pipeline cache");
     return VK_SUCCESS;
 }
 
@@ -1285,7 +1291,7 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     for(uint32_t iSCI=0; iSCI<context->swapchain_image_count; iSCI+=1)
     {
         image_view_create_info.image = context->swapchain_images[iSCI];
-        STBVK__CHECK( vkCreateImageView(context->device, &image_view_create_info, context->allocation_callbacks, &context->swapchain_image_views[iSCI]) );
+        context->swapchain_image_views[iSCI] = stbvk_create_image_view(context, &image_view_create_info, "swapchain image view");
     }
 
     return VK_SUCCESS;

@@ -151,6 +151,11 @@ int main(int argc, char *argv[]) {
     };
     const char *optional_instance_layers[] = {
         "VK_LAYER_LUNARG_device_limits",  // deprecated in 1.0.13; ask for it optionally, just in case.
+#if !defined(NDEBUG)
+        // Do not explicitly enable! only needed to test EXT_debug_marker support, and may generate other
+        // spurious errors.
+        //"VK_LAYER_RENDERDOC_Capture",
+#endif
             "" // placeholder; empty initializers arrays aren't allowed
     };
     const char *required_instance_extensions[] = {
@@ -167,7 +172,7 @@ int main(int argc, char *argv[]) {
     };
     const char *optional_instance_extensions[] = {
 #if !defined(NDEBUG)
-        VK_EXT_DEBUG_REPORT_EXTENSION_NAME, // TODO(cort): debug only!
+        VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
 #endif
         "" // placeholder; empty initializers arrays aren't allowed
     };
@@ -175,6 +180,9 @@ int main(int argc, char *argv[]) {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     };
     const char *optional_device_extensions[] = {
+#if !defined(NDEBUG) && defined(VK_EXT_debug_marker)
+        VK_EXT_DEBUG_MARKER_EXTENSION_NAME, // will only be enabled if a layer supports it (currently, only RenderDoc's implicit layer)
+#endif
         ""  // placeholder; empty initializers arrays aren't allowed
     };
     stbvk_context_create_info contextCreateInfo = {};
@@ -192,14 +200,15 @@ int main(int argc, char *argv[]) {
     contextCreateInfo.optional_device_extension_count   = sizeof(optional_device_extensions) / sizeof(optional_device_extensions[0]);
     contextCreateInfo.optional_device_extension_names   = optional_device_extensions;
     contextCreateInfo.application_info = &applicationInfo;
-#if !defined(NDEBUG)
     contextCreateInfo.debug_report_callback = debugReportCallbackFunc;
     contextCreateInfo.debug_report_flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
-#else
+    contextCreateInfo.debug_report_callback_user_data = NULL;
+#if defined(DISABLE_VALIDATION_LAYERS)
+    contextCreateInfo.required_instance_layer_count = 0;
+    contextCreateInfo.optional_instance_layer_count = 0;
     contextCreateInfo.debug_report_callback = NULL;
     contextCreateInfo.debug_report_flags = 0;
 #endif
-    contextCreateInfo.debug_report_callback_user_data = NULL;
     stbvk_context context = {};
     my_stbvk_init_context(&contextCreateInfo, window, &context);
 
@@ -452,7 +461,8 @@ int main(int argc, char *argv[]) {
     VkSampler sampler= stbvk_create_sampler(&context, &samplerCreateInfo, "default sampler");
 
     ImageFile image_file = {};
-    int texture_load_error = ImageFileCreate(&image_file, "trevor/redf.png");
+    const char *texture_filename = "trevor/redf.png";
+    int texture_load_error = ImageFileCreate(&image_file, texture_filename);
     assert(!texture_load_error);
     VkImageCreateInfo texture_image_create_info = {};
     ImageFileToVkImageCreateInfo(&texture_image_create_info, &image_file);
@@ -460,7 +470,7 @@ int main(int argc, char *argv[]) {
     texture_image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     texture_image_create_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
     VkImage texture_image = stbvk_create_image(&context, &texture_image_create_info,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT, "texture image");
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT, texture_filename);
     VkDeviceMemory texture_image_mem = VK_NULL_HANDLE;
     VkDeviceSize texture_image_mem_offset = 0;
     VULKAN_CHECK(stbvk_allocate_and_bind_image_memory(&context, texture_image, device_arena,
