@@ -96,9 +96,10 @@ extern "C" {
         const char **required_device_extension_names;
         uint32_t required_device_extension_count;
 
-        const VkApplicationInfo *application_info; // Used to initialize VkInstance. Optional; set to NULL for default values.
-        PFN_vkDebugReportCallbackEXT debug_report_callback; // Optional; set to NULL to disable debug reports.
-        void *debug_report_callback_user_data; // Optional; passed to debug_report_callback, if enabled.
+        const VkApplicationInfo *application_info; /* Used to initialize VkInstance. Optional; set to NULL for default values. */
+        PFN_vkDebugReportCallbackEXT debug_report_callback; /* Optional; set to NULL to disable debug reports. */
+        VkDebugReportFlagsEXT debug_report_flags; /* Optional; ignored if debug_report_callback is NULL. */
+        void *debug_report_callback_user_data; /* Optional; passed to debug_report_callback, if enabled. */
     } stbvk_context_create_info;
     STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_info, stbvk_context *c);
     STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info, VkSurfaceKHR present_surface, stbvk_context *c);
@@ -442,12 +443,13 @@ STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_in
     // Set up debug report callback
     if (create_info->debug_report_callback && found_debug_report_extension)
     {
+        STBVK_ASSERT(create_info->debug_report_flags != 0); /* enabling a callback with zero flags is pointless */
         PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallback =
             (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(context->instance, "vkCreateDebugReportCallbackEXT");
         VkDebugReportCallbackCreateInfoEXT debugReportCallbackCreateInfo = {};
         debugReportCallbackCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
         debugReportCallbackCreateInfo.pNext = NULL;
-        debugReportCallbackCreateInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+        debugReportCallbackCreateInfo.flags = create_info->debug_report_flags;
         debugReportCallbackCreateInfo.pfnCallback = create_info->debug_report_callback;
         debugReportCallbackCreateInfo.pUserData = create_info->debug_report_callback_user_data;
         context->debug_report_callback = VK_NULL_HANDLE;

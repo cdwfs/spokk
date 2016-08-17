@@ -180,6 +180,7 @@ int main(int argc, char *argv[]) {
     contextCreateInfo.required_device_extension_names   = required_device_extensions;
     contextCreateInfo.application_info = &applicationInfo;
     contextCreateInfo.debug_report_callback = debugReportCallbackFunc;
+    contextCreateInfo.debug_report_flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
     contextCreateInfo.debug_report_callback_user_data = NULL;
     stbvk_context context = {};
     my_stbvk_init_context(&contextCreateInfo, window, &context);
