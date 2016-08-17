@@ -34,6 +34,8 @@
 #define CDS_MESH_IMPLEMENTATION
 #include "cds_mesh.h"
 
+#include "image_file.h"
+
 #include <mathfu/vector.h>
 #include <mathfu/glsl_mappings.h>
 
@@ -185,6 +187,8 @@ int main(int argc, char *argv[]) {
     stbvk_context context = {};
     my_stbvk_init_context(&contextCreateInfo, window, &context);
 
+    stbvk_device_memory_arena *device_arena = NULL;
+
     // Allocate command buffers
     VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
     commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -196,20 +200,48 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK( vkAllocateCommandBuffers(context.device, &commandBufferAllocateInfo, commandBuffers) );
 
     // Create depth buffer
-    stbvk_image_create_info depth_image_create_info = {};
-    depth_image_create_info.image_type = VK_IMAGE_TYPE_2D;
-    depth_image_create_info.format = VK_FORMAT_D16_UNORM;
+    VkImageCreateInfo depth_image_create_info = {};
+    depth_image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    depth_image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    depth_image_create_info.format = VK_FORMAT_UNDEFINED; // filled in below
     depth_image_create_info.extent = {kWindowWidthDefault, kWindowHeightDefault, 1};
-    depth_image_create_info.mip_levels = 1;
-    depth_image_create_info.array_layers = 1;
+    depth_image_create_info.mipLevels = 1;
+    depth_image_create_info.arrayLayers = 1;
     depth_image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     depth_image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     depth_image_create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    depth_image_create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-    depth_image_create_info.memory_properties_mask = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    depth_image_create_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
-    stbvk_image depth_image;
-    VULKAN_CHECK( stbvk_image_create(&context, &depth_image_create_info, &depth_image) );
+    depth_image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    depth_image_create_info.queueFamilyIndexCount = 0;
+    depth_image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    const VkFormat depth_format_candidates[] = {
+        VK_FORMAT_D32_SFLOAT_S8_UINT,
+        VK_FORMAT_D24_UNORM_S8_UINT,
+        VK_FORMAT_D16_UNORM_S8_UINT,
+    };
+    for(auto format : depth_format_candidates)
+    {
+        VkFormatProperties format_properties = {};
+        vkGetPhysicalDeviceFormatProperties(context.physical_device, format, &format_properties);
+        if ((format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+        {
+            depth_image_create_info.format = format;
+            break;
+        }
+    }
+    assert(depth_image_create_info.format != VK_FORMAT_UNDEFINED);
+    VkImage depth_image = stbvk_create_image(&context, &depth_image_create_info, VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        "depth buffer image");
+    VkMemoryRequirements depth_image_memory_reqs = {};
+    vkGetImageMemoryRequirements(context.device, depth_image, &depth_image_memory_reqs);
+    VkDeviceMemory depth_image_mem = VK_NULL_HANDLE;
+    VkDeviceSize depth_image_mem_offset = 0;
+    VULKAN_CHECK(stbvk_allocate_device_memory(&context, &depth_image_memory_reqs, device_arena,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "depth buffer image memory",
+        &depth_image_mem, &depth_image_mem_offset));
+    VULKAN_CHECK(vkBindImageMemory(context.device, depth_image, depth_image_mem, depth_image_mem_offset));
+    VkImageView depth_image_view = stbvk_create_image_view_from_image(&context, depth_image,
+        &depth_image_create_info, "depth buffer image view");
 
     cdsm_metadata_t mesh_metadata = {};
     size_t mesh_vertices_size = 0, mesh_indices_size = 0;
@@ -261,9 +293,14 @@ int main(int argc, char *argv[]) {
     bufferCreateInfoIndices.size = mesh_indices_size;
     bufferCreateInfoIndices.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferCreateInfoIndices.flags = 0;
-    stbvk_buffer bufferIndices = {};
-    VULKAN_CHECK( stbvk_buffer_create(&context, &bufferCreateInfoIndices,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &bufferIndices) );
+    VkBuffer bufferIndices = stbvk_create_buffer(&context, &bufferCreateInfoIndices, "index buffer");
+    VkMemoryRequirements bufferIndicesMemReqs = {};
+    vkGetBufferMemoryRequirements(context.device, bufferIndices, &bufferIndicesMemReqs);
+    VkDeviceMemory bufferIndicesMem = VK_NULL_HANDLE;
+    VkDeviceSize bufferIndicesMemOffset = 0;
+    VULKAN_CHECK(stbvk_allocate_device_memory(&context, &bufferIndicesMemReqs, device_arena,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "index buffer memory", &bufferIndicesMem, &bufferIndicesMemOffset));
+    VULKAN_CHECK(vkBindBufferMemory(context.device, bufferIndices, bufferIndicesMem, bufferIndicesMemOffset));
 
     // Create vertex buffer
     VkBufferCreateInfo bufferCreateInfoVertices = {};
@@ -272,9 +309,14 @@ int main(int argc, char *argv[]) {
     bufferCreateInfoVertices.size = mesh_vertices_size;
     bufferCreateInfoVertices.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferCreateInfoVertices.flags = 0;
-    stbvk_buffer bufferVertices = {};
-    VULKAN_CHECK( stbvk_buffer_create(&context, &bufferCreateInfoVertices,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &bufferVertices) );
+    VkBuffer bufferVertices = stbvk_create_buffer(&context, &bufferCreateInfoVertices, "vertex buffer");
+    VkMemoryRequirements bufferVerticesMemReqs = {};
+    vkGetBufferMemoryRequirements(context.device, bufferVertices, &bufferVerticesMemReqs);
+    VkDeviceMemory bufferVerticesMem = VK_NULL_HANDLE;
+    VkDeviceSize bufferVerticesMemOffset = 0;
+    VULKAN_CHECK(stbvk_allocate_device_memory(&context, &bufferVerticesMemReqs, device_arena,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "vertex buffer memory", &bufferVerticesMem, &bufferVerticesMemOffset));
+    VULKAN_CHECK(vkBindBufferMemory(context.device, bufferVertices, bufferVerticesMem, bufferVerticesMemOffset));
     stbvk_vertex_buffer_layout vertexBufferLayout = {};
     vertexBufferLayout.stride = sizeof(cdsm_vertex_t);
     vertexBufferLayout.attribute_count = 3;
@@ -306,8 +348,10 @@ int main(int argc, char *argv[]) {
     else if (meshType == MESH_TYPE_CYLINDER)
         cdsm_create_cylinder(&mesh_metadata, (cdsm_vertex_t*)vertex_buffer_contents, &mesh_vertices_size,
             (cdsm_index_t*)index_buffer_contents, &mesh_indices_size, &cylinder_recipe);
-    VULKAN_CHECK( stbvk_buffer_load_contents(&context, &bufferIndices, index_buffer_contents, mesh_indices_size) );
-    VULKAN_CHECK( stbvk_buffer_load_contents(&context, &bufferVertices, vertex_buffer_contents, mesh_vertices_size) );
+    VULKAN_CHECK( stbvk_buffer_load_contents(&context, bufferIndices, &bufferCreateInfoIndices,
+        0, index_buffer_contents, mesh_indices_size, VK_ACCESS_INDEX_READ_BIT) );
+    VULKAN_CHECK( stbvk_buffer_load_contents(&context, bufferVertices, &bufferCreateInfoVertices,
+        0, vertex_buffer_contents, mesh_vertices_size, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT) );
     free(index_buffer_contents);
     free(vertex_buffer_contents);
 
@@ -319,10 +363,15 @@ int main(int argc, char *argv[]) {
     o2w_buffer_create_info.size = mesh_count * sizeof(mathfu::mat4);
     o2w_buffer_create_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     o2w_buffer_create_info.flags = 0;
-    stbvk_buffer o2w_buffer = {};
-    VULKAN_CHECK( stbvk_buffer_create(&context, &o2w_buffer_create_info,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        &o2w_buffer) );
+    VkBuffer o2w_buffer = stbvk_create_buffer(&context, &o2w_buffer_create_info, "o2w buffer");
+    VkMemoryRequirements o2w_buffer_mem_reqs = {};
+    vkGetBufferMemoryRequirements(context.device, o2w_buffer, &o2w_buffer_mem_reqs);
+    VkDeviceMemory o2w_buffer_mem = VK_NULL_HANDLE;
+    VkDeviceSize o2w_buffer_mem_offset = 0;
+    VULKAN_CHECK(stbvk_allocate_device_memory(&context, &o2w_buffer_mem_reqs, device_arena,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, "o2w buffer memory",
+        &o2w_buffer_mem, &o2w_buffer_mem_offset));
+    VULKAN_CHECK(vkBindBufferMemory(context.device, o2w_buffer, o2w_buffer_mem, o2w_buffer_mem_offset));
 
     // Create push constants
     struct {
@@ -395,9 +444,45 @@ int main(int argc, char *argv[]) {
     VkSampler sampler;
     VULKAN_CHECK( vkCreateSampler(context.device, &samplerCreateInfo, context.allocation_callbacks, &sampler) );
 
-    stbvk_image texture_image = {};
-    int texture_load_error = stbvk_image_load_from_dds_file(&context, "trevor/cube04.dds", &texture_image);
-    assert(texture_load_error == 0);
+    ImageFile image_file = {};
+    int texture_load_error = ImageFileCreate(&image_file, "trevor/cube04.dds");
+    assert(!texture_load_error);
+    VkImageCreateInfo texture_image_create_info = {};
+    ImageFileToVkImageCreateInfo(&texture_image_create_info, &image_file);
+    texture_image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    texture_image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    texture_image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkImage texture_image = stbvk_create_image(&context, &texture_image_create_info,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT, "texture image");
+    VkMemoryRequirements texture_image_memory_reqs = {};
+    vkGetImageMemoryRequirements(context.device, texture_image, &texture_image_memory_reqs);
+    VkDeviceMemory texture_image_mem = VK_NULL_HANDLE;
+    VkDeviceSize texture_image_mem_offset = 0;
+    VULKAN_CHECK(stbvk_allocate_device_memory(&context, &texture_image_memory_reqs, device_arena,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "texture image memory",
+        &texture_image_mem, &texture_image_mem_offset));
+    VULKAN_CHECK(vkBindImageMemory(context.device, texture_image, texture_image_mem, texture_image_mem_offset));
+    VkImageView texture_image_view = stbvk_create_image_view_from_image(&context, texture_image,
+        &texture_image_create_info, "texture image view");
+    for(uint32_t iMip=0; iMip<image_file.mip_levels; ++iMip)
+    {
+        for(uint32_t iLayer=0; iLayer<image_file.array_layers; ++iLayer)
+        {
+            VkImageSubresource texture_subresource = {};
+            texture_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            texture_subresource.arrayLayer = iLayer;
+            texture_subresource.mipLevel = iMip;
+            ImageFileSubresource file_subresource = {};
+            file_subresource.array_layer = iLayer;
+            file_subresource.mip_level = iMip;
+            VkSubresourceLayout texture_subresource_layout = stbvk_image_get_subresource_source_layout(&context,
+                &texture_image_create_info, texture_subresource);
+            VULKAN_CHECK(stbvk_image_load_subresource(&context, texture_image, &texture_image_create_info,
+                texture_subresource, texture_subresource_layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_ACCESS_SHADER_READ_BIT, ImageFileGetSubresourceData(&image_file, file_subresource)));
+        }
+    }
+    ImageFileDestroy(&image_file);
 
     // Create render pass
     enum
@@ -417,8 +502,8 @@ int main(int argc, char *argv[]) {
     attachmentDescriptions[kColorAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     attachmentDescriptions[kColorAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     attachmentDescriptions[kDepthAttachmentIndex].flags = 0;
-    attachmentDescriptions[kDepthAttachmentIndex].format = depth_image.image_view_create_info.format;
-    attachmentDescriptions[kDepthAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachmentDescriptions[kDepthAttachmentIndex].format = depth_image_create_info.format;
+    attachmentDescriptions[kDepthAttachmentIndex].samples = depth_image_create_info.samples;
     attachmentDescriptions[kDepthAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachmentDescriptions[kDepthAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachmentDescriptions[kDepthAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -458,7 +543,7 @@ int main(int argc, char *argv[]) {
     // Create framebuffers
     VkImageView attachmentImageViews[kAttachmentCount] = {};
     attachmentImageViews[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below;
-    attachmentImageViews[kDepthAttachmentIndex] = depth_image.image_view;
+    attachmentImageViews[kDepthAttachmentIndex] = depth_image_view;
     VkFramebufferCreateInfo framebufferCreateInfo = {};
     framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     framebufferCreateInfo.pNext = NULL;
@@ -514,8 +599,8 @@ int main(int argc, char *argv[]) {
     VkDescriptorImageInfo descriptorImageInfos[kDemoTextureCount] = {0};
     for(uint32_t iTexture=0; iTexture<kDemoTextureCount; iTexture += 1) {
         descriptorImageInfos[iTexture].sampler = sampler;
-        descriptorImageInfos[iTexture].imageView = texture_image.image_view;
-        descriptorImageInfos[iTexture].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        descriptorImageInfos[iTexture].imageView = texture_image_view;
+        descriptorImageInfos[iTexture].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
     VkWriteDescriptorSet writeDescriptorSet = {};
     writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -527,7 +612,7 @@ int main(int argc, char *argv[]) {
     writeDescriptorSet.pImageInfo = descriptorImageInfos;
     vkUpdateDescriptorSets(context.device, 1, &writeDescriptorSet, 0, NULL);
     VkDescriptorBufferInfo descriptorBufferInfo = {};
-    descriptorBufferInfo.buffer = o2w_buffer.buffer;
+    descriptorBufferInfo.buffer = o2w_buffer;
     descriptorBufferInfo.offset = 0;
     descriptorBufferInfo.range = VK_WHOLE_SIZE;
     writeDescriptorSet.dstBinding = 1;
@@ -632,7 +717,7 @@ int main(int argc, char *argv[]) {
         const float seconds_elapsed = (float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) );
         VkMemoryMapFlags o2w_buffer_map_flags = 0;
         mathfu::vec4 *mapped_o2w_buffer = NULL;
-        VULKAN_CHECK(vkMapMemory(context.device, o2w_buffer.device_memory, 0, o2w_buffer.memory_requirements.size,
+        VULKAN_CHECK(vkMapMemory(context.device, o2w_buffer_mem, 0, o2w_buffer_create_info.size,
             o2w_buffer_map_flags, (void**)&mapped_o2w_buffer));
         for(int iMesh=0; iMesh<mesh_count; ++iMesh)
         {
@@ -651,7 +736,7 @@ int main(int argc, char *argv[]) {
             mapped_o2w_buffer[iMesh*4+2] = mathfu::vec4(o2w[ 8], o2w[ 9], o2w[10], o2w[11]);
             mapped_o2w_buffer[iMesh*4+3] = mathfu::vec4(o2w[12], o2w[13], o2w[14], o2w[15]);
         }
-        vkUnmapMemory(context.device, o2w_buffer.device_memory);
+        vkUnmapMemory(context.device, o2w_buffer_mem);
 
         // Draw!
         VkCommandBufferBeginInfo cmdBufDrawBeginInfo = {};
@@ -714,9 +799,9 @@ int main(int argc, char *argv[]) {
         scissorRect.offset.y = 0;
         vkCmdSetScissor(commandBuffer, 0,1, &scissorRect);
         const VkDeviceSize vertexBufferOffsets[1] = {};
-        vkCmdBindVertexBuffers(commandBuffer, 0,1, &bufferVertices.buffer, vertexBufferOffsets);
+        vkCmdBindVertexBuffers(commandBuffer, 0,1, &bufferVertices, vertexBufferOffsets);
         const VkDeviceSize indexBufferOffset = 0;
-        vkCmdBindIndexBuffer(commandBuffer, bufferIndices.buffer, indexBufferOffset, indexType);
+        vkCmdBindIndexBuffer(commandBuffer, bufferIndices, indexBufferOffset, indexType);
         const uint32_t indexCount = mesh_metadata.index_count;
         const uint32_t instance_count = mesh_count;
         vkCmdDrawIndexed(commandBuffer, indexCount, instance_count, 0,0,0);
@@ -799,11 +884,13 @@ int main(int argc, char *argv[]) {
     }
     free(framebuffers);
 
-    stbvk_image_destroy(&context, &depth_image);
+    stbvk_free_device_memory(&context, device_arena, depth_image_mem, depth_image_mem_offset);
+    stbvk_destroy_image_view(&context, depth_image_view);
+    stbvk_destroy_image(&context, depth_image);
 
-    stbvk_buffer_destroy(&context, &o2w_buffer);
-    stbvk_buffer_destroy(&context, &bufferIndices);
-    stbvk_buffer_destroy(&context, &bufferVertices);
+    stbvk_free_device_memory(&context, device_arena, o2w_buffer_mem, o2w_buffer_mem_offset);
+    stbvk_free_device_memory(&context, device_arena, bufferIndicesMem, bufferIndicesMemOffset);
+    stbvk_free_device_memory(&context, device_arena, bufferVerticesMem, bufferVerticesMemOffset);
 
     vkDestroyDescriptorSetLayout(context.device, descriptorSetLayout, context.allocation_callbacks);
     vkDestroyDescriptorPool(context.device, descriptorPool, context.allocation_callbacks);
@@ -813,7 +900,9 @@ int main(int argc, char *argv[]) {
     vkDestroyShaderModule(context.device, vertexShaderModule, context.allocation_callbacks);
     vkDestroyShaderModule(context.device, fragmentShaderModule, context.allocation_callbacks);
 
-    stbvk_image_destroy(&context, &texture_image);
+    stbvk_free_device_memory(&context, device_arena, texture_image_mem, texture_image_mem_offset);
+    stbvk_destroy_image_view(&context, texture_image_view);
+    stbvk_destroy_image(&context, texture_image);
     vkDestroySampler(context.device, sampler, context.allocation_callbacks);
 
     vkDestroyPipelineLayout(context.device, pipelineLayout, context.allocation_callbacks);

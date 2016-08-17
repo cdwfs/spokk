@@ -16,11 +16,13 @@ project(vulkswagen)
 
 SET(headers
     cds_mesh.h
+    image_file.h
     platform.h
     stb_image.h
     stb_vulkan.h
     )
 SET(sources
+    image_file.cpp
     vulkswagen.cpp
     )
 

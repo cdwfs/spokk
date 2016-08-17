@@ -50,6 +50,38 @@ extern "C" {
 // PUBLIC API
 //
 
+    // Device memory arena
+    typedef VkResult stbvk_pfn_device_memory_arena_alloc(void *user_data, const VkMemoryAllocateInfo *alloc_info,
+	    VkDeviceSize alignment, VkDeviceMemory *out_mem, VkDeviceSize *out_offset);
+    typedef void stbvk_pfn_device_memory_arena_free(void *user_data, VkDeviceMemory mem, VkDeviceSize offset);
+    typedef struct stbvk_device_memory_arena
+    {
+	    void *user_data;
+	    stbvk_pfn_device_memory_arena_alloc *allocate_func;
+	    stbvk_pfn_device_memory_arena_free *free_func;
+    } stbvk_device_memory_arena;
+    
+    typedef enum stbvk_device_memory_arena_flag_bits
+    {
+        STBVK_DEVICE_MEMORY_ARENA_SINGLE_THREAD_BIT = 1,
+        STBVK_MEMORY_MEMORY_ARENA_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
+    } stbvk_device_memory_arena_flag_bits;
+    typedef VkFlags stbvk_device_memory_arena_flags;
+
+    typedef struct stbvk_device_memory_arena_flat_create_info
+    {
+        VkMemoryAllocateInfo alloc_info;
+        stbvk_device_memory_arena_flags flags;
+    } stbvk_device_memory_arena_flat_create_info;
+    VkResult stbvk_create_device_memory_arena_flat(VkDevice device,
+        const stbvk_device_memory_arena_flat_create_info *ci,
+        VkAllocationCallbacks *allocation_callbacks,
+        stbvk_device_memory_arena *out_arena);
+    void stbvk_destroy_device_memory_arena_flat(VkDevice device,
+        const stbvk_device_memory_arena *arena,
+        const VkAllocationCallbacks *allocation_callbacks);
+
+    // context
     typedef struct
     {
         VkAllocationCallbacks *allocation_callbacks;
@@ -107,55 +139,44 @@ extern "C" {
     STBVKDEF VkBool32 stbvk_get_memory_type_from_properties(VkPhysicalDeviceMemoryProperties const *device_memory_properties,
         VkMemoryRequirements const *memory_reqs, VkMemoryPropertyFlags memory_properties_mask, uint32_t *out_memory_type_index);
 
+    STBVKDEF VkCommandPool stbvk_create_command_pool(stbvk_context const *context, VkCommandPoolCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_command_pool(stbvk_context const *context, VkCommandPool cpool);
 
-    typedef struct
-    {
-        VkBufferCreateInfo buffer_create_info;
-        VkBuffer buffer;
-        VkDeviceMemory device_memory;
-        VkMemoryRequirements memory_requirements;
-        VkMemoryPropertyFlags memory_properties_mask;
-    } stbvk_buffer;
-    STBVKDEF VkResult stbvk_buffer_create(stbvk_context const *context, VkBufferCreateInfo const *create_info,
-        VkMemoryPropertyFlags memory_properties_mask, stbvk_buffer *out_buffer);
-    STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, stbvk_buffer const *dst_buffer,
-        void const *src_data, VkDeviceSize size, VkDeviceSize dst_offset = 0);
-    STBVKDEF void stbvk_buffer_destroy(stbvk_context const *context, stbvk_buffer *buffer);
+    STBVKDEF VkFence stbvk_create_fence(stbvk_context const *context, VkFenceCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_fence(stbvk_context const *context, VkFence fence);
 
-    typedef struct
-    {
-        VkImageType image_type;
-        VkFormat format;
-        VkExtent3D extent;
-        uint32_t mip_levels;
-        uint32_t array_layers;
-        VkSampleCountFlagBits samples;
-        VkImageTiling tiling;
-        VkImageUsageFlags usage;
-        VkImageLayout initial_layout;
-        VkMemoryPropertyFlags memory_properties_mask;
-        VkImageViewType view_type;
-    } stbvk_image_create_info;
-    typedef struct
-    {
-        stbvk_image_create_info create_info;
-        VkImageCreateInfo image_create_info;
-        VkImageViewCreateInfo image_view_create_info;
-        VkImage image;
-        VkDeviceMemory device_memory;
-        VkMemoryRequirements memory_requirements;
-        VkImageView image_view; // Default view based on create_info; users can create additional views at their leisure.
-    } stbvk_image;
-    STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_create_info const *create_info, stbvk_image *out_image);
-    STBVKDEF VkResult stbvk_image_get_subresource_source_layout(stbvk_context const *context, stbvk_image const *image,
-        VkImageSubresource subresource, VkSubresourceLayout *out_layout);
-    STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, stbvk_image const *image,
-        VkImageSubresource subresource, VkSubresourceLayout subresource_layout, VkImageLayout final_image_layout,
-        void const *pixels);
-    STBVKDEF void stbvk_image_destroy(stbvk_context const *context, stbvk_image *image);
+    STBVKDEF VkResult stbvk_allocate_device_memory(stbvk_context const *context, VkMemoryRequirements const *mem_reqs,
+        stbvk_device_memory_arena const *arena, VkMemoryPropertyFlags memory_properties_mask, const char *name,
+        VkDeviceMemory *out_mem, VkDeviceSize *out_offset);
+    STBVKDEF void stbvk_free_device_memory(stbvk_context const *context, stbvk_device_memory_arena const *arena,
+        VkDeviceMemory mem, VkDeviceSize offset);
 
-    STBVKDEF int stbvk_image_load_from_dds_file(stbvk_context const *context, char const *dds_file_path, stbvk_image *out_image);
-    STBVKDEF int stbvk_image_load_from_dds_buffer(stbvk_context const *context, void const *dds_file_data, size_t dds_file_size, stbvk_image *out_image);
+    STBVKDEF VkImage stbvk_create_image(stbvk_context const *context, VkImageCreateInfo const *ci,
+        VkImageLayout final_layout, VkAccessFlags final_access_flags, const char *name);
+    STBVKDEF void stbvk_destroy_image(stbvk_context const *context, VkImage image);
+    STBVKDEF VkSubresourceLayout stbvk_image_get_subresource_source_layout(stbvk_context const *context,
+        VkImageCreateInfo const *ci, VkImageSubresource subresource);
+    STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, VkImage dst_image,
+        VkImageCreateInfo const *dst_ci, VkImageSubresource subresource, VkSubresourceLayout subresource_layout,
+        VkImageLayout final_image_layout, VkAccessFlagBits final_access_flags, void const *pixels);
+
+    STBVKDEF VkImageView stbvk_create_image_view(stbvk_context const *context, VkImageViewCreateInfo const *ci, const char *name);
+    STBVKDEF VkImageView stbvk_create_image_view_from_image(stbvk_context const *context, VkImage image,
+        VkImageCreateInfo const *image_ci, const char *name);
+    STBVKDEF void stbvk_destroy_image_view(stbvk_context const *context, VkImage imageView);
+
+    STBVKDEF VkBuffer stbvk_create_buffer(stbvk_context const *context, VkBufferCreateInfo const *ci,
+        const char *name);
+    STBVKDEF void stbvk_destroy_buffer(stbvk_context const *context, VkBuffer buffer);
+    STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, VkBuffer dst_buffer,
+        VkBufferCreateInfo const *dst_ci, VkDeviceSize dst_offset,
+        const void *src_data, VkDeviceSize src_size, VkAccessFlagBits final_access_flags);
+
+    STBVKDEF VkBufferView stbvk_create_buffer_view(stbvk_context const *context, VkBufferViewCreateInfo const *ci,
+        const char *name);
+    STBVKDEF VkBufferView stbvk_create_buffer_view_from_buffer(stbvk_context const *context, VkBuffer buffer,
+        VkFormat format, const char *name);
+    STBVKDEF void stbvk_destroy_buffer_view(stbvk_context const *context, VkBufferView view);
 
     typedef struct
     {
@@ -222,38 +243,6 @@ extern "C" {
     STBVKDEF int stbvk_prepare_graphics_pipeline_create_info_vsps(
         stbvk_graphics_pipeline_settings_vsps const *settings,
         stbvk_graphics_pipeline_create_info *out_create_info);
-
-    // Device memory arena
-    typedef VkResult stbvk_pfn_device_memory_arena_alloc(void *user_data, const VkMemoryAllocateInfo *alloc_info,
-	    VkDeviceSize alignment, VkDeviceMemory *out_mem, VkDeviceSize *out_offset);
-    typedef void stbvk_pfn_device_memory_arena_free(void *user_data, VkDeviceMemory mem, VkDeviceSize offset);
-    typedef struct stbvk_device_memory_arena
-    {
-	    void *user_data;
-	    stbvk_pfn_device_memory_arena_alloc *allocate_func;
-	    stbvk_pfn_device_memory_arena_free *free_func;
-    } stbvk_device_memory_arena;
-    
-    typedef enum stbvk_device_memory_arena_flag_bits
-    {
-        STBVK_DEVICE_MEMORY_ARENA_SINGLE_THREAD_BIT = 1,
-        STBVK_MEMORY_MEMORY_ARENA_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
-    } stbvk_device_memory_arena_flag_bits;
-    typedef VkFlags stbvk_device_memory_arena_flags;
-
-    typedef struct stbvk_device_memory_arena_flat_create_info
-    {
-        VkMemoryAllocateInfo alloc_info;
-        stbvk_device_memory_arena_flags flags;
-    } stbvk_device_memory_arena_flat_create_info;
-    VkResult stbvk_create_device_memory_arena_flat(VkDevice device,
-        const stbvk_device_memory_arena_flat_create_info *ci,
-        VkAllocationCallbacks *allocation_callbacks,
-        stbvk_device_memory_arena *out_arena);
-    void stbvk_destroy_device_memory_arena_flat(VkDevice device,
-        const stbvk_device_memory_arena *arena,
-        const VkAllocationCallbacks *allocation_callbacks);
-
 
 #ifdef __cplusplus
 }
@@ -377,7 +366,10 @@ static const T& stbvk__min(const T& a, const T& b) { return (a<b) ? a : b; }
 template<typename T>
 static const T& stbvk__max(const T& a, const T& b) { return (a>b) ? a : b; }
 
-#include <algorithm>
+#if VK_EXT_debug_marker
+static PFN_vkDebugMarkerSetObjectNameEXT stbvk__DebugMarkerSetObjectNameEXT = NULL;
+#endif
+
 #include <string>
 #include <vector>
 
@@ -401,6 +393,65 @@ static void stbvk__host_free(void *ptr, const VkAllocationCallbacks *pAllocator)
     else
     {
         return free(ptr);
+    }
+}
+
+static VkResult stbvk__device_alloc(const stbvk_context *context, const VkMemoryAllocateInfo *alloc_info, size_t alignment,
+    const stbvk_device_memory_arena *arena, const char *name, VkDeviceMemory *out_mem, VkDeviceSize *out_offset)
+{
+    VkResult alloc_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    if (arena)
+    {
+        alloc_result = arena->allocate_func(arena->user_data, alloc_info, alignment, out_mem, out_offset);
+    }
+    else
+    {
+        alloc_result = vkAllocateMemory(context->device, alloc_info, context->allocation_callbacks, out_mem);
+        *out_offset = 0;
+    }
+#if VK_EXT_debug_marker
+    if (alloc_result == VK_SUCCESS && stbvk__DebugMarkerSetObjectNameEXT)
+    {
+        VkDebugMarkerObjectNameInfoEXT name_info;
+        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+        name_info.pNext = NULL;
+        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT;
+        name_info.object = (uint64_t)*out_mem;
+        name_info.pObjectName = name;
+        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
+    }
+#endif
+    return alloc_result;
+}
+
+static void stbvk__device_free(const stbvk_context *context, const stbvk_device_memory_arena *arena, VkDeviceMemory mem, VkDeviceSize offset)
+{
+    if (arena)
+    {
+        arena->free_func(arena->user_data, mem, offset);
+    }
+    else
+    {
+        vkFreeMemory(context->device, mem, context->allocation_callbacks);
+    }
+}
+
+static VkImageAspectFlags stbvk__image_aspect_from_format(VkFormat format)
+{
+    switch(format)
+    {
+    case VK_FORMAT_D16_UNORM:
+    case VK_FORMAT_D32_SFLOAT:
+    case VK_FORMAT_X8_D24_UNORM_PACK32:
+        return VK_IMAGE_ASPECT_DEPTH_BIT;
+    case VK_FORMAT_D16_UNORM_S8_UINT:
+    case VK_FORMAT_D24_UNORM_S8_UINT:
+    case VK_FORMAT_D32_SFLOAT_S8_UINT:
+        return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    case VK_FORMAT_UNDEFINED:
+        return (VkImageAspectFlags)0;
+    default:
+        return VK_IMAGE_ASPECT_COLOR_BIT;
     }
 }
 
@@ -684,6 +735,11 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
     }
 #endif
 
+#if VK_EXT_debug_marker
+    stbvk__DebugMarkerSetObjectNameEXT = (PFN_vkDebugMarkerSetObjectNameEXT)vkGetDeviceProcAddr(context->device,
+        "vkDebugMarkerSetObjectNameEXT");
+#endif
+
     STBVK_ASSERT(context->present_queue_family_properties.queueCount > 0);
     vkGetDeviceQueue(context->device, context->present_queue_family_index, 0, &context->present_queue);
     STBVK_ASSERT(context->graphics_queue_family_properties.queueCount > 0);
@@ -923,84 +979,135 @@ STBVKDEF uint32_t stbvk_find_memory_type_index(VkPhysicalDeviceMemoryProperties 
 }
 
 
-
-STBVKDEF VkResult stbvk_buffer_create(stbvk_context const *context, VkBufferCreateInfo const *create_info,
-    VkMemoryPropertyFlags memory_properties_mask, stbvk_buffer *out_buffer)
+STBVKDEF VkBuffer stbvk_create_buffer(stbvk_context const *context, VkBufferCreateInfo const *ci,
+    const char *name)
 {
-    *out_buffer = {};
-    out_buffer->buffer_create_info = *create_info;
-    out_buffer->memory_properties_mask = memory_properties_mask;
-
-    STBVK__CHECK( vkCreateBuffer(context->device, create_info, context->allocation_callbacks, &out_buffer->buffer) );
-    vkGetBufferMemoryRequirements(context->device, out_buffer->buffer, &out_buffer->memory_requirements);
-    VkMemoryAllocateInfo memory_allocate_info = {};
-    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memory_allocate_info.pNext = NULL;
-    memory_allocate_info.allocationSize = out_buffer->memory_requirements.size;
-    memory_allocate_info.memoryTypeIndex = stbvk_find_memory_type_index(&context->physical_device_memory_properties,
-        &out_buffer->memory_requirements, memory_properties_mask);
-    STBVK_ASSERT(memory_allocate_info.memoryTypeIndex < VK_MAX_MEMORY_TYPES);
-    STBVK__CHECK( vkAllocateMemory(context->device, &memory_allocate_info, context->allocation_callbacks, &out_buffer->device_memory) );
-    VkDeviceSize memory_offset = 0;
-    STBVK__CHECK( vkBindBufferMemory(context->device, out_buffer->buffer, out_buffer->device_memory, memory_offset) );
-    return VK_SUCCESS;
+    VkBuffer buffer = VK_NULL_HANDLE;
+    STBVK__CHECK( vkCreateBuffer(context->device, ci, context->allocation_callbacks, &buffer) );
+#if VK_EXT_debug_marker
+    if (stbvk__DebugMarkerSetObjectNameEXT)
+    {
+        VkDebugMarkerObjectNameInfoEXT name_info;
+        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+        name_info.pNext = NULL;
+        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT;
+        name_info.object = (uint64_t)buffer;
+        name_info.pObjectName = name;
+        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
+    }
+#endif
+    return buffer;
 }
 
-STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, stbvk_buffer const *dst_buffer,
-    const void *src_data, VkDeviceSize size, VkDeviceSize src_offset)
+STBVKDEF void stbvk_destroy_buffer(stbvk_context const *context, VkBuffer buffer)
 {
-    STBVK_ASSERT(src_offset+size <= dst_buffer->memory_requirements.size);
-    STBVK_ASSERT(dst_buffer->buffer_create_info.usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+    vkDestroyBuffer(context->device, buffer, context->allocation_callbacks);
+}
+
+STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, VkBuffer dst_buffer,
+    VkBufferCreateInfo const *dst_ci, VkDeviceSize dst_offset,
+    const void *src_data, VkDeviceSize src_size, VkAccessFlagBits final_access_flags)
+{
+    // TODO(cort): Make sure I'm clear that dst_offset is relative to buffer start, not relative
+    // to the backing VkDeviceMemory objects!
+    STBVK_ASSERT(src_size <= dst_offset + dst_ci->size);
+    STBVK_ASSERT(dst_ci->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
     VkBufferCreateInfo staging_buffer_create_info = {};
     staging_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     staging_buffer_create_info.pNext = NULL;
     staging_buffer_create_info.flags = 0;
-    staging_buffer_create_info.size = dst_buffer->memory_requirements.size;
+    staging_buffer_create_info.size = src_size;
     staging_buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     staging_buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     staging_buffer_create_info.queueFamilyIndexCount = 0;
     staging_buffer_create_info.pQueueFamilyIndices = NULL;
-    stbvk_buffer staging_buffer = {};
-    STBVK__CHECK( stbvk_buffer_create(context, &staging_buffer_create_info,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        &staging_buffer) );
+    VkBuffer staging_buffer = stbvk_create_buffer(context, &staging_buffer_create_info,
+        "stbvk_buffer_load_contents() staging");
+    VkMemoryRequirements staging_buffer_memory_reqs = {};
+    vkGetBufferMemoryRequirements(context->device, staging_buffer, &staging_buffer_memory_reqs);
+    // TODO(cort): don't allocate device memory here
+    VkDeviceMemory staging_buffer_mem = VK_NULL_HANDLE;
+    VkDeviceSize staging_buffer_mem_offset = 0;
+    VkMemoryAllocateInfo staging_memory_alloc_info = {};
+    staging_memory_alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    staging_memory_alloc_info.allocationSize = staging_buffer_memory_reqs.size;
+    staging_memory_alloc_info.memoryTypeIndex = stbvk_find_memory_type_index(
+        &context->physical_device_memory_properties, &staging_buffer_memory_reqs,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    STBVK__CHECK(vkAllocateMemory(context->device, &staging_memory_alloc_info,
+        context->allocation_callbacks, &staging_buffer_mem));
+    STBVK__CHECK(vkBindBufferMemory(context->device, staging_buffer, staging_buffer_mem,
+        staging_buffer_mem_offset));
 
     void *mapped_data = NULL;
     VkMemoryMapFlags map_flags = 0;
-    STBVK__CHECK( vkMapMemory(context->device, staging_buffer.device_memory, 0, size, map_flags, &mapped_data) );
-    memcpy(mapped_data, src_data, size);
-    vkUnmapMemory(context->device, staging_buffer.device_memory);
+    STBVK__CHECK( vkMapMemory(context->device, staging_buffer_mem, 0, src_size, map_flags, &mapped_data) );
+    memcpy(mapped_data, src_data, src_size);
+    vkUnmapMemory(context->device, staging_buffer_mem);
 
-    VkFenceCreateInfo fence_create_info = {};
-    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_create_info.pNext = NULL;
-    fence_create_info.flags = 0;
-    VkFence fence = VK_NULL_HANDLE;
-    STBVK__CHECK( vkCreateFence(context->device, &fence_create_info, context->allocation_callbacks, &fence) );
+    VkCommandPoolCreateInfo cpool_ci;
+    cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    cpool_ci.pNext = NULL;
+    cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    cpool_ci.queueFamilyIndex = context->graphics_queue_family_index;
+    VkCommandPool cpool = stbvk_create_command_pool(context, &cpool_ci, "stbvk_buffer_load_contents temp cpool");
 
-    VkCommandBufferAllocateInfo command_buffer_allocate_info = {};
-    command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    command_buffer_allocate_info.pNext = NULL;
-    command_buffer_allocate_info.commandPool = context->command_pool;
-    command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    command_buffer_allocate_info.commandBufferCount = 1;
-    VkCommandBuffer cmd_buf = {};
-    STBVK__CHECK( vkAllocateCommandBuffers(context->device, &command_buffer_allocate_info, &cmd_buf) );
-    VkCommandBufferBeginInfo cmd_buf_begin_info = {};
-    cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cmd_buf_begin_info.pNext = NULL;
-    cmd_buf_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
-    cmd_buf_begin_info.pInheritanceInfo = NULL;
-    STBVK__CHECK( vkBeginCommandBuffer(cmd_buf, &cmd_buf_begin_info) );
+    VkFenceCreateInfo fence_ci = {};
+    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_ci.pNext = NULL;
+    fence_ci.flags = 0;
+    VkFence fence = stbvk_create_fence(context, &fence_ci, "stbvk_buffer_load_contents temp fence");
+
+    VkCommandBufferAllocateInfo cb_allocate_info = {};
+    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cb_allocate_info.pNext = NULL;
+    cb_allocate_info.commandPool = cpool;
+    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cb_allocate_info.commandBufferCount = 1;
+    VkCommandBuffer cb = VK_NULL_HANDLE;
+    STBVK__CHECK( vkAllocateCommandBuffers(context->device, &cb_allocate_info, &cb) );
+    VkCommandBufferBeginInfo cb_begin_info = {};
+    cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cb_begin_info.pNext = NULL;
+    cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
+    cb_begin_info.pInheritanceInfo = NULL;
+    STBVK__CHECK( vkBeginCommandBuffer(cb, &cb_begin_info) );
+
+    VkBufferMemoryBarrier buf_barriers[2] = {}; // TODO(cort): merge src & dest barriers into one vkcmd
+    buf_barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    buf_barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+    buf_barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    buf_barriers[0].srcQueueFamilyIndex = context->graphics_queue_family_index;
+    buf_barriers[0].dstQueueFamilyIndex = context->graphics_queue_family_index;
+    buf_barriers[0].buffer = staging_buffer;
+    buf_barriers[0].offset = 0;
+    buf_barriers[0].size = src_size;
+    buf_barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    buf_barriers[1].srcAccessMask = 0; // TODO(cort): erm...all access, technically?
+    buf_barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    buf_barriers[1].srcQueueFamilyIndex = context->graphics_queue_family_index;
+    buf_barriers[1].dstQueueFamilyIndex = context->graphics_queue_family_index;
+    buf_barriers[1].buffer = dst_buffer;
+    buf_barriers[1].offset = dst_offset;
+    buf_barriers[1].size = src_size;
+    vkCmdPipelineBarrier(cb,
+        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+        0,NULL, 2,buf_barriers, 0,NULL);
 
     VkBufferCopy buffer_copy_region = {};
     buffer_copy_region.srcOffset = 0;
-    buffer_copy_region.dstOffset = src_offset;
-    buffer_copy_region.size = size;
-    vkCmdCopyBuffer(cmd_buf, staging_buffer.buffer, dst_buffer->buffer, 1, &buffer_copy_region);
+    buffer_copy_region.dstOffset = dst_offset;
+    buffer_copy_region.size = src_size;
+    vkCmdCopyBuffer(cb, staging_buffer, dst_buffer, 1, &buffer_copy_region);
 
-    STBVK__CHECK( vkEndCommandBuffer(cmd_buf) );
+    buf_barriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    buf_barriers[1].dstAccessMask = final_access_flags;
+    vkCmdPipelineBarrier(cb,
+        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+        0,NULL, 1,&buf_barriers[1], 0,NULL);
+
+    STBVK__CHECK( vkEndCommandBuffer(cb) );
     VkSubmitInfo submit_info = {};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit_info.pNext = NULL;
@@ -1008,168 +1115,194 @@ STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, stbvk
     submit_info.pWaitSemaphores = NULL;
     submit_info.pWaitDstStageMask = NULL;
     submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &cmd_buf;
+    submit_info.pCommandBuffers = &cb;
     submit_info.signalSemaphoreCount = 0;
     submit_info.pSignalSemaphores = NULL;
     STBVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence) );
     STBVK__CHECK( vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX) );
-    vkFreeCommandBuffers(context->device, context->command_pool, 1, &cmd_buf);
-    vkDestroyFence(context->device, fence, context->allocation_callbacks);
-    stbvk_buffer_destroy(context, &staging_buffer);
+
+    vkFreeMemory(context->device, staging_buffer_mem, context->allocation_callbacks);
+    stbvk_destroy_buffer(context, staging_buffer);
+    stbvk_destroy_fence(context, fence);
+    stbvk_destroy_command_pool(context, cpool);
 
     return VK_SUCCESS;
 }
 
 
-STBVKDEF void stbvk_buffer_destroy(stbvk_context const *context, stbvk_buffer *buffer)
+STBVKDEF VkBufferView stbvk_create_buffer_view(stbvk_context const *context, VkBufferViewCreateInfo const *ci,
+    const char *name)
 {
-    vkFreeMemory(context->device, buffer->device_memory, context->allocation_callbacks);
-    vkDestroyBuffer(context->device, buffer->buffer, context->allocation_callbacks);
+    VkBufferView view = VK_NULL_HANDLE;
+    STBVK__CHECK( vkCreateBufferView(context->device, ci, context->allocation_callbacks, &view) );
+#if VK_EXT_debug_marker
+    if (stbvk__DebugMarkerSetObjectNameEXT)
+    {
+        VkDebugMarkerObjectNameInfoEXT name_info;
+        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+        name_info.pNext = NULL;
+        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_VIEW_EXT;
+        name_info.object = (uint64_t)view;
+        name_info.pObjectName = name;
+        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
+    }
+#endif
+    return view;
 }
 
-    
-    
-STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_create_info const *create_info, stbvk_image *out_image)
+STBVKDEF VkBufferView stbvk_create_buffer_view_from_buffer(stbvk_context const *context, VkBuffer buffer,
+    VkFormat format, const char *name)
 {
-    // TODO: take a bitfield of requested format features, and make sure the physical device supports them in tiled mode.
-    VkFormatProperties texture_format_properties = {};
-    vkGetPhysicalDeviceFormatProperties(context->physical_device, create_info->format, &texture_format_properties);
-    if (0 == (texture_format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
-        fprintf(stderr, "ERROR: physical device does not support sampling format %d with optimal tiling.\n", create_info->format);
-        return VK_ERROR_FORMAT_NOT_SUPPORTED;
-    }
+    VkBufferViewCreateInfo view_ci = {};
+    view_ci.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
+    view_ci.buffer = buffer;
+    view_ci.format = format;
+    view_ci.offset = 0;
+    view_ci.range = VK_WHOLE_SIZE;
+    return stbvk_create_buffer_view(context, &view_ci, name);
+}
 
-    VkImageCreateFlags image_create_flags = (VkImageCreateFlags)0;
-    if (create_info->view_type == VK_IMAGE_VIEW_TYPE_CUBE ||
-        create_info->view_type == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY)
+STBVKDEF void stbvk_destroy_buffer_view(stbvk_context const *context, VkBufferView view)
+{
+    vkDestroyBufferView(context->device, view, context->allocation_callbacks);
+}
+
+STBVKDEF VkCommandPool stbvk_create_command_pool(stbvk_context const *context, VkCommandPoolCreateInfo const *ci, const char *name)
+{
+    VkCommandPool cpool = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateCommandPool(context->device, ci, context->allocation_callbacks, &cpool));
+#if VK_EXT_debug_marker
+    if (stbvk__DebugMarkerSetObjectNameEXT)
     {
-        image_create_flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+        VkDebugMarkerObjectNameInfoEXT name_info;
+        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+        name_info.pNext = NULL;
+        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT;
+        name_info.object = (uint64_t)cpool;
+        name_info.pObjectName = name;
+        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
     }
-    VkImageFormatProperties image_format_properties = {};
-    STBVK__CHECK( vkGetPhysicalDeviceImageFormatProperties(context->physical_device,
-        create_info->format, create_info->image_type, create_info->tiling,
-        create_info->usage, image_create_flags, &image_format_properties) );
-    if (create_info->array_layers  > image_format_properties.maxArrayLayers ||
-        create_info->mip_levels    > image_format_properties.maxMipLevels ||
-        create_info->extent.width  > image_format_properties.maxExtent.width ||
-        create_info->extent.height > image_format_properties.maxExtent.height ||
-        create_info->extent.depth  > image_format_properties.maxExtent.depth)
+#endif
+    return cpool;
+}
+STBVKDEF void stbvk_destroy_command_pool(stbvk_context const *context, VkCommandPool cpool)
+{
+    vkDestroyCommandPool(context->device, cpool, context->allocation_callbacks);
+}
+
+STBVKDEF VkFence stbvk_create_fence(stbvk_context const *context, VkFenceCreateInfo const *ci, const char *name)
+{
+    VkFence fence = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateFence(context->device, ci, context->allocation_callbacks, &fence));
+#if VK_EXT_debug_marker
+    if (stbvk__DebugMarkerSetObjectNameEXT)
     {
-        return VK_ERROR_INITIALIZATION_FAILED;
+        VkDebugMarkerObjectNameInfoEXT name_info;
+        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+        name_info.pNext = NULL;
+        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT;
+        name_info.object = (uint64_t)fence;
+        name_info.pObjectName = name;
+        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
     }
-    if ( (VkSampleCountFlagBits)(create_info->samples & image_format_properties.sampleCounts) != create_info->samples )
-    {
-        return VK_ERROR_INITIALIZATION_FAILED;
-    }
+#endif
+    return fence;
+}
+STBVKDEF void stbvk_destroy_fence(stbvk_context const *context, VkFence fence)
+{
+    vkDestroyFence(context->device, fence, context->allocation_callbacks);
+}
 
-    out_image->create_info = *create_info;
 
-    VkImageLayout create_image_layout = (create_info->initial_layout == VK_IMAGE_LAYOUT_PREINITIALIZED)
-        ? VK_IMAGE_LAYOUT_PREINITIALIZED
-        : VK_IMAGE_LAYOUT_UNDEFINED;
-    out_image->image_create_info = {};
-    out_image->image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    out_image->image_create_info.pNext = NULL;
-    out_image->image_create_info.flags = image_create_flags;
-    out_image->image_create_info.imageType = create_info->image_type;
-    out_image->image_create_info.format = create_info->format;
-    out_image->image_create_info.extent = create_info->extent;
-    out_image->image_create_info.mipLevels = create_info->mip_levels;
-    out_image->image_create_info.arrayLayers = create_info->array_layers;
-    out_image->image_create_info.samples = create_info->samples;
-    out_image->image_create_info.tiling = create_info->tiling;
-    out_image->image_create_info.usage = create_info->usage;
-    out_image->image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    out_image->image_create_info.queueFamilyIndexCount = 0;
-    out_image->image_create_info.pQueueFamilyIndices = NULL;
-    out_image->image_create_info.initialLayout = create_image_layout;
-
-    STBVK__CHECK( vkCreateImage(context->device, &out_image->image_create_info, context->allocation_callbacks, &out_image->image) );
-
-    vkGetImageMemoryRequirements(context->device, out_image->image, &out_image->memory_requirements);
-    if (out_image->memory_requirements.size > image_format_properties.maxResourceSize)
-    {
-        vkDestroyImage(context->device, out_image->image, context->allocation_callbacks);
-        return VK_ERROR_INITIALIZATION_FAILED;
-    }
-
+STBVKDEF VkResult stbvk_allocate_device_memory(stbvk_context const *context, VkMemoryRequirements const *mem_reqs,
+    stbvk_device_memory_arena const *arena, VkMemoryPropertyFlags memory_properties_mask, const char *name,
+    VkDeviceMemory *out_mem, VkDeviceSize *out_offset)
+{
     VkMemoryAllocateInfo memory_allocate_info = {};
     memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memory_allocate_info.pNext = NULL;
-    memory_allocate_info.allocationSize = out_image->memory_requirements.size;
+    memory_allocate_info.allocationSize = mem_reqs->size;
     memory_allocate_info.memoryTypeIndex = stbvk_find_memory_type_index(&context->physical_device_memory_properties,
-        &out_image->memory_requirements, create_info->memory_properties_mask);
+        mem_reqs, memory_properties_mask);
     STBVK_ASSERT(memory_allocate_info.memoryTypeIndex < VK_MAX_MEMORY_TYPES);
-    STBVK__CHECK( vkAllocateMemory(context->device, &memory_allocate_info, context->allocation_callbacks, &out_image->device_memory) );
-    VkDeviceSize memory_offset = 0;
-    STBVK__CHECK( vkBindImageMemory(context->device, out_image->image, out_image->device_memory, memory_offset) );
 
-    VkImageAspectFlags image_aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-    switch(create_info->format)
+    return stbvk__device_alloc(context, &memory_allocate_info, mem_reqs->alignment, arena, name,
+        out_mem, out_offset);
+}
+
+STBVKDEF void stbvk_free_device_memory(stbvk_context const *context, stbvk_device_memory_arena const *arena,
+    VkDeviceMemory mem, VkDeviceSize offset)
+{
+    return stbvk__device_free(context, arena, mem, offset);
+}
+
+STBVKDEF VkImage stbvk_create_image(stbvk_context const *context, VkImageCreateInfo const *ci,
+    VkImageLayout final_layout, VkAccessFlags final_access_flags, const char *name)
+{
+    VkImage image = VK_NULL_HANDLE;
+    STBVK__CHECK( vkCreateImage(context->device, ci, context->allocation_callbacks, &image) );
+#if VK_EXT_debug_marker
+    if (stbvk__DebugMarkerSetObjectNameEXT)
     {
-    case VK_FORMAT_D16_UNORM:
-    case VK_FORMAT_D32_SFLOAT:
-        image_aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
-        break;
-    case VK_FORMAT_D16_UNORM_S8_UINT:
-    case VK_FORMAT_D32_SFLOAT_S8_UINT:
-    case VK_FORMAT_D24_UNORM_S8_UINT:
-        image_aspect = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-        break;
-    default:
-        break;
+        VkDebugMarkerObjectNameInfoEXT name_info;
+        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+        name_info.pNext = NULL;
+        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT;
+        name_info.object = (uint64_t)image;
+        name_info.pObjectName = name;
+        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
     }
-
-    out_image->image_view_create_info = {};
-    out_image->image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    out_image->image_view_create_info.pNext = NULL;
-    out_image->image_view_create_info.flags = 0;
-    out_image->image_view_create_info.image = out_image->image;
-    out_image->image_view_create_info.viewType = create_info->view_type;
-    out_image->image_view_create_info.format = create_info->format;
-    out_image->image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-    out_image->image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-    out_image->image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-    out_image->image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-    out_image->image_view_create_info.subresourceRange.aspectMask = image_aspect;
-    out_image->image_view_create_info.subresourceRange.baseMipLevel = 0;
-    out_image->image_view_create_info.subresourceRange.levelCount = create_info->mip_levels;
-    out_image->image_view_create_info.subresourceRange.baseArrayLayer = 0;
-    out_image->image_view_create_info.subresourceRange.layerCount = create_info->array_layers;
-    STBVK__CHECK( vkCreateImageView(context->device, &out_image->image_view_create_info, context->allocation_callbacks, &out_image->image_view) );
-
-    // If the requested initial layout was something besides PREINITALIZED or UNDEFINED, convert it here.
-    if (create_info->initial_layout != VK_IMAGE_LAYOUT_PREINITIALIZED &&
-        create_info->initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
+#endif
+    if (final_layout != ci->initialLayout)
     {
-        VkFenceCreateInfo fence_create_info = {};
-        fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fence_create_info.pNext = NULL;
-        fence_create_info.flags = 0;
-        VkFence fence = VK_NULL_HANDLE;
-        STBVK__CHECK( vkCreateFence(context->device, &fence_create_info, context->allocation_callbacks, &fence) );
+        VkCommandPoolCreateInfo cpool_ci;
+        cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        cpool_ci.pNext = NULL;
+        cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+        cpool_ci.queueFamilyIndex = context->graphics_queue_family_index;
+        VkCommandPool cpool = stbvk_create_command_pool(context, &cpool_ci, "stbvk_create_image temp cpool");
 
-        VkCommandBufferAllocateInfo command_buffer_allocate_info = {};
-        command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        command_buffer_allocate_info.pNext = NULL;
-        command_buffer_allocate_info.commandPool = context->command_pool;
-        command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        command_buffer_allocate_info.commandBufferCount = 1;
-        VkCommandBuffer cmd_buf = {};
-        STBVK__CHECK( vkAllocateCommandBuffers(context->device, &command_buffer_allocate_info, &cmd_buf) );
-        VkCommandBufferBeginInfo cmd_buf_begin_info = {};
-        cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        cmd_buf_begin_info.pNext = NULL;
-        cmd_buf_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
-        cmd_buf_begin_info.pInheritanceInfo = NULL;
-        STBVK__CHECK( vkBeginCommandBuffer(cmd_buf, &cmd_buf_begin_info) );
+        VkFenceCreateInfo fence_ci;
+        fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fence_ci.pNext = NULL;
+        fence_ci.flags = 0;
+        VkFence fence = stbvk_create_fence(context, &fence_ci, "stbvk_create_image temp fence");
 
-        stbvk_set_image_layout(
-              cmd_buf, out_image->image,
-              out_image->image_view_create_info.subresourceRange,
-              VK_IMAGE_LAYOUT_UNDEFINED, create_info->initial_layout, 0);
+        VkCommandBufferAllocateInfo cb_allocate_info = {};
+        cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cb_allocate_info.pNext = NULL;
+        cb_allocate_info.commandPool = cpool;
+        cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cb_allocate_info.commandBufferCount = 1;
+        VkCommandBuffer cb = VK_NULL_HANDLE;
+        STBVK__CHECK( vkAllocateCommandBuffers(context->device, &cb_allocate_info, &cb) );
+        VkCommandBufferBeginInfo cb_begin_info = {};
+        cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cb_begin_info.pNext = NULL;
+        cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        cb_begin_info.pInheritanceInfo = NULL;
+        STBVK__CHECK( vkBeginCommandBuffer(cb, &cb_begin_info) );
 
-        STBVK__CHECK( vkEndCommandBuffer(cmd_buf) );
+        VkImageSubresourceRange sub_range;
+        sub_range.aspectMask = stbvk__image_aspect_from_format(ci->format);
+        sub_range.baseMipLevel = 0;
+        sub_range.baseArrayLayer = 0;
+        sub_range.levelCount = VK_REMAINING_MIP_LEVELS;
+        sub_range.layerCount = VK_REMAINING_ARRAY_LAYERS;
+        VkImageMemoryBarrier img_barrier = {};
+        img_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        img_barrier.pNext = NULL;
+        img_barrier.srcAccessMask = 0;
+        img_barrier.dstAccessMask = final_access_flags;
+        img_barrier.oldLayout = ci->initialLayout;
+        img_barrier.newLayout = final_layout;
+        img_barrier.image = image;
+        img_barrier.subresourceRange = sub_range;
+        vkCmdPipelineBarrier(cb,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+            0,NULL, 0,NULL, 1,&img_barrier);
+
+        STBVK__CHECK( vkEndCommandBuffer(cb) );
         VkSubmitInfo submit_info = {};
         submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submit_info.pNext = NULL;
@@ -1177,69 +1310,72 @@ STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_c
         submit_info.pWaitSemaphores = NULL;
         submit_info.pWaitDstStageMask = NULL;
         submit_info.commandBufferCount = 1;
-        submit_info.pCommandBuffers = &cmd_buf;
+        submit_info.pCommandBuffers = &cb;
         submit_info.signalSemaphoreCount = 0;
         submit_info.pSignalSemaphores = NULL;
         STBVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence) );
         STBVK__CHECK( vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX) );
-        vkFreeCommandBuffers(context->device, context->command_pool, 1, &cmd_buf);
-        vkDestroyFence(context->device, fence, context->allocation_callbacks);
+        stbvk_destroy_fence(context, fence);
+        stbvk_destroy_command_pool(context, cpool);
     }
-
-    return VK_SUCCESS;
+    return image;
 }
-
-static VkResult stbvk__create_staging_image(stbvk_context const *context, stbvk_image const *image,
-    VkImageSubresource subresource, VkImage *out_staging_image)
+STBVKDEF void stbvk_destroy_image(stbvk_context const *context, VkImage image)
 {
-    VkImageCreateInfo staging_image_create_info = image->image_create_info;
-    staging_image_create_info.flags &= ~VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-    staging_image_create_info.tiling = VK_IMAGE_TILING_LINEAR;
-    staging_image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    staging_image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    staging_image_create_info.queueFamilyIndexCount = 0;
-    staging_image_create_info.pQueueFamilyIndices = NULL;
-    staging_image_create_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
-    staging_image_create_info.arrayLayers = 1;
-    staging_image_create_info.mipLevels = 1;
-    staging_image_create_info.extent.width  = stbvk__max(image->image_create_info.extent.width  >> subresource.mipLevel, 1U);
-    staging_image_create_info.extent.height = stbvk__max(image->image_create_info.extent.height >> subresource.mipLevel, 1U);
-    staging_image_create_info.extent.depth  = stbvk__max(image->image_create_info.extent.depth  >> subresource.mipLevel, 1U);
-    STBVK__CHECK( vkCreateImage(context->device, &staging_image_create_info, context->allocation_callbacks, out_staging_image) );
-    return VK_SUCCESS;
+    vkDestroyImage(context->device, image, context->allocation_callbacks);
 }
 
-STBVKDEF VkResult stbvk_image_get_subresource_source_layout(stbvk_context const *context, stbvk_image const *image, VkImageSubresource subresource,
-    VkSubresourceLayout *out_layout)
+static VkImage stbvk__create_staging_image(stbvk_context const *context, VkImageCreateInfo const *final_ci,
+    VkImageSubresource subresource)
+{
+    VkImageCreateInfo staging_ci = *final_ci;
+    staging_ci.flags &= ~VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    staging_ci.tiling = VK_IMAGE_TILING_LINEAR;
+    staging_ci.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    staging_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    staging_ci.queueFamilyIndexCount = 0;
+    staging_ci.pQueueFamilyIndices = NULL;
+    staging_ci.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+    staging_ci.arrayLayers = 1;
+    staging_ci.mipLevels = 1;
+    staging_ci.extent.width  = stbvk__max(final_ci->extent.width  >> subresource.mipLevel, 1U);
+    staging_ci.extent.height = stbvk__max(final_ci->extent.height >> subresource.mipLevel, 1U);
+    staging_ci.extent.depth  = stbvk__max(final_ci->extent.depth  >> subresource.mipLevel, 1U);
+    return stbvk_create_image(context, &staging_ci, staging_ci.initialLayout, 0, "stbvk staging image");
+}
+
+STBVKDEF VkSubresourceLayout stbvk_image_get_subresource_source_layout(stbvk_context const *context,
+    VkImageCreateInfo const *ci, VkImageSubresource subresource)
 {
     // TODO(cort): validate subresource against image bounds
-    VkImage staging_image_temp = VK_NULL_HANDLE;
-    STBVK__CHECK( stbvk__create_staging_image(context, image, subresource, &staging_image_temp) );
-    vkGetImageSubresourceLayout(context->device, staging_image_temp, &subresource, out_layout);
-    vkDestroyImage(context->device, staging_image_temp, context->allocation_callbacks);
-    return VK_SUCCESS;
+    VkImage staging_image_temp = stbvk__create_staging_image(context, ci, subresource);
+    VkSubresourceLayout sub_layout;
+    vkGetImageSubresourceLayout(context->device, staging_image_temp, &subresource, &sub_layout);
+    stbvk_destroy_image(context, staging_image_temp);
+    return sub_layout;
 }
 
-STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, stbvk_image const *image,
-    VkImageSubresource subresource, VkSubresourceLayout subresource_layout, VkImageLayout final_image_layout,
-    void const *pixels)
+STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, VkImage dst_image,
+    VkImageCreateInfo const *dst_ci, VkImageSubresource subresource, VkSubresourceLayout subresource_layout,
+    VkImageLayout final_image_layout, VkAccessFlagBits final_access_flags, void const *pixels)
 {
-    VkImage staging_image;
-    STBVK__CHECK( stbvk__create_staging_image(context, image, subresource, &staging_image) );
+    STBVK_ASSERT(dst_ci->usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
-    VkMemoryRequirements memory_requirements = {};
-    vkGetImageMemoryRequirements(context->device, staging_image, &memory_requirements);
-    VkMemoryAllocateInfo memory_allocate_info = {};
+    VkImage staging_image = stbvk__create_staging_image(context, dst_ci, subresource);
+    VkMemoryRequirements memory_reqs;
+    vkGetImageMemoryRequirements(context->device, staging_image, &memory_reqs);
+    VkMemoryAllocateInfo memory_allocate_info;
     memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memory_allocate_info.pNext = NULL;
-    memory_allocate_info.allocationSize = memory_requirements.size;
+    memory_allocate_info.allocationSize = memory_reqs.size;
     memory_allocate_info.memoryTypeIndex = stbvk_find_memory_type_index(&context->physical_device_memory_properties,
-        &memory_requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        &memory_reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     STBVK_ASSERT(memory_allocate_info.memoryTypeIndex < VK_MAX_MEMORY_TYPES);
     VkDeviceMemory staging_device_memory = VK_NULL_HANDLE;
+    VkDeviceSize staging_memory_offset = 0;
+    // TODO(cort): shouldn't be allocating device memory here...
     STBVK__CHECK( vkAllocateMemory(context->device, &memory_allocate_info, context->allocation_callbacks, &staging_device_memory) );
-    VkDeviceSize memory_offset = 0;
-    STBVK__CHECK( vkBindImageMemory(context->device, staging_image, staging_device_memory, memory_offset) );
+    STBVK__CHECK( vkBindImageMemory(context->device, staging_image, staging_device_memory, staging_memory_offset) );
 
     VkSubresourceLayout layout_sanity_check = {};
     vkGetImageSubresourceLayout(context->device, staging_image, &subresource, &layout_sanity_check);
@@ -1252,74 +1388,108 @@ STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, stb
 
     void *mapped_subresource_data = NULL;
     VkMemoryMapFlags memory_map_flags = 0;
-    STBVK__CHECK( vkMapMemory(context->device, staging_device_memory, memory_offset,
-        memory_requirements.size, memory_map_flags, &mapped_subresource_data) );
+    STBVK__CHECK( vkMapMemory(context->device, staging_device_memory, staging_memory_offset,
+        memory_reqs.size, memory_map_flags, &mapped_subresource_data) );
     memcpy(mapped_subresource_data, pixels, subresource_layout.size);
     vkUnmapMemory(context->device, staging_device_memory);
 
-    VkFenceCreateInfo fence_create_info = {};
-    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_create_info.pNext = NULL;
-    fence_create_info.flags = 0;
-    VkFence staging_fence = VK_NULL_HANDLE;
-    STBVK__CHECK( vkCreateFence(context->device, &fence_create_info, context->allocation_callbacks, &staging_fence) );
+    VkCommandPoolCreateInfo cpool_ci;
+    cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    cpool_ci.pNext = NULL;
+    cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    cpool_ci.queueFamilyIndex = context->graphics_queue_family_index;
+    VkCommandPool cpool = stbvk_create_command_pool(context, &cpool_ci, "stbvk_image_load_subresource temp cpool");
 
-    VkCommandBufferAllocateInfo command_buffer_allocate_info = {};
-    command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    command_buffer_allocate_info.pNext = NULL;
-    command_buffer_allocate_info.commandPool = context->command_pool;
-    command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    command_buffer_allocate_info.commandBufferCount = 1;
-    VkCommandBuffer cmd_buf_staging = {};
-    STBVK__CHECK( vkAllocateCommandBuffers(context->device, &command_buffer_allocate_info, &cmd_buf_staging) );
-    VkCommandBufferBeginInfo cmd_buf_begin_info = {};
-    cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cmd_buf_begin_info.pNext = NULL;
-    cmd_buf_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
-    cmd_buf_begin_info.pInheritanceInfo = NULL;
-    STBVK__CHECK( vkBeginCommandBuffer(cmd_buf_staging, &cmd_buf_begin_info) );
+    VkFenceCreateInfo fence_ci = {};
+    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_ci.pNext = NULL;
+    fence_ci.flags = 0;
+    VkFence fence = stbvk_create_fence(context, &fence_ci, "stbvk_image_load_subresource temp fence");
 
-    VkImageSubresourceRange staging_image_subresource_range = {};
-    staging_image_subresource_range.aspectMask = image->image_view_create_info.subresourceRange.aspectMask;
-    staging_image_subresource_range.baseMipLevel = 0;
-    staging_image_subresource_range.levelCount = 1;
-    staging_image_subresource_range.baseArrayLayer = 0;
-    staging_image_subresource_range.layerCount = 1;
-    stbvk_set_image_layout(cmd_buf_staging, staging_image, staging_image_subresource_range,
-        VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0);
-    VkImageSubresourceRange dst_image_subresource_range = {};
-    dst_image_subresource_range.aspectMask = image->image_view_create_info.subresourceRange.aspectMask;
-    dst_image_subresource_range.baseMipLevel = subresource.mipLevel;
-    dst_image_subresource_range.levelCount = 1;
-    dst_image_subresource_range.baseArrayLayer = subresource.arrayLayer;
-    dst_image_subresource_range.layerCount = 1;
-    stbvk_set_image_layout(cmd_buf_staging, image->image, dst_image_subresource_range,
-        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0);
+    VkCommandBufferAllocateInfo cb_allocate_info = {};
+    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cb_allocate_info.pNext = NULL;
+    cb_allocate_info.commandPool = cpool;
+    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cb_allocate_info.commandBufferCount = 1;
+    VkCommandBuffer cb = VK_NULL_HANDLE;
+    STBVK__CHECK( vkAllocateCommandBuffers(context->device, &cb_allocate_info, &cb) );
+    VkCommandBufferBeginInfo cb_begin_info = {};
+    cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cb_begin_info.pNext = NULL;
+    cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
+    cb_begin_info.pInheritanceInfo = NULL;
+    STBVK__CHECK( vkBeginCommandBuffer(cb, &cb_begin_info) );
+
+    VkImageSubresourceRange src_sub_range = {};
+    src_sub_range.aspectMask = stbvk__image_aspect_from_format(dst_ci->format);
+    src_sub_range.baseMipLevel = 0;
+    src_sub_range.baseArrayLayer = 0;
+    src_sub_range.levelCount = 1;
+    src_sub_range.layerCount = 1;
+    VkImageMemoryBarrier src_img_barrier = {}; // TODO(cort): merge src & dest barriers into one vkcmd
+    src_img_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    src_img_barrier.pNext = NULL;
+    src_img_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+    src_img_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    src_img_barrier.oldLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+    src_img_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    src_img_barrier.image = staging_image;
+    src_img_barrier.subresourceRange = src_sub_range;
+    vkCmdPipelineBarrier(cb,
+        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+        0,NULL, 0,NULL, 1,&src_img_barrier);
+
+    VkImageSubresourceRange dst_sub_range = {};
+    dst_sub_range.aspectMask = src_sub_range.aspectMask;
+    dst_sub_range.baseMipLevel = subresource.mipLevel;
+    dst_sub_range.levelCount = 1;
+    dst_sub_range.baseArrayLayer = subresource.arrayLayer;
+    dst_sub_range.layerCount = 1;
+    VkImageMemoryBarrier dst_img_barrier;
+    dst_img_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    dst_img_barrier.pNext = NULL;
+    dst_img_barrier.srcAccessMask = 0; // TODO(cort): erm...all access, technically?
+    dst_img_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    dst_img_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    dst_img_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    dst_img_barrier.image = dst_image;
+    dst_img_barrier.subresourceRange = dst_sub_range;
+    vkCmdPipelineBarrier(cb,
+        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+        0,NULL, 0,NULL, 1,&dst_img_barrier);
 
     VkImageCopy copy_region = {};
-    copy_region.srcSubresource = {};
-    copy_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    copy_region.srcSubresource.baseArrayLayer = 0;
-    copy_region.srcSubresource.layerCount = 1;
-    copy_region.srcSubresource.mipLevel = 0;
-    copy_region.srcOffset = {0,0,0};
-    copy_region.dstSubresource = {};
-    copy_region.dstSubresource.aspectMask = image->image_view_create_info.subresourceRange.aspectMask;
-    copy_region.dstSubresource.baseArrayLayer = subresource.arrayLayer;
-    copy_region.dstSubresource.layerCount = 1;
-    copy_region.dstSubresource.mipLevel = subresource.mipLevel;
-    copy_region.dstOffset = {0,0,0};
-    copy_region.extent.width  = stbvk__max(image->image_create_info.extent.width  >> subresource.mipLevel, 1U);
-    copy_region.extent.height = stbvk__max(image->image_create_info.extent.height >> subresource.mipLevel, 1U);
-    copy_region.extent.depth  = stbvk__max(image->image_create_info.extent.depth  >> subresource.mipLevel, 1U);
-    vkCmdCopyImage(cmd_buf_staging,
+    copy_region.srcSubresource.aspectMask = src_sub_range.aspectMask;
+    copy_region.srcSubresource.baseArrayLayer = src_sub_range.baseArrayLayer;
+    copy_region.srcSubresource.layerCount = src_sub_range.layerCount;
+    copy_region.srcSubresource.mipLevel = src_sub_range.baseMipLevel;
+    copy_region.srcOffset.x = 0;
+    copy_region.srcOffset.y = 0;
+    copy_region.srcOffset.z = 0;
+    copy_region.dstSubresource.aspectMask = dst_sub_range.aspectMask;
+    copy_region.dstSubresource.baseArrayLayer = dst_sub_range.baseArrayLayer;
+    copy_region.dstSubresource.layerCount = dst_sub_range.layerCount;
+    copy_region.dstSubresource.mipLevel = dst_sub_range.baseMipLevel;
+    copy_region.dstOffset.x = 0;
+    copy_region.dstOffset.y = 0;
+    copy_region.dstOffset.z = 0;
+    copy_region.extent.width  = stbvk__max(dst_ci->extent.width  >> subresource.mipLevel, 1U);
+    copy_region.extent.height = stbvk__max(dst_ci->extent.height >> subresource.mipLevel, 1U);
+    copy_region.extent.depth  = stbvk__max(dst_ci->extent.depth  >> subresource.mipLevel, 1U);
+    vkCmdCopyImage(cb,
         staging_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        image->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+        dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
 
-    stbvk_set_image_layout(cmd_buf_staging, image->image, dst_image_subresource_range,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, final_image_layout, 0);
+    dst_img_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    dst_img_barrier.dstAccessMask = final_access_flags;
+    dst_img_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    dst_img_barrier.newLayout = final_image_layout;
+    vkCmdPipelineBarrier(cb,
+        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+        0,NULL, 0,NULL, 1,&dst_img_barrier);
 
-    STBVK__CHECK( vkEndCommandBuffer(cmd_buf_staging) );
+    STBVK__CHECK( vkEndCommandBuffer(cb) );
     VkSubmitInfo submit_info = {};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit_info.pNext = NULL;
@@ -1327,25 +1497,79 @@ STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, stb
     submit_info.pWaitSemaphores = NULL;
     submit_info.pWaitDstStageMask = NULL;
     submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &cmd_buf_staging;
+    submit_info.pCommandBuffers = &cb;
     submit_info.signalSemaphoreCount = 0;
     submit_info.pSignalSemaphores = NULL;
-    STBVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, staging_fence) );
-    STBVK__CHECK( vkWaitForFences(context->device, 1, &staging_fence, VK_TRUE, UINT64_MAX) );
+    STBVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence) );
+    STBVK__CHECK( vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX) );
 
-    vkFreeCommandBuffers(context->device, context->command_pool, 1, &cmd_buf_staging);
-    vkDestroyFence(context->device, staging_fence, context->allocation_callbacks);
     vkFreeMemory(context->device, staging_device_memory, context->allocation_callbacks);
-    vkDestroyImage(context->device, staging_image, context->allocation_callbacks);
+    stbvk_destroy_image(context, staging_image);
+    stbvk_destroy_fence(context, fence);
+    stbvk_destroy_command_pool(context, cpool);
 
     return VK_SUCCESS;
 }
 
-STBVKDEF void stbvk_image_destroy(stbvk_context const *context, stbvk_image *image)
+STBVKDEF VkImageView stbvk_create_image_view(stbvk_context const *context, VkImageViewCreateInfo const *ci, const char *name)
 {
-    vkFreeMemory(context->device, image->device_memory, context->allocation_callbacks);
-    vkDestroyImageView(context->device, image->image_view, context->allocation_callbacks);
-    vkDestroyImage(context->device, image->image, context->allocation_callbacks);
+    VkImageView image_view = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateImageView(context->device, ci, context->allocation_callbacks, &image_view));
+#if VK_EXT_debug_marker
+    if (stbvk__DebugMarkerSetObjectNameEXT)
+    {
+        VkDebugMarkerObjectNameInfoEXT name_info;
+        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+        name_info.pNext = NULL;
+        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT;
+        name_info.object = (uint64_t)image_view;
+        name_info.pObjectName = name;
+        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
+    }
+#endif
+    return image_view;
+}
+STBVKDEF VkImageView stbvk_create_image_view_from_image(stbvk_context const *context, VkImage image,
+    VkImageCreateInfo const *image_ci, const char *name)
+{
+    VkImageViewCreateInfo view_ci = {};
+    view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    view_ci.image = image;
+    if (image_ci->imageType == VK_IMAGE_TYPE_1D)
+    {
+        view_ci.viewType = (image_ci->arrayLayers == 1) ? VK_IMAGE_VIEW_TYPE_1D : VK_IMAGE_VIEW_TYPE_1D_ARRAY;
+    }
+    else if (image_ci->imageType == VK_IMAGE_TYPE_2D)
+    {
+        if (image_ci->flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
+        {
+            assert((image_ci->arrayLayers) % 6 == 0);
+            view_ci.viewType = (image_ci->arrayLayers == 6) ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
+        }
+        else
+        {
+            view_ci.viewType = (image_ci->arrayLayers == 1) ? VK_IMAGE_VIEW_TYPE_2D : VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+        }
+    }
+    else if (image_ci->imageType == VK_IMAGE_TYPE_3D)
+    {
+        view_ci.viewType = VK_IMAGE_VIEW_TYPE_3D;
+    }
+    view_ci.format = image_ci->format;
+    view_ci.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    view_ci.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    view_ci.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    view_ci.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+    view_ci.subresourceRange.aspectMask = stbvk__image_aspect_from_format(view_ci.format);
+    view_ci.subresourceRange.baseMipLevel = 0;
+    view_ci.subresourceRange.levelCount = image_ci->mipLevels;
+    view_ci.subresourceRange.baseArrayLayer = 0;
+    view_ci.subresourceRange.layerCount = image_ci->arrayLayers;
+    return stbvk_create_image_view(context, &view_ci, name);
+}
+STBVKDEF void stbvk_destroy_image_view(stbvk_context const *context, VkImageView imageView)
+{
+    vkDestroyImageView(context->device, imageView, context->allocation_callbacks);
 }
 
 
@@ -1495,874 +1719,7 @@ STBVKDEF void stbvk_set_image_layout(VkCommandBuffer cmd_buf, VkImage image,
         image_memory_barrier_count, &img_memory_barrier);
 }
 
-///////////////////////////////////////// DDS loader code //////////////////////////////
 
-static const uint32_t kDdsPrefixMagic = 0x20534444;
-
-typedef struct
-{
-    uint32_t structSize;
-    uint32_t flags;
-    uint32_t code4;
-    uint32_t numBitsRGB;
-    uint32_t maskR;
-    uint32_t maskG;
-    uint32_t maskB;
-    uint32_t maskA;
-}  DdsPixelFormat;
-
-typedef enum
-{
-    PF_FLAGS_CODE4     = 0x00000004,  // DDPF_FOURCC
-    PF_FLAGS_RGB       = 0x00000040,  // DDPF_RGB
-    PF_FLAGS_RGBA      = 0x00000041,  // DDPF_RGB | DDPF_ALPHAPIXELS
-    PF_FLAGS_LUMINANCE = 0x00020000,  // DDPF_LUMINANCE
-    PF_FLAGS_ALPHA     = 0x00000002,  // DDPF_ALPHA
-}  DdsPixelFormatFlags;
-
-static stbvk_inline uint32_t stbvk__make_code4(char c0, char c1, char c2, char c3)
-{
-    return
-        ((uint32_t)(uint8_t)(c0) <<  0) |
-        ((uint32_t)(uint8_t)(c1) <<  8) |
-        ((uint32_t)(uint8_t)(c2) << 16) |
-        ((uint32_t)(uint8_t)(c3) << 24);
-}
-
-static const DdsPixelFormat PF_DXT1 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, stbvk__make_code4('D','X','T','1'), 0, 0, 0, 0, 0 };
-static const DdsPixelFormat PF_DXT2 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, stbvk__make_code4('D','X','T','2'), 0, 0, 0, 0, 0 };
-static const DdsPixelFormat PF_DXT3 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, stbvk__make_code4('D','X','T','3'), 0, 0, 0, 0, 0 };
-static const DdsPixelFormat PF_DXT4 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, stbvk__make_code4('D','X','T','4'), 0, 0, 0, 0, 0 };
-static const DdsPixelFormat PF_DXT5 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, stbvk__make_code4('D','X','T','5'), 0, 0, 0, 0, 0 };
-
-static const DdsPixelFormat PF_A8R8G8B8 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_RGBA, 0, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000 };
-
-static const DdsPixelFormat PF_A8B8G8R8 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_RGBA, 0, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 };
-
-static const DdsPixelFormat PF_A1R5G5B5 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_RGBA, 0, 16, 0x00007c00, 0x000003e0, 0x0000001f, 0x00008000 };
-
-static const DdsPixelFormat PF_A4R4G4B4 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_RGBA, 0, 16, 0x00000f00, 0x000000f0, 0x0000000f, 0x0000f000 };
-
-static const DdsPixelFormat PF_R8G8B8 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_RGB, 0, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0x00000000 };
-
-static const DdsPixelFormat PF_R8G8B8A8 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_RGBA, 0, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 };
-
-static const DdsPixelFormat PF_B8G8R8 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_RGB, 0, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0x00000000 };
-
-static const DdsPixelFormat PF_R5G6B5 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_RGB, 0, 16, 0x0000f800, 0x000007e0, 0x0000001f, 0x00000000 };
-
-static const DdsPixelFormat PF_L16 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_LUMINANCE, 0, 16, 0x0000ffff, 0x00000000, 0x00000000, 0x00000000 };
-
-static const DdsPixelFormat PF_L8 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_LUMINANCE, 0, 8, 0x000000ff, 0x00000000, 0x00000000, 0x00000000 };
-
-static const DdsPixelFormat PF_R32F =
-{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, 114, 0, 0, 0, 0, 0 };
-
-static const DdsPixelFormat PF_R16FG16FB16FA16F =
-{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, 36, 0, 0, 0, 0, 0 };
-
-static const DdsPixelFormat PF_R32FG32FB32FA32F =
-{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, 116, 0, 0, 0, 0, 0 };
-
-// This indicates the DDS_HEADER_DXT10 extension is present (the format is in the extended header's dxFormat field)
-static const DdsPixelFormat PF_DX10 =
-{ sizeof(DdsPixelFormat), PF_FLAGS_CODE4, stbvk__make_code4('D','X','1','0'), 0, 0, 0, 0, 0 };
-
-enum DdsHeaderFlag
-{
-    HEADER_FLAGS_CAPS        = 0x00000001,
-    HEADER_FLAGS_HEIGHT      = 0x00000002,
-    HEADER_FLAGS_WIDTH       = 0x00000004,
-    HEADER_FLAGS_PITCH       = 0x00000008,
-    HEADER_FLAGS_PIXELFORMAT = 0x00001000,
-    HEADER_FLAGS_LINEARSIZE  = 0x00080000,
-    HEADER_FLAGS_DEPTH       = 0x00800000,
-    HEADER_FLAGS_TEXTURE     = 0x00001007,  // CAPS | HEIGHT | WIDTH | PIXELFORMAT
-    HEADER_FLAGS_MIPMAP      = 0x00020000,
-};
-
-enum DdsSurfaceFlags
-{
-    SURFACE_FLAGS_TEXTURE = 0x00001000, // HEADER_FLAGS_TEXTURE
-    SURFACE_FLAGS_MIPMAP  = 0x00400008, // COMPLEX | MIPMAP
-    SURFACE_FLAGS_COMPLEX = 0x00000008, // COMPLEX
-};
-
-enum DdsCubemapFlags
-{
-    CUBEMAP_FLAG_ISCUBEMAP = 0x00000200, // CUBEMAP
-    CUBEMAP_FLAG_POSITIVEX = 0x00000600, // CUBEMAP | POSITIVEX
-    CUBEMAP_FLAG_NEGATIVEX = 0x00000a00, // CUBEMAP | NEGATIVEX
-    CUBEMAP_FLAG_POSITIVEY = 0x00001200, // CUBEMAP | POSITIVEY
-    CUBEMAP_FLAG_NEGATIVEY = 0x00002200, // CUBEMAP | NEGATIVEY
-    CUBEMAP_FLAG_POSITIVEZ = 0x00004200, // CUBEMAP | POSITIVEZ
-    CUBEMAP_FLAG_NEGATIVEZ = 0x00008200, // CUBEMAP | NEGATIVEZ
-    CUBEMAP_FLAG_VOLUME    = 0x00200000, // VOLUME
-};
-const uint32_t kCubemapFlagAllFaces =
-    CUBEMAP_FLAG_ISCUBEMAP |
-    CUBEMAP_FLAG_POSITIVEX | CUBEMAP_FLAG_NEGATIVEX |
-    CUBEMAP_FLAG_POSITIVEY | CUBEMAP_FLAG_NEGATIVEY |
-    CUBEMAP_FLAG_POSITIVEZ | CUBEMAP_FLAG_NEGATIVEZ;
-
-typedef enum
-{
-    DIMENSIONS_UNKNOWN   = 0,
-    DIMENSIONS_BUFFER    = 1,
-    DIMENSIONS_TEXTURE1D = 2,
-    DIMENSIONS_TEXTURE2D = 3,
-    DIMENSIONS_TEXTURE3D = 4,
-} DdsDimensions;
-
-typedef enum
-{
-    DX_FORMAT_UNKNOWN                     = 0,
-    DX_FORMAT_R32G32B32A32_TYPELESS       = 1,
-    DX_FORMAT_R32G32B32A32_FLOAT          = 2,
-    DX_FORMAT_R32G32B32A32_UINT           = 3,
-    DX_FORMAT_R32G32B32A32_SINT           = 4,
-    DX_FORMAT_R32G32B32_TYPELESS          = 5,
-    DX_FORMAT_R32G32B32_FLOAT             = 6,
-    DX_FORMAT_R32G32B32_UINT              = 7,
-    DX_FORMAT_R32G32B32_SINT              = 8,
-    DX_FORMAT_R16G16B16A16_TYPELESS       = 9,
-    DX_FORMAT_R16G16B16A16_FLOAT          = 10,
-    DX_FORMAT_R16G16B16A16_UNORM          = 11,
-    DX_FORMAT_R16G16B16A16_UINT           = 12,
-    DX_FORMAT_R16G16B16A16_SNORM          = 13,
-    DX_FORMAT_R16G16B16A16_SINT           = 14,
-    DX_FORMAT_R32G32_TYPELESS             = 15,
-    DX_FORMAT_R32G32_FLOAT                = 16,
-    DX_FORMAT_R32G32_UINT                 = 17,
-    DX_FORMAT_R32G32_SINT                 = 18,
-    DX_FORMAT_R32G8X24_TYPELESS           = 19,
-    DX_FORMAT_D32_FLOAT_S8X24_UINT        = 20,
-    DX_FORMAT_R32_FLOAT_X8X24_TYPELESS    = 21,
-    DX_FORMAT_X32_TYPELESS_G8X24_UINT     = 22,
-    DX_FORMAT_R10G10B10A2_TYPELESS        = 23,
-    DX_FORMAT_R10G10B10A2_UNORM           = 24,
-    DX_FORMAT_R10G10B10A2_UINT            = 25,
-    DX_FORMAT_R11G11B10_FLOAT             = 26,
-    DX_FORMAT_R8G8B8A8_TYPELESS           = 27,
-    DX_FORMAT_R8G8B8A8_UNORM              = 28,
-    DX_FORMAT_R8G8B8A8_UNORM_SRGB         = 29,
-    DX_FORMAT_R8G8B8A8_UINT               = 30,
-    DX_FORMAT_R8G8B8A8_SNORM              = 31,
-    DX_FORMAT_R8G8B8A8_SINT               = 32,
-    DX_FORMAT_R16G16_TYPELESS             = 33,
-    DX_FORMAT_R16G16_FLOAT                = 34,
-    DX_FORMAT_R16G16_UNORM                = 35,
-    DX_FORMAT_R16G16_UINT                 = 36,
-    DX_FORMAT_R16G16_SNORM                = 37,
-    DX_FORMAT_R16G16_SINT                 = 38,
-    DX_FORMAT_R32_TYPELESS                = 39,
-    DX_FORMAT_D32_FLOAT                   = 40,
-    DX_FORMAT_R32_FLOAT                   = 41,
-    DX_FORMAT_R32_UINT                    = 42,
-    DX_FORMAT_R32_SINT                    = 43,
-    DX_FORMAT_R24G8_TYPELESS              = 44,
-    DX_FORMAT_D24_UNORM_S8_UINT           = 45,
-    DX_FORMAT_R24_UNORM_X8_TYPELESS       = 46,
-    DX_FORMAT_X24_TYPELESS_G8_UINT        = 47,
-    DX_FORMAT_R8G8_TYPELESS               = 48,
-    DX_FORMAT_R8G8_UNORM                  = 49,
-    DX_FORMAT_R8G8_UINT                   = 50,
-    DX_FORMAT_R8G8_SNORM                  = 51,
-    DX_FORMAT_R8G8_SINT                   = 52,
-    DX_FORMAT_R16_TYPELESS                = 53,
-    DX_FORMAT_R16_FLOAT                   = 54,
-    DX_FORMAT_D16_UNORM                   = 55,
-    DX_FORMAT_R16_UNORM                   = 56,
-    DX_FORMAT_R16_UINT                    = 57,
-    DX_FORMAT_R16_SNORM                   = 58,
-    DX_FORMAT_R16_SINT                    = 59,
-    DX_FORMAT_R8_TYPELESS                 = 60,
-    DX_FORMAT_R8_UNORM                    = 61,
-    DX_FORMAT_R8_UINT                     = 62,
-    DX_FORMAT_R8_SNORM                    = 63,
-    DX_FORMAT_R8_SINT                     = 64,
-    DX_FORMAT_A8_UNORM                    = 65,
-    DX_FORMAT_R1_UNORM                    = 66,
-    DX_FORMAT_R9G9B9E5_SHAREDEXP          = 67,
-    DX_FORMAT_R8G8_B8G8_UNORM             = 68,
-    DX_FORMAT_G8R8_G8B8_UNORM             = 69,
-    DX_FORMAT_BC1_TYPELESS                = 70,
-    DX_FORMAT_BC1_UNORM                   = 71,
-    DX_FORMAT_BC1_UNORM_SRGB              = 72,
-    DX_FORMAT_BC2_TYPELESS                = 73,
-    DX_FORMAT_BC2_UNORM                   = 74,
-    DX_FORMAT_BC2_UNORM_SRGB              = 75,
-    DX_FORMAT_BC3_TYPELESS                = 76,
-    DX_FORMAT_BC3_UNORM                   = 77,
-    DX_FORMAT_BC3_UNORM_SRGB              = 78,
-    DX_FORMAT_BC4_TYPELESS                = 79,
-    DX_FORMAT_BC4_UNORM                   = 80,
-    DX_FORMAT_BC4_SNORM                   = 81,
-    DX_FORMAT_BC5_TYPELESS                = 82,
-    DX_FORMAT_BC5_UNORM                   = 83,
-    DX_FORMAT_BC5_SNORM                   = 84,
-    DX_FORMAT_B5G6R5_UNORM                = 85,
-    DX_FORMAT_B5G5R5A1_UNORM              = 86,
-    DX_FORMAT_B8G8R8A8_UNORM              = 87,
-    DX_FORMAT_B8G8R8X8_UNORM              = 88,
-    DX_FORMAT_R10G10B10_XR_BIAS_A2_UNORM  = 89,
-    DX_FORMAT_B8G8R8A8_TYPELESS           = 90,
-    DX_FORMAT_B8G8R8A8_UNORM_SRGB         = 91,
-    DX_FORMAT_B8G8R8X8_TYPELESS           = 92,
-    DX_FORMAT_B8G8R8X8_UNORM_SRGB         = 93,
-    DX_FORMAT_BC6H_TYPELESS               = 94,
-    DX_FORMAT_BC6H_UF16                   = 95,
-    DX_FORMAT_BC6H_SF16                   = 96,
-    DX_FORMAT_BC7_TYPELESS                = 97,
-    DX_FORMAT_BC7_UNORM                   = 98,
-    DX_FORMAT_BC7_UNORM_SRGB              = 99,
-} DxFormat;
-
-static stbvk_inline bool stbvk__is_pf_mask(const DdsPixelFormat &pf, uint32_t r, uint32_t g, uint32_t b, uint32_t a)
-{
-    return (pf.maskR == r && pf.maskG == g && pf.maskB == b && pf.maskA == a);
-}
-static bool DDSPFtoVKFormat( const DdsPixelFormat& pf, uint32_t *outBlockSize, VkFormat *outFormat )
-{
-    if( pf.flags & PF_FLAGS_RGBA )
-    {
-        switch (pf.numBitsRGB)
-        {
-        case 32:
-            *outBlockSize = 4;
-            if( stbvk__is_pf_mask(pf, 0x00ff0000,0x0000ff00,0x000000ff,0xff000000) ) // BGRA
-            {
-                *outFormat = VK_FORMAT_B8G8R8A8_UNORM; return true;
-            }
-            else if( stbvk__is_pf_mask(pf, 0x00ff0000,0x0000ff00,0x000000ff,0x00000000) ) // BGRX
-            {
-                *outFormat = VK_FORMAT_B8G8R8A8_UNORM; return true;
-            }
-            else if( stbvk__is_pf_mask(pf, 0x000000ff,0x0000ff00,0x00ff0000,0xff000000) )
-            {
-                *outFormat = VK_FORMAT_R8G8B8A8_UNORM; return true;
-            }
-            else if( stbvk__is_pf_mask(pf, 0x000000ff,0x0000ff00,0x00ff0000,0x00000000) )
-            {
-                *outFormat = VK_FORMAT_R8G8B8A8_UNORM; return true;
-            }
-
-            // Note that many common DDS reader/writers swap the
-            // the RED/BLUE masks for 10:10:10:2 formats. We assume
-            // below that the 'correct' header mask is being used
-            else if( stbvk__is_pf_mask(pf, 0x3ff00000,0x000ffc00,0x000003ff,0xc0000000) )
-            {
-                *outFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32; return true;
-            }
-            else if( stbvk__is_pf_mask(pf, 0x000003ff,0x000ffc00,0x3ff00000,0xc0000000) )
-            {
-                *outFormat = VK_FORMAT_A2R10G10B10_UNORM_PACK32; return true;
-            }
-
-            else if( stbvk__is_pf_mask(pf, 0xffffffff,0x00000000,0x00000000,0x00000000) )
-            {
-                *outFormat = VK_FORMAT_R32_UINT; return true;
-            }
-            else if( stbvk__is_pf_mask(pf, 0x0000ffff,0xffff0000,0x00000000,0x00000000) )
-            {
-                *outFormat = VK_FORMAT_R16G16_UNORM; return true;
-            }
-            break;
-
-        case 24:
-            *outBlockSize = 3;
-            if( stbvk__is_pf_mask(pf, 0x00ff0000,0x0000ff00,0x000000ff,0x00000000) )
-            {
-                *outFormat = VK_FORMAT_R8G8B8_UNORM; return true;
-            }
-            break;
-
-        case 16:
-            *outBlockSize = 2;
-            if( stbvk__is_pf_mask(pf, 0x0000f800,0x000007e0,0x0000001f,0x00000000) )
-            {
-                *outFormat = VK_FORMAT_R5G6B5_UNORM_PACK16; return true;
-            }
-            else if( stbvk__is_pf_mask(pf, 0x00007c00,0x000003e0,0x0000001f,0x00000000) )
-            {
-                *outFormat = VK_FORMAT_R5G5B5A1_UNORM_PACK16; return true;
-            }
-            else if( stbvk__is_pf_mask(pf, 0x00007c00,0x000003e0,0x0000001f,0x00008000) )
-            {
-                *outFormat = VK_FORMAT_B5G5R5A1_UNORM_PACK16; return true;
-            }
-            else if( stbvk__is_pf_mask(pf, 0x00000f00,0x000000f0,0x0000000f,0x0000f000) )
-            {
-                *outFormat = VK_FORMAT_R4G4B4A4_UNORM_PACK16; return true;
-            }
-            else if( stbvk__is_pf_mask(pf, 0x00000f00,0x000000f0,0x0000000f,0x00000000) )
-            {
-                *outFormat = VK_FORMAT_B4G4R4A4_UNORM_PACK16; return true;
-            }
-            break;
-
-        case 8:
-            *outBlockSize = 1;
-            if( stbvk__is_pf_mask(pf, 0x000000ff,0x00000000,0x00000000,0x00000000) )
-            {
-                *outFormat = VK_FORMAT_R8_UNORM; return true;
-            }
-            break;
-        }
-    }
-    else if( pf.flags & PF_FLAGS_LUMINANCE )
-    {
-        if( 8 == pf.numBitsRGB )
-        {
-            if( stbvk__is_pf_mask(pf, 0x000000ff,0x00000000,0x00000000,0x00000000) ) // L8
-            {
-                *outFormat = VK_FORMAT_R8_UNORM; *outBlockSize = 1; return true;
-            }
-        }
-        else if( 16 == pf.numBitsRGB )
-        {
-            if( stbvk__is_pf_mask(pf, 0x0000ffff,0x00000000,0x00000000,0x00000000) ) // L16
-            {
-                *outFormat = VK_FORMAT_R16_UNORM; *outBlockSize = 2; return true;
-            }
-        }
-    }
-    else if( pf.flags & PF_FLAGS_ALPHA )
-    {
-    }
-    else if( pf.flags & PF_FLAGS_CODE4 )
-    {
-        if(      stbvk__make_code4( 'D', 'X', 'T', '1' ) == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_BC1_RGB_UNORM_BLOCK; *outBlockSize = 8; return true;
-        }
-        else if( stbvk__make_code4( 'D', 'X', 'T', '2' ) == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_BC2_UNORM_BLOCK; *outBlockSize = 16; return true;
-        }
-        else if( stbvk__make_code4( 'D', 'X', 'T', '3' ) == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_BC2_UNORM_BLOCK; *outBlockSize = 16; return true;
-        }
-        else if( stbvk__make_code4( 'D', 'X', 'T', '4' ) == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_BC3_UNORM_BLOCK; *outBlockSize = 16; return true;
-        }
-        else if( stbvk__make_code4( 'D', 'X', 'T', '5' ) == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_BC3_UNORM_BLOCK; *outBlockSize = 16; return true;
-        }
-        else if( stbvk__make_code4( 'B', 'C', '4', 'U' ) == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_BC4_UNORM_BLOCK; *outBlockSize = 8; return true;
-        }
-        else if( stbvk__make_code4( 'B', 'C', '4', 'S' ) == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_BC4_SNORM_BLOCK; *outBlockSize = 8; return true;
-        }
-        else if( stbvk__make_code4( 'B', 'C', '5', 'U' ) == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_BC5_UNORM_BLOCK; *outBlockSize = 16; return true;
-        }
-        else if( stbvk__make_code4( 'B', 'C', '5', 'S' ) == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_BC5_SNORM_BLOCK; *outBlockSize = 16; return true;
-        }
-
-        // Certain values are hard-coded into the FourCC field for specific formats
-        else if ( 110 == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_R16G16B16A16_SNORM; *outBlockSize = 8; return true;
-        }
-        else if ( 111 == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_R16_SFLOAT; *outBlockSize = 2; return true;
-        }
-        else if ( 112 == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_R16G16_SFLOAT; *outBlockSize = 4; return true;
-        }
-        else if ( 113 == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_R16G16B16A16_SFLOAT; *outBlockSize = 8; return true;
-        }
-        else if ( 114 == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_R32_SFLOAT; *outBlockSize = 4; return true;
-        }
-        if ( 115 == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_R32G32_SFLOAT; *outBlockSize = 8; return true;
-        }
-        else if ( 116 == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_R32G32B32A32_SFLOAT; *outBlockSize = 16; return true;
-        }
-        else if ( 36 == pf.code4 )
-        {
-            *outFormat = VK_FORMAT_R16G16B16A16_UINT; *outBlockSize = 8; return true;
-        }
-    }
-
-    *outFormat = VK_FORMAT_UNDEFINED;
-    *outBlockSize = 0;
-    return false; // unknown/unsupported DDSPF format
-}
-
-static bool DXtoVKFormat(DxFormat dxFmt, uint32_t *outBlockSize, VkFormat *outFormat)
-{
-    switch(dxFmt)
-    {
-    case DX_FORMAT_UNKNOWN:
-    case DX_FORMAT_R32G32B32A32_TYPELESS:
-    case DX_FORMAT_R32G32B32_TYPELESS:
-    case DX_FORMAT_R16G16B16A16_TYPELESS:
-    case DX_FORMAT_R32G32_TYPELESS:
-    case DX_FORMAT_R32G8X24_TYPELESS:
-    case DX_FORMAT_R32_FLOAT_X8X24_TYPELESS:
-    case DX_FORMAT_X32_TYPELESS_G8X24_UINT:
-    case DX_FORMAT_R10G10B10A2_TYPELESS:
-    case DX_FORMAT_R8G8B8A8_TYPELESS:
-    case DX_FORMAT_R16G16_TYPELESS:
-    case DX_FORMAT_R32_TYPELESS:
-    case DX_FORMAT_R24G8_TYPELESS:
-    case DX_FORMAT_R24_UNORM_X8_TYPELESS:
-    case DX_FORMAT_X24_TYPELESS_G8_UINT:
-    case DX_FORMAT_R8G8_TYPELESS:
-    case DX_FORMAT_R16_TYPELESS:
-    case DX_FORMAT_R8_TYPELESS:
-    case DX_FORMAT_D32_FLOAT_S8X24_UINT:
-    case DX_FORMAT_D24_UNORM_S8_UINT:
-    case DX_FORMAT_R9G9B9E5_SHAREDEXP:
-    case DX_FORMAT_R8G8_B8G8_UNORM:
-    case DX_FORMAT_G8R8_G8B8_UNORM:
-    case DX_FORMAT_R10G10B10_XR_BIAS_A2_UNORM:
-    case DX_FORMAT_B8G8R8A8_TYPELESS:
-    case DX_FORMAT_B8G8R8X8_TYPELESS:
-    case DX_FORMAT_R1_UNORM:
-    case DX_FORMAT_A8_UNORM:
-        break;
-    case DX_FORMAT_R32G32B32A32_FLOAT:
-        *outFormat = VK_FORMAT_R32G32B32A32_SFLOAT; *outBlockSize = 16; return true;
-    case DX_FORMAT_R32G32B32A32_UINT:
-        *outFormat = VK_FORMAT_R32G32B32A32_UINT; *outBlockSize = 16; return true;
-    case DX_FORMAT_R32G32B32A32_SINT:
-        *outFormat = VK_FORMAT_R32G32B32A32_SINT; *outBlockSize = 16; return true;
-    case DX_FORMAT_R32G32B32_FLOAT:
-        *outFormat = VK_FORMAT_R32G32B32_SFLOAT; *outBlockSize = 12; return true;
-    case DX_FORMAT_R32G32B32_UINT:
-        *outFormat = VK_FORMAT_R32G32B32_UINT; *outBlockSize = 12; return true;
-    case DX_FORMAT_R32G32B32_SINT:
-        *outFormat = VK_FORMAT_R32G32B32_SINT; *outBlockSize = 16; return true;
-    case DX_FORMAT_R16G16B16A16_FLOAT:
-        *outFormat = VK_FORMAT_R16G16B16A16_SFLOAT; *outBlockSize = 8; return true;
-    case DX_FORMAT_R16G16B16A16_UNORM:
-        *outFormat = VK_FORMAT_R16G16B16A16_UNORM; *outBlockSize = 8; return true;
-    case DX_FORMAT_R16G16B16A16_UINT:
-        *outFormat = VK_FORMAT_R16G16B16A16_UINT; *outBlockSize = 8; return true;
-    case DX_FORMAT_R16G16B16A16_SNORM:
-        *outFormat = VK_FORMAT_R16G16B16A16_SNORM; *outBlockSize = 8; return true;
-    case DX_FORMAT_R16G16B16A16_SINT:
-        *outFormat = VK_FORMAT_R16G16B16A16_SINT; *outBlockSize = 8; return true;
-    case DX_FORMAT_R32G32_FLOAT:
-        *outFormat = VK_FORMAT_R32G32_SFLOAT; *outBlockSize = 8; return true;
-    case DX_FORMAT_R32G32_UINT:
-        *outFormat = VK_FORMAT_R32G32_UINT; *outBlockSize = 8; return true;
-    case DX_FORMAT_R32G32_SINT:
-        *outFormat = VK_FORMAT_R32G32_SINT; *outBlockSize = 8; return true;
-    case DX_FORMAT_R10G10B10A2_UNORM:
-        *outFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32; *outBlockSize = 4; return true;
-    case DX_FORMAT_R10G10B10A2_UINT:
-        *outFormat = VK_FORMAT_A2B10G10R10_UINT_PACK32; *outBlockSize = 4; return true;
-    case DX_FORMAT_R11G11B10_FLOAT:
-        *outFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32; *outBlockSize = 4; return true;
-    case DX_FORMAT_R8G8B8A8_UNORM:
-        *outFormat = VK_FORMAT_R8G8B8A8_UNORM; *outBlockSize = 4; return true;
-    case DX_FORMAT_R8G8B8A8_UNORM_SRGB:
-        *outFormat = VK_FORMAT_R8G8B8A8_SRGB; *outBlockSize = 4; return true;
-    case DX_FORMAT_R8G8B8A8_UINT:
-        *outFormat = VK_FORMAT_R8G8B8A8_UINT; *outBlockSize = 4; return true;
-    case DX_FORMAT_R8G8B8A8_SNORM:
-        *outFormat = VK_FORMAT_R8G8B8A8_SNORM; *outBlockSize = 4; return true;
-    case DX_FORMAT_R8G8B8A8_SINT:
-        *outFormat = VK_FORMAT_R8G8B8A8_SINT; *outBlockSize = 4; return true;
-    case DX_FORMAT_R16G16_FLOAT:
-        *outFormat = VK_FORMAT_R16G16_SFLOAT; *outBlockSize = 4; return true;
-    case DX_FORMAT_R16G16_UNORM:
-        *outFormat = VK_FORMAT_R16G16_UNORM; *outBlockSize = 4; return true;
-    case DX_FORMAT_R16G16_UINT:
-        *outFormat = VK_FORMAT_R16G16_UINT; *outBlockSize = 4; return true;
-    case DX_FORMAT_R16G16_SNORM:
-        *outFormat = VK_FORMAT_R16G16_SNORM; *outBlockSize = 4; return true;
-    case DX_FORMAT_R16G16_SINT:
-        *outFormat = VK_FORMAT_R16G16_SINT; *outBlockSize = 4; return true;
-    case DX_FORMAT_D32_FLOAT:
-        *outFormat = VK_FORMAT_D32_SFLOAT; *outBlockSize = 4; return true;
-    case DX_FORMAT_R32_FLOAT:
-        *outFormat = VK_FORMAT_R32_SFLOAT; *outBlockSize = 4; return true;
-    case DX_FORMAT_R32_UINT:
-        *outFormat = VK_FORMAT_R32_UINT; *outBlockSize = 4; return true;
-    case DX_FORMAT_R32_SINT:
-        *outFormat = VK_FORMAT_R32_SINT; *outBlockSize = 4; return true;
-    case DX_FORMAT_R8G8_UNORM:
-        *outFormat = VK_FORMAT_R8G8_UNORM; *outBlockSize = 2; return true;
-    case DX_FORMAT_R8G8_UINT:
-        *outFormat = VK_FORMAT_R8G8_UINT; *outBlockSize = 2; return true;
-    case DX_FORMAT_R8G8_SNORM:
-        *outFormat = VK_FORMAT_R8G8_SNORM; *outBlockSize = 2; return true;
-    case DX_FORMAT_R8G8_SINT:
-        *outFormat = VK_FORMAT_R8G8_SINT; *outBlockSize = 2; return true;
-    case DX_FORMAT_R16_FLOAT:
-        *outFormat = VK_FORMAT_R16_SFLOAT; *outBlockSize = 2; return true;
-    case DX_FORMAT_D16_UNORM:
-        *outFormat = VK_FORMAT_D16_UNORM; *outBlockSize = 2; return true;
-    case DX_FORMAT_R16_UNORM:
-        *outFormat = VK_FORMAT_R16_UNORM; *outBlockSize = 2; return true;
-    case DX_FORMAT_R16_UINT:
-        *outFormat = VK_FORMAT_R16_UINT; *outBlockSize = 2; return true;
-    case DX_FORMAT_R16_SNORM:
-        *outFormat = VK_FORMAT_R16_SNORM; *outBlockSize = 2; return true;
-    case DX_FORMAT_R16_SINT:
-        *outFormat = VK_FORMAT_R16_SINT; *outBlockSize = 2; return true;
-    case DX_FORMAT_R8_UNORM:
-        *outFormat = VK_FORMAT_R8_UNORM; *outBlockSize = 1; return true;
-    case DX_FORMAT_R8_UINT:
-        *outFormat = VK_FORMAT_R8_UINT; *outBlockSize = 1; return true;
-    case DX_FORMAT_R8_SNORM:
-        *outFormat = VK_FORMAT_R8_SNORM; *outBlockSize = 1; return true;
-    case DX_FORMAT_R8_SINT:
-        *outFormat = VK_FORMAT_R8_SINT; *outBlockSize = 1; return true;
-    case DX_FORMAT_BC1_TYPELESS:
-    case DX_FORMAT_BC1_UNORM:
-        *outFormat = VK_FORMAT_BC1_RGBA_UNORM_BLOCK; *outBlockSize = 8; return true;
-    case DX_FORMAT_BC1_UNORM_SRGB:
-        *outFormat = VK_FORMAT_BC1_RGBA_SRGB_BLOCK; *outBlockSize = 8; return true;
-    case DX_FORMAT_BC2_TYPELESS:
-    case DX_FORMAT_BC2_UNORM:
-        *outFormat = VK_FORMAT_BC2_UNORM_BLOCK; *outBlockSize = 16; return true;
-    case DX_FORMAT_BC2_UNORM_SRGB:
-        *outFormat = VK_FORMAT_BC2_SRGB_BLOCK; *outBlockSize = 16; return true;
-    case DX_FORMAT_BC3_TYPELESS:
-    case DX_FORMAT_BC3_UNORM:
-        *outFormat = VK_FORMAT_BC3_UNORM_BLOCK; *outBlockSize = 16; return true;
-    case DX_FORMAT_BC3_UNORM_SRGB:
-        *outFormat = VK_FORMAT_BC3_SRGB_BLOCK; *outBlockSize = 16; return true;
-    case DX_FORMAT_BC4_TYPELESS:
-    case DX_FORMAT_BC4_UNORM:
-        *outFormat = VK_FORMAT_BC4_UNORM_BLOCK; *outBlockSize = 8; return true;
-    case DX_FORMAT_BC4_SNORM:
-        *outFormat = VK_FORMAT_BC4_SNORM_BLOCK; *outBlockSize = 8; return true;
-    case DX_FORMAT_BC5_TYPELESS:
-    case DX_FORMAT_BC5_UNORM:
-        *outFormat = VK_FORMAT_BC5_UNORM_BLOCK; *outBlockSize = 16; return true;
-    case DX_FORMAT_BC5_SNORM:
-        *outFormat = VK_FORMAT_BC5_SNORM_BLOCK; *outBlockSize = 16; return true;
-    case DX_FORMAT_BC6H_UF16:
-        *outFormat = VK_FORMAT_BC6H_UFLOAT_BLOCK; *outBlockSize = 16; return true;
-    case DX_FORMAT_BC6H_SF16:
-        *outFormat = VK_FORMAT_BC6H_SFLOAT_BLOCK; *outBlockSize = 16; return true;
-    case DX_FORMAT_BC7_UNORM:
-        *outFormat = VK_FORMAT_BC7_UNORM_BLOCK; *outBlockSize = 16; return true;
-    case DX_FORMAT_BC7_UNORM_SRGB:
-        *outFormat = VK_FORMAT_BC7_SRGB_BLOCK; *outBlockSize = 16; return true;
-    case DX_FORMAT_B5G6R5_UNORM:
-        *outFormat = VK_FORMAT_R5G6B5_UNORM_PACK16; *outBlockSize = 2; return true;
-    case DX_FORMAT_B5G5R5A1_UNORM:
-        *outFormat = VK_FORMAT_B5G5R5A1_UNORM_PACK16; *outBlockSize = 2; return true;
-    case DX_FORMAT_B8G8R8A8_UNORM:
-    case DX_FORMAT_B8G8R8X8_UNORM:
-        *outFormat = VK_FORMAT_B8G8R8A8_UNORM; *outBlockSize = 4; return true;
-    case DX_FORMAT_B8G8R8A8_UNORM_SRGB:
-    case DX_FORMAT_B8G8R8X8_UNORM_SRGB:
-        *outFormat = VK_FORMAT_B8G8R8A8_SRGB; *outBlockSize = 4; return true;
-    default:
-        break;
-    }
-
-    *outFormat = VK_FORMAT_UNDEFINED;
-    *outBlockSize = 4;
-    return false; // unknown/unsupported format
-}
-
-struct DdsHeader
-{
-    uint32_t structSize;
-    DdsHeaderFlag flags;
-    uint32_t height;
-    uint32_t width;
-    uint32_t pitchOrLinearSize;
-    uint32_t depth; // only if HEADER_FLAGS_VOLUME is set in flags
-    uint32_t mipCount;
-    uint32_t unused1[11];
-    DdsPixelFormat pixelFormat;
-    uint32_t caps;
-    uint32_t caps2;
-    uint32_t unused2[3];
-};
-
-struct DdsHeader10
-{
-    DxFormat dxgiFormat;
-    DdsDimensions resourceDimension;
-    uint32_t flag;
-    uint32_t arraySize;
-    uint32_t unused;
-};
-
-static bool ContainsCompressedTexture(const DdsHeader *header, const DdsHeader10 *header10)
-{
-    if (header10 != NULL)
-    {
-        switch(header10->dxgiFormat)
-        {
-        case DX_FORMAT_BC1_TYPELESS:
-        case DX_FORMAT_BC1_UNORM:
-        case DX_FORMAT_BC1_UNORM_SRGB:
-        case DX_FORMAT_BC2_TYPELESS:
-        case DX_FORMAT_BC2_UNORM:
-        case DX_FORMAT_BC2_UNORM_SRGB:
-        case DX_FORMAT_BC3_TYPELESS:
-        case DX_FORMAT_BC3_UNORM:
-        case DX_FORMAT_BC3_UNORM_SRGB:
-        case DX_FORMAT_BC4_TYPELESS:
-        case DX_FORMAT_BC4_UNORM:
-        case DX_FORMAT_BC4_SNORM:
-        case DX_FORMAT_BC5_TYPELESS:
-        case DX_FORMAT_BC5_UNORM:
-        case DX_FORMAT_BC5_SNORM:
-        case DX_FORMAT_BC6H_UF16:
-        case DX_FORMAT_BC6H_SF16:
-        case DX_FORMAT_BC7_UNORM:
-        case DX_FORMAT_BC7_UNORM_SRGB:
-            return true;
-        default:
-            return false;
-        }
-    }
-    else if( header->pixelFormat.flags & PF_FLAGS_CODE4 )
-    {
-        return
-            stbvk__make_code4( 'D', 'X', 'T', '1' ) == header->pixelFormat.code4 ||
-            stbvk__make_code4( 'D', 'X', 'T', '2' ) == header->pixelFormat.code4 ||
-            stbvk__make_code4( 'D', 'X', 'T', '3' ) == header->pixelFormat.code4 ||
-            stbvk__make_code4( 'D', 'X', 'T', '4' ) == header->pixelFormat.code4 ||
-            stbvk__make_code4( 'D', 'X', 'T', '5' ) == header->pixelFormat.code4 ||
-            stbvk__make_code4( 'B', 'C', '4', 'U' ) == header->pixelFormat.code4 ||
-            stbvk__make_code4( 'B', 'C', '4', 'S' ) == header->pixelFormat.code4 ||
-            stbvk__make_code4( 'B', 'C', '5', 'U' ) == header->pixelFormat.code4 ||
-            stbvk__make_code4( 'B', 'C', '5', 'S' ) == header->pixelFormat.code4 ||
-            stbvk__make_code4( 'A', 'T', 'I', '1' ) == header->pixelFormat.code4 ||
-            stbvk__make_code4( 'A', 'T', 'I', '2' ) == header->pixelFormat.code4;
-    }
-    return false;
-}
-
-STBVKDEF int stbvk_image_load_from_dds_file(stbvk_context const *context, char const *dds_file_path, stbvk_image *out_image)
-{
-    FILE *dds_file = stbvk__fopen(dds_file_path, "rb");
-    if (dds_file == NULL)
-        return -1; // File load error
-    fseek(dds_file, 0, SEEK_END);
-    size_t dds_file_size = ftell(dds_file);
-    fseek(dds_file, 0, SEEK_SET);
-    if (dds_file_size < sizeof(DdsHeader)+sizeof(uint32_t))
-    {
-        fclose(dds_file);
-        return -2; // File too small to contain a valid DDS
-    }
-    uint8_t *dds_file_data = (uint8_t*)stbvk__host_alloc(dds_file_size, sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT,
-        context->allocation_callbacks);
-    if (fread(dds_file_data, dds_file_size, 1, dds_file) != 1)
-    {
-        fclose(dds_file);
-        stbvk__host_free(dds_file_data, context->allocation_callbacks);
-        return -3; // fread size mismatch
-    }
-    fclose(dds_file);
-
-    int retval = stbvk_image_load_from_dds_buffer(context, dds_file_data, dds_file_size, out_image);
-    stbvk__host_free(dds_file_data, context->allocation_callbacks);
-    return retval;
-}
-
-STBVKDEF int stbvk_image_load_from_dds_buffer(stbvk_context const *context, void const *dds_file_data, size_t dds_file_size, stbvk_image *out_image)
-{
-    const uint8_t *dds_bytes = (const uint8_t*)dds_file_data;
-
-    // Check magic number and header validity
-    const uint32_t *magic = (const uint32_t*)dds_bytes;
-    if (*magic != kDdsPrefixMagic)
-    {
-        return -4; // Incorrect magic number
-    }
-    const DdsHeader *header = (const DdsHeader*)(dds_bytes + sizeof(uint32_t));
-    if (header->structSize != sizeof(DdsHeader) || header->pixelFormat.structSize != sizeof(DdsPixelFormat))
-    {
-        return -5; // Incorrect header size
-    }
-    if ((header->flags & (HEADER_FLAGS_WIDTH | HEADER_FLAGS_HEIGHT)) != (HEADER_FLAGS_WIDTH | HEADER_FLAGS_HEIGHT))
-    {
-        // technically DDSD_CAPS and DDSD_PIXELFORMAT are required as well, but their absence is so widespread that they can't be relied upon.
-        return -6; // Required flag is missing from header
-    }
-
-    // Note according to msdn:  when you read a .dds file, you should not rely on the DDSCAPS_TEXTURE
-    //	and DDSCAPS_COMPLEX flags being set because some writers of such a file might not set these flags.
-    //if ((header->caps & SURFACE_FLAGS_TEXTURE) == 0)
-    //{
-    //	free(ddsFileData);
-    //	return -7; // Required flag is missing from header
-    //}
-    uint32_t pixel_offset = sizeof(uint32_t) + sizeof(DdsHeader);
-
-    // Check for DX10 header
-    const DdsHeader10 *header10 = NULL;
-    if ( (header->pixelFormat.flags & PF_FLAGS_CODE4) && (stbvk__make_code4( 'D', 'X', '1', '0' ) == header->pixelFormat.code4) )
-    {
-        // Must be long enough for both headers and magic value
-        if( dds_file_size < (sizeof(DdsHeader)+sizeof(uint32_t)+sizeof(DdsHeader10)) )
-        {
-            return -8; // File too small to contain a valid DX10 DDS
-        }
-        header10 = (const DdsHeader10*)(dds_bytes + sizeof(uint32_t) + sizeof(DdsHeader));
-        pixel_offset += sizeof(DdsHeader10);
-    }
-
-    // Check if the contents are a cubemap.  If so, all six faces must be present.
-    bool is_cube_map = false;
-    if ((header->caps & SURFACE_FLAGS_COMPLEX) && (header->caps2 & CUBEMAP_FLAG_ISCUBEMAP))
-    {
-        if ((header->caps2 & kCubemapFlagAllFaces) != kCubemapFlagAllFaces)
-        {
-            return -9; // The cubemap is missing one or more faces.
-        }
-        is_cube_map = true;
-    }
-
-    // Check if the contents are a volume texture.
-    bool is_volume_texture = false;
-    if ((header->flags & HEADER_FLAGS_DEPTH) && (header->caps2 & CUBEMAP_FLAG_VOLUME)) // (header->dwCaps & SURFACE_FLAGS_COMPLEX) -- doesn't always seem to be set?
-    {
-        if (header->depth == 0)
-        {
-            return -10; // The file is marked as a volume texture, but depth is <1
-        }
-        is_volume_texture = true;
-    }
-
-    bool is_compressed = ContainsCompressedTexture(header, header10);
-
-    uint32_t mipMapCount = 1;
-    if ((header->flags & HEADER_FLAGS_MIPMAP) == HEADER_FLAGS_MIPMAP)
-    {
-        mipMapCount = header->mipCount;
-    }
-
-    // Begin VK-specific code!
-    uint32_t block_size = 0;
-    VkFormat vk_format = VK_FORMAT_UNDEFINED;
-    if (header10 != NULL)
-    {
-        DXtoVKFormat(header10->dxgiFormat, &block_size, &vk_format);
-    }
-    else
-    {
-        DDSPFtoVKFormat(header->pixelFormat, &block_size, &vk_format);
-    }
-    if (vk_format == VK_FORMAT_UNDEFINED)
-    {
-        return -11; // It is either unknown or unsupported format
-    }
-    stbvk_image_create_info create_info = {};
-    //create_info.image_type = 0;
-    create_info.format = vk_format;
-    create_info.extent.width  = stbvk__max(1U, header->width);
-    create_info.extent.height = stbvk__max(1U, header->height);
-    create_info.extent.depth  = stbvk__max(1U, header->depth);
-    create_info.mip_levels = header->mipCount;
-    create_info.array_layers = header10 ? header10->arraySize : 1;
-    create_info.samples = VK_SAMPLE_COUNT_1_BIT;
-    create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT; // TODO(cort): generalize
-    create_info.initial_layout = VK_IMAGE_LAYOUT_PREINITIALIZED;
-    create_info.memory_properties_mask = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    //create_info.view_type = 0;
-    const uint8_t *next_src_surface = dds_bytes + pixel_offset;
-if (is_volume_texture)
-    {
-#if 0
-        glTarget = GL_TEXTURE_3D;
-        // TODO
-#endif
-    }
-    else
-    {
-        if (is_cube_map)
-        {
-            create_info.image_type = VK_IMAGE_TYPE_2D;
-            create_info.view_type = (create_info.array_layers > 1) ? VK_IMAGE_VIEW_TYPE_CUBE_ARRAY : VK_IMAGE_VIEW_TYPE_CUBE;
-            create_info.array_layers *= 6;
-        }
-        else if (create_info.extent.height == 1)
-        {
-            create_info.image_type = VK_IMAGE_TYPE_1D;
-            create_info.view_type = (create_info.array_layers > 1) ? VK_IMAGE_VIEW_TYPE_1D_ARRAY : VK_IMAGE_VIEW_TYPE_1D;
-        }
-        else
-        {
-            create_info.image_type = VK_IMAGE_TYPE_2D;
-            create_info.view_type = (create_info.array_layers > 1) ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
-        }
-        stbvk_image_create(context, &create_info, out_image);
-        for(uint32_t iLayer=0; iLayer<create_info.array_layers; ++iLayer)
-        {
-            for(uint32_t iMip=0; iMip<create_info.mip_levels; ++iMip)
-            {
-                uint32_t mip_width  = stbvk__max(header->width >> iMip, 1U);
-                uint32_t mip_height = stbvk__max(header->height >> iMip, 1U);
-                uint32_t mip_pitch  = is_compressed ? ((mip_width+3)/4)*block_size : mip_width*block_size;
-                uint32_t num_rows = is_compressed ? ((mip_height+3)/4) : mip_height;
-                uint32_t surface_size = mip_pitch*num_rows;
-                STBVK_ASSERT(next_src_surface + surface_size <= dds_bytes + dds_file_size);
-                VkImageSubresource subresource = {};
-                subresource.arrayLayer = iLayer;
-                subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                subresource.mipLevel = iMip;
-                VkSubresourceLayout subresource_layout = {};
-                STBVK__CHECK( stbvk_image_get_subresource_source_layout(context, out_image, subresource, &subresource_layout) );
-                uint32_t *padded_pixels = (uint32_t*)stbvk__host_alloc(subresource_layout.size, sizeof(uint32_t),
-                    VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, context->allocation_callbacks);
-                STBVK_ASSERT(mip_pitch <= subresource_layout.rowPitch);
-                for(uint32_t iY=0; iY<num_rows; iY+=1)
-                {
-                    const void *src_row = (void*)( intptr_t(next_src_surface) + iY*mip_pitch );
-                    void *dst_row = (void*)( (intptr_t)padded_pixels + iY*subresource_layout.rowPitch );
-                    memcpy(dst_row, src_row, mip_pitch);
-                }
-                STBVK__CHECK( stbvk_image_load_subresource(context, out_image, subresource, subresource_layout,
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, padded_pixels) );
-                stbvk__host_free(padded_pixels, context->allocation_callbacks);
-                next_src_surface += surface_size;
-            }
-        }
-    }
-    return 0;
-}
 
 STBVKDEF int stbvk_prepare_graphics_pipeline_create_info_vsps(
     stbvk_graphics_pipeline_settings_vsps const *settings,
