@@ -143,12 +143,15 @@ int main(int argc, char *argv[]) {
     const char *required_instance_layers[] = {
         "VK_LAYER_GOOGLE_threading",
         "VK_LAYER_LUNARG_parameter_validation",
-        "VK_LAYER_LUNARG_device_limits",
         "VK_LAYER_LUNARG_object_tracker",
         "VK_LAYER_LUNARG_image",
         "VK_LAYER_LUNARG_core_validation",
         "VK_LAYER_LUNARG_swapchain",
         "VK_LAYER_GOOGLE_unique_objects",
+    };
+    const char *optional_instance_layers[] = {
+        "VK_LAYER_LUNARG_device_limits",  // deprecated in 1.0.13; ask for it optionally, just in case.
+            "" // placeholder; empty initializers arrays aren't allowed
     };
     const char *required_instance_extensions[] = {
         VK_KHR_SURFACE_EXTENSION_NAME,
@@ -161,10 +164,18 @@ int main(int argc, char *argv[]) {
 #else
 #error Unsupported platform
 #endif
+    };
+    const char *optional_instance_extensions[] = {
+#if !defined(NDEBUG)
         VK_EXT_DEBUG_REPORT_EXTENSION_NAME, // TODO(cort): debug only!
+#endif
+        "" // placeholder; empty initializers arrays aren't allowed
     };
     const char *required_device_extensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    };
+    const char *optional_device_extensions[] = {
+        ""  // placeholder; empty initializers arrays aren't allowed
     };
     stbvk_context_create_info contextCreateInfo = {};
     contextCreateInfo.allocation_callbacks = NULL;
@@ -174,9 +185,20 @@ int main(int argc, char *argv[]) {
     contextCreateInfo.required_instance_extension_names = required_instance_extensions;
     contextCreateInfo.required_device_extension_count   = sizeof(required_device_extensions) / sizeof(required_device_extensions[0]);
     contextCreateInfo.required_device_extension_names   = required_device_extensions;
+    contextCreateInfo.optional_instance_layer_count     = sizeof(optional_instance_layers) / sizeof(optional_instance_layers[0]);
+    contextCreateInfo.optional_instance_layer_names     = optional_instance_layers;
+    contextCreateInfo.optional_instance_extension_count = sizeof(optional_instance_extensions) / sizeof(optional_instance_extensions[0]);
+    contextCreateInfo.optional_instance_extension_names = optional_instance_extensions;
+    contextCreateInfo.optional_device_extension_count   = sizeof(optional_device_extensions) / sizeof(optional_device_extensions[0]);
+    contextCreateInfo.optional_device_extension_names   = optional_device_extensions;
     contextCreateInfo.application_info = &applicationInfo;
-    contextCreateInfo.debug_report_callback = debugReportCallbackFunc; // TODO(cort): debug only!
+#if !defined(NDEBUG)
+    contextCreateInfo.debug_report_callback = debugReportCallbackFunc;
     contextCreateInfo.debug_report_flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+#else
+    contextCreateInfo.debug_report_callback = NULL;
+    contextCreateInfo.debug_report_flags = 0;
+#endif
     contextCreateInfo.debug_report_callback_user_data = NULL;
     stbvk_context context = {};
     my_stbvk_init_context(&contextCreateInfo, window, &context);

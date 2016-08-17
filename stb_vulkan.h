@@ -121,6 +121,7 @@ extern "C" {
         VkPhysicalDeviceProperties physical_device_properties;
         VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
         VkPhysicalDeviceFeatures physical_device_features;
+        VkDevice device;
 
         VkSurfaceKHR present_surface;
         uint32_t graphics_queue_family_index;
@@ -128,7 +129,6 @@ extern "C" {
         VkQueueFamilyProperties graphics_queue_family_properties;
         VkQueueFamilyProperties present_queue_family_properties;
 
-        VkDevice device;
         VkQueue graphics_queue;
         VkQueue present_queue;
 
@@ -139,6 +139,8 @@ extern "C" {
         VkSurfaceFormatKHR swapchain_surface_format;
         VkImage *swapchain_images;
         VkImageView *swapchain_image_views;
+
+        void *enabled_layers_and_extensions;  // query with stbvk_is_[device,instance]_[layer,extension]_enabled()
     } stbvk_context;
 
     typedef struct
@@ -152,6 +154,13 @@ extern "C" {
         const char **required_device_extension_names;
         uint32_t required_device_extension_count;
 
+        const char **optional_instance_layer_names;
+        uint32_t optional_instance_layer_count;
+        const char **optional_instance_extension_names;
+        uint32_t optional_instance_extension_count;
+        const char **optional_device_extension_names;
+        uint32_t optional_device_extension_count;
+
         const VkApplicationInfo *application_info; /* Used to initialize VkInstance. Optional; set to NULL for default values. */
         PFN_vkDebugReportCallbackEXT debug_report_callback; /* Optional; set to NULL to disable debug reports. */
         VkDebugReportFlagsEXT debug_report_flags; /* Optional; ignored if debug_report_callback is NULL. */
@@ -161,6 +170,12 @@ extern "C" {
     STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info, VkSurfaceKHR present_surface, stbvk_context *c);
     STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const *create_info, stbvk_context *c, VkSwapchainKHR old_swapchain);
     STBVKDEF void stbvk_destroy_context(stbvk_context *c);
+
+    // Functions to query active layers and extensions. Note that the implementation of these functions may
+    // not be particularly efficient; applications should cache the query results rather than querying repeatedly.
+    STBVKDEF int stbvk_is_instance_layer_enabled(stbvk_context const *context, const char *layer_name);
+    STBVKDEF int stbvk_is_instance_extension_enabled(stbvk_context const *context, const char *extension_name);
+    STBVKDEF int stbvk_is_instance_layer_enabled(stbvk_context const *context, const char *extension_name);
 
     // Abstracted device memory allocation/free
     STBVKDEF VkResult stbvk_allocate_device_memory(stbvk_context const *context, VkMemoryRequirements const *mem_reqs,
@@ -763,8 +778,46 @@ void stbvk_destroy_device_memory_arena_flat(VkDevice device,
 
 //////////////////////////// stbvk_context
 
+// I am currently too lazy to implement these in C.
+class stbvk__enabled_layers_and_extensions
+{
+public:
+    std::vector<std::string> instance_layers;
+    std::vector<std::string> instance_extensions;
+    std::vector<std::string> device_extensions;
+};
+
 STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_info, stbvk_context *context)
 {
+    // Query all core layers
+    uint32_t instance_layer_count = 0;
+    STBVK__CHECK( vkEnumerateInstanceLayerProperties(&instance_layer_count, NULL) );
+    std::vector<VkLayerProperties> instance_layer_properties(instance_layer_count);
+    STBVK__CHECK( vkEnumerateInstanceLayerProperties(&instance_layer_count, instance_layer_properties.data()) );
+    std::vector<std::string> all_instance_layer_names(instance_layer_count);
+    for(uint32_t iLayer=0; iLayer<instance_layer_count; iLayer+=1)
+    {
+        all_instance_layer_names[iLayer] = std::string(instance_layer_properties[iLayer].layerName);
+    }
+    // Filter available layers by what was required/optional
+    std::vector<const char*> layer_names_c;
+    layer_names_c.reserve(all_instance_layer_names.size());
+    for(uint32_t iLayer = 0; iLayer<create_info->required_instance_layer_count; iLayer += 1)
+    {
+        layer_names_c.push_back( create_info->required_instance_layer_names[iLayer] );
+    }
+    for(uint32_t iLayer = 0; iLayer<create_info->optional_instance_layer_count; iLayer += 1)
+    {
+        if (std::find(all_instance_layer_names.begin(), all_instance_layer_names.end(),
+            create_info->optional_instance_layer_names[iLayer])
+            == all_instance_layer_names.end())
+        {
+            continue;  // optional layer missing; ignore it.
+        }
+        layer_names_c.push_back( create_info->optional_instance_layer_names[iLayer] );
+    }
+
+    // Query all core extensions
     uint32_t instance_extension_count = 0;
     STBVK__CHECK( vkEnumerateInstanceExtensionProperties(NULL, &instance_extension_count, NULL) );
     std::vector<VkExtensionProperties> instance_extension_properties(instance_extension_count);
@@ -774,22 +827,17 @@ STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_in
     {
         all_instance_extension_names[iExt] = std::string(instance_extension_properties[iExt].extensionName);
     }
-
-    uint32_t instance_layer_count = 0;
-    STBVK__CHECK( vkEnumerateInstanceLayerProperties(&instance_layer_count, NULL) );
-    std::vector<VkLayerProperties> instance_layer_properties(instance_layer_count);
-    STBVK__CHECK( vkEnumerateInstanceLayerProperties(&instance_layer_count, instance_layer_properties.data()) );
-    std::vector<std::string> all_instance_layer_names(instance_layer_count);
-    for(uint32_t iLayer=0; iLayer<instance_layer_count; iLayer+=1)
+    // Layers may also expose extensions; query them and add them to the list if we haven't already seen them.
+    // TODO(cort): multiple layers may expose the same extension with different version numbers. That...gets tricky.
+    for(uint32_t iLayer=0; iLayer<layer_names_c.size(); iLayer+=1)
     {
-        all_instance_layer_names[iLayer] = std::string(instance_layer_properties[iLayer].layerName);
-
         uint32_t layer_extension_count = 0;
-        STBVK__CHECK( vkEnumerateInstanceExtensionProperties(instance_layer_properties[iLayer].layerName,
-            &layer_extension_count, NULL) );
+        const char *layerName = layer_names_c[iLayer];
+        STBVK__CHECK( vkEnumerateInstanceExtensionProperties(layerName, &layer_extension_count, NULL) );
+        if (layer_extension_count == 0)
+            continue;
         std::vector<VkExtensionProperties> layer_extension_properties(layer_extension_count);
-        STBVK__CHECK( vkEnumerateInstanceExtensionProperties(instance_layer_properties[iLayer].layerName,
-            &layer_extension_count, layer_extension_properties.data()) );
+        STBVK__CHECK( vkEnumerateInstanceExtensionProperties(layerName, &layer_extension_count, layer_extension_properties.data()) );
         for(const auto &ext_props : layer_extension_properties)
         {
             if (std::find(all_instance_extension_names.cbegin(), all_instance_extension_names.cend(), ext_props.extensionName)
@@ -799,35 +847,27 @@ STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_in
             }
         }
     }
-
-    // TODO(cort): extension/layer filtering still needs major work. Required vs. requested? querying what was actually available?
+    // Filter available extensions by what was required/optional
     std::vector<const char*> extension_names_c;
     extension_names_c.reserve(all_instance_extension_names.size());
     bool found_debug_report_extension = false;
     for(uint32_t iExt = 0; iExt<create_info->required_instance_extension_count; iExt += 1)
     {
-        if (std::find(all_instance_extension_names.cbegin(), all_instance_extension_names.cend(),
-            create_info->required_instance_extension_names[iExt])
-            == all_instance_extension_names.cend())
-        {
-            break;
-        }
         if (std::string(create_info->required_instance_extension_names[iExt]) == std::string(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
             found_debug_report_extension = true;
-
         extension_names_c.push_back( create_info->required_instance_extension_names[iExt] );
     }
-    std::vector<const char*> layer_names_c;
-    layer_names_c.reserve(all_instance_layer_names.size());
-    for(uint32_t iLayer = 0; iLayer<create_info->required_instance_layer_count; iLayer += 1)
+    for(uint32_t iExt = 0; iExt<create_info->optional_instance_extension_count; iExt += 1)
     {
-        if (std::find(all_instance_layer_names.begin(), all_instance_layer_names.end(),
-            create_info->required_instance_layer_names[iLayer])
-            == all_instance_layer_names.end())
+        if (std::find(all_instance_extension_names.cbegin(), all_instance_extension_names.cend(),
+            create_info->optional_instance_extension_names[iExt])
+            == all_instance_extension_names.cend())
         {
-            break;
+            continue;  // optional extension missing. Ignore it.
         }
-        layer_names_c.push_back( create_info->required_instance_layer_names[iLayer] );
+        if (std::string(create_info->optional_instance_extension_names[iExt]) == std::string(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
+            found_debug_report_extension = true;
+        extension_names_c.push_back( create_info->optional_instance_extension_names[iExt] );
     }
 
     VkApplicationInfo application_info_default = {};
@@ -850,6 +890,13 @@ STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_in
     instance_create_info.ppEnabledExtensionNames = extension_names_c.data();
 
     STBVK__CHECK( vkCreateInstance(&instance_create_info, create_info->allocation_callbacks, &context->instance) );
+
+    stbvk__enabled_layers_and_extensions *elae = new stbvk__enabled_layers_and_extensions;
+    context->enabled_layers_and_extensions = (void*)elae;
+    for(uint32_t iLayer=0; iLayer<layer_names_c.size(); ++iLayer)
+        elae->instance_layers.push_back(std::string(layer_names_c[iLayer]));
+    for(uint32_t iExt=0; iExt<extension_names_c.size(); ++iExt)
+        elae->instance_extensions.push_back(std::string(extension_names_c[iExt]));
 
     // Set up debug report callback
     if (create_info->debug_report_callback && found_debug_report_extension)
@@ -1000,26 +1047,56 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
 
     vkGetPhysicalDeviceFeatures(context->physical_device, &context->physical_device_features);
 
+    // Query all available device extensions.
     uint32_t device_extension_count = 0;
     STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device, NULL, &device_extension_count, NULL) );
     std::vector<VkExtensionProperties> device_extension_properties(device_extension_count);
     STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device, NULL, &device_extension_count, device_extension_properties.data()) );
     std::vector<std::string> all_device_extension_names(device_extension_count);
+    printf("Implicit device extensions:\n");
     for(uint32_t iExt=0; iExt<device_extension_count; iExt+=1)
     {
+        printf("- %s\n", device_extension_properties[iExt].extensionName);
         all_device_extension_names[iExt] = std::string(device_extension_properties[iExt].extensionName);
     }
+    // Instance layers may expose device extensions; query those as well.
+    stbvk__enabled_layers_and_extensions *elae = (stbvk__enabled_layers_and_extensions*)context->enabled_layers_and_extensions;
+    for(uint32_t iLayer=0; iLayer<elae->instance_layers.size(); iLayer+=1)
+    {
+        uint32_t layer_extension_count = 0;
+        const char *layerName = elae->instance_layers[iLayer].c_str();
+        STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device,
+            layerName, &layer_extension_count, NULL) );
+        if (layer_extension_count == 0)
+            continue;
+        std::vector<VkExtensionProperties> layer_extension_properties(layer_extension_count);
+        STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device,
+            layerName, &layer_extension_count, layer_extension_properties.data()));
+        for(const auto &ext_props : layer_extension_properties)
+        {
+            if (std::find(all_device_extension_names.cbegin(), all_device_extension_names.cend(), ext_props.extensionName)
+                == all_device_extension_names.cend())
+            {
+                all_device_extension_names.push_back( std::string(ext_props.extensionName) );
+            }
+        }
+    }
+    // Filter extensions based on what was requested as required/optional.
     std::vector<const char*> extension_names_c;
     extension_names_c.reserve(all_device_extension_names.size());
     for(uint32_t iExt = 0; iExt<create_info->required_device_extension_count; iExt += 1)
     {
+        extension_names_c.push_back( create_info->required_device_extension_names[iExt] );
+    }
+    for(uint32_t iExt = 0; iExt<create_info->optional_device_extension_count; iExt += 1)
+    {
         if (std::find(all_device_extension_names.cbegin(), all_device_extension_names.cend(),
-            create_info->required_device_extension_names[iExt])
+            create_info->optional_device_extension_names[iExt])
             == all_device_extension_names.cend())
         {
             break;
         }
-        extension_names_c.push_back( create_info->required_device_extension_names[iExt] );
+        extension_names_c.push_back( create_info->optional_device_extension_names[iExt] );
     }
 
     VkDeviceCreateInfo device_create_info = {};
@@ -1034,6 +1111,8 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
     device_create_info.ppEnabledExtensionNames = extension_names_c.data();
     device_create_info.pEnabledFeatures = &context->physical_device_features;
     STBVK__CHECK( vkCreateDevice(context->physical_device, &device_create_info, context->allocation_callbacks, &context->device) );
+    for(uint32_t iExt=0; iExt<extension_names_c.size(); ++iExt)
+        elae->device_extensions.push_back(std::string(extension_names_c[iExt]));
     stbvk__host_free((void*)device_create_info.pQueueCreateInfos[0].pQueuePriorities, context->allocation_callbacks);
     stbvk__host_free((void*)device_create_info.pQueueCreateInfos[1].pQueuePriorities, context->allocation_callbacks);
 #if 0
@@ -1243,9 +1322,35 @@ STBVKDEF void stbvk_destroy_context(stbvk_context *context)
     vkDestroyInstance(context->instance, context->allocation_callbacks);
     context->instance = VK_NULL_HANDLE;
 
+    stbvk__enabled_layers_and_extensions *elae = (stbvk__enabled_layers_and_extensions*)context->enabled_layers_and_extensions;
+    delete elae;
+
     context->allocation_callbacks = NULL;
     *context = {};
 }
+
+STBVKDEF int stbvk_is_instance_layer_enabled(stbvk_context const *context, const char *layer_name)
+{
+    const stbvk__enabled_layers_and_extensions *elae =
+        (const stbvk__enabled_layers_and_extensions*)context->enabled_layers_and_extensions;
+    return (std::find(elae->instance_layers.cbegin(), elae->instance_layers.cend(),
+            std::string(layer_name)) == elae->instance_layers.cend()) ? 0 : 1;
+}
+STBVKDEF int stbvk_is_instance_extension_enabled(stbvk_context const *context, const char *extension_name)
+{
+    const stbvk__enabled_layers_and_extensions *elae =
+        (const stbvk__enabled_layers_and_extensions*)context->enabled_layers_and_extensions;
+    return (std::find(elae->instance_extensions.cbegin(), elae->instance_extensions.cend(),
+            std::string(extension_name)) == elae->instance_extensions.cend()) ? 0 : 1;
+}
+STBVKDEF int stbvk_is_device_extension_enabled(stbvk_context const *context, const char *extension_name)
+{
+    const stbvk__enabled_layers_and_extensions *elae =
+        (const stbvk__enabled_layers_and_extensions*)context->enabled_layers_and_extensions;
+    return (std::find(elae->device_extensions.cbegin(), elae->device_extensions.cend(),
+            std::string(extension_name)) == elae->device_extensions.cend()) ? 0 : 1;
+}
+
 
 //////////////////////// Device memory allocation
 
