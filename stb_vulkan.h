@@ -49,8 +49,37 @@ extern "C" {
 //
 // PUBLIC API
 //
+    // Object naming (using EXT_debug_marker)
+    STBVKDEF VkResult stbvk_name_instance(VkDevice device, VkInstance name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_physical_device(VkDevice device, VkPhysicalDevice name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_device(VkDevice device, VkDevice name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_queue(VkDevice device, VkQueue name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_semaphore(VkDevice device, VkSemaphore name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_command_buffer(VkDevice device, VkCommandBuffer name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_fence(VkDevice device, VkFence name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_device_memory(VkDevice device, VkDeviceMemory name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_buffer(VkDevice device, VkBuffer name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_image(VkDevice device, VkImage name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_event(VkDevice device, VkEvent name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_query_pool(VkDevice device, VkQueryPool name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_buffer_view(VkDevice device, VkBufferView name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_image_view(VkDevice device, VkImageView name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_shader_module(VkDevice device, VkShaderModule name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_pipeline_cache(VkDevice device, VkPipelineCache name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_pipeline_layout(VkDevice device, VkPipelineLayout name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_render_pass(VkDevice device, VkRenderPass name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_pipeline(VkDevice device, VkPipeline name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_descriptor_set_layout(VkDevice device, VkDescriptorSetLayout name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_sampler(VkDevice device, VkSampler name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_descriptor_pool(VkDevice device, VkDescriptorPool name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_descriptor_set(VkDevice device, VkDescriptorSet name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_framebuffer(VkDevice device, VkFramebuffer name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_command_pool(VkDevice device, VkCommandPool name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_surface(VkDevice device, VkSurfaceKHR name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_swapchain(VkDevice device, VkSwapchainKHR name_me, const char *name);
+    STBVKDEF VkResult stbvk_name_debug_report_callback(VkDevice device, VkDebugReportCallbackEXT name_me, const char *name);
 
-    // Device memory arena
+    // Device memory arena (like VkAllocationCallbacks for device memory)
     typedef VkResult stbvk_pfn_device_memory_arena_alloc(void *user_data, const VkMemoryAllocateInfo *alloc_info,
 	    VkDeviceSize alignment, VkDeviceMemory *out_mem, VkDeviceSize *out_offset);
     typedef void stbvk_pfn_device_memory_arena_free(void *user_data, VkDeviceMemory mem, VkDeviceSize offset);
@@ -60,14 +89,13 @@ extern "C" {
 	    stbvk_pfn_device_memory_arena_alloc *allocate_func;
 	    stbvk_pfn_device_memory_arena_free *free_func;
     } stbvk_device_memory_arena;
-    
+    // Sample implementation which naively allocates out of flat buffers. free() is a no-op.
     typedef enum stbvk_device_memory_arena_flag_bits
     {
         STBVK_DEVICE_MEMORY_ARENA_SINGLE_THREAD_BIT = 1,
         STBVK_MEMORY_MEMORY_ARENA_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
     } stbvk_device_memory_arena_flag_bits;
     typedef VkFlags stbvk_device_memory_arena_flags;
-
     typedef struct stbvk_device_memory_arena_flat_create_info
     {
         VkMemoryAllocateInfo alloc_info;
@@ -81,7 +109,7 @@ extern "C" {
         const stbvk_device_memory_arena *arena,
         const VkAllocationCallbacks *allocation_callbacks);
 
-    // context
+    // stbvk_context
     typedef struct
     {
         VkAllocationCallbacks *allocation_callbacks;
@@ -104,7 +132,6 @@ extern "C" {
         VkQueue graphics_queue;
         VkQueue present_queue;
 
-        VkCommandPool command_pool;
         VkPipelineCache pipeline_cache;
 
         VkSwapchainKHR swapchain;
@@ -132,45 +159,67 @@ extern "C" {
     } stbvk_context_create_info;
     STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_info, stbvk_context *c);
     STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const *create_info, VkSurfaceKHR present_surface, stbvk_context *c);
-    STBVKDEF VkResult stbvk_init_command_pool(stbvk_context_create_info const *create_info, stbvk_context *c);
     STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const *create_info, stbvk_context *c, VkSwapchainKHR old_swapchain);
     STBVKDEF void stbvk_destroy_context(stbvk_context *c);
 
-    STBVKDEF VkBool32 stbvk_get_memory_type_from_properties(VkPhysicalDeviceMemoryProperties const *device_memory_properties,
-        VkMemoryRequirements const *memory_reqs, VkMemoryPropertyFlags memory_properties_mask, uint32_t *out_memory_type_index);
-
-    STBVKDEF VkCommandPool stbvk_create_command_pool(stbvk_context const *context, VkCommandPoolCreateInfo const *ci, const char *name);
-    STBVKDEF void stbvk_destroy_command_pool(stbvk_context const *context, VkCommandPool cpool);
-
-    STBVKDEF VkFence stbvk_create_fence(stbvk_context const *context, VkFenceCreateInfo const *ci, const char *name);
-    STBVKDEF void stbvk_destroy_fence(stbvk_context const *context, VkFence fence);
-
+    // Abstracted device memory allocation/free
     STBVKDEF VkResult stbvk_allocate_device_memory(stbvk_context const *context, VkMemoryRequirements const *mem_reqs,
         stbvk_device_memory_arena const *arena, VkMemoryPropertyFlags memory_properties_mask, const char *name,
         VkDeviceMemory *out_mem, VkDeviceSize *out_offset);
     STBVKDEF void stbvk_free_device_memory(stbvk_context const *context, stbvk_device_memory_arena const *arena,
         VkDeviceMemory mem, VkDeviceSize offset);
+    // Shortcuts for the most common types of allocations
+    STBVKDEF VkResult stbvk_allocate_and_bind_image_memory(stbvk_context const *context, VkImage image,
+        stbvk_device_memory_arena const *arena, VkMemoryPropertyFlags memory_properties_mask, const char *name,
+        VkDeviceMemory *out_mem, VkDeviceSize *out_offset);
+    STBVKDEF VkResult stbvk_allocate_and_bind_buffer_memory(stbvk_context const *context, VkBuffer buffer,
+        stbvk_device_memory_arena const *arena, VkMemoryPropertyFlags memory_properties_mask, const char *name,
+        VkDeviceMemory *out_mem, VkDeviceSize *out_offset);
+    // Helper to locate the optimal memory type for a given allocation.
+    STBVKDEF uint32_t stbvk_find_memory_type_index(VkPhysicalDeviceMemoryProperties const *device_memory_properties,
+        VkMemoryRequirements const *memory_reqs, VkMemoryPropertyFlags memory_properties_mask);
 
-    STBVKDEF VkImage stbvk_create_image(stbvk_context const *context, VkImageCreateInfo const *ci,
-        VkImageLayout final_layout, VkAccessFlags final_access_flags, const char *name);
-    STBVKDEF void stbvk_destroy_image(stbvk_context const *context, VkImage image);
-    STBVKDEF VkSubresourceLayout stbvk_image_get_subresource_source_layout(stbvk_context const *context,
-        VkImageCreateInfo const *ci, VkImageSubresource subresource);
-    STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, VkImage dst_image,
-        VkImageCreateInfo const *dst_ci, VkImageSubresource subresource, VkSubresourceLayout subresource_layout,
-        VkImageLayout final_image_layout, VkAccessFlagBits final_access_flags, void const *pixels);
+    // Object creation/destruction helpers.
+    STBVKDEF VkCommandPool stbvk_create_command_pool(stbvk_context const *context, VkCommandPoolCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_command_pool(stbvk_context const *context, VkCommandPool cpool);
 
-    STBVKDEF VkImageView stbvk_create_image_view(stbvk_context const *context, VkImageViewCreateInfo const *ci, const char *name);
-    STBVKDEF VkImageView stbvk_create_image_view_from_image(stbvk_context const *context, VkImage image,
-        VkImageCreateInfo const *image_ci, const char *name);
-    STBVKDEF void stbvk_destroy_image_view(stbvk_context const *context, VkImage imageView);
+    STBVKDEF VkSemaphore stbvk_create_semaphore(stbvk_context const *context, VkSemaphoreCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_semaphore(stbvk_context const *context, VkSemaphore semaphore);
+
+    STBVKDEF VkFence stbvk_create_fence(stbvk_context const *context, VkFenceCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_fence(stbvk_context const *context, VkFence fence);
+
+    STBVKDEF VkEvent stbvk_create_event(stbvk_context const *context, VkEventCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_event(stbvk_context const *context, VkEvent event);
+
+    STBVKDEF VkQueryPool stbvk_create_query_pool(stbvk_context const *context, VkQueryPoolCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_query_pool(stbvk_context const *context, VkQueryPool pool);
+
+    STBVKDEF VkPipelineCache stbvk_create_pipeline_cache(stbvk_context const *context, VkPipelineCacheCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_pipeline_cache(stbvk_context const *context, VkPipelineCache cache);
+
+    STBVKDEF VkPipelineLayout stbvk_create_pipeline_layout(stbvk_context const *context, VkPipelineLayoutCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_pipeline_layout(stbvk_context const *context, VkPipelineLayout layout);
+
+    STBVKDEF VkRenderPass stbvk_create_render_pass(stbvk_context const *context, VkRenderPassCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_render_pass(stbvk_context const *context, VkRenderPass render_pass);
+
+    STBVKDEF VkPipeline stbvk_create_graphics_pipeline(stbvk_context const *context, VkGraphicsPipelineCreateInfo const *ci, const char *name);
+    STBVKDEF VkPipeline stbvk_create_compute_pipeline(stbvk_context const *context, VkComputePipelineCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_pipeline(stbvk_context const *context, VkPipeline pipeline);
+
+    STBVKDEF VkDescriptorSetLayout stbvk_create_descriptor_set_layout(stbvk_context const *context, VkDescriptorSetLayoutCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_descriptor_set_layout(stbvk_context const *context, VkDescriptorSetLayout layout);
+
+    STBVKDEF VkSampler stbvk_create_sampler(stbvk_context const *context, VkSamplerCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_sampler(stbvk_context const *context, VkSampler sampler);
+
+    STBVKDEF VkFramebuffer stbvk_create_framebuffer(stbvk_context const *context, VkFramebufferCreateInfo const *ci, const char *name);
+    STBVKDEF void stbvk_destroy_framebuffer(stbvk_context const *context, VkFramebuffer framebuffer);
 
     STBVKDEF VkBuffer stbvk_create_buffer(stbvk_context const *context, VkBufferCreateInfo const *ci,
         const char *name);
     STBVKDEF void stbvk_destroy_buffer(stbvk_context const *context, VkBuffer buffer);
-    STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, VkBuffer dst_buffer,
-        VkBufferCreateInfo const *dst_ci, VkDeviceSize dst_offset,
-        const void *src_data, VkDeviceSize src_size, VkAccessFlagBits final_access_flags);
 
     STBVKDEF VkBufferView stbvk_create_buffer_view(stbvk_context const *context, VkBufferViewCreateInfo const *ci,
         const char *name);
@@ -178,6 +227,33 @@ extern "C" {
         VkFormat format, const char *name);
     STBVKDEF void stbvk_destroy_buffer_view(stbvk_context const *context, VkBufferView view);
 
+    STBVKDEF VkImage stbvk_create_image(stbvk_context const *context, VkImageCreateInfo const *ci,
+        VkImageLayout final_layout, VkAccessFlags final_access_flags, const char *name);
+    STBVKDEF void stbvk_destroy_image(stbvk_context const *context, VkImage image);
+
+    STBVKDEF VkImageView stbvk_create_image_view(stbvk_context const *context, VkImageViewCreateInfo const *ci, const char *name);
+    STBVKDEF VkImageView stbvk_create_image_view_from_image(stbvk_context const *context, VkImage image,
+        VkImageCreateInfo const *image_ci, const char *name);
+    STBVKDEF void stbvk_destroy_image_view(stbvk_context const *context, VkImage imageView);
+
+    STBVKDEF VkDescriptorPool stbvk_create_descriptor_pool(stbvk_context const *context,
+        const VkDescriptorPoolCreateInfo *ci, const char *name);
+    STBVKDEF VkDescriptorPool stbvk_create_descriptor_pool_from_layout(stbvk_context const *c,
+        const VkDescriptorSetLayoutCreateInfo *layout_ci, uint32_t max_sets,
+        VkDescriptorPoolCreateFlags flags, const char *name);
+    STBVKDEF void stbvk_destroy_descriptor_pool(stbvk_context const *c, VkDescriptorPool pool);
+
+    // Functions to load data into device-local VkImage and VkBuffer resources.
+    STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, VkBuffer dst_buffer,
+        VkBufferCreateInfo const *dst_ci, VkDeviceSize dst_offset,
+        const void *src_data, VkDeviceSize src_size, VkAccessFlagBits final_access_flags);
+    STBVKDEF VkSubresourceLayout stbvk_image_get_subresource_source_layout(stbvk_context const *context,
+        VkImageCreateInfo const *ci, VkImageSubresource subresource);
+    STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, VkImage dst_image,
+        VkImageCreateInfo const *dst_ci, VkImageSubresource subresource, VkSubresourceLayout subresource_layout,
+        VkImageLayout final_image_layout, VkAccessFlagBits final_access_flags, void const *pixels);
+
+    // Functions to load shader modules
     typedef struct
     {
        int      (*read)  (void *user,char *data,int size);   // fill 'data' with 'size' bytes.  return number of bytes actually read
@@ -185,20 +261,16 @@ extern "C" {
        int      (*eof)   (void *user);                       // returns nonzero if we are at end of file/data
     } stbvk_io_callbacks;
 
-    STBVKDEF VkShaderModule stbvk_load_shader_from_memory(stbvk_context *c, stbvk_uc const *buffer, int len);
-    STBVKDEF VkShaderModule stbvk_load_shader_from_callbacks(stbvk_context *c, stbvk_io_callbacks const *clbk, void *user);
+    STBVKDEF VkShaderModule stbvk_load_shader_from_memory(stbvk_context const *c, stbvk_uc const *buffer, int len, const char *name);
+    STBVKDEF VkShaderModule stbvk_load_shader_from_callbacks(stbvk_context const *c, stbvk_io_callbacks const *clbk, void *user, const char *name);
 #ifndef STBVK_NO_STDIO
-    STBVKDEF VkShaderModule stbvk_load_shader(stbvk_context *c, char const *filename);
-    STBVKDEF VkShaderModule stbvk_load_shader_from_file(stbvk_context *c, FILE *f, int len);
+    STBVKDEF VkShaderModule stbvk_load_shader(stbvk_context const *c, char const *filename);
+    STBVKDEF VkShaderModule stbvk_load_shader_from_file(stbvk_context const *c, FILE *f, int len, const char *name);
 #endif
+    STBVKDEF void stbvk_destroy_shader(stbvk_context const *c, VkShaderModule shader);
 
-    STBVKDEF VkResult stbvk_create_descriptor_pool(stbvk_context const *c, const VkDescriptorSetLayoutCreateInfo *layout_ci, uint32_t max_sets,
-        VkDescriptorPoolCreateFlags flags, VkDescriptorPool *out_pool);
-
-    STBVKDEF void stbvk_set_image_layout(VkCommandBuffer cmd_buf, VkImage image,
-        VkImageSubresourceRange subresource_range, VkImageLayout old_layout, VkImageLayout new_layout,
-        VkAccessFlags src_access_mask);
-
+    // Shortcut to populate a VkGraphicsPipelineCreateInfo for graphics, using reasonable default values wherever
+    // possible. The final VkGraphicsPipelineCreateInfo can still be customized before the pipeline is created.
     typedef struct
     {
         uint32_t stride;
@@ -263,6 +335,9 @@ extern "C" {
 #   include <assert.h>
 #   define STBVK_ASSERT(x) assert(x)
 #endif
+
+#include <string>
+#include <vector>
 
 #ifndef _MSC_VER
 #   ifdef __cplusplus
@@ -366,12 +441,19 @@ static const T& stbvk__min(const T& a, const T& b) { return (a<b) ? a : b; }
 template<typename T>
 static const T& stbvk__max(const T& a, const T& b) { return (a>b) ? a : b; }
 
-#if VK_EXT_debug_marker
-static PFN_vkDebugMarkerSetObjectNameEXT stbvk__DebugMarkerSetObjectNameEXT = NULL;
+#ifndef STBVK_NO_STDIO
+static FILE *stbvk__fopen(char const *filename, char const *mode)
+{
+   FILE *f;
+#if defined(_MSC_VER) && _MSC_VER >= 1400
+   if (0 != fopen_s(&f, filename, mode))
+      f=0;
+#else
+   f = fopen(filename, mode);
 #endif
-
-#include <string>
-#include <vector>
+   return f;
+}
+#endif
 
 static void *stbvk__host_alloc(size_t size, size_t alignment, VkSystemAllocationScope scope, const VkAllocationCallbacks *pAllocator)
 {
@@ -409,18 +491,8 @@ static VkResult stbvk__device_alloc(const stbvk_context *context, const VkMemory
         alloc_result = vkAllocateMemory(context->device, alloc_info, context->allocation_callbacks, out_mem);
         *out_offset = 0;
     }
-#if VK_EXT_debug_marker
-    if (alloc_result == VK_SUCCESS && stbvk__DebugMarkerSetObjectNameEXT)
-    {
-        VkDebugMarkerObjectNameInfoEXT name_info;
-        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
-        name_info.pNext = NULL;
-        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT;
-        name_info.object = (uint64_t)*out_mem;
-        name_info.pObjectName = name;
-        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
-    }
-#endif
+    if (alloc_result == VK_SUCCESS)
+        STBVK__CHECK(stbvk_name_device_memory(context->device, *out_mem, name));
     return alloc_result;
 }
 
@@ -454,6 +526,242 @@ static VkImageAspectFlags stbvk__image_aspect_from_format(VkFormat format)
         return VK_IMAGE_ASPECT_COLOR_BIT;
     }
 }
+
+/////////////////////////////// Object naming
+
+#if VK_EXT_debug_marker
+static PFN_vkDebugMarkerSetObjectNameEXT stbvk__DebugMarkerSetObjectNameEXT = NULL;
+static VkResult stbvk__set_object_name(VkDevice device, VkDebugReportObjectTypeEXT object_type,
+    uint64_t object_as_u64, const char *name)
+{
+    if (stbvk__DebugMarkerSetObjectNameEXT)
+    {
+        VkDebugMarkerObjectNameInfoEXT name_info;
+        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+        name_info.pNext = NULL;
+        name_info.objectType = object_type;
+        name_info.object = object_as_u64;
+        name_info.pObjectName = name ? name : "";
+        return stbvk__DebugMarkerSetObjectNameEXT(device, &name_info);
+    }
+    return VK_SUCCESS;
+}
+#else
+static VkResult stbvk__set_object_name(VkDevice, VkDebugReportObjectTypeEXT, uint64_t, const char *)
+{
+    return VK_SUCCESS;
+}
+#endif
+
+STBVKDEF VkResult stbvk_name_instance(VkDevice device, VkInstance name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_physical_device(VkDevice device, VkPhysicalDevice name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_device(VkDevice device, VkDevice name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_queue(VkDevice device, VkQueue name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_QUEUE_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_semaphore(VkDevice device, VkSemaphore name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_command_buffer(VkDevice device, VkCommandBuffer name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_fence(VkDevice device, VkFence name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_device_memory(VkDevice device, VkDeviceMemory name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_buffer(VkDevice device, VkBuffer name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_image(VkDevice device, VkImage name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_event(VkDevice device, VkEvent name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_EVENT_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_query_pool(VkDevice device, VkQueryPool name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_QUERY_POOL_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_buffer_view(VkDevice device, VkBufferView name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_VIEW_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_image_view(VkDevice device, VkImageView name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_shader_module(VkDevice device, VkShaderModule name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_pipeline_cache(VkDevice device, VkPipelineCache name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_CACHE_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_pipeline_layout(VkDevice device, VkPipelineLayout name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_render_pass(VkDevice device, VkRenderPass name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_pipeline(VkDevice device, VkPipeline name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_descriptor_set_layout(VkDevice device, VkDescriptorSetLayout name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_sampler(VkDevice device, VkSampler name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_SAMPLER_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_descriptor_pool(VkDevice device, VkDescriptorPool name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_POOL_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_descriptor_set(VkDevice device, VkDescriptorSet name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_framebuffer(VkDevice device, VkFramebuffer name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_command_pool(VkDevice device, VkCommandPool name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_surface(VkDevice device, VkSurfaceKHR name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_swapchain(VkDevice device, VkSwapchainKHR name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT, (uint64_t)name_me, name);
+}
+STBVKDEF VkResult stbvk_name_debug_report_callback(VkDevice device, VkDebugReportCallbackEXT name_me, const char *name)
+{
+    return stbvk__set_object_name(device, VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_EXT, (uint64_t)name_me, name);
+}
+
+//////////////////////////// stbvk_memory_device_arena_flat
+
+typedef struct stbvk_device_memory_arena_flat_data
+{
+	VkDeviceMemory mem;
+	VkDeviceSize base_offset;
+	VkDeviceSize max_offset;
+	uint32_t memory_type_index;
+	stbvk_device_memory_arena_flags flags;
+	VkDeviceSize top; // separate cache line. Always between base_offset and max_offset.
+} stbvk_device_memory_arena_flat_data;
+
+static VkResult stbvk__device_memory_arena_flat_alloc(void *user_data, const VkMemoryAllocateInfo *alloc_info,
+    VkDeviceSize alignment, VkDeviceMemory *out_mem, VkDeviceSize *out_offset)
+{
+    stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)user_data;
+	if (alloc_info->memoryTypeIndex != arena_data->memory_type_index)
+		return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    VkResult result = VK_SUCCESS;
+    for(;;) {
+        VkDeviceSize top = arena_data->top;
+        VkDeviceSize aligned_top = (top + alignment - 1) & ~(alignment-1);
+        VkDeviceSize new_top = aligned_top + alloc_info->allocationSize;
+        if (new_top >= aligned_top &&
+				new_top <= arena_data->max_offset &&
+				new_top >= arena_data->base_offset) { // size didn't wrap & allocation fits
+            if (arena_data->flags & STBVK_DEVICE_MEMORY_ARENA_SINGLE_THREAD_BIT) {
+                arena_data->top = new_top;
+				*out_mem = arena_data->mem;
+                *out_offset = aligned_top;
+                break;
+            } else {
+                // TODO(cort): atomic compare-and-swap new_top onto stack->top,
+                // and break if successful.
+                arena_data->top = new_top;
+				*out_mem = arena_data->mem;
+                *out_offset = aligned_top;
+                break;
+            }
+        } else {
+            result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            break;
+        }
+    }
+    return result;
+}
+
+static void stbvk__device_memory_arena_flat_free(void *user_data, VkDeviceMemory mem, VkDeviceSize offset)
+{
+    stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)user_data;
+    STBVK_ASSERT(mem == arena_data->mem);
+    STBVK_ASSERT(offset >= arena_data->base_offset && offset < arena_data->max_offset);
+    (void)arena_data;
+}
+
+VkResult stbvk_create_device_memory_arena_flat(VkDevice device,
+    const stbvk_device_memory_arena_flat_create_info *ci,
+    VkAllocationCallbacks *allocation_callbacks,
+    stbvk_device_memory_arena *out_arena)
+{
+    VkDeviceMemory mem = VK_NULL_HANDLE;
+    STBVK__CHECK(vkAllocateMemory(device, &ci->alloc_info, allocation_callbacks, &mem));
+    if (mem == VK_NULL_HANDLE)
+        return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+
+    stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)stbvk__host_alloc(
+        sizeof(stbvk_device_memory_arena_flat_data), sizeof(VkDeviceMemory),
+        VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, allocation_callbacks);
+    if (!arena_data)
+    {
+        vkFreeMemory(device, mem, allocation_callbacks);
+        return VK_ERROR_OUT_OF_HOST_MEMORY;
+    }
+    arena_data->mem = mem;
+    arena_data->base_offset = 0;
+    arena_data->max_offset = ci->alloc_info.allocationSize;
+    arena_data->memory_type_index = ci->alloc_info.memoryTypeIndex;
+    arena_data->flags = ci->flags; // TODO(cort): validate flags
+    arena_data->top = arena_data->base_offset;
+
+    out_arena->user_data = (void*)arena_data;
+    out_arena->allocate_func = stbvk__device_memory_arena_flat_alloc;
+    out_arena->free_func = stbvk__device_memory_arena_flat_free;
+    return VK_SUCCESS;
+}
+
+void stbvk_destroy_device_memory_arena_flat(VkDevice device,
+    const stbvk_device_memory_arena *arena,
+    const VkAllocationCallbacks *allocation_callbacks)
+{
+    stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)(arena->user_data);
+    vkFreeMemory(device, arena_data->mem, allocation_callbacks);
+    stbvk__host_free(arena_data, allocation_callbacks);
+}
+
+//////////////////////////// stbvk_context
 
 STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_info, stbvk_context *context)
 {
@@ -738,6 +1046,12 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
 #if VK_EXT_debug_marker
     stbvk__DebugMarkerSetObjectNameEXT = (PFN_vkDebugMarkerSetObjectNameEXT)vkGetDeviceProcAddr(context->device,
         "vkDebugMarkerSetObjectNameEXT");
+    // Name the things we've already created
+    STBVK__CHECK(stbvk_name_instance(context->device, context->instance, "stbvk_context instance"));
+    STBVK__CHECK(stbvk_name_physical_device(context->device, context->physical_device, "stbvk_context physical device"));
+    STBVK__CHECK(stbvk_name_device(context->device, context->device, "stbvk_context device"));
+    STBVK__CHECK(stbvk_name_surface(context->device, present_surface, "stbvk_context present surface"));
+    STBVK__CHECK(stbvk_name_debug_report_callback(context->device, context->debug_report_callback, "stbvk_context debug report callback"));
 #endif
 
     STBVK_ASSERT(context->present_queue_family_properties.queueCount > 0);
@@ -752,20 +1066,7 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
     pipeline_cache_create_info.initialDataSize = 0;
     pipeline_cache_create_info.pInitialData = NULL;
     STBVK__CHECK( vkCreatePipelineCache(context->device, &pipeline_cache_create_info, context->allocation_callbacks, &context->pipeline_cache) );
-
-    return VK_SUCCESS;
-}
-
-STBVKDEF VkResult stbvk_init_command_pool(stbvk_context_create_info const * /*createInfo*/, stbvk_context *context)
-{
-    // Create command pool
-    VkCommandPoolCreateInfo command_pool_create_info = {};
-    command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    command_pool_create_info.pNext = NULL;
-    command_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // allows reseting individual command buffers from this pool
-    command_pool_create_info.queueFamilyIndex = context->graphics_queue_family_index;
-    STBVK__CHECK( vkCreateCommandPool(context->device, &command_pool_create_info, context->allocation_callbacks, &context->command_pool) );
-
+    STBVK__CHECK(stbvk_name_pipeline_cache(context->device, context->pipeline_cache, "stbvk_context pipeline cache"));
     return VK_SUCCESS;
 }
 
@@ -925,9 +1226,6 @@ STBVKDEF void stbvk_destroy_context(stbvk_context *context)
     context->swapchain_images = NULL;
     vkDestroySwapchainKHR(context->device, context->swapchain, context->allocation_callbacks);
 
-    vkDestroyCommandPool(context->device, context->command_pool, context->allocation_callbacks);
-    context->command_pool = NULL;
-
     vkDestroyPipelineCache(context->device, context->pipeline_cache, context->allocation_callbacks);
 
     vkDestroyDevice(context->device, context->allocation_callbacks);
@@ -949,270 +1247,7 @@ STBVKDEF void stbvk_destroy_context(stbvk_context *context)
     *context = {};
 }
 
-
-#ifndef STBVK_NO_STDIO
-static FILE *stbvk__fopen(char const *filename, char const *mode)
-{
-   FILE *f;
-#if defined(_MSC_VER) && _MSC_VER >= 1400
-   if (0 != fopen_s(&f, filename, mode))
-      f=0;
-#else
-   f = fopen(filename, mode);
-#endif
-   return f;
-}
-#endif
-
-STBVKDEF uint32_t stbvk_find_memory_type_index(VkPhysicalDeviceMemoryProperties const *device_memory_properties,
-    VkMemoryRequirements const *memory_reqs, VkMemoryPropertyFlags memory_properties_mask)
-{
-    for(uint32_t iMemType=0; iMemType<VK_MAX_MEMORY_TYPES; iMemType+=1)
-    {
-        if (	(memory_reqs->memoryTypeBits & (1<<iMemType)) != 0
-            &&	(device_memory_properties->memoryTypes[iMemType].propertyFlags & memory_properties_mask) == memory_properties_mask)
-        {
-            return iMemType;
-        }
-    }
-    return VK_MAX_MEMORY_TYPES; /* invalid index */
-}
-
-
-STBVKDEF VkBuffer stbvk_create_buffer(stbvk_context const *context, VkBufferCreateInfo const *ci,
-    const char *name)
-{
-    VkBuffer buffer = VK_NULL_HANDLE;
-    STBVK__CHECK( vkCreateBuffer(context->device, ci, context->allocation_callbacks, &buffer) );
-#if VK_EXT_debug_marker
-    if (stbvk__DebugMarkerSetObjectNameEXT)
-    {
-        VkDebugMarkerObjectNameInfoEXT name_info;
-        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
-        name_info.pNext = NULL;
-        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT;
-        name_info.object = (uint64_t)buffer;
-        name_info.pObjectName = name;
-        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
-    }
-#endif
-    return buffer;
-}
-
-STBVKDEF void stbvk_destroy_buffer(stbvk_context const *context, VkBuffer buffer)
-{
-    vkDestroyBuffer(context->device, buffer, context->allocation_callbacks);
-}
-
-STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, VkBuffer dst_buffer,
-    VkBufferCreateInfo const *dst_ci, VkDeviceSize dst_offset,
-    const void *src_data, VkDeviceSize src_size, VkAccessFlagBits final_access_flags)
-{
-    // TODO(cort): Make sure I'm clear that dst_offset is relative to buffer start, not relative
-    // to the backing VkDeviceMemory objects!
-    STBVK_ASSERT(src_size <= dst_offset + dst_ci->size);
-    STBVK_ASSERT(dst_ci->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-
-    VkBufferCreateInfo staging_buffer_create_info = {};
-    staging_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    staging_buffer_create_info.pNext = NULL;
-    staging_buffer_create_info.flags = 0;
-    staging_buffer_create_info.size = src_size;
-    staging_buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    staging_buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    staging_buffer_create_info.queueFamilyIndexCount = 0;
-    staging_buffer_create_info.pQueueFamilyIndices = NULL;
-    VkBuffer staging_buffer = stbvk_create_buffer(context, &staging_buffer_create_info,
-        "stbvk_buffer_load_contents() staging");
-    VkMemoryRequirements staging_buffer_memory_reqs = {};
-    vkGetBufferMemoryRequirements(context->device, staging_buffer, &staging_buffer_memory_reqs);
-    // TODO(cort): don't allocate device memory here
-    VkDeviceMemory staging_buffer_mem = VK_NULL_HANDLE;
-    VkDeviceSize staging_buffer_mem_offset = 0;
-    VkMemoryAllocateInfo staging_memory_alloc_info = {};
-    staging_memory_alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    staging_memory_alloc_info.allocationSize = staging_buffer_memory_reqs.size;
-    staging_memory_alloc_info.memoryTypeIndex = stbvk_find_memory_type_index(
-        &context->physical_device_memory_properties, &staging_buffer_memory_reqs,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    STBVK__CHECK(vkAllocateMemory(context->device, &staging_memory_alloc_info,
-        context->allocation_callbacks, &staging_buffer_mem));
-    STBVK__CHECK(vkBindBufferMemory(context->device, staging_buffer, staging_buffer_mem,
-        staging_buffer_mem_offset));
-
-    void *mapped_data = NULL;
-    VkMemoryMapFlags map_flags = 0;
-    STBVK__CHECK( vkMapMemory(context->device, staging_buffer_mem, 0, src_size, map_flags, &mapped_data) );
-    memcpy(mapped_data, src_data, src_size);
-    vkUnmapMemory(context->device, staging_buffer_mem);
-
-    VkCommandPoolCreateInfo cpool_ci;
-    cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    cpool_ci.pNext = NULL;
-    cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-    cpool_ci.queueFamilyIndex = context->graphics_queue_family_index;
-    VkCommandPool cpool = stbvk_create_command_pool(context, &cpool_ci, "stbvk_buffer_load_contents temp cpool");
-
-    VkFenceCreateInfo fence_ci = {};
-    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_ci.pNext = NULL;
-    fence_ci.flags = 0;
-    VkFence fence = stbvk_create_fence(context, &fence_ci, "stbvk_buffer_load_contents temp fence");
-
-    VkCommandBufferAllocateInfo cb_allocate_info = {};
-    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cb_allocate_info.pNext = NULL;
-    cb_allocate_info.commandPool = cpool;
-    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cb_allocate_info.commandBufferCount = 1;
-    VkCommandBuffer cb = VK_NULL_HANDLE;
-    STBVK__CHECK( vkAllocateCommandBuffers(context->device, &cb_allocate_info, &cb) );
-    VkCommandBufferBeginInfo cb_begin_info = {};
-    cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cb_begin_info.pNext = NULL;
-    cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
-    cb_begin_info.pInheritanceInfo = NULL;
-    STBVK__CHECK( vkBeginCommandBuffer(cb, &cb_begin_info) );
-
-    VkBufferMemoryBarrier buf_barriers[2] = {}; // TODO(cort): merge src & dest barriers into one vkcmd
-    buf_barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    buf_barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-    buf_barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    buf_barriers[0].srcQueueFamilyIndex = context->graphics_queue_family_index;
-    buf_barriers[0].dstQueueFamilyIndex = context->graphics_queue_family_index;
-    buf_barriers[0].buffer = staging_buffer;
-    buf_barriers[0].offset = 0;
-    buf_barriers[0].size = src_size;
-    buf_barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    buf_barriers[1].srcAccessMask = 0; // TODO(cort): erm...all access, technically?
-    buf_barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    buf_barriers[1].srcQueueFamilyIndex = context->graphics_queue_family_index;
-    buf_barriers[1].dstQueueFamilyIndex = context->graphics_queue_family_index;
-    buf_barriers[1].buffer = dst_buffer;
-    buf_barriers[1].offset = dst_offset;
-    buf_barriers[1].size = src_size;
-    vkCmdPipelineBarrier(cb,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
-        0,NULL, 2,buf_barriers, 0,NULL);
-
-    VkBufferCopy buffer_copy_region = {};
-    buffer_copy_region.srcOffset = 0;
-    buffer_copy_region.dstOffset = dst_offset;
-    buffer_copy_region.size = src_size;
-    vkCmdCopyBuffer(cb, staging_buffer, dst_buffer, 1, &buffer_copy_region);
-
-    buf_barriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    buf_barriers[1].dstAccessMask = final_access_flags;
-    vkCmdPipelineBarrier(cb,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
-        0,NULL, 1,&buf_barriers[1], 0,NULL);
-
-    STBVK__CHECK( vkEndCommandBuffer(cb) );
-    VkSubmitInfo submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.pNext = NULL;
-    submit_info.waitSemaphoreCount = 0;
-    submit_info.pWaitSemaphores = NULL;
-    submit_info.pWaitDstStageMask = NULL;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &cb;
-    submit_info.signalSemaphoreCount = 0;
-    submit_info.pSignalSemaphores = NULL;
-    STBVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence) );
-    STBVK__CHECK( vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX) );
-
-    vkFreeMemory(context->device, staging_buffer_mem, context->allocation_callbacks);
-    stbvk_destroy_buffer(context, staging_buffer);
-    stbvk_destroy_fence(context, fence);
-    stbvk_destroy_command_pool(context, cpool);
-
-    return VK_SUCCESS;
-}
-
-
-STBVKDEF VkBufferView stbvk_create_buffer_view(stbvk_context const *context, VkBufferViewCreateInfo const *ci,
-    const char *name)
-{
-    VkBufferView view = VK_NULL_HANDLE;
-    STBVK__CHECK( vkCreateBufferView(context->device, ci, context->allocation_callbacks, &view) );
-#if VK_EXT_debug_marker
-    if (stbvk__DebugMarkerSetObjectNameEXT)
-    {
-        VkDebugMarkerObjectNameInfoEXT name_info;
-        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
-        name_info.pNext = NULL;
-        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_VIEW_EXT;
-        name_info.object = (uint64_t)view;
-        name_info.pObjectName = name;
-        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
-    }
-#endif
-    return view;
-}
-
-STBVKDEF VkBufferView stbvk_create_buffer_view_from_buffer(stbvk_context const *context, VkBuffer buffer,
-    VkFormat format, const char *name)
-{
-    VkBufferViewCreateInfo view_ci = {};
-    view_ci.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
-    view_ci.buffer = buffer;
-    view_ci.format = format;
-    view_ci.offset = 0;
-    view_ci.range = VK_WHOLE_SIZE;
-    return stbvk_create_buffer_view(context, &view_ci, name);
-}
-
-STBVKDEF void stbvk_destroy_buffer_view(stbvk_context const *context, VkBufferView view)
-{
-    vkDestroyBufferView(context->device, view, context->allocation_callbacks);
-}
-
-STBVKDEF VkCommandPool stbvk_create_command_pool(stbvk_context const *context, VkCommandPoolCreateInfo const *ci, const char *name)
-{
-    VkCommandPool cpool = VK_NULL_HANDLE;
-    STBVK__CHECK(vkCreateCommandPool(context->device, ci, context->allocation_callbacks, &cpool));
-#if VK_EXT_debug_marker
-    if (stbvk__DebugMarkerSetObjectNameEXT)
-    {
-        VkDebugMarkerObjectNameInfoEXT name_info;
-        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
-        name_info.pNext = NULL;
-        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT;
-        name_info.object = (uint64_t)cpool;
-        name_info.pObjectName = name;
-        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
-    }
-#endif
-    return cpool;
-}
-STBVKDEF void stbvk_destroy_command_pool(stbvk_context const *context, VkCommandPool cpool)
-{
-    vkDestroyCommandPool(context->device, cpool, context->allocation_callbacks);
-}
-
-STBVKDEF VkFence stbvk_create_fence(stbvk_context const *context, VkFenceCreateInfo const *ci, const char *name)
-{
-    VkFence fence = VK_NULL_HANDLE;
-    STBVK__CHECK(vkCreateFence(context->device, ci, context->allocation_callbacks, &fence));
-#if VK_EXT_debug_marker
-    if (stbvk__DebugMarkerSetObjectNameEXT)
-    {
-        VkDebugMarkerObjectNameInfoEXT name_info;
-        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
-        name_info.pNext = NULL;
-        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT;
-        name_info.object = (uint64_t)fence;
-        name_info.pObjectName = name;
-        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
-    }
-#endif
-    return fence;
-}
-STBVKDEF void stbvk_destroy_fence(stbvk_context const *context, VkFence fence)
-{
-    vkDestroyFence(context->device, fence, context->allocation_callbacks);
-}
-
+//////////////////////// Device memory allocation
 
 STBVKDEF VkResult stbvk_allocate_device_memory(stbvk_context const *context, VkMemoryRequirements const *mem_reqs,
     stbvk_device_memory_arena const *arena, VkMemoryPropertyFlags memory_properties_mask, const char *name,
@@ -1236,23 +1271,245 @@ STBVKDEF void stbvk_free_device_memory(stbvk_context const *context, stbvk_devic
     return stbvk__device_free(context, arena, mem, offset);
 }
 
+STBVKDEF VkResult stbvk_allocate_and_bind_image_memory(stbvk_context const *context, VkImage image,
+    stbvk_device_memory_arena const *arena, VkMemoryPropertyFlags memory_properties_mask, const char *name,
+    VkDeviceMemory *out_mem, VkDeviceSize *out_offset)
+{
+    VkMemoryRequirements mem_reqs = {};
+    vkGetImageMemoryRequirements(context->device, image, &mem_reqs);
+    VkResult result = stbvk_allocate_device_memory(context, &mem_reqs, arena, memory_properties_mask,
+        name, out_mem, out_offset);
+    if (result != VK_SUCCESS)
+        return result;
+    return vkBindImageMemory(context->device, image, *out_mem, *out_offset);
+}
+STBVKDEF VkResult stbvk_allocate_and_bind_buffer_memory(stbvk_context const *context, VkBuffer buffer,
+    stbvk_device_memory_arena const *arena, VkMemoryPropertyFlags memory_properties_mask, const char *name,
+    VkDeviceMemory *out_mem, VkDeviceSize *out_offset)
+{
+    VkMemoryRequirements mem_reqs = {};
+    vkGetBufferMemoryRequirements(context->device, buffer, &mem_reqs);
+    VkResult result = stbvk_allocate_device_memory(context, &mem_reqs, arena, memory_properties_mask,
+        name, out_mem, out_offset);
+    if (result != VK_SUCCESS)
+        return result;
+    return vkBindBufferMemory(context->device, buffer, *out_mem, *out_offset);
+}
+
+STBVKDEF uint32_t stbvk_find_memory_type_index(VkPhysicalDeviceMemoryProperties const *device_memory_properties,
+    VkMemoryRequirements const *memory_reqs, VkMemoryPropertyFlags memory_properties_mask)
+{
+    for(uint32_t iMemType=0; iMemType<VK_MAX_MEMORY_TYPES; iMemType+=1)
+    {
+        if (	(memory_reqs->memoryTypeBits & (1<<iMemType)) != 0
+            &&	(device_memory_properties->memoryTypes[iMemType].propertyFlags & memory_properties_mask) == memory_properties_mask)
+        {
+            return iMemType;
+        }
+    }
+    return VK_MAX_MEMORY_TYPES; /* invalid index */
+}
+
+
+///////////////////////////// Object creation/deletion helpers
+
+STBVKDEF VkCommandPool stbvk_create_command_pool(stbvk_context const *context, VkCommandPoolCreateInfo const *ci, const char *name)
+{
+    VkCommandPool cpool = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateCommandPool(context->device, ci, context->allocation_callbacks, &cpool));
+    STBVK__CHECK(stbvk_name_command_pool(context->device, cpool, name));
+    return cpool;
+}
+STBVKDEF void stbvk_destroy_command_pool(stbvk_context const *context, VkCommandPool cpool)
+{
+    vkDestroyCommandPool(context->device, cpool, context->allocation_callbacks);
+}
+
+STBVKDEF VkSemaphore stbvk_create_semaphore(stbvk_context const *context, VkSemaphoreCreateInfo const *ci, const char *name)
+{
+    VkSemaphore semaphore = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateSemaphore(context->device, ci, context->allocation_callbacks, &semaphore));
+    STBVK__CHECK(stbvk_name_semaphore(context->device, semaphore, name));
+    return semaphore;
+}
+STBVKDEF void stbvk_destroy_semaphore(stbvk_context const *context, VkSemaphore semaphore)
+{
+    vkDestroySemaphore(context->device, semaphore, context->allocation_callbacks);
+}
+
+STBVKDEF VkFence stbvk_create_fence(stbvk_context const *context, VkFenceCreateInfo const *ci, const char *name)
+{
+    VkFence fence = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateFence(context->device, ci, context->allocation_callbacks, &fence));
+    STBVK__CHECK(stbvk_name_fence(context->device, fence, name));
+    return fence;
+}
+STBVKDEF void stbvk_destroy_fence(stbvk_context const *context, VkFence fence)
+{
+    vkDestroyFence(context->device, fence, context->allocation_callbacks);
+}
+
+STBVKDEF VkEvent stbvk_create_event(stbvk_context const *context, VkEventCreateInfo const *ci, const char *name)
+{
+    VkEvent event = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateEvent(context->device, ci, context->allocation_callbacks, &event));
+    STBVK__CHECK(stbvk_name_event(context->device, event, name));
+    return event;
+}
+STBVKDEF void stbvk_destroy_event(stbvk_context const *context, VkEvent event)
+{
+    vkDestroyEvent(context->device, event, context->allocation_callbacks);
+}
+
+STBVKDEF VkQueryPool stbvk_create_query_pool(stbvk_context const *context, VkQueryPoolCreateInfo const *ci, const char *name)
+{
+    VkQueryPool pool = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateQueryPool(context->device, ci, context->allocation_callbacks, &pool));
+    STBVK__CHECK(stbvk_name_query_pool(context->device, pool, name));
+    return pool;
+}
+STBVKDEF void stbvk_destroy_query_pool(stbvk_context const *context, VkQueryPool pool)
+{
+    vkDestroyQueryPool(context->device, pool, context->allocation_callbacks);
+}
+
+STBVKDEF VkPipelineCache stbvk_create_pipeline_cache(stbvk_context const *context, VkPipelineCacheCreateInfo const *ci, const char *name)
+{
+    VkPipelineCache cache = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreatePipelineCache(context->device, ci, context->allocation_callbacks, &cache));
+    STBVK__CHECK(stbvk_name_pipeline_cache(context->device, cache, name));
+    return cache;
+}
+STBVKDEF void stbvk_destroy_pipeline_cache(stbvk_context const *context, VkPipelineCache cache)
+{
+    vkDestroyPipelineCache(context->device, cache, context->allocation_callbacks);
+}
+
+STBVKDEF VkPipelineLayout stbvk_create_pipeline_layout(stbvk_context const *context, VkPipelineLayoutCreateInfo const *ci, const char *name)
+{
+    VkPipelineLayout layout = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreatePipelineLayout(context->device, ci, context->allocation_callbacks, &layout));
+    STBVK__CHECK(stbvk_name_pipeline_layout(context->device, layout, name));
+    return layout;
+}
+STBVKDEF void stbvk_destroy_pipeline_layout(stbvk_context const *context, VkPipelineLayout layout)
+{
+    vkDestroyPipelineLayout(context->device, layout, context->allocation_callbacks);
+}
+
+STBVKDEF VkRenderPass stbvk_create_render_pass(stbvk_context const *context, VkRenderPassCreateInfo const *ci, const char *name)
+{
+    VkRenderPass render_pass = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateRenderPass(context->device, ci, context->allocation_callbacks, &render_pass));
+    STBVK__CHECK(stbvk_name_render_pass(context->device, render_pass, name));
+    return render_pass;
+}
+STBVKDEF void stbvk_destroy_render_pass(stbvk_context const *context, VkRenderPass render_pass)
+{
+    vkDestroyRenderPass(context->device, render_pass, context->allocation_callbacks);
+}
+
+STBVKDEF VkPipeline stbvk_create_graphics_pipeline(stbvk_context const *context, VkGraphicsPipelineCreateInfo const *ci, const char *name)
+{
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateGraphicsPipelines(context->device, context->pipeline_cache, 1, ci, context->allocation_callbacks, &pipeline));
+    STBVK__CHECK(stbvk_name_pipeline(context->device, pipeline, name));
+    return pipeline;
+}
+STBVKDEF VkPipeline stbvk_create_compute_pipeline(stbvk_context const *context, VkComputePipelineCreateInfo const *ci, const char *name)
+{
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateComputePipelines(context->device, context->pipeline_cache, 1, ci, context->allocation_callbacks, &pipeline));
+    STBVK__CHECK(stbvk_name_pipeline(context->device, pipeline, name));
+    return pipeline;
+}
+STBVKDEF void stbvk_destroy_pipeline(stbvk_context const *context, VkPipeline pipeline)
+{
+    vkDestroyPipeline(context->device, pipeline, context->allocation_callbacks);
+}
+
+STBVKDEF VkDescriptorSetLayout stbvk_create_descriptor_set_layout(stbvk_context const *context, VkDescriptorSetLayoutCreateInfo const *ci, const char *name)
+{
+    VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateDescriptorSetLayout(context->device, ci, context->allocation_callbacks, &layout));
+    STBVK__CHECK(stbvk_name_descriptor_set_layout(context->device, layout, name));
+    return layout;
+}
+STBVKDEF void stbvk_destroy_descriptor_set_layout(stbvk_context const *context, VkDescriptorSetLayout layout)
+{
+    vkDestroyDescriptorSetLayout(context->device, layout, context->allocation_callbacks);
+}
+
+STBVKDEF VkSampler stbvk_create_sampler(stbvk_context const *context, VkSamplerCreateInfo const *ci, const char *name)
+{
+    VkSampler sampler = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateSampler(context->device, ci, context->allocation_callbacks, &sampler));
+    STBVK__CHECK(stbvk_name_sampler(context->device, sampler, name));
+    return sampler;
+}
+STBVKDEF void stbvk_destroy_sampler(stbvk_context const *context, VkSampler sampler)
+{
+    vkDestroySampler(context->device, sampler, context->allocation_callbacks);
+}
+
+STBVKDEF VkFramebuffer stbvk_create_framebuffer(stbvk_context const *context, VkFramebufferCreateInfo const *ci, const char *name)
+{
+    VkFramebuffer framebuffer = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateFramebuffer(context->device, ci, context->allocation_callbacks, &framebuffer));
+    STBVK__CHECK(stbvk_name_framebuffer(context->device, framebuffer, name));
+    return framebuffer;
+}
+STBVKDEF void stbvk_destroy_framebuffer(stbvk_context const *context, VkFramebuffer framebuffer)
+{
+    vkDestroyFramebuffer(context->device, framebuffer, context->allocation_callbacks);
+}
+
+STBVKDEF VkBuffer stbvk_create_buffer(stbvk_context const *context, VkBufferCreateInfo const *ci,
+    const char *name)
+{
+    VkBuffer buffer = VK_NULL_HANDLE;
+    STBVK__CHECK( vkCreateBuffer(context->device, ci, context->allocation_callbacks, &buffer) );
+    STBVK__CHECK(stbvk_name_buffer(context->device, buffer, name));
+    return buffer;
+}
+
+STBVKDEF void stbvk_destroy_buffer(stbvk_context const *context, VkBuffer buffer)
+{
+    vkDestroyBuffer(context->device, buffer, context->allocation_callbacks);
+}
+
+STBVKDEF VkBufferView stbvk_create_buffer_view(stbvk_context const *context, VkBufferViewCreateInfo const *ci,
+    const char *name)
+{
+    VkBufferView view = VK_NULL_HANDLE;
+    STBVK__CHECK( vkCreateBufferView(context->device, ci, context->allocation_callbacks, &view) );
+    STBVK__CHECK(stbvk_name_buffer_view(context->device, view, name));
+    return view;
+}
+
+STBVKDEF VkBufferView stbvk_create_buffer_view_from_buffer(stbvk_context const *context, VkBuffer buffer,
+    VkFormat format, const char *name)
+{
+    VkBufferViewCreateInfo view_ci = {};
+    view_ci.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
+    view_ci.buffer = buffer;
+    view_ci.format = format;
+    view_ci.offset = 0;
+    view_ci.range = VK_WHOLE_SIZE;
+    return stbvk_create_buffer_view(context, &view_ci, name);
+}
+
+STBVKDEF void stbvk_destroy_buffer_view(stbvk_context const *context, VkBufferView view)
+{
+    vkDestroyBufferView(context->device, view, context->allocation_callbacks);
+}
+
 STBVKDEF VkImage stbvk_create_image(stbvk_context const *context, VkImageCreateInfo const *ci,
     VkImageLayout final_layout, VkAccessFlags final_access_flags, const char *name)
 {
     VkImage image = VK_NULL_HANDLE;
     STBVK__CHECK( vkCreateImage(context->device, ci, context->allocation_callbacks, &image) );
-#if VK_EXT_debug_marker
-    if (stbvk__DebugMarkerSetObjectNameEXT)
-    {
-        VkDebugMarkerObjectNameInfoEXT name_info;
-        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
-        name_info.pNext = NULL;
-        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT;
-        name_info.object = (uint64_t)image;
-        name_info.pObjectName = name;
-        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
-    }
-#endif
+    STBVK__CHECK(stbvk_name_image(context->device, image, name));
     if (final_layout != ci->initialLayout)
     {
         VkCommandPoolCreateInfo cpool_ci;
@@ -1325,208 +1582,11 @@ STBVKDEF void stbvk_destroy_image(stbvk_context const *context, VkImage image)
     vkDestroyImage(context->device, image, context->allocation_callbacks);
 }
 
-static VkImage stbvk__create_staging_image(stbvk_context const *context, VkImageCreateInfo const *final_ci,
-    VkImageSubresource subresource)
-{
-    VkImageCreateInfo staging_ci = *final_ci;
-    staging_ci.flags &= ~VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-    staging_ci.tiling = VK_IMAGE_TILING_LINEAR;
-    staging_ci.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    staging_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    staging_ci.queueFamilyIndexCount = 0;
-    staging_ci.pQueueFamilyIndices = NULL;
-    staging_ci.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
-    staging_ci.arrayLayers = 1;
-    staging_ci.mipLevels = 1;
-    staging_ci.extent.width  = stbvk__max(final_ci->extent.width  >> subresource.mipLevel, 1U);
-    staging_ci.extent.height = stbvk__max(final_ci->extent.height >> subresource.mipLevel, 1U);
-    staging_ci.extent.depth  = stbvk__max(final_ci->extent.depth  >> subresource.mipLevel, 1U);
-    return stbvk_create_image(context, &staging_ci, staging_ci.initialLayout, 0, "stbvk staging image");
-}
-
-STBVKDEF VkSubresourceLayout stbvk_image_get_subresource_source_layout(stbvk_context const *context,
-    VkImageCreateInfo const *ci, VkImageSubresource subresource)
-{
-    // TODO(cort): validate subresource against image bounds
-    VkImage staging_image_temp = stbvk__create_staging_image(context, ci, subresource);
-    VkSubresourceLayout sub_layout;
-    vkGetImageSubresourceLayout(context->device, staging_image_temp, &subresource, &sub_layout);
-    stbvk_destroy_image(context, staging_image_temp);
-    return sub_layout;
-}
-
-STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, VkImage dst_image,
-    VkImageCreateInfo const *dst_ci, VkImageSubresource subresource, VkSubresourceLayout subresource_layout,
-    VkImageLayout final_image_layout, VkAccessFlagBits final_access_flags, void const *pixels)
-{
-    STBVK_ASSERT(dst_ci->usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-
-    VkImage staging_image = stbvk__create_staging_image(context, dst_ci, subresource);
-    VkMemoryRequirements memory_reqs;
-    vkGetImageMemoryRequirements(context->device, staging_image, &memory_reqs);
-    VkMemoryAllocateInfo memory_allocate_info;
-    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memory_allocate_info.pNext = NULL;
-    memory_allocate_info.allocationSize = memory_reqs.size;
-    memory_allocate_info.memoryTypeIndex = stbvk_find_memory_type_index(&context->physical_device_memory_properties,
-        &memory_reqs, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    STBVK_ASSERT(memory_allocate_info.memoryTypeIndex < VK_MAX_MEMORY_TYPES);
-    VkDeviceMemory staging_device_memory = VK_NULL_HANDLE;
-    VkDeviceSize staging_memory_offset = 0;
-    // TODO(cort): shouldn't be allocating device memory here...
-    STBVK__CHECK( vkAllocateMemory(context->device, &memory_allocate_info, context->allocation_callbacks, &staging_device_memory) );
-    STBVK__CHECK( vkBindImageMemory(context->device, staging_image, staging_device_memory, staging_memory_offset) );
-
-    VkSubresourceLayout layout_sanity_check = {};
-    vkGetImageSubresourceLayout(context->device, staging_image, &subresource, &layout_sanity_check);
-    STBVK_ASSERT(
-        layout_sanity_check.offset     == subresource_layout.offset &&
-        layout_sanity_check.size       == subresource_layout.size &&
-        layout_sanity_check.rowPitch   == subresource_layout.rowPitch &&
-        layout_sanity_check.arrayPitch == subresource_layout.arrayPitch &&
-        layout_sanity_check.depthPitch == subresource_layout.depthPitch);
-
-    void *mapped_subresource_data = NULL;
-    VkMemoryMapFlags memory_map_flags = 0;
-    STBVK__CHECK( vkMapMemory(context->device, staging_device_memory, staging_memory_offset,
-        memory_reqs.size, memory_map_flags, &mapped_subresource_data) );
-    memcpy(mapped_subresource_data, pixels, subresource_layout.size);
-    vkUnmapMemory(context->device, staging_device_memory);
-
-    VkCommandPoolCreateInfo cpool_ci;
-    cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    cpool_ci.pNext = NULL;
-    cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-    cpool_ci.queueFamilyIndex = context->graphics_queue_family_index;
-    VkCommandPool cpool = stbvk_create_command_pool(context, &cpool_ci, "stbvk_image_load_subresource temp cpool");
-
-    VkFenceCreateInfo fence_ci = {};
-    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_ci.pNext = NULL;
-    fence_ci.flags = 0;
-    VkFence fence = stbvk_create_fence(context, &fence_ci, "stbvk_image_load_subresource temp fence");
-
-    VkCommandBufferAllocateInfo cb_allocate_info = {};
-    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cb_allocate_info.pNext = NULL;
-    cb_allocate_info.commandPool = cpool;
-    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cb_allocate_info.commandBufferCount = 1;
-    VkCommandBuffer cb = VK_NULL_HANDLE;
-    STBVK__CHECK( vkAllocateCommandBuffers(context->device, &cb_allocate_info, &cb) );
-    VkCommandBufferBeginInfo cb_begin_info = {};
-    cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cb_begin_info.pNext = NULL;
-    cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
-    cb_begin_info.pInheritanceInfo = NULL;
-    STBVK__CHECK( vkBeginCommandBuffer(cb, &cb_begin_info) );
-
-    VkImageSubresourceRange src_sub_range = {};
-    src_sub_range.aspectMask = stbvk__image_aspect_from_format(dst_ci->format);
-    src_sub_range.baseMipLevel = 0;
-    src_sub_range.baseArrayLayer = 0;
-    src_sub_range.levelCount = 1;
-    src_sub_range.layerCount = 1;
-    VkImageMemoryBarrier src_img_barrier = {}; // TODO(cort): merge src & dest barriers into one vkcmd
-    src_img_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    src_img_barrier.pNext = NULL;
-    src_img_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-    src_img_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    src_img_barrier.oldLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
-    src_img_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    src_img_barrier.image = staging_image;
-    src_img_barrier.subresourceRange = src_sub_range;
-    vkCmdPipelineBarrier(cb,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
-        0,NULL, 0,NULL, 1,&src_img_barrier);
-
-    VkImageSubresourceRange dst_sub_range = {};
-    dst_sub_range.aspectMask = src_sub_range.aspectMask;
-    dst_sub_range.baseMipLevel = subresource.mipLevel;
-    dst_sub_range.levelCount = 1;
-    dst_sub_range.baseArrayLayer = subresource.arrayLayer;
-    dst_sub_range.layerCount = 1;
-    VkImageMemoryBarrier dst_img_barrier;
-    dst_img_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    dst_img_barrier.pNext = NULL;
-    dst_img_barrier.srcAccessMask = 0; // TODO(cort): erm...all access, technically?
-    dst_img_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    dst_img_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    dst_img_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    dst_img_barrier.image = dst_image;
-    dst_img_barrier.subresourceRange = dst_sub_range;
-    vkCmdPipelineBarrier(cb,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
-        0,NULL, 0,NULL, 1,&dst_img_barrier);
-
-    VkImageCopy copy_region = {};
-    copy_region.srcSubresource.aspectMask = src_sub_range.aspectMask;
-    copy_region.srcSubresource.baseArrayLayer = src_sub_range.baseArrayLayer;
-    copy_region.srcSubresource.layerCount = src_sub_range.layerCount;
-    copy_region.srcSubresource.mipLevel = src_sub_range.baseMipLevel;
-    copy_region.srcOffset.x = 0;
-    copy_region.srcOffset.y = 0;
-    copy_region.srcOffset.z = 0;
-    copy_region.dstSubresource.aspectMask = dst_sub_range.aspectMask;
-    copy_region.dstSubresource.baseArrayLayer = dst_sub_range.baseArrayLayer;
-    copy_region.dstSubresource.layerCount = dst_sub_range.layerCount;
-    copy_region.dstSubresource.mipLevel = dst_sub_range.baseMipLevel;
-    copy_region.dstOffset.x = 0;
-    copy_region.dstOffset.y = 0;
-    copy_region.dstOffset.z = 0;
-    copy_region.extent.width  = stbvk__max(dst_ci->extent.width  >> subresource.mipLevel, 1U);
-    copy_region.extent.height = stbvk__max(dst_ci->extent.height >> subresource.mipLevel, 1U);
-    copy_region.extent.depth  = stbvk__max(dst_ci->extent.depth  >> subresource.mipLevel, 1U);
-    vkCmdCopyImage(cb,
-        staging_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
-
-    dst_img_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    dst_img_barrier.dstAccessMask = final_access_flags;
-    dst_img_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    dst_img_barrier.newLayout = final_image_layout;
-    vkCmdPipelineBarrier(cb,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
-        0,NULL, 0,NULL, 1,&dst_img_barrier);
-
-    STBVK__CHECK( vkEndCommandBuffer(cb) );
-    VkSubmitInfo submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.pNext = NULL;
-    submit_info.waitSemaphoreCount = 0;
-    submit_info.pWaitSemaphores = NULL;
-    submit_info.pWaitDstStageMask = NULL;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &cb;
-    submit_info.signalSemaphoreCount = 0;
-    submit_info.pSignalSemaphores = NULL;
-    STBVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence) );
-    STBVK__CHECK( vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX) );
-
-    vkFreeMemory(context->device, staging_device_memory, context->allocation_callbacks);
-    stbvk_destroy_image(context, staging_image);
-    stbvk_destroy_fence(context, fence);
-    stbvk_destroy_command_pool(context, cpool);
-
-    return VK_SUCCESS;
-}
-
 STBVKDEF VkImageView stbvk_create_image_view(stbvk_context const *context, VkImageViewCreateInfo const *ci, const char *name)
 {
     VkImageView image_view = VK_NULL_HANDLE;
     STBVK__CHECK(vkCreateImageView(context->device, ci, context->allocation_callbacks, &image_view));
-#if VK_EXT_debug_marker
-    if (stbvk__DebugMarkerSetObjectNameEXT)
-    {
-        VkDebugMarkerObjectNameInfoEXT name_info;
-        name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
-        name_info.pNext = NULL;
-        name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT;
-        name_info.object = (uint64_t)image_view;
-        name_info.pObjectName = name;
-        STBVK__CHECK(stbvk__DebugMarkerSetObjectNameEXT(context->device, &name_info));
-    }
-#endif
+    STBVK__CHECK(stbvk_name_image_view(context->device, image_view, name));
     return image_view;
 }
 STBVKDEF VkImageView stbvk_create_image_view_from_image(stbvk_context const *context, VkImage image,
@@ -1572,57 +1632,17 @@ STBVKDEF void stbvk_destroy_image_view(stbvk_context const *context, VkImageView
     vkDestroyImageView(context->device, imageView, context->allocation_callbacks);
 }
 
-
-#ifndef STBVK_NO_STDIO
-STBVKDEF VkShaderModule stbvk_load_shader_from_file(stbvk_context *c, FILE *f, int len)
+STBVKDEF VkDescriptorPool stbvk_create_descriptor_pool(stbvk_context const *context,
+    const VkDescriptorPoolCreateInfo *ci, const char *name)
 {
-    void *shader_bin = stbvk__host_alloc(len, sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, c->allocation_callbacks);
-    size_t bytes_read = fread(shader_bin, 1, len, f);
-    if ( (int)bytes_read != len)
-    {
-        stbvk__host_free(shader_bin, c->allocation_callbacks);
-        return VK_NULL_HANDLE;
-    }
-    VkShaderModule shader_module = stbvk_load_shader_from_memory(c, (const stbvk_uc*)shader_bin, len);
-    stbvk__host_free(shader_bin, c->allocation_callbacks);
-    return shader_module;
-}
-STBVKDEF VkShaderModule stbvk_load_shader(stbvk_context *c, char const *filename)
-{
-    FILE *spv_file = stbvk__fopen(filename, "rb");
-    if (!spv_file)
-    {
-        return VK_NULL_HANDLE;
-    }
-    fseek(spv_file, 0, SEEK_END);
-    long spv_file_size = ftell(spv_file);
-    fseek(spv_file, 0, SEEK_SET);
-    VkShaderModule shader_module = stbvk_load_shader_from_file(c, spv_file, spv_file_size);
-    fclose(spv_file);
-    return shader_module;
-}
-#endif
-
-STBVKDEF VkShaderModule stbvk_load_shader_from_memory(stbvk_context *c, stbvk_uc const *buffer, int len)
-{
-    VkShaderModuleCreateInfo smci = {};
-    smci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    smci.pNext = NULL;
-    smci.flags = 0;
-    smci.codeSize = len;
-    smci.pCode = (uint32_t*)buffer;
-    VkShaderModule shader_module = VK_NULL_HANDLE;
-    STBVK__CHECK( vkCreateShaderModule(c->device, &smci, c->allocation_callbacks, &shader_module) );
-
-    return shader_module;
-}
-STBVKDEF VkShaderModule stbvk_load_shader_from_callbacks(stbvk_context * /*c*/, stbvk_io_callbacks const * /*clbk*/, void * /*user*/)
-{
-    return VK_NULL_HANDLE;
+    VkDescriptorPool dpool = VK_NULL_HANDLE;
+    STBVK__CHECK(vkCreateDescriptorPool(context->device, ci, context->allocation_callbacks, &dpool));
+    STBVK__CHECK(stbvk_name_descriptor_pool(context->device, dpool, name));
+    return dpool;
 }
 
-STBVKDEF VkResult stbvk_create_descriptor_pool(stbvk_context const *c, const VkDescriptorSetLayoutCreateInfo *layout_ci, uint32_t max_sets,
-    VkDescriptorPoolCreateFlags flags, VkDescriptorPool *out_pool)
+STBVKDEF VkDescriptorPool stbvk_create_descriptor_pool_from_layout(stbvk_context const *c, const VkDescriptorSetLayoutCreateInfo *layout_ci, uint32_t max_sets,
+    VkDescriptorPoolCreateFlags flags, const char *name)
 {
     // TODO(cort): should this function take an array of layout_cis and set its sizes based on the total descriptor counts
     // across all sets? That would allow one monolithic pool for each thread, instead of one per descriptor set.
@@ -1649,77 +1669,370 @@ STBVKDEF VkResult stbvk_create_descriptor_pool(stbvk_context const *c, const VkD
 	pool_ci.maxSets = max_sets;
     pool_ci.poolSizeCount = VK_DESCRIPTOR_TYPE_RANGE_SIZE;
     pool_ci.pPoolSizes = pool_sizes;
-    return vkCreateDescriptorPool(c->device, &pool_ci, c->allocation_callbacks, out_pool);
+    return stbvk_create_descriptor_pool(c, &pool_ci, name);
 }
 
-STBVKDEF void stbvk_set_image_layout(VkCommandBuffer cmd_buf, VkImage image,
-        VkImageSubresourceRange subresource_range, VkImageLayout old_layout, VkImageLayout new_layout,
-        VkAccessFlags src_access_mask)
+STBVKDEF void stbvk_destroy_descriptor_pool(stbvk_context const *c, VkDescriptorPool pool)
 {
-    VkImageMemoryBarrier img_memory_barrier = {};
-    img_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    img_memory_barrier.pNext = NULL;
-    img_memory_barrier.srcAccessMask = src_access_mask;
-    img_memory_barrier.dstAccessMask = 0; // overwritten below
-    img_memory_barrier.oldLayout = old_layout;
-    img_memory_barrier.newLayout = new_layout;
-    img_memory_barrier.image = image;
-    img_memory_barrier.subresourceRange = subresource_range;
+    vkDestroyDescriptorPool(c->device, pool, c->allocation_callbacks);
+}
 
-    switch(old_layout)
+STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, VkBuffer dst_buffer,
+    VkBufferCreateInfo const *dst_ci, VkDeviceSize dst_offset,
+    const void *src_data, VkDeviceSize src_size, VkAccessFlagBits final_access_flags)
+{
+    // TODO(cort): Make sure I'm clear that dst_offset is relative to buffer start, not relative
+    // to the backing VkDeviceMemory objects!
+    STBVK_ASSERT(src_size <= dst_offset + dst_ci->size);
+    STBVK_ASSERT(dst_ci->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+
+    VkBufferCreateInfo staging_buffer_create_info = {};
+    staging_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    staging_buffer_create_info.pNext = NULL;
+    staging_buffer_create_info.flags = 0;
+    staging_buffer_create_info.size = src_size;
+    staging_buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    staging_buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    staging_buffer_create_info.queueFamilyIndexCount = 0;
+    staging_buffer_create_info.pQueueFamilyIndices = NULL;
+    VkBuffer staging_buffer = stbvk_create_buffer(context, &staging_buffer_create_info,
+        "stbvk_buffer_load_contents() staging");
+    // TODO(cort): pass an arena to allocate from
+    stbvk_device_memory_arena *device_arena = NULL;
+    VkDeviceMemory staging_buffer_mem = VK_NULL_HANDLE;
+    VkDeviceSize staging_buffer_mem_offset = 0;
+    STBVK__CHECK(stbvk_allocate_and_bind_buffer_memory(context, staging_buffer, device_arena,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        "stbvk_buffer_load_contents() staging buffer memory",
+        &staging_buffer_mem, &staging_buffer_mem_offset));
+
+    void *mapped_data = NULL;
+    VkMemoryMapFlags map_flags = 0;
+    STBVK__CHECK( vkMapMemory(context->device, staging_buffer_mem, 0, src_size, map_flags, &mapped_data) );
+    memcpy(mapped_data, src_data, src_size);
+    vkUnmapMemory(context->device, staging_buffer_mem);
+
+    VkCommandPoolCreateInfo cpool_ci;
+    cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    cpool_ci.pNext = NULL;
+    cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    cpool_ci.queueFamilyIndex = context->graphics_queue_family_index;
+    VkCommandPool cpool = stbvk_create_command_pool(context, &cpool_ci, "stbvk_buffer_load_contents temp cpool");
+
+    VkFenceCreateInfo fence_ci = {};
+    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_ci.pNext = NULL;
+    fence_ci.flags = 0;
+    VkFence fence = stbvk_create_fence(context, &fence_ci, "stbvk_buffer_load_contents temp fence");
+
+    VkCommandBufferAllocateInfo cb_allocate_info = {};
+    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cb_allocate_info.pNext = NULL;
+    cb_allocate_info.commandPool = cpool;
+    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cb_allocate_info.commandBufferCount = 1;
+    VkCommandBuffer cb = VK_NULL_HANDLE;
+    STBVK__CHECK( vkAllocateCommandBuffers(context->device, &cb_allocate_info, &cb) );
+    STBVK__CHECK(stbvk_name_command_buffer(context->device, cb, "stbvk_load_buffer_contents() cb"));
+    VkCommandBufferBeginInfo cb_begin_info = {};
+    cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cb_begin_info.pNext = NULL;
+    cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
+    cb_begin_info.pInheritanceInfo = NULL;
+    STBVK__CHECK( vkBeginCommandBuffer(cb, &cb_begin_info) );
+
+    VkBufferMemoryBarrier buf_barriers[2] = {};
+    buf_barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    buf_barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+    buf_barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    buf_barriers[0].srcQueueFamilyIndex = context->graphics_queue_family_index;
+    buf_barriers[0].dstQueueFamilyIndex = context->graphics_queue_family_index;
+    buf_barriers[0].buffer = staging_buffer;
+    buf_barriers[0].offset = 0;
+    buf_barriers[0].size = src_size;
+    buf_barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    buf_barriers[1].srcAccessMask = 0; // TODO(cort): erm...all access, technically?
+    buf_barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    buf_barriers[1].srcQueueFamilyIndex = context->graphics_queue_family_index;
+    buf_barriers[1].dstQueueFamilyIndex = context->graphics_queue_family_index;
+    buf_barriers[1].buffer = dst_buffer;
+    buf_barriers[1].offset = dst_offset;
+    buf_barriers[1].size = src_size;
+    vkCmdPipelineBarrier(cb,
+        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+        0,NULL, 2,buf_barriers, 0,NULL);
+
+    VkBufferCopy buffer_copy_region = {};
+    buffer_copy_region.srcOffset = 0;
+    buffer_copy_region.dstOffset = dst_offset;
+    buffer_copy_region.size = src_size;
+    vkCmdCopyBuffer(cb, staging_buffer, dst_buffer, 1, &buffer_copy_region);
+
+    buf_barriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    buf_barriers[1].dstAccessMask = final_access_flags;
+    vkCmdPipelineBarrier(cb,
+        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+        0,NULL, 1,&buf_barriers[1], 0,NULL);
+
+    STBVK__CHECK( vkEndCommandBuffer(cb) );
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.pNext = NULL;
+    submit_info.waitSemaphoreCount = 0;
+    submit_info.pWaitSemaphores = NULL;
+    submit_info.pWaitDstStageMask = NULL;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &cb;
+    submit_info.signalSemaphoreCount = 0;
+    submit_info.pSignalSemaphores = NULL;
+    STBVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence) );
+    STBVK__CHECK( vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX) );
+
+    stbvk_free_device_memory(context, device_arena, staging_buffer_mem, staging_buffer_mem_offset);
+    stbvk_destroy_buffer(context, staging_buffer);
+    stbvk_destroy_fence(context, fence);
+    stbvk_destroy_command_pool(context, cpool);
+
+    return VK_SUCCESS;
+}
+
+static VkImage stbvk__create_staging_image(stbvk_context const *context, VkImageCreateInfo const *final_ci,
+    VkImageSubresource subresource)
+{
+    VkImageCreateInfo staging_ci = *final_ci;
+    staging_ci.flags &= ~VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    staging_ci.tiling = VK_IMAGE_TILING_LINEAR;
+    staging_ci.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    staging_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    staging_ci.queueFamilyIndexCount = 0;
+    staging_ci.pQueueFamilyIndices = NULL;
+    staging_ci.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+    staging_ci.arrayLayers = 1;
+    staging_ci.mipLevels = 1;
+    staging_ci.extent.width  = stbvk__max(final_ci->extent.width  >> subresource.mipLevel, 1U);
+    staging_ci.extent.height = stbvk__max(final_ci->extent.height >> subresource.mipLevel, 1U);
+    staging_ci.extent.depth  = stbvk__max(final_ci->extent.depth  >> subresource.mipLevel, 1U);
+    return stbvk_create_image(context, &staging_ci, staging_ci.initialLayout, 0, "stbvk staging image");
+}
+
+STBVKDEF VkSubresourceLayout stbvk_image_get_subresource_source_layout(stbvk_context const *context,
+    VkImageCreateInfo const *ci, VkImageSubresource subresource)
+{
+    // TODO(cort): validate subresource against image bounds
+    VkImage staging_image_temp = stbvk__create_staging_image(context, ci, subresource);
+    VkSubresourceLayout sub_layout;
+    vkGetImageSubresourceLayout(context->device, staging_image_temp, &subresource, &sub_layout);
+    stbvk_destroy_image(context, staging_image_temp);
+    return sub_layout;
+}
+
+STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, VkImage dst_image,
+    VkImageCreateInfo const *dst_ci, VkImageSubresource subresource, VkSubresourceLayout subresource_layout,
+    VkImageLayout final_image_layout, VkAccessFlagBits final_access_flags, void const *pixels)
+{
+    STBVK_ASSERT(dst_ci->usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+
+    VkImage staging_image = stbvk__create_staging_image(context, dst_ci, subresource);
+    // TODO: pass in a device_arena to allocate from.
+    stbvk_device_memory_arena *device_arena = NULL;
+    VkDeviceMemory staging_device_memory = VK_NULL_HANDLE;
+    VkDeviceSize staging_memory_offset = 0;
+    STBVK__CHECK(stbvk_allocate_and_bind_image_memory(context, staging_image, device_arena,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        "stbvk_image_load_subresource() staging image memory",
+        &staging_device_memory, &staging_memory_offset));
+
+    VkSubresourceLayout layout_sanity_check = {};
+    vkGetImageSubresourceLayout(context->device, staging_image, &subresource, &layout_sanity_check);
+    STBVK_ASSERT(
+        layout_sanity_check.offset     == subresource_layout.offset &&
+        layout_sanity_check.size       == subresource_layout.size &&
+        layout_sanity_check.rowPitch   == subresource_layout.rowPitch &&
+        layout_sanity_check.arrayPitch == subresource_layout.arrayPitch &&
+        layout_sanity_check.depthPitch == subresource_layout.depthPitch);
+
+    void *mapped_subresource_data = NULL;
+    VkMemoryMapFlags memory_map_flags = 0;
+    // TODO(cort): return memory reqs from allocate_and_bind functions
+    VkMemoryRequirements staging_memory_reqs = {};
+    vkGetImageMemoryRequirements(context->device, staging_image, &staging_memory_reqs);
+    STBVK__CHECK( vkMapMemory(context->device, staging_device_memory, staging_memory_offset,
+        staging_memory_reqs.size, memory_map_flags, &mapped_subresource_data) );
+    memcpy(mapped_subresource_data, pixels, subresource_layout.size);
+    vkUnmapMemory(context->device, staging_device_memory);
+
+    VkCommandPoolCreateInfo cpool_ci;
+    cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    cpool_ci.pNext = NULL;
+    cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    cpool_ci.queueFamilyIndex = context->graphics_queue_family_index;
+    VkCommandPool cpool = stbvk_create_command_pool(context, &cpool_ci, "stbvk_image_load_subresource temp cpool");
+
+    VkFenceCreateInfo fence_ci = {};
+    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_ci.pNext = NULL;
+    fence_ci.flags = 0;
+    VkFence fence = stbvk_create_fence(context, &fence_ci, "stbvk_image_load_subresource temp fence");
+
+    VkCommandBufferAllocateInfo cb_allocate_info = {};
+    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cb_allocate_info.pNext = NULL;
+    cb_allocate_info.commandPool = cpool;
+    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cb_allocate_info.commandBufferCount = 1;
+    VkCommandBuffer cb = VK_NULL_HANDLE;
+    STBVK__CHECK( vkAllocateCommandBuffers(context->device, &cb_allocate_info, &cb) );
+    STBVK__CHECK(stbvk_name_command_buffer(context->device, cb, "stbvk_image_load_subresource cb"));
+    VkCommandBufferBeginInfo cb_begin_info = {};
+    cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cb_begin_info.pNext = NULL;
+    cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
+    cb_begin_info.pInheritanceInfo = NULL;
+    STBVK__CHECK( vkBeginCommandBuffer(cb, &cb_begin_info) );
+
+    VkImageSubresourceRange src_sub_range = {};
+    src_sub_range.aspectMask = stbvk__image_aspect_from_format(dst_ci->format);
+    src_sub_range.baseMipLevel = 0;
+    src_sub_range.baseArrayLayer = 0;
+    src_sub_range.levelCount = 1;
+    src_sub_range.layerCount = 1;
+    VkImageSubresourceRange dst_sub_range = {};
+    dst_sub_range.aspectMask = src_sub_range.aspectMask;
+    dst_sub_range.baseMipLevel = subresource.mipLevel;
+    dst_sub_range.levelCount = 1;
+    dst_sub_range.baseArrayLayer = subresource.arrayLayer;
+    dst_sub_range.layerCount = 1;
+    VkImageMemoryBarrier img_barriers[2] = {};
+    img_barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    img_barriers[0].pNext = NULL;
+    img_barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+    img_barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    img_barriers[0].oldLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+    img_barriers[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    img_barriers[0].image = staging_image;
+    img_barriers[0].subresourceRange = src_sub_range;
+    img_barriers[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    img_barriers[1].pNext = NULL;
+    img_barriers[1].srcAccessMask = 0; // TODO(cort): erm...all access, technically?
+    img_barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    img_barriers[1].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    img_barriers[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    img_barriers[1].image = dst_image;
+    img_barriers[1].subresourceRange = dst_sub_range;
+    vkCmdPipelineBarrier(cb,
+        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+        0,NULL, 0,NULL, 2,img_barriers);
+
+    VkImageCopy copy_region = {};
+    copy_region.srcSubresource.aspectMask = src_sub_range.aspectMask;
+    copy_region.srcSubresource.baseArrayLayer = src_sub_range.baseArrayLayer;
+    copy_region.srcSubresource.layerCount = src_sub_range.layerCount;
+    copy_region.srcSubresource.mipLevel = src_sub_range.baseMipLevel;
+    copy_region.srcOffset.x = 0;
+    copy_region.srcOffset.y = 0;
+    copy_region.srcOffset.z = 0;
+    copy_region.dstSubresource.aspectMask = dst_sub_range.aspectMask;
+    copy_region.dstSubresource.baseArrayLayer = dst_sub_range.baseArrayLayer;
+    copy_region.dstSubresource.layerCount = dst_sub_range.layerCount;
+    copy_region.dstSubresource.mipLevel = dst_sub_range.baseMipLevel;
+    copy_region.dstOffset.x = 0;
+    copy_region.dstOffset.y = 0;
+    copy_region.dstOffset.z = 0;
+    copy_region.extent.width  = stbvk__max(dst_ci->extent.width  >> subresource.mipLevel, 1U);
+    copy_region.extent.height = stbvk__max(dst_ci->extent.height >> subresource.mipLevel, 1U);
+    copy_region.extent.depth  = stbvk__max(dst_ci->extent.depth  >> subresource.mipLevel, 1U);
+    vkCmdCopyImage(cb,
+        staging_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+
+    img_barriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    img_barriers[1].dstAccessMask = final_access_flags;
+    img_barriers[1].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    img_barriers[1].newLayout = final_image_layout;
+    vkCmdPipelineBarrier(cb,
+        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+        0,NULL, 0,NULL, 1,&img_barriers[1]);
+
+    STBVK__CHECK( vkEndCommandBuffer(cb) );
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.pNext = NULL;
+    submit_info.waitSemaphoreCount = 0;
+    submit_info.pWaitSemaphores = NULL;
+    submit_info.pWaitDstStageMask = NULL;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &cb;
+    submit_info.signalSemaphoreCount = 0;
+    submit_info.pSignalSemaphores = NULL;
+    STBVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence) );
+    STBVK__CHECK( vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX) );
+
+    stbvk_free_device_memory(context, device_arena, staging_device_memory, staging_memory_offset);
+    stbvk_destroy_image(context, staging_image);
+    stbvk_destroy_fence(context, fence);
+    stbvk_destroy_command_pool(context, cpool);
+
+    return VK_SUCCESS;
+}
+
+////////////////////// Shader module loading
+
+#ifndef STBVK_NO_STDIO
+STBVKDEF VkShaderModule stbvk_load_shader_from_file(stbvk_context const *c, FILE *f, int len, const char *name)
+{
+    void *shader_bin = stbvk__host_alloc(len, sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, c->allocation_callbacks);
+    size_t bytes_read = fread(shader_bin, 1, len, f);
+    if ( (int)bytes_read != len)
     {
-    case VK_IMAGE_LAYOUT_PREINITIALIZED:
-        img_memory_barrier.srcAccessMask |= VK_ACCESS_HOST_WRITE_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-        img_memory_barrier.srcAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-        img_memory_barrier.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        break;
-    default:
-        break;
+        stbvk__host_free(shader_bin, c->allocation_callbacks);
+        return VK_NULL_HANDLE;
     }
-
-    switch(new_layout)
+    VkShaderModule shader_module = stbvk_load_shader_from_memory(c, (const stbvk_uc*)shader_bin, len, name);
+    stbvk__host_free(shader_bin, c->allocation_callbacks);
+    return shader_module;
+}
+STBVKDEF VkShaderModule stbvk_load_shader(stbvk_context const *c, char const *filename)
+{
+    FILE *spv_file = stbvk__fopen(filename, "rb");
+    if (!spv_file)
     {
-    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-        img_memory_barrier.dstAccessMask |= VK_ACCESS_TRANSFER_READ_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-        img_memory_barrier.dstAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-        img_memory_barrier.dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-        img_memory_barrier.dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-        // Make sure any Copy or CPU writes to image are flushed
-        img_memory_barrier.dstAccessMask |= VK_ACCESS_SHADER_READ_BIT;
-        img_memory_barrier.dstAccessMask |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-        break;
-    default:
-        break;
+        return VK_NULL_HANDLE;
     }
+    fseek(spv_file, 0, SEEK_END);
+    long spv_file_size = ftell(spv_file);
+    fseek(spv_file, 0, SEEK_SET);
+    VkShaderModule shader_module = stbvk_load_shader_from_file(c, spv_file, spv_file_size, filename);
+    fclose(spv_file);
+    return shader_module;
+}
+#endif
 
-    VkPipelineStageFlags src_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    VkPipelineStageFlags dst_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    // TODO(cort):
-    VkDependencyFlags dependency_flags = 0;
-    uint32_t memory_barrier_count = 0;
-    const VkMemoryBarrier *memory_barriers = NULL;
-    uint32_t buffer_memory_barrier_count = 0;
-    const VkBufferMemoryBarrier *buffer_memory_barriers = NULL;
-    uint32_t image_memory_barrier_count = 1;
-    vkCmdPipelineBarrier(cmd_buf, src_stages, dst_stages, dependency_flags,
-        memory_barrier_count, memory_barriers,
-        buffer_memory_barrier_count, buffer_memory_barriers,
-        image_memory_barrier_count, &img_memory_barrier);
+STBVKDEF VkShaderModule stbvk_load_shader_from_memory(stbvk_context const *c, stbvk_uc const *buffer, int len, const char *name)
+{
+    VkShaderModuleCreateInfo smci = {};
+    smci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    smci.pNext = NULL;
+    smci.flags = 0;
+    smci.codeSize = len;
+    smci.pCode = (uint32_t*)buffer;
+    VkShaderModule shader_module = VK_NULL_HANDLE;
+    STBVK__CHECK( vkCreateShaderModule(c->device, &smci, c->allocation_callbacks, &shader_module) );
+    STBVK__CHECK(stbvk_name_shader_module(c->device, shader_module, name));
+    return shader_module;
+}
+STBVKDEF VkShaderModule stbvk_load_shader_from_callbacks(stbvk_context const * /*c*/, stbvk_io_callbacks const * /*clbk*/, void * /*user*/,
+    const char * /*name*/)
+{
+    return VK_NULL_HANDLE;
+}
+
+STBVKDEF void stbvk_destroy_shader(stbvk_context const *c, VkShaderModule shader)
+{
+    vkDestroyShaderModule(c->device, shader, c->allocation_callbacks);
 }
 
 
+////////////////////////// VkGraphicsPipelineCreateInfo helpers
 
 STBVKDEF int stbvk_prepare_graphics_pipeline_create_info_vsps(
     stbvk_graphics_pipeline_settings_vsps const *settings,
@@ -1868,102 +2181,5 @@ STBVKDEF int stbvk_prepare_graphics_pipeline_create_info_vsps(
 
     return 0;
 }
-
-
-//////////////////////////// stbvk_memory_device_arena_flat
-
-typedef struct stbvk_device_memory_arena_flat_data
-{
-	VkDeviceMemory mem;
-	VkDeviceSize base_offset;
-	VkDeviceSize max_offset;
-	uint32_t memory_type_index;
-	stbvk_device_memory_arena_flags flags;
-	VkDeviceSize top; // separate cache line. Always between base_offset and max_offset.
-} stbvk_device_memory_arena_flat_data;
-
-static VkResult stbvk__device_memory_arena_flat_alloc(void *user_data, const VkMemoryAllocateInfo *alloc_info,
-    VkDeviceSize alignment, VkDeviceMemory *out_mem, VkDeviceSize *out_offset)
-{
-    stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)user_data;
-	if (alloc_info->memoryTypeIndex != arena_data->memory_type_index)
-		return VK_ERROR_OUT_OF_DEVICE_MEMORY;
-    VkResult result = VK_SUCCESS;
-    for(;;) {
-        VkDeviceSize top = arena_data->top;
-        VkDeviceSize aligned_top = (top + alignment - 1) & ~(alignment-1);
-        VkDeviceSize new_top = aligned_top + alloc_info->allocationSize;
-        if (new_top >= aligned_top &&
-				new_top <= arena_data->max_offset &&
-				new_top >= arena_data->base_offset) { // size didn't wrap & allocation fits
-            if (arena_data->flags & STBVK_DEVICE_MEMORY_ARENA_SINGLE_THREAD_BIT) {
-                arena_data->top = new_top;
-				*out_mem = arena_data->mem;
-                *out_offset = aligned_top;
-                break;
-            } else {
-                // TODO(cort): atomic compare-and-swap new_top onto stack->top,
-                // and break if successful.
-                arena_data->top = new_top;
-				*out_mem = arena_data->mem;
-                *out_offset = aligned_top;
-                break;
-            }
-        } else {
-            result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
-            break;
-        }
-    }
-    return result;
-}
-
-static void stbvk__device_memory_arena_flat_free(void *user_data, VkDeviceMemory mem, VkDeviceSize offset)
-{
-    stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)user_data;
-    STBVK_ASSERT(mem == arena_data->mem);
-    STBVK_ASSERT(offset >= arena_data->base_offset && offset < arena_data->max_offset);
-    (void)arena_data;
-}
-
-VkResult stbvk_create_device_memory_arena_flat(VkDevice device,
-    const stbvk_device_memory_arena_flat_create_info *ci,
-    VkAllocationCallbacks *allocation_callbacks,
-    stbvk_device_memory_arena *out_arena)
-{
-    VkDeviceMemory mem = VK_NULL_HANDLE;
-    STBVK__CHECK(vkAllocateMemory(device, &ci->alloc_info, allocation_callbacks, &mem));
-    if (mem == VK_NULL_HANDLE)
-        return VK_ERROR_OUT_OF_DEVICE_MEMORY;
-
-    stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)stbvk__host_alloc(
-        sizeof(stbvk_device_memory_arena_flat_data), sizeof(VkDeviceMemory),
-        VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, allocation_callbacks);
-    if (!arena_data)
-    {
-        vkFreeMemory(device, mem, allocation_callbacks);
-        return VK_ERROR_OUT_OF_HOST_MEMORY;
-    }
-    arena_data->mem = mem;
-    arena_data->base_offset = 0;
-    arena_data->max_offset = ci->alloc_info.allocationSize;
-    arena_data->memory_type_index = ci->alloc_info.memoryTypeIndex;
-    arena_data->flags = ci->flags; // TODO(cort): validate flags
-    arena_data->top = arena_data->base_offset;
-
-    out_arena->user_data = (void*)arena_data;
-    out_arena->allocate_func = stbvk__device_memory_arena_flat_alloc;
-    out_arena->free_func = stbvk__device_memory_arena_flat_free;
-    return VK_SUCCESS;
-}
-
-void stbvk_destroy_device_memory_arena_flat(VkDevice device,
-    const stbvk_device_memory_arena *arena,
-    const VkAllocationCallbacks *allocation_callbacks)
-{
-    stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)(arena->user_data);
-    vkFreeMemory(device, arena_data->mem, allocation_callbacks);
-    stbvk__host_free(arena_data, allocation_callbacks);
-}
-
 
 #endif // STB_VULKAN_IMPLEMENTATION

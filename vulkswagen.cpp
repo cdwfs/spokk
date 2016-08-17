@@ -101,12 +101,6 @@ static VkResult my_stbvk_init_context(stbvk_context_create_info const *createInf
         return result;
     }
 
-    result = stbvk_init_command_pool(createInfo, c);
-    if (result != VK_SUCCESS)
-    {
-        return result;
-    }
-
     result = stbvk_init_swapchain(createInfo, c, VK_NULL_HANDLE);
 
     return result;
@@ -167,7 +161,7 @@ int main(int argc, char *argv[]) {
 #else
 #error Unsupported platform
 #endif
-        VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
+        VK_EXT_DEBUG_REPORT_EXTENSION_NAME, // TODO(cort): debug only!
     };
     const char *required_device_extensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -181,7 +175,7 @@ int main(int argc, char *argv[]) {
     contextCreateInfo.required_device_extension_count   = sizeof(required_device_extensions) / sizeof(required_device_extensions[0]);
     contextCreateInfo.required_device_extension_names   = required_device_extensions;
     contextCreateInfo.application_info = &applicationInfo;
-    contextCreateInfo.debug_report_callback = debugReportCallbackFunc;
+    contextCreateInfo.debug_report_callback = debugReportCallbackFunc; // TODO(cort): debug only!
     contextCreateInfo.debug_report_flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
     contextCreateInfo.debug_report_callback_user_data = NULL;
     stbvk_context context = {};
@@ -190,10 +184,16 @@ int main(int argc, char *argv[]) {
     stbvk_device_memory_arena *device_arena = NULL;
 
     // Allocate command buffers
+    VkCommandPoolCreateInfo command_pool_ci = {};
+    command_pool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    command_pool_ci.pNext = NULL;
+    command_pool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT; // not reusing command buffer contents yet!
+    command_pool_ci.queueFamilyIndex = context.graphics_queue_family_index;
+    VkCommandPool command_pool = stbvk_create_command_pool(&context, &command_pool_ci, "Command Pool");
     VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
     commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     commandBufferAllocateInfo.pNext = NULL;
-    commandBufferAllocateInfo.commandPool = context.command_pool;
+    commandBufferAllocateInfo.commandPool = command_pool;
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     commandBufferAllocateInfo.commandBufferCount = context.swapchain_image_count;
     VkCommandBuffer *commandBuffers = (VkCommandBuffer*)malloc(context.swapchain_image_count * sizeof(VkCommandBuffer));
@@ -232,14 +232,11 @@ int main(int argc, char *argv[]) {
     VkImage depth_image = stbvk_create_image(&context, &depth_image_create_info, VK_IMAGE_LAYOUT_UNDEFINED,
         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
         "depth buffer image");
-    VkMemoryRequirements depth_image_memory_reqs = {};
-    vkGetImageMemoryRequirements(context.device, depth_image, &depth_image_memory_reqs);
     VkDeviceMemory depth_image_mem = VK_NULL_HANDLE;
     VkDeviceSize depth_image_mem_offset = 0;
-    VULKAN_CHECK(stbvk_allocate_device_memory(&context, &depth_image_memory_reqs, device_arena,
+    VULKAN_CHECK(stbvk_allocate_and_bind_image_memory(&context, depth_image, device_arena,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "depth buffer image memory",
         &depth_image_mem, &depth_image_mem_offset));
-    VULKAN_CHECK(vkBindImageMemory(context.device, depth_image, depth_image_mem, depth_image_mem_offset));
     VkImageView depth_image_view = stbvk_create_image_view_from_image(&context, depth_image,
         &depth_image_create_info, "depth buffer image view");
 
@@ -294,13 +291,10 @@ int main(int argc, char *argv[]) {
     bufferCreateInfoIndices.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferCreateInfoIndices.flags = 0;
     VkBuffer bufferIndices = stbvk_create_buffer(&context, &bufferCreateInfoIndices, "index buffer");
-    VkMemoryRequirements bufferIndicesMemReqs = {};
-    vkGetBufferMemoryRequirements(context.device, bufferIndices, &bufferIndicesMemReqs);
     VkDeviceMemory bufferIndicesMem = VK_NULL_HANDLE;
     VkDeviceSize bufferIndicesMemOffset = 0;
-    VULKAN_CHECK(stbvk_allocate_device_memory(&context, &bufferIndicesMemReqs, device_arena,
+    VULKAN_CHECK(stbvk_allocate_and_bind_buffer_memory(&context, bufferIndices, device_arena,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "index buffer memory", &bufferIndicesMem, &bufferIndicesMemOffset));
-    VULKAN_CHECK(vkBindBufferMemory(context.device, bufferIndices, bufferIndicesMem, bufferIndicesMemOffset));
 
     // Create vertex buffer
     VkBufferCreateInfo bufferCreateInfoVertices = {};
@@ -310,13 +304,10 @@ int main(int argc, char *argv[]) {
     bufferCreateInfoVertices.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferCreateInfoVertices.flags = 0;
     VkBuffer bufferVertices = stbvk_create_buffer(&context, &bufferCreateInfoVertices, "vertex buffer");
-    VkMemoryRequirements bufferVerticesMemReqs = {};
-    vkGetBufferMemoryRequirements(context.device, bufferVertices, &bufferVerticesMemReqs);
     VkDeviceMemory bufferVerticesMem = VK_NULL_HANDLE;
     VkDeviceSize bufferVerticesMemOffset = 0;
-    VULKAN_CHECK(stbvk_allocate_device_memory(&context, &bufferVerticesMemReqs, device_arena,
+    VULKAN_CHECK(stbvk_allocate_and_bind_buffer_memory(&context, bufferVertices, device_arena,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "vertex buffer memory", &bufferVerticesMem, &bufferVerticesMemOffset));
-    VULKAN_CHECK(vkBindBufferMemory(context.device, bufferVertices, bufferVerticesMem, bufferVerticesMemOffset));
     stbvk_vertex_buffer_layout vertexBufferLayout = {};
     vertexBufferLayout.stride = sizeof(cdsm_vertex_t);
     vertexBufferLayout.attribute_count = 3;
@@ -364,14 +355,11 @@ int main(int argc, char *argv[]) {
     o2w_buffer_create_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     o2w_buffer_create_info.flags = 0;
     VkBuffer o2w_buffer = stbvk_create_buffer(&context, &o2w_buffer_create_info, "o2w buffer");
-    VkMemoryRequirements o2w_buffer_mem_reqs = {};
-    vkGetBufferMemoryRequirements(context.device, o2w_buffer, &o2w_buffer_mem_reqs);
     VkDeviceMemory o2w_buffer_mem = VK_NULL_HANDLE;
     VkDeviceSize o2w_buffer_mem_offset = 0;
-    VULKAN_CHECK(stbvk_allocate_device_memory(&context, &o2w_buffer_mem_reqs, device_arena,
+    VULKAN_CHECK(stbvk_allocate_and_bind_buffer_memory(&context, o2w_buffer, device_arena,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, "o2w buffer memory",
         &o2w_buffer_mem, &o2w_buffer_mem_offset));
-    VULKAN_CHECK(vkBindBufferMemory(context.device, o2w_buffer, o2w_buffer_mem, o2w_buffer_mem_offset));
 
     // Create push constants
     struct {
@@ -403,8 +391,7 @@ int main(int argc, char *argv[]) {
     descriptorSetLayoutCreateInfo.flags = 0;
     descriptorSetLayoutCreateInfo.bindingCount = sizeof(descriptorSetLayoutBindings) / sizeof(descriptorSetLayoutBindings[0]);
     descriptorSetLayoutCreateInfo.pBindings = descriptorSetLayoutBindings;
-    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreateDescriptorSetLayout(context.device, &descriptorSetLayoutCreateInfo, context.allocation_callbacks, &descriptorSetLayout) );
+    VkDescriptorSetLayout descriptorSetLayout = stbvk_create_descriptor_set_layout(&context, &descriptorSetLayoutCreateInfo, "descriptor set layout");
     VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {};
     pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutCreateInfo.pNext = NULL;
@@ -413,8 +400,7 @@ int main(int argc, char *argv[]) {
     pipelineLayoutCreateInfo.pSetLayouts = &descriptorSetLayout;
     pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
     pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
-    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreatePipelineLayout(context.device, &pipelineLayoutCreateInfo, context.allocation_callbacks, &pipelineLayout) );
+    VkPipelineLayout pipelineLayout = stbvk_create_pipeline_layout(&context, &pipelineLayoutCreateInfo, "pipeline layout");
 
     // Load shaders
     VkShaderModule vertexShaderModule = stbvk_load_shader(&context, "tri.vert.spv");
@@ -441,8 +427,7 @@ int main(int argc, char *argv[]) {
     samplerCreateInfo.maxLod = 0.0f;
     samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
     samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
-    VkSampler sampler;
-    VULKAN_CHECK( vkCreateSampler(context.device, &samplerCreateInfo, context.allocation_callbacks, &sampler) );
+    VkSampler sampler= stbvk_create_sampler(&context, &samplerCreateInfo, "default sampler");
 
     ImageFile image_file = {};
     int texture_load_error = ImageFileCreate(&image_file, "trevor/redf.png");
@@ -454,14 +439,11 @@ int main(int argc, char *argv[]) {
     texture_image_create_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
     VkImage texture_image = stbvk_create_image(&context, &texture_image_create_info,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT, "texture image");
-    VkMemoryRequirements texture_image_memory_reqs = {};
-    vkGetImageMemoryRequirements(context.device, texture_image, &texture_image_memory_reqs);
     VkDeviceMemory texture_image_mem = VK_NULL_HANDLE;
     VkDeviceSize texture_image_mem_offset = 0;
-    VULKAN_CHECK(stbvk_allocate_device_memory(&context, &texture_image_memory_reqs, device_arena,
+    VULKAN_CHECK(stbvk_allocate_and_bind_image_memory(&context, texture_image, device_arena,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "texture image memory",
         &texture_image_mem, &texture_image_mem_offset));
-    VULKAN_CHECK(vkBindImageMemory(context.device, texture_image, texture_image_mem, texture_image_mem_offset));
     VkImageView texture_image_view = stbvk_create_image_view_from_image(&context, texture_image,
         &texture_image_create_info, "texture image view");
     for(uint32_t iMip=0; iMip<image_file.mip_levels; ++iMip)
@@ -537,8 +519,7 @@ int main(int argc, char *argv[]) {
     renderPassCreateInfo.pSubpasses = &subpassDescription;
     renderPassCreateInfo.dependencyCount = 0;
     renderPassCreateInfo.pDependencies = NULL;
-    VkRenderPass renderPass = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreateRenderPass(context.device, &renderPassCreateInfo, context.allocation_callbacks, &renderPass) );
+    VkRenderPass renderPass = stbvk_create_render_pass(&context, &renderPassCreateInfo, "default render pass");
 
     // Create framebuffers
     VkImageView attachmentImageViews[kAttachmentCount] = {};
@@ -557,7 +538,7 @@ int main(int argc, char *argv[]) {
     VkFramebuffer *framebuffers = (VkFramebuffer*)malloc(context.swapchain_image_count * sizeof(VkFramebuffer));
     for(uint32_t iFB=0; iFB<context.swapchain_image_count; iFB += 1) {
         attachmentImageViews[kColorAttachmentIndex] = context.swapchain_image_views[iFB];
-        VULKAN_CHECK( vkCreateFramebuffer(context.device, &framebufferCreateInfo, context.allocation_callbacks, &framebuffers[iFB]) );
+        framebuffers[iFB] = stbvk_create_framebuffer(&context, &framebufferCreateInfo, "default framebuffer");
     }
 
     // Create Vulkan graphics pipeline
@@ -578,16 +559,14 @@ int main(int argc, char *argv[]) {
     stbvk_prepare_graphics_pipeline_create_info_vsps(&graphicsPipelineSettings, &graphicsPipelineCreateInfo);
     if (mesh_metadata.front_face == CDSM_FRONT_FACE_CW)
         graphicsPipelineCreateInfo.rasterization_state_create_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
-    VkPipeline pipelineGraphics = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreateGraphicsPipelines(context.device, context.pipeline_cache, 1,
-        &graphicsPipelineCreateInfo.graphics_pipeline_create_info,
-        context.allocation_callbacks, &pipelineGraphics) );
+    VkPipeline pipelineGraphics = stbvk_create_graphics_pipeline(&context,
+        &graphicsPipelineCreateInfo.graphics_pipeline_create_info, "default graphics pipeline");
 
     // Create Vulkan descriptor pool and descriptor set.
     // TODO(cort): the current descriptors are constant; we'd need a set per swapchain if it was going to change
     // per-frame.
-    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
-    VULKAN_CHECK( stbvk_create_descriptor_pool(&context, &descriptorSetLayoutCreateInfo, 1, 0, &descriptorPool) );
+    VkDescriptorPool descriptorPool = stbvk_create_descriptor_pool_from_layout(&context,
+        &descriptorSetLayoutCreateInfo, 1, 0, "Descriptor pool");
     VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
     descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     descriptorSetAllocateInfo.pNext = NULL;
@@ -596,6 +575,7 @@ int main(int argc, char *argv[]) {
     descriptorSetAllocateInfo.pSetLayouts = &descriptorSetLayout;
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
     VULKAN_CHECK( vkAllocateDescriptorSets(context.device, &descriptorSetAllocateInfo, &descriptorSet) );
+    VULKAN_CHECK(stbvk_name_descriptor_set(context.device, descriptorSet, "default descriptor set"));
     VkDescriptorImageInfo descriptorImageInfos[kDemoTextureCount] = {0};
     for(uint32_t iTexture=0; iTexture<kDemoTextureCount; iTexture += 1) {
         descriptorImageInfos[iTexture].sampler = sampler;
@@ -626,10 +606,8 @@ int main(int argc, char *argv[]) {
     semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     semaphoreCreateInfo.pNext = NULL;
     semaphoreCreateInfo.flags = 0;
-    VkSemaphore swapchainImageReady = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreateSemaphore(context.device, &semaphoreCreateInfo, context.allocation_callbacks, &swapchainImageReady) );
-    VkSemaphore renderingComplete = VK_NULL_HANDLE;
-    VULKAN_CHECK( vkCreateSemaphore(context.device, &semaphoreCreateInfo, context.allocation_callbacks, &renderingComplete) );
+    VkSemaphore swapchainImageReady = stbvk_create_semaphore(&context, &semaphoreCreateInfo, "image ready semaphore");
+    VkSemaphore renderingComplete = stbvk_create_semaphore(&context, &semaphoreCreateInfo, "rendering complete semaphore");
 
     // Create the fences used to wait for each swapchain image's command buffer to be submitted.
     // This prevents re-writing the command buffer contents before it's been submitted and processed.
@@ -640,8 +618,7 @@ int main(int argc, char *argv[]) {
     VkFence *queue_submitted_fences = (VkFence*)malloc(context.swapchain_image_count * sizeof(VkFence));
     for(uint32_t iFence=0; iFence<context.swapchain_image_count; ++iFence)
     {
-        VULKAN_CHECK( vkCreateFence(context.device, &fence_create_info, context.allocation_callbacks,
-           &queue_submitted_fences[iFence]) );
+        queue_submitted_fences[iFence] = stbvk_create_fence(&context, &fence_create_info, "queue submitted fence");
     }
     uint32_t frameIndex = 0;
 
@@ -666,9 +643,9 @@ int main(int argc, char *argv[]) {
     timestamp_query_pool_create_info.queryCount = TIMESTAMP_ID_RANGE_SIZE;
     timestamp_query_pool_create_info.pipelineStatistics = 0;
     VkQueryPool *timestamp_query_pools = (VkQueryPool*)malloc(context.swapchain_image_count * sizeof(VkQueryPool));
-    for(uint32_t iPool=0; iPool<context.swapchain_image_count; ++iPool) {
-        VULKAN_CHECK(vkCreateQueryPool(context.device, &timestamp_query_pool_create_info,
-            context.allocation_callbacks, &timestamp_query_pools[iPool]));
+    for(uint32_t iPool=0; iPool<context.swapchain_image_count; ++iPool)
+    {
+        timestamp_query_pools[iPool] = stbvk_create_query_pool(&context, &timestamp_query_pool_create_info, "timestamp query pool");
     }
     uint64_t counterStart = zomboClockTicks();
     double timestampSecondsPrevious[TIMESTAMP_ID_RANGE_SIZE] = {};
@@ -867,20 +844,20 @@ int main(int argc, char *argv[]) {
     vkDeviceWaitIdle(context.device);
 
     for(uint32_t iPool=0; iPool<context.swapchain_image_count; ++iPool) {
-        vkDestroyQueryPool(context.device, timestamp_query_pools[iPool], context.allocation_callbacks);
+        stbvk_destroy_query_pool(&context, timestamp_query_pools[iPool]);
     }
     free(timestamp_query_pools);
 
     for(uint32_t iFence=0; iFence<context.swapchain_image_count; ++iFence) {
-        vkDestroyFence(context.device, queue_submitted_fences[iFence], context.allocation_callbacks);
+        stbvk_destroy_fence(&context, queue_submitted_fences[iFence]);
     }
     free(queue_submitted_fences);
 
-    vkDestroySemaphore(context.device, swapchainImageReady, context.allocation_callbacks);
-    vkDestroySemaphore(context.device, renderingComplete, context.allocation_callbacks);
+    stbvk_destroy_semaphore(&context, swapchainImageReady);
+    stbvk_destroy_semaphore(&context, renderingComplete);
 
     for(uint32_t iFB=0; iFB<context.swapchain_image_count; iFB+=1) {
-        vkDestroyFramebuffer(context.device, framebuffers[iFB], context.allocation_callbacks);
+        stbvk_destroy_framebuffer(&context, framebuffers[iFB]);
     }
     free(framebuffers);
 
@@ -892,23 +869,24 @@ int main(int argc, char *argv[]) {
     stbvk_free_device_memory(&context, device_arena, bufferIndicesMem, bufferIndicesMemOffset);
     stbvk_free_device_memory(&context, device_arena, bufferVerticesMem, bufferVerticesMemOffset);
 
-    vkDestroyDescriptorSetLayout(context.device, descriptorSetLayout, context.allocation_callbacks);
-    vkDestroyDescriptorPool(context.device, descriptorPool, context.allocation_callbacks);
+    stbvk_destroy_descriptor_set_layout(&context, descriptorSetLayout);
+    stbvk_destroy_descriptor_pool(&context, descriptorPool);
 
-    vkDestroyRenderPass(context.device, renderPass, context.allocation_callbacks);
+    stbvk_destroy_render_pass(&context, renderPass);
 
-    vkDestroyShaderModule(context.device, vertexShaderModule, context.allocation_callbacks);
-    vkDestroyShaderModule(context.device, fragmentShaderModule, context.allocation_callbacks);
+    stbvk_destroy_shader(&context, vertexShaderModule);
+    stbvk_destroy_shader(&context, fragmentShaderModule);
 
     stbvk_free_device_memory(&context, device_arena, texture_image_mem, texture_image_mem_offset);
     stbvk_destroy_image_view(&context, texture_image_view);
     stbvk_destroy_image(&context, texture_image);
-    vkDestroySampler(context.device, sampler, context.allocation_callbacks);
+    stbvk_destroy_sampler(&context, sampler);
 
-    vkDestroyPipelineLayout(context.device, pipelineLayout, context.allocation_callbacks);
-    vkDestroyPipeline(context.device, pipelineGraphics, context.allocation_callbacks);
+    stbvk_destroy_pipeline_layout(&context, pipelineLayout);
+    stbvk_destroy_pipeline(&context, pipelineGraphics);
 
     free(commandBuffers);
+    stbvk_destroy_command_pool(&context, command_pool);
 
     glfwTerminate();
     stbvk_destroy_context(&context);
