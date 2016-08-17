@@ -269,11 +269,9 @@ int main(int argc, char *argv[]) {
     memoryAllocateInfoIndices.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memoryAllocateInfoIndices.pNext = NULL;
     memoryAllocateInfoIndices.allocationSize = memoryRequirementsIndices.size;
-    memoryAllocateInfoIndices.memoryTypeIndex = 0;
-    VkBool32 foundMemoryTypeIndices = stbvk_get_memory_type_from_properties(&context.physical_device_memory_properties,
-        memoryRequirementsIndices.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        &memoryAllocateInfoIndices.memoryTypeIndex);
-    assert(foundMemoryTypeIndices);
+    memoryAllocateInfoIndices.memoryTypeIndex = stbvk_find_memory_type_index(&context.physical_device_memory_properties,
+        &memoryRequirementsIndices, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    assert(memoryAllocateInfoIndices.memoryTypeIndex < VK_MAX_MEMORY_TYPES);
     VkDeviceMemory bufferIndicesMemory = VK_NULL_HANDLE;
     VULKAN_CHECK( vkAllocateMemory(context.device, &memoryAllocateInfoIndices, context.allocation_callbacks, &bufferIndicesMemory) );
     VkDeviceSize bufferIndicesMemoryOffset = 0;
@@ -294,11 +292,9 @@ int main(int argc, char *argv[]) {
     memoryAllocateInfoVertices.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memoryAllocateInfoVertices.pNext = NULL;
     memoryAllocateInfoVertices.allocationSize = memoryRequirementsVertices.size;
-    memoryAllocateInfoVertices.memoryTypeIndex = 0;
-    VkBool32 foundMemoryTypeVertices = stbvk_get_memory_type_from_properties(&context.physical_device_memory_properties,
-        memoryRequirementsVertices.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        &memoryAllocateInfoVertices.memoryTypeIndex);
-    assert(foundMemoryTypeVertices);
+    memoryAllocateInfoVertices.memoryTypeIndex = stbvk_find_memory_type_index(&context.physical_device_memory_properties,
+        &memoryRequirementsVertices, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    assert(memoryAllocateInfoVertices.memoryTypeIndex < VK_MAX_MEMORY_TYPES);
     VkDeviceMemory bufferVerticesMemory = VK_NULL_HANDLE;
     VULKAN_CHECK( vkAllocateMemory(context.device, &memoryAllocateInfoVertices, context.allocation_callbacks, &bufferVerticesMemory) );
     VkDeviceSize bufferVerticesMemoryOffset = 0;

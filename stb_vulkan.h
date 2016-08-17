@@ -104,8 +104,9 @@ extern "C" {
     STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const *create_info, stbvk_context *c, VkSwapchainKHR old_swapchain);
     STBVKDEF void stbvk_destroy_context(stbvk_context *c);
 
-    STBVKDEF VkBool32 stbvk_get_memory_type_from_properties(VkPhysicalDeviceMemoryProperties const *memory_properties,
-        uint32_t memory_type_bits, VkMemoryPropertyFlags memory_properties_mask, uint32_t *out_memory_type_index);
+    STBVKDEF VkBool32 stbvk_get_memory_type_from_properties(VkPhysicalDeviceMemoryProperties const *device_memory_properties,
+        VkMemoryRequirements const *memory_reqs, VkMemoryPropertyFlags memory_properties_mask, uint32_t *out_memory_type_index);
+
 
     typedef struct
     {
@@ -861,20 +862,18 @@ static FILE *stbvk__fopen(char const *filename, char const *mode)
 }
 #endif
 
-STBVKDEF VkBool32 stbvk_get_memory_type_from_properties(VkPhysicalDeviceMemoryProperties const *memory_properties,
-    uint32_t memory_type_bits, VkMemoryPropertyFlags memory_properties_mask, uint32_t *out_memory_type_index)
+STBVKDEF uint32_t stbvk_find_memory_type_index(VkPhysicalDeviceMemoryProperties const *device_memory_properties,
+    VkMemoryRequirements const *memory_reqs, VkMemoryPropertyFlags memory_properties_mask)
 {
-    STBVK_ASSERT(sizeof(memory_type_bits)*8 == VK_MAX_MEMORY_TYPES);
     for(uint32_t iMemType=0; iMemType<VK_MAX_MEMORY_TYPES; iMemType+=1)
     {
-        if (	(memory_type_bits & (1<<iMemType)) != 0
-            &&	(memory_properties->memoryTypes[iMemType].propertyFlags & memory_properties_mask) == memory_properties_mask)
+        if (	(memory_reqs->memoryTypeBits & (1<<iMemType)) != 0
+            &&	(device_memory_properties->memoryTypes[iMemType].propertyFlags & memory_properties_mask) == memory_properties_mask)
         {
-            *out_memory_type_index = iMemType;
-            return VK_TRUE;
+            return iMemType;
         }
     }
-    return VK_FALSE;
+    return VK_MAX_MEMORY_TYPES; /* invalid index */
 }
 
 
@@ -947,13 +946,9 @@ STBVKDEF VkResult stbvk_image_create(stbvk_context const *context, stbvk_image_c
     memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memory_allocate_info.pNext = NULL;
     memory_allocate_info.allocationSize = out_image->memory_requirements.size;
-    memory_allocate_info.memoryTypeIndex = 0; // filled in below
-    VkBool32 found_memory_type = stbvk_get_memory_type_from_properties(
-        &context->physical_device_memory_properties,
-        out_image->memory_requirements.memoryTypeBits,
-        create_info->memory_properties_mask,
-        &memory_allocate_info.memoryTypeIndex);
-    STBVK_ASSERT(found_memory_type);
+    memory_allocate_info.memoryTypeIndex = stbvk_find_memory_type_index(&context->physical_device_memory_properties,
+        &out_image->memory_requirements, create_info->memory_properties_mask);
+    STBVK_ASSERT(memory_allocate_info.memoryTypeIndex < VK_MAX_MEMORY_TYPES);
     STBVK__CHECK( vkAllocateMemory(context->device, &memory_allocate_info, context->allocation_callbacks, &out_image->device_memory) );
     VkDeviceSize memory_offset = 0;
     STBVK__CHECK( vkBindImageMemory(context->device, out_image->image, out_image->device_memory, memory_offset) );
@@ -1087,12 +1082,9 @@ STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, stb
     memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memory_allocate_info.pNext = NULL;
     memory_allocate_info.allocationSize = memory_requirements.size;
-    memory_allocate_info.memoryTypeIndex = 0; // filled in below
-    VkBool32 found_memory_type = stbvk_get_memory_type_from_properties(&context->physical_device_memory_properties,
-        memory_requirements.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        &memory_allocate_info.memoryTypeIndex);
-    STBVK_ASSERT(found_memory_type);
+    memory_allocate_info.memoryTypeIndex = stbvk_find_memory_type_index(&context->physical_device_memory_properties,
+        &memory_requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    STBVK_ASSERT(memory_allocate_info.memoryTypeIndex < VK_MAX_MEMORY_TYPES);
     VkDeviceMemory staging_device_memory = VK_NULL_HANDLE;
     STBVK__CHECK( vkAllocateMemory(context->device, &memory_allocate_info, context->allocation_callbacks, &staging_device_memory) );
     VkDeviceSize memory_offset = 0;
