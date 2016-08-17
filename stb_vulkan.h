@@ -737,6 +737,8 @@ static void stbvk__device_memory_arena_flat_free(void *user_data, VkDeviceMemory
     stbvk_device_memory_arena_flat_data *arena_data = (stbvk_device_memory_arena_flat_data*)user_data;
     STBVK_ASSERT(mem == arena_data->mem);
     STBVK_ASSERT(offset >= arena_data->base_offset && offset < arena_data->max_offset);
+    (void)mem;
+    (void)offset;
     (void)arena_data;
 }
 
@@ -1796,6 +1798,7 @@ STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, VkBuf
     // to the backing VkDeviceMemory objects!
     STBVK_ASSERT(src_size <= dst_offset + dst_ci->size);
     STBVK_ASSERT(dst_ci->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+    (void)dst_ci; // only needed for asserts
 
     VkBufferCreateInfo staging_buffer_create_info = {};
     staging_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;

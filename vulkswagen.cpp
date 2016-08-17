@@ -218,7 +218,8 @@ int main(int argc, char *argv[]) {
     VkCommandPoolCreateInfo command_pool_ci = {};
     command_pool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     command_pool_ci.pNext = NULL;
-    command_pool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT; // not reusing command buffer contents yet!
+    command_pool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT // not reusing command buffer contents yet!
+        | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // needed to call begin without an explicit reset
     command_pool_ci.queueFamilyIndex = context.graphics_queue_family_index;
     VkCommandPool command_pool = stbvk_create_command_pool(&context, &command_pool_ci, "Command Pool");
     VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
@@ -463,12 +464,12 @@ int main(int argc, char *argv[]) {
     ImageFile image_file = {};
     const char *texture_filename = "trevor/redf.png";
     int texture_load_error = ImageFileCreate(&image_file, texture_filename);
-    assert(!texture_load_error);
+    assert(!texture_load_error); (void)texture_load_error;
     VkImageCreateInfo texture_image_create_info = {};
     ImageFileToVkImageCreateInfo(&texture_image_create_info, &image_file);
     texture_image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     texture_image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    texture_image_create_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+    texture_image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImage texture_image = stbvk_create_image(&context, &texture_image_create_info,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT, texture_filename);
     VkDeviceMemory texture_image_mem = VK_NULL_HANDLE;
@@ -898,8 +899,11 @@ int main(int argc, char *argv[]) {
     stbvk_destroy_image(&context, depth_image);
 
     stbvk_free_device_memory(&context, device_arena, o2w_buffer_mem, o2w_buffer_mem_offset);
+    stbvk_destroy_buffer(&context, o2w_buffer);
     stbvk_free_device_memory(&context, device_arena, bufferIndicesMem, bufferIndicesMemOffset);
+    stbvk_destroy_buffer(&context, bufferIndices);
     stbvk_free_device_memory(&context, device_arena, bufferVerticesMem, bufferVerticesMemOffset);
+    stbvk_destroy_buffer(&context, bufferVertices);
 
     stbvk_destroy_descriptor_set_layout(&context, descriptorSetLayout);
     stbvk_destroy_descriptor_pool(&context, descriptorPool);
@@ -908,6 +912,7 @@ int main(int argc, char *argv[]) {
 
     stbvk_destroy_shader(&context, vertexShaderModule);
     stbvk_destroy_shader(&context, fragmentShaderModule);
+
 
     stbvk_free_device_memory(&context, device_arena, texture_image_mem, texture_image_mem_offset);
     stbvk_destroy_image_view(&context, texture_image_view);
