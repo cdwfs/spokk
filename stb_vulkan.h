@@ -13,9 +13,6 @@
    #include "stb_vulkan.h"
 
    You can #define STBVK_ASSERT(x) before the #include to avoid using assert.h.
-   And #define STBVK_MALLOC, STBVK_REALLOC, and STBVK_FREE to avoid using malloc,realloc,free
-
-
 
 LICENSE
 
@@ -262,21 +259,6 @@ typedef unsigned char validate_uint32[sizeof(stbvk__uint32)==4 ? 1 : -1];
 #   define STBVK_NOTUSED(v)  (void)sizeof(v)
 #endif
 
-#if defined(STBVK_MALLOC) && defined(STBVK_FREE) && (defined(STBVK_REALLOC) || defined(STBVK_REALLOC_SIZED))
-// ok
-#elif !defined(STBVK_MALLOC) && !defined(STBVK_FREE) && !defined(STBVK_REALLOC) && !defined(STBVK_REALLOC_SIZED)
-// ok
-#else
-#   error "Must define all or none of STBVK_MALLOC, STBVK_FREE, and STBVK_REALLOC (or STBVK_REALLOC_SIZED)."
-#endif
-
-#ifndef STBVK_MALLOC
-#   include <stdlib.h>
-#   define STBVK_MALLOC(sz)           malloc(sz)
-#   define STBVK_REALLOC(p,newsz)     realloc((p),(newsz))
-#   define STBVK_FREE(p)              free( (void*)(p) )
-#endif
-
 #if !defined(STBVK_LOG)
 # if !defined(STBVK_NO_STDIO)
 #   include <stdarg.h>
@@ -351,6 +333,29 @@ const T& stbvk__max(const T& a, const T& b) { return (a>b) ? a : b; }
 #include <algorithm>
 #include <string>
 #include <vector>
+
+static void *stbvk__host_alloc(size_t size, size_t alignment, VkSystemAllocationScope scope, const VkAllocationCallbacks *pAllocator)
+{
+    if (pAllocator)
+    {
+        return pAllocator->pfnAllocation(pAllocator->pUserData, size, alignment, scope);
+    }
+    else
+    {
+        return malloc(size); // TODO(cort): ignores alignment :(
+    }
+}
+static void stbvk__host_free(void *ptr, const VkAllocationCallbacks *pAllocator)
+{
+    if (pAllocator)
+    {
+        return pAllocator->pfnFree(pAllocator->pUserData, ptr);
+    }
+    else
+    {
+        return free(ptr);
+    }
+}
 
 STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_info, stbvk_context *context)
 {
@@ -464,7 +469,8 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
     uint32_t physical_device_count = 0;
     STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, NULL) );
     STBVK_ASSERT(physical_device_count > 0);
-    VkPhysicalDevice *all_physical_devices = (VkPhysicalDevice*)STBVK_MALLOC(physical_device_count * sizeof(VkPhysicalDevice));
+    VkPhysicalDevice *all_physical_devices = (VkPhysicalDevice*)stbvk__host_alloc(physical_device_count * sizeof(VkPhysicalDevice),
+        sizeof(VkPhysicalDevice), VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE, context->allocation_callbacks);
     STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, all_physical_devices) );
 
     // Select a physical device.
@@ -490,7 +496,9 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
 
         uint32_t queue_family_count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(all_physical_devices[iPD], &queue_family_count, NULL);
-        VkQueueFamilyProperties *queue_family_properties_all = (VkQueueFamilyProperties*)STBVK_MALLOC(queue_family_count * sizeof(VkQueueFamilyProperties));
+        VkQueueFamilyProperties *queue_family_properties_all = (VkQueueFamilyProperties*)stbvk__host_alloc(
+            queue_family_count * sizeof(VkQueueFamilyProperties), sizeof(VkQueueFamilyProperties),
+            VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, context->allocation_callbacks);
         vkGetPhysicalDeviceQueueFamilyProperties(all_physical_devices[iPD], &queue_family_count, queue_family_properties_all);
 
         for(uint32_t iQF=0; iQF<queue_family_count; ++iQF)
@@ -527,7 +535,7 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
                 break;
             }
         }
-        STBVK_FREE(queue_family_properties_all);
+        stbvk__host_free(queue_family_properties_all, context->allocation_callbacks);
         queue_family_properties_all = NULL;
 
         if (found_present_queue_family && found_graphics_queue_family)
@@ -537,7 +545,8 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
             context->present_queue_family_index  = present_queue_family_index;
 
             uint32_t graphics_queue_count = context->graphics_queue_family_properties.queueCount;
-            float *graphics_queue_priorities = (float*)STBVK_MALLOC(graphics_queue_count * sizeof(float));
+            float *graphics_queue_priorities = (float*)stbvk__host_alloc(graphics_queue_count * sizeof(float),
+                sizeof(float), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, context->allocation_callbacks);
             for(uint32_t iQ=0; iQ<graphics_queue_count; ++iQ) {
                 graphics_queue_priorities[iQ] = 1.0f;
             }
@@ -552,7 +561,8 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
             if (present_queue_family_index != graphics_queue_family_index)
             {
                 uint32_t present_queue_count = context->present_queue_family_properties.queueCount;
-                float *present_queue_priorities = (float*)STBVK_MALLOC(present_queue_count * sizeof(float));
+                float *present_queue_priorities = (float*)stbvk__host_alloc(present_queue_count * sizeof(float),
+                    sizeof(float), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, context->allocation_callbacks);
                 for(uint32_t iQ=0; iQ<present_queue_count; ++iQ) {
                     present_queue_priorities[iQ] = 1.0f;
                 }
@@ -567,7 +577,7 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
         }
     }
     STBVK_ASSERT(found_graphics_queue_family && found_present_queue_family);
-    STBVK_FREE(all_physical_devices);
+    stbvk__host_free(all_physical_devices, context->allocation_callbacks);
     context->present_surface = present_surface;
 
     vkGetPhysicalDeviceProperties(context->physical_device, &context->physical_device_properties);
@@ -618,8 +628,8 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
     device_create_info.ppEnabledExtensionNames = extension_names_c.data();
     device_create_info.pEnabledFeatures = &context->physical_device_features;
     STBVK__CHECK( vkCreateDevice(context->physical_device, &device_create_info, context->allocation_callbacks, &context->device) );
-    STBVK_FREE(device_create_info.pQueueCreateInfos[0].pQueuePriorities);
-    STBVK_FREE(device_create_info.pQueueCreateInfos[1].pQueuePriorities);
+    stbvk__host_free((void*)device_create_info.pQueueCreateInfos[0].pQueuePriorities, context->allocation_callbacks);
+    stbvk__host_free((void*)device_create_info.pQueueCreateInfos[1].pQueuePriorities, context->allocation_callbacks);
 #if 0
     STBVK_LOG("Created Vulkan logical device with extensions:");
     for(uint32_t iExt=0; iExt<device_create_info.enabledExtensionCount; iExt+=1) {
@@ -674,7 +684,8 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     }
     uint32_t device_surface_format_count = 0;
     STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->present_surface, &device_surface_format_count, NULL) );
-    VkSurfaceFormatKHR *device_surface_formats = (VkSurfaceFormatKHR*)STBVK_MALLOC(device_surface_format_count * sizeof(VkSurfaceFormatKHR));
+    VkSurfaceFormatKHR *device_surface_formats = (VkSurfaceFormatKHR*)stbvk__host_alloc(device_surface_format_count * sizeof(VkSurfaceFormatKHR),
+        sizeof(VkSurfaceFormatKHR), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, context->allocation_callbacks);
     STBVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->present_surface, &device_surface_format_count, device_surface_formats) );
     if (device_surface_format_count == 1 && device_surface_formats[0].format == VK_FORMAT_UNDEFINED)
     {
@@ -687,11 +698,12 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
         assert(device_surface_format_count >= 1);
         context->swapchain_surface_format = device_surface_formats[0];
     }
-    STBVK_FREE(device_surface_formats);
+    stbvk__host_free(device_surface_formats, context->allocation_callbacks);
 
     uint32_t device_present_mode_count = 0;
     STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &device_present_mode_count, NULL) );
-    VkPresentModeKHR *device_present_modes = (VkPresentModeKHR*)STBVK_MALLOC(device_present_mode_count * sizeof(VkPresentModeKHR));
+    VkPresentModeKHR *device_present_modes = (VkPresentModeKHR*)stbvk__host_alloc(device_present_mode_count * sizeof(VkPresentModeKHR),
+        sizeof(VkPresentModeKHR), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, context->allocation_callbacks);
     STBVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &device_present_mode_count, device_present_modes) );
     VkPresentModeKHR swapchain_present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
     bool found_mailbox_mode = false;
@@ -703,7 +715,7 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     }
     if (!found_mailbox_mode)
       swapchain_present_mode = VK_PRESENT_MODE_FIFO_KHR;
-    STBVK_FREE(device_present_modes);
+    stbvk__host_free(device_present_modes, context->allocation_callbacks);
 
     uint32_t desired_swapchain_image_count = surface_capabilities.minImageCount+1;
     if (	surface_capabilities.maxImageCount > 0
@@ -763,7 +775,8 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     }
 
     STBVK__CHECK( vkGetSwapchainImagesKHR(context->device, context->swapchain, &context->swapchain_image_count, NULL) );
-    context->swapchain_images = (VkImage*)malloc(context->swapchain_image_count * sizeof(VkImage));
+    context->swapchain_images = (VkImage*)stbvk__host_alloc(context->swapchain_image_count * sizeof(VkImage),
+        sizeof(VkImage), VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, context->allocation_callbacks);
     STBVK__CHECK( vkGetSwapchainImagesKHR(context->device, context->swapchain, &context->swapchain_image_count, context->swapchain_images) );
 
     VkImageViewCreateInfo image_view_create_info = {};
@@ -784,7 +797,8 @@ STBVKDEF VkResult stbvk_init_swapchain(stbvk_context_create_info const * /*creat
     image_view_create_info.subresourceRange.layerCount = 1;
     image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
     image_view_create_info.image = VK_NULL_HANDLE; // filled in below
-    context->swapchain_image_views = (VkImageView*)malloc(context->swapchain_image_count * sizeof(VkImageView));
+    context->swapchain_image_views = (VkImageView*)stbvk__host_alloc(context->swapchain_image_count * sizeof(VkImageView),
+        sizeof(VkImageView), VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, context->allocation_callbacks);
     for(uint32_t iSCI=0; iSCI<context->swapchain_image_count; iSCI+=1)
     {
         image_view_create_info.image = context->swapchain_images[iSCI];
@@ -802,9 +816,9 @@ STBVKDEF void stbvk_destroy_context(stbvk_context *context)
     {
         vkDestroyImageView(context->device, context->swapchain_image_views[iSCI], context->allocation_callbacks);
     }
-    STBVK_FREE(context->swapchain_image_views);
+    stbvk__host_free(context->swapchain_image_views, context->allocation_callbacks);
     context->swapchain_image_views = NULL;
-    STBVK_FREE(context->swapchain_images);
+    stbvk__host_free(context->swapchain_images, context->allocation_callbacks);
     context->swapchain_images = NULL;
     vkDestroySwapchainKHR(context->device, context->swapchain, context->allocation_callbacks);
 
@@ -1195,15 +1209,15 @@ STBVKDEF void stbvk_image_destroy(stbvk_context const *context, stbvk_image *ima
 #ifndef STBVK_NO_STDIO
 STBVKDEF VkShaderModule stbvk_load_shader_from_file(stbvk_context *c, FILE *f, int len)
 {
-    void *shader_bin = STBVK_MALLOC(len);
+    void *shader_bin = stbvk__host_alloc(len, sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, c->allocation_callbacks);
     size_t bytes_read = fread(shader_bin, 1, len, f);
     if ( (int)bytes_read != len)
     {
-        free(shader_bin);
+        stbvk__host_free(shader_bin, c->allocation_callbacks);
         return VK_NULL_HANDLE;
     }
     VkShaderModule shader_module = stbvk_load_shader_from_memory(c, (const stbvk_uc*)shader_bin, len);
-    STBVK_FREE(shader_bin);
+    stbvk__host_free(shader_bin, c->allocation_callbacks);
     return shader_module;
 }
 STBVKDEF VkShaderModule stbvk_load_shader(stbvk_context *c, char const *filename)
@@ -2028,17 +2042,18 @@ STBVKDEF int stbvk_image_load_from_dds_file(stbvk_context const *context, char c
         fclose(dds_file);
         return -2; // File too small to contain a valid DDS
     }
-    uint8_t *dds_file_data = (uint8_t*)STBVK_MALLOC(dds_file_size);
+    uint8_t *dds_file_data = (uint8_t*)stbvk__host_alloc(dds_file_size, sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT,
+        context->allocation_callbacks);
     if (fread(dds_file_data, dds_file_size, 1, dds_file) != 1)
     {
         fclose(dds_file);
-        free(dds_file_data);
+        stbvk__host_free(dds_file_data, context->allocation_callbacks);
         return -3; // fread size mismatch
     }
     fclose(dds_file);
 
     int retval = stbvk_image_load_from_dds_buffer(context, dds_file_data, dds_file_size, out_image);
-    free(dds_file_data);
+    stbvk__host_free(dds_file_data, context->allocation_callbacks);
     return retval;
 }
 
@@ -2187,7 +2202,8 @@ if (is_volume_texture)
                 subresource.mipLevel = iMip;
                 VkSubresourceLayout subresource_layout = {};
                 STBVK__CHECK( stbvk_image_get_subresource_source_layout(context, out_image, subresource, &subresource_layout) );
-                uint32_t *padded_pixels = (uint32_t*)STBVK_MALLOC(subresource_layout.size);
+                uint32_t *padded_pixels = (uint32_t*)stbvk__host_alloc(subresource_layout.size, sizeof(uint32_t),
+                    VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, context->allocation_callbacks);
                 STBVK_ASSERT(mip_pitch <= subresource_layout.rowPitch);
                 for(uint32_t iY=0; iY<num_rows; iY+=1)
                 {
@@ -2197,7 +2213,7 @@ if (is_volume_texture)
                 }
                 STBVK__CHECK( stbvk_image_load_subresource(context, out_image, subresource, subresource_layout,
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, padded_pixels) );
-                STBVK_FREE(padded_pixels);
+                stbvk__host_free(padded_pixels, context->allocation_callbacks);
                 next_src_surface += surface_size;
             }
         }
