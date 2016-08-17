@@ -6,6 +6,7 @@
 typedef enum ImageFileFlagBits
 {
 	IMAGE_FILE_FLAG_CUBE_BIT = 1,
+    // TODO(cort): COMPRESSED bit? (more accurately, MULTI_TEXEL_BLOCK?)
 } ImageFileFlagBits;
 typedef uint32_t ImageFileFlags;
 
@@ -17,7 +18,7 @@ typedef enum ImageFileType
     IMAGE_FILE_TYPE_TGA     = 3,
     IMAGE_FILE_TYPE_BMP     = 4,
     IMAGE_FILE_TYPE_DDS     = 5,
-    //IMAGE_FILE_TYPE_ASTC    = 5,
+    IMAGE_FILE_TYPE_ASTC    = 6,
 } ImageFileType;
 
 typedef enum ImageFileDataFormat
@@ -41,11 +42,11 @@ typedef enum ImageFileDataFormat
     IMAGE_FILE_DATA_FORMAT_R16_UNORM          = 16,
     IMAGE_FILE_DATA_FORMAT_R8_UNORM           = 17,
     IMAGE_FILE_DATA_FORMAT_BC1_UNORM          = 18,
-    IMAGE_FILE_DATA_FORMAT_BC1_UNORM_SRGB     = 19,
+    IMAGE_FILE_DATA_FORMAT_BC1_SRGB           = 19,
     IMAGE_FILE_DATA_FORMAT_BC2_UNORM          = 20,
-    IMAGE_FILE_DATA_FORMAT_BC2_UNORM_SRGB     = 21,
+    IMAGE_FILE_DATA_FORMAT_BC2_SRGB           = 21,
     IMAGE_FILE_DATA_FORMAT_BC3_UNORM          = 22,
-    IMAGE_FILE_DATA_FORMAT_BC3_UNORM_SRGB     = 23,
+    IMAGE_FILE_DATA_FORMAT_BC3_SRGB           = 23,
     IMAGE_FILE_DATA_FORMAT_BC4_UNORM          = 24,
     IMAGE_FILE_DATA_FORMAT_BC4_SNORM          = 25,
     IMAGE_FILE_DATA_FORMAT_BC5_UNORM          = 26,
@@ -53,7 +54,35 @@ typedef enum ImageFileDataFormat
     IMAGE_FILE_DATA_FORMAT_BC6H_UF16          = 28,
     IMAGE_FILE_DATA_FORMAT_BC6H_SF16          = 29,
     IMAGE_FILE_DATA_FORMAT_BC7_UNORM          = 30,
-    IMAGE_FILE_DATA_FORMAT_BC7_UNORM_SRGB     = 31,
+    IMAGE_FILE_DATA_FORMAT_BC7_SRGB           = 31,
+    IMAGE_FILE_DATA_FORMAT_ASTC_4x4_UNORM     = 32,
+    IMAGE_FILE_DATA_FORMAT_ASTC_4x4_SRGB      = 33,
+    IMAGE_FILE_DATA_FORMAT_ASTC_5x4_UNORM     = 34,
+    IMAGE_FILE_DATA_FORMAT_ASTC_5x4_SRGB      = 35,
+    IMAGE_FILE_DATA_FORMAT_ASTC_5x5_UNORM     = 36,
+    IMAGE_FILE_DATA_FORMAT_ASTC_5x5_SRGB      = 37,
+    IMAGE_FILE_DATA_FORMAT_ASTC_6x5_UNORM     = 38,
+    IMAGE_FILE_DATA_FORMAT_ASTC_6x5_SRGB      = 39,
+    IMAGE_FILE_DATA_FORMAT_ASTC_6x6_UNORM     = 40,
+    IMAGE_FILE_DATA_FORMAT_ASTC_6x6_SRGB      = 41,
+    IMAGE_FILE_DATA_FORMAT_ASTC_8x5_UNORM     = 42,
+    IMAGE_FILE_DATA_FORMAT_ASTC_8x5_SRGB      = 43,
+    IMAGE_FILE_DATA_FORMAT_ASTC_8x6_UNORM     = 44,
+    IMAGE_FILE_DATA_FORMAT_ASTC_8x6_SRGB      = 45,
+    IMAGE_FILE_DATA_FORMAT_ASTC_8x8_UNORM     = 46,
+    IMAGE_FILE_DATA_FORMAT_ASTC_8x8_SRGB      = 47,
+    IMAGE_FILE_DATA_FORMAT_ASTC_10x5_UNORM    = 48,
+    IMAGE_FILE_DATA_FORMAT_ASTC_10x5_SRGB     = 49,
+    IMAGE_FILE_DATA_FORMAT_ASTC_10x6_UNORM    = 50,
+    IMAGE_FILE_DATA_FORMAT_ASTC_10x6_SRGB     = 51,
+    IMAGE_FILE_DATA_FORMAT_ASTC_10x8_UNORM    = 52,
+    IMAGE_FILE_DATA_FORMAT_ASTC_10x8_SRGB     = 53,
+    IMAGE_FILE_DATA_FORMAT_ASTC_10x10_UNORM   = 54,
+    IMAGE_FILE_DATA_FORMAT_ASTC_10x10_SRGB    = 55,
+    IMAGE_FILE_DATA_FORMAT_ASTC_12x10_UNORM   = 56,
+    IMAGE_FILE_DATA_FORMAT_ASTC_12x10_SRGB    = 57,
+    IMAGE_FILE_DATA_FORMAT_ASTC_12x12_UNORM   = 58,
+    IMAGE_FILE_DATA_FORMAT_ASTC_12x12_SRGB    = 59,
 } ImageFileDataFormat;
 
 typedef struct ImageFileSubresource
@@ -64,9 +93,9 @@ typedef struct ImageFileSubresource
 
 typedef struct ImageFile
 {
-	uint32_t width;
-	uint32_t height;
-	uint32_t depth;
+	uint32_t width;   // in pixels
+	uint32_t height;  // in pixels
+	uint32_t depth;   // in pixels
 	uint32_t mip_levels;
 	uint32_t array_layers; // If flags.CUBE is set, this counts the number of cube faces, not whole cubes.
 	uint32_t row_pitch_bytes;

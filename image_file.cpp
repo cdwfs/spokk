@@ -86,11 +86,11 @@ static uint32_t GetBitsPerTexelBlock(ImageFileDataFormat format)
     case IMAGE_FILE_DATA_FORMAT_R16_UNORM:          return 16;
     case IMAGE_FILE_DATA_FORMAT_R8_UNORM:           return 8;
     case IMAGE_FILE_DATA_FORMAT_BC1_UNORM:          return 64;
-    case IMAGE_FILE_DATA_FORMAT_BC1_UNORM_SRGB:     return 64;
+    case IMAGE_FILE_DATA_FORMAT_BC1_SRGB:           return 64;
     case IMAGE_FILE_DATA_FORMAT_BC2_UNORM:          return 128;
-    case IMAGE_FILE_DATA_FORMAT_BC2_UNORM_SRGB:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_BC2_SRGB:           return 128;
     case IMAGE_FILE_DATA_FORMAT_BC3_UNORM:          return 128;
-    case IMAGE_FILE_DATA_FORMAT_BC3_UNORM_SRGB:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_BC3_SRGB:           return 128;
     case IMAGE_FILE_DATA_FORMAT_BC4_UNORM:          return 64;
     case IMAGE_FILE_DATA_FORMAT_BC4_SNORM:          return 64;
     case IMAGE_FILE_DATA_FORMAT_BC5_UNORM:          return 128;
@@ -98,7 +98,35 @@ static uint32_t GetBitsPerTexelBlock(ImageFileDataFormat format)
     case IMAGE_FILE_DATA_FORMAT_BC6H_UF16:          return 128;
     case IMAGE_FILE_DATA_FORMAT_BC6H_SF16:          return 128;
     case IMAGE_FILE_DATA_FORMAT_BC7_UNORM:          return 128;
-    case IMAGE_FILE_DATA_FORMAT_BC7_UNORM_SRGB:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_BC7_SRGB:           return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_4x4_UNORM:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_4x4_SRGB:      return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x4_UNORM:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x4_SRGB:      return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x5_UNORM:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x5_SRGB:      return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x5_UNORM:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x5_SRGB:      return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x6_UNORM:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x6_SRGB:      return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x5_UNORM:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x5_SRGB:      return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x6_UNORM:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x6_SRGB:      return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x8_UNORM:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x8_SRGB:      return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x5_UNORM:    return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x5_SRGB:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x6_UNORM:    return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x6_SRGB:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x8_UNORM:    return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x8_SRGB:     return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x10_UNORM:   return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x10_SRGB:    return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_UNORM:   return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_SRGB:    return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_UNORM:   return 128;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_SRGB:    return 128;
     // no default case here, to get warnings when new formats are added!
     }
     return 0;
@@ -335,11 +363,11 @@ static bool DdsContainsCompressedTexture(ImageFileDataFormat format) // TODO(cor
     switch(format)
     {
     case IMAGE_FILE_DATA_FORMAT_BC1_UNORM:
-    case IMAGE_FILE_DATA_FORMAT_BC1_UNORM_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_BC1_SRGB:
     case IMAGE_FILE_DATA_FORMAT_BC2_UNORM:
-    case IMAGE_FILE_DATA_FORMAT_BC2_UNORM_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_BC2_SRGB:
     case IMAGE_FILE_DATA_FORMAT_BC3_UNORM:
-    case IMAGE_FILE_DATA_FORMAT_BC3_UNORM_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_BC3_SRGB:
     case IMAGE_FILE_DATA_FORMAT_BC4_UNORM:
     case IMAGE_FILE_DATA_FORMAT_BC4_SNORM:
     case IMAGE_FILE_DATA_FORMAT_BC5_UNORM:
@@ -347,7 +375,36 @@ static bool DdsContainsCompressedTexture(ImageFileDataFormat format) // TODO(cor
     case IMAGE_FILE_DATA_FORMAT_BC6H_UF16:
     case IMAGE_FILE_DATA_FORMAT_BC6H_SF16:
     case IMAGE_FILE_DATA_FORMAT_BC7_UNORM:
-    case IMAGE_FILE_DATA_FORMAT_BC7_UNORM_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_BC7_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_4x4_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_4x4_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x4_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x4_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x5_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x5_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x5_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x5_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x6_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x6_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x5_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x5_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x6_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x6_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x8_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x8_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x5_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x5_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x6_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x6_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x8_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x8_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x10_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x10_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_SRGB:
+
         return true;
     case IMAGE_FILE_DATA_FORMAT_UNKNOWN:
     case IMAGE_FILE_DATA_FORMAT_R8G8B8_UNORM:
@@ -502,17 +559,17 @@ static ImageFileDataFormat DdsParseDxFormat(DxFormat dx_format) // TODO(cort): c
     case DX_FORMAT_BC1_UNORM:
         return IMAGE_FILE_DATA_FORMAT_BC1_UNORM;
     case DX_FORMAT_BC1_UNORM_SRGB:
-        return IMAGE_FILE_DATA_FORMAT_BC1_UNORM_SRGB;
+        return IMAGE_FILE_DATA_FORMAT_BC1_SRGB;
     case DX_FORMAT_BC2_TYPELESS:
     case DX_FORMAT_BC2_UNORM:
         return IMAGE_FILE_DATA_FORMAT_BC2_UNORM;
     case DX_FORMAT_BC2_UNORM_SRGB:
-        return IMAGE_FILE_DATA_FORMAT_BC2_UNORM_SRGB;
+        return IMAGE_FILE_DATA_FORMAT_BC2_SRGB;
     case DX_FORMAT_BC3_TYPELESS:
     case DX_FORMAT_BC3_UNORM:
         return IMAGE_FILE_DATA_FORMAT_BC3_UNORM;
     case DX_FORMAT_BC3_UNORM_SRGB:
-        return IMAGE_FILE_DATA_FORMAT_BC3_UNORM_SRGB;
+        return IMAGE_FILE_DATA_FORMAT_BC3_SRGB;
     case DX_FORMAT_BC4_TYPELESS:
     case DX_FORMAT_BC4_UNORM:
         return IMAGE_FILE_DATA_FORMAT_BC4_UNORM;
@@ -530,7 +587,7 @@ static ImageFileDataFormat DdsParseDxFormat(DxFormat dx_format) // TODO(cort): c
     case DX_FORMAT_BC7_UNORM:
         return IMAGE_FILE_DATA_FORMAT_BC7_UNORM;
     case DX_FORMAT_BC7_UNORM_SRGB:
-        return IMAGE_FILE_DATA_FORMAT_BC7_UNORM_SRGB;
+        return IMAGE_FILE_DATA_FORMAT_BC7_SRGB;
     case DX_FORMAT_B8G8R8A8_UNORM:
     case DX_FORMAT_B8G8R8X8_UNORM:
         return IMAGE_FILE_DATA_FORMAT_B8G8R8A8_UNORM;
@@ -616,23 +673,29 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
     size_t read_size = fread(dds_bytes, dds_file_size, 1, dds_file);
     fclose(dds_file);
     if (read_size != 1)
+    {
+        free(dds_bytes);
         return -4;  // Couldn't read file contents
+    }
 
         // Check magic number and header validity
     const uint32_t *magic = (const uint32_t*)dds_bytes;
     const uint32_t kDdsPrefixMagic = 0x20534444;
     if (*magic != kDdsPrefixMagic)
     {
+        free(dds_bytes);
         return -4; // Incorrect magic number
     }
     const DdsHeader *header = (const DdsHeader*)(dds_bytes + sizeof(uint32_t));
     if (header->structSize != sizeof(DdsHeader) || header->pixelFormat.structSize != sizeof(DdsPixelFormat))
     {
+        free(dds_bytes);
         return -5; // Incorrect header size
     }
     if ((header->flags & (HEADER_FLAGS_WIDTH | HEADER_FLAGS_HEIGHT)) != (HEADER_FLAGS_WIDTH | HEADER_FLAGS_HEIGHT))
     {
         // technically DDSD_CAPS and DDSD_PIXELFORMAT are required as well, but their absence is so widespread that they can't be relied upon.
+        free(dds_bytes);
         return -6; // Required flag is missing from header
     }
 
@@ -652,6 +715,7 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
         // Must be long enough for both headers and magic value
         if( dds_file_size < (sizeof(DdsHeader)+sizeof(uint32_t)+sizeof(DdsHeader10)) )
         {
+            free(dds_bytes);
             return -8; // File too small to contain a valid DX10 DDS
         }
         header10 = (const DdsHeader10*)(dds_bytes + sizeof(uint32_t) + sizeof(DdsHeader));
@@ -669,6 +733,7 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
             CUBEMAP_FLAG_POSITIVEZ | CUBEMAP_FLAG_NEGATIVEZ;
         if ((header->caps2 & kCubemapFlagAllFaces) != kCubemapFlagAllFaces)
         {
+            free(dds_bytes);
             return -9; // The cubemap is missing one or more faces.
         }
         is_cube_map = true;
@@ -680,6 +745,7 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
     {
         if (header->depth == 0)
         {
+            free(dds_bytes);
             return -10; // The file is marked as a volume texture, but depth is <1
         }
         is_volume_texture = true;
@@ -702,6 +768,7 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
     }
     if (data_format == IMAGE_FILE_DATA_FORMAT_UNKNOWN)
     {
+        free(dds_bytes);
         return -11; // It is either unknown or unsupported format
     }
 
@@ -714,7 +781,9 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
     out_image->mip_levels = mipMapCount;
     out_image->array_layers = header10 ? header10->arraySize : 1;
     if (is_cube_map)
+    {
         out_image->array_layers *= 6;  // ImageFile counts individual faces as layers.
+    }
     // Official DDS specs on MSDN suggest that the pitchOrLinearSize field can not be trusted.
     // and recommend the following computation for pitch.
     out_image->row_pitch_bytes = is_compressed ?
@@ -724,7 +793,9 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
     out_image->file_type = IMAGE_FILE_TYPE_DDS;
     out_image->flags = 0;
     if (is_cube_map)
+    {
         out_image->flags |= IMAGE_FILE_FLAG_CUBE_BIT;
+    }
     out_image->data_format = data_format;
     out_image->file_contents = dds_bytes;  // NOTE: includes header data
     
@@ -734,8 +805,101 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+struct AstcHeader
+{
+    uint8_t magic[4];
+    uint8_t blockdim_x;
+    uint8_t blockdim_y;
+    uint8_t blockdim_z;
+    uint8_t xsize[3];
+    uint8_t ysize[3];
+    uint8_t zsize[3];
+};
+
+static int LoadImageFromAstc(ImageFile *out_image, const char *image_path)
+{
+    FILE *astc_file = fopen(image_path, "rb");
+    if (!astc_file)
+        return -3;  // Couldn't open file for reading
+    fseek(astc_file, 0, SEEK_END);
+    size_t astc_file_size = ftell(astc_file);
+    fseek(astc_file, 0, SEEK_SET);
+    uint8_t *astc_bytes = (uint8_t*)malloc(astc_file_size);
+    size_t read_size = fread(astc_bytes, astc_file_size, 1, astc_file);
+    fclose(astc_file);
+    if (read_size != 1)
+        return -4;  // Couldn't read file contents
+
+    const AstcHeader *header = (const AstcHeader*)astc_bytes;
+    const uint32_t kMagic = 0x5CA1AB13;
+    if (memcmp(&header->magic, &kMagic, sizeof(header->magic)) != 0)
+    {
+        free(astc_bytes);
+        return -5;  // invalid magic number
+    }
+    if (header->blockdim_z != 1)
+    {
+        free(astc_bytes);
+        return -6;  // This loader is not aware of any ASTC blocks with Z!=1
+    }
+
+    // Merge x,y,z-sizes from 3 chars into one integer value.
+    uint32_t xsize = header->xsize[0] + (header->xsize[1] << 8) + (header->xsize[2] << 16);
+    uint32_t ysize = header->ysize[0] + (header->ysize[1] << 8) + (header->ysize[2] << 16);
+    uint32_t zsize = header->zsize[0] + (header->zsize[1] << 8) + (header->zsize[2] << 16);
+    // Compute number of blocks in each direction.
+    uint32_t xblocks = (xsize + header->blockdim_x - 1) / header->blockdim_x;
+    uint32_t yblocks = (ysize + header->blockdim_y - 1) / header->blockdim_y;
+    //uint32_t zblocks = (zsize + header->blockdim_z - 1) / header->blockdim_z;
+    // Each block is encoded on 16 bytes, so calculate total compressed image data size.
+    //uint32_t total_size = xblocks * yblocks * zblocks * 16;
+
+    out_image->width = xsize;
+    out_image->height = ysize;
+    out_image->depth = zsize;
+    out_image->mip_levels = 1;
+    out_image->array_layers = 1;
+    out_image->row_pitch_bytes = xblocks * 16;
+    out_image->depth_pitch_bytes = xblocks * yblocks * 16;
+    out_image->file_type = IMAGE_FILE_TYPE_ASTC;
+    out_image->flags = 0;
+    bool is_srgb = 0; // TODO(cort): where would this come from?
+#define ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT(dimx, dimy) \
+    if (header->blockdim_x == (dimx) && header->blockdim_y == (dimy)) \
+    out_image->data_format = is_srgb ? \
+        IMAGE_FILE_DATA_FORMAT_ASTC_ ## dimx ## x ## dimy ## _SRGB : \
+        IMAGE_FILE_DATA_FORMAT_ASTC_ ## dimx ## x ## dimy ## _UNORM
+
+    if (header->blockdim_x == 0 && header->blockdim_y == 0)
+        out_image->data_format = IMAGE_FILE_DATA_FORMAT_UNKNOWN;
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT( 4, 4);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT( 5, 4);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT( 5, 5);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT( 6, 5);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT( 6, 6);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT( 8, 5);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT( 8, 6);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT( 8, 8);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT(10, 5);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT(10, 6);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT(10, 8);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT(10,10);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT(12,10);
+    ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT(12,12);
+    else
+        out_image->data_format = IMAGE_FILE_DATA_FORMAT_UNKNOWN;
+#undef BLOCKDIM_TO_FORMAT
+    out_image->file_contents = astc_bytes;  // NOTE: includes header data
+    
+    return 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
 int ImageFileCreate(ImageFile *out_image, const char *image_path)
 {
+    memset(out_image, 0, sizeof(*out_image));
+
     const char *suffix = strrchr(image_path, (int)'.');
     if (suffix == NULL)
         return -1;  // No filename suffix
@@ -760,8 +924,8 @@ int ImageFileCreate(ImageFile *out_image, const char *image_path)
         file_type = IMAGE_FILE_TYPE_BMP;
     else if (strcmp(suffix_lower, ".dds") == 0)
         file_type = IMAGE_FILE_TYPE_DDS;
-    //else if (strcmp(suffix_lower, ".astc") == 0)
-    //    file_type = IMAGE_FILE_TYPE_ASTC);
+    else if (strcmp(suffix_lower, ".astc") == 0)
+        file_type = IMAGE_FILE_TYPE_ASTC;
     else
         return -2;  // Unrecognized filename suffix
 
@@ -777,8 +941,9 @@ int ImageFileCreate(ImageFile *out_image, const char *image_path)
     case IMAGE_FILE_TYPE_DDS:
         load_error = LoadImageFromDds(out_image, image_path);
         break;
-    //case IMAGE_FILE_TYPE_ASTC:
-    //    break;
+    case IMAGE_FILE_TYPE_ASTC:
+        load_error = LoadImageFromAstc(out_image, image_path);
+        break;
     case IMAGE_FILE_TYPE_UNKNOWN:
         break;  // unrecognized file types already handled above
     }
@@ -799,8 +964,9 @@ void ImageFileDestroy(const ImageFile *image)
     case IMAGE_FILE_TYPE_DDS:
         free(image->file_contents);
         break;
-    //case IMAGE_FILE_TYPE_ASTC:
-    //    break;
+    case IMAGE_FILE_TYPE_ASTC:
+        free(image->file_contents);
+        break;
     case IMAGE_FILE_TYPE_UNKNOWN:
         break;
     }
@@ -816,7 +982,7 @@ size_t ImageFileGetSubresourceSize(const ImageFile *image, const ImageFileSubres
     case IMAGE_FILE_TYPE_TGA:
     case IMAGE_FILE_TYPE_JPEG:
     case IMAGE_FILE_TYPE_BMP:
-        return image->depth_pitch_bytes;
+        return image->depth_pitch_bytes * image->depth;
     case IMAGE_FILE_TYPE_DDS:
     {
         bool is_compressed = DdsContainsCompressedTexture(image->data_format);
@@ -828,6 +994,8 @@ size_t ImageFileGetSubresourceSize(const ImageFile *image, const ImageFileSubres
         uint32_t num_rows = is_compressed ? ((mip_height+3)/4) : mip_height;
         return mip_pitch * num_rows * mip_depth;
     }
+    case IMAGE_FILE_TYPE_ASTC:
+        return image->depth_pitch_bytes * image->depth;
     case IMAGE_FILE_TYPE_UNKNOWN:
         break;
     }
@@ -865,6 +1033,11 @@ void *ImageFileGetSubresourceData(const ImageFile *image, const ImageFileSubreso
         intptr_t out_ptr = intptr_t(image->file_contents) + texels_base_offset +
             subresource.array_layer * layer_size +
             mip_offsets[subresource.mip_level];
+        return (void*)out_ptr;
+    }
+    case IMAGE_FILE_TYPE_ASTC:
+    {
+        intptr_t out_ptr = intptr_t(image->file_contents) + sizeof(AstcHeader);
         return (void*)out_ptr;
     }
     case IMAGE_FILE_TYPE_UNKNOWN:
@@ -908,11 +1081,11 @@ void ImageFileToVkImageCreateInfo(VkImageCreateInfo *out_ci, const ImageFile *im
     case IMAGE_FILE_DATA_FORMAT_R16_UNORM:          out_ci->format = VK_FORMAT_R16_UNORM; break;
     case IMAGE_FILE_DATA_FORMAT_R8_UNORM:           out_ci->format = VK_FORMAT_R8_UNORM; break;
     case IMAGE_FILE_DATA_FORMAT_BC1_UNORM:          out_ci->format = VK_FORMAT_BC1_RGBA_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC1_UNORM_SRGB:     out_ci->format = VK_FORMAT_BC1_RGBA_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_BC1_SRGB:           out_ci->format = VK_FORMAT_BC1_RGBA_SRGB_BLOCK; break;
     case IMAGE_FILE_DATA_FORMAT_BC2_UNORM:          out_ci->format = VK_FORMAT_BC2_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC2_UNORM_SRGB:     out_ci->format = VK_FORMAT_BC2_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_BC2_SRGB:           out_ci->format = VK_FORMAT_BC2_SRGB_BLOCK; break;
     case IMAGE_FILE_DATA_FORMAT_BC3_UNORM:          out_ci->format = VK_FORMAT_BC3_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC3_UNORM_SRGB:     out_ci->format = VK_FORMAT_BC3_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_BC3_SRGB:           out_ci->format = VK_FORMAT_BC3_SRGB_BLOCK; break;
     case IMAGE_FILE_DATA_FORMAT_BC4_UNORM:          out_ci->format = VK_FORMAT_BC4_UNORM_BLOCK; break;
     case IMAGE_FILE_DATA_FORMAT_BC4_SNORM:          out_ci->format = VK_FORMAT_BC4_SNORM_BLOCK; break;
     case IMAGE_FILE_DATA_FORMAT_BC5_UNORM:          out_ci->format = VK_FORMAT_BC5_UNORM_BLOCK; break;
@@ -920,7 +1093,35 @@ void ImageFileToVkImageCreateInfo(VkImageCreateInfo *out_ci, const ImageFile *im
     case IMAGE_FILE_DATA_FORMAT_BC6H_UF16:          out_ci->format = VK_FORMAT_BC6H_UFLOAT_BLOCK; break;
     case IMAGE_FILE_DATA_FORMAT_BC6H_SF16:          out_ci->format = VK_FORMAT_BC6H_SFLOAT_BLOCK; break;
     case IMAGE_FILE_DATA_FORMAT_BC7_UNORM:          out_ci->format = VK_FORMAT_BC7_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC7_UNORM_SRGB:     out_ci->format = VK_FORMAT_BC7_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_BC7_SRGB:           out_ci->format = VK_FORMAT_BC7_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_4x4_UNORM:     out_ci->format = VK_FORMAT_ASTC_4x4_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_4x4_SRGB:      out_ci->format = VK_FORMAT_ASTC_4x4_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x4_UNORM:     out_ci->format = VK_FORMAT_ASTC_5x4_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x4_SRGB:      out_ci->format = VK_FORMAT_ASTC_5x4_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x5_UNORM:     out_ci->format = VK_FORMAT_ASTC_5x5_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x5_SRGB:      out_ci->format = VK_FORMAT_ASTC_5x5_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x5_UNORM:     out_ci->format = VK_FORMAT_ASTC_6x5_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x5_SRGB:      out_ci->format = VK_FORMAT_ASTC_6x5_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x6_UNORM:     out_ci->format = VK_FORMAT_ASTC_6x6_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x6_SRGB:      out_ci->format = VK_FORMAT_ASTC_6x6_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x5_UNORM:     out_ci->format = VK_FORMAT_ASTC_8x5_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x5_SRGB:      out_ci->format = VK_FORMAT_ASTC_8x5_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x6_UNORM:     out_ci->format = VK_FORMAT_ASTC_8x6_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x6_SRGB:      out_ci->format = VK_FORMAT_ASTC_8x6_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x8_UNORM:     out_ci->format = VK_FORMAT_ASTC_8x8_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x8_SRGB:      out_ci->format = VK_FORMAT_ASTC_8x8_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x5_UNORM:    out_ci->format = VK_FORMAT_ASTC_10x5_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x5_SRGB:     out_ci->format = VK_FORMAT_ASTC_10x5_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x6_UNORM:    out_ci->format = VK_FORMAT_ASTC_10x6_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x6_SRGB:     out_ci->format = VK_FORMAT_ASTC_10x6_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x8_UNORM:    out_ci->format = VK_FORMAT_ASTC_10x8_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x8_SRGB:     out_ci->format = VK_FORMAT_ASTC_10x8_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x10_UNORM:   out_ci->format = VK_FORMAT_ASTC_10x10_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x10_SRGB:    out_ci->format = VK_FORMAT_ASTC_10x10_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_UNORM:   out_ci->format = VK_FORMAT_ASTC_12x10_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_SRGB:    out_ci->format = VK_FORMAT_ASTC_12x10_SRGB_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_UNORM:   out_ci->format = VK_FORMAT_ASTC_12x12_UNORM_BLOCK; break;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_SRGB:    out_ci->format = VK_FORMAT_ASTC_12x12_SRGB_BLOCK; break;
     // no default case here, to get warnings when new formats are added!
     }
     out_ci->extent.width  = image->width;
