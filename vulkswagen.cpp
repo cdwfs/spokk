@@ -251,20 +251,20 @@ int main(int argc, char *argv[]) {
         MESH_TYPE_SPHERE   = 1,
         MESH_TYPE_AXES     = 3,
         MESH_TYPE_CYLINDER = 2,
-    } meshType = MESH_TYPE_SPHERE;
+    } meshType = MESH_TYPE_CUBE;
     cdsm_cube_recipe_t cube_recipe = {};
-    cube_recipe.min_extent = {-1,-1,-1};
-    cube_recipe.max_extent = {+1,+1,+1};
+    cube_recipe.min_extent = {-0.2f,-0.2f,-0.2f};
+    cube_recipe.max_extent = {+0.2f,+0.2f,+0.2f};
     cdsm_sphere_recipe_t sphere_recipe = {};
     sphere_recipe.latitudinal_segments = 30;
     sphere_recipe.longitudinal_segments = 30;
     sphere_recipe.radius = 0.2f;
     cdsm_cylinder_recipe_t cylinder_recipe = {};
-    cylinder_recipe.length = 1.0f;
+    cylinder_recipe.length = 0.3f;
     cylinder_recipe.axial_segments = 3;
     cylinder_recipe.radial_segments = 60;
-    cylinder_recipe.radius0 = -1.0f;
-    cylinder_recipe.radius1 = 1.0f;
+    cylinder_recipe.radius0 = 0.3f;
+    cylinder_recipe.radius1 = 0.4f;
     cdsm_axes_recipe_t axes_recipe = {};
     axes_recipe.length = 1.0f;
     if      (meshType == MESH_TYPE_CUBE)
@@ -445,13 +445,13 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK( vkCreateSampler(context.device, &samplerCreateInfo, context.allocation_callbacks, &sampler) );
 
     ImageFile image_file = {};
-    int texture_load_error = ImageFileCreate(&image_file, "trevor/cube04.dds");
+    int texture_load_error = ImageFileCreate(&image_file, "trevor/redf.png");
     assert(!texture_load_error);
     VkImageCreateInfo texture_image_create_info = {};
     ImageFileToVkImageCreateInfo(&texture_image_create_info, &image_file);
     texture_image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     texture_image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    texture_image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    texture_image_create_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
     VkImage texture_image = stbvk_create_image(&context, &texture_image_create_info,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT, "texture image");
     VkMemoryRequirements texture_image_memory_reqs = {};
