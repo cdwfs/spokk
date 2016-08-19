@@ -327,9 +327,9 @@ static void stbvk__log_default(const char *format, ...) {
 #define STBVK__CLAMP(x, xmin, xmax) ( ((x)<(xmin)) ? (xmin) : ( ((x)>(xmax)) ? (xmax) : (x) ) )
 
 template<typename T>
-const T& stbvk__min(const T& a, const T& b) { return (a<b) ? a : b; }
+static const T& stbvk__min(const T& a, const T& b) { return (a<b) ? a : b; }
 template<typename T>
-const T& stbvk__max(const T& a, const T& b) { return (a>b) ? a : b; }
+static const T& stbvk__max(const T& a, const T& b) { return (a>b) ? a : b; }
 
 #include <algorithm>
 #include <string>
