@@ -1,6 +1,7 @@
 #if !defined(IMAGE_FILE_H)
 #define IMAGE_FILE_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 typedef enum ImageFileFlagBits

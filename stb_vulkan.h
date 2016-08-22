@@ -351,6 +351,8 @@ extern "C" {
 #   define STBVK_ASSERT(x) assert(x)
 #endif
 
+// Yeah, yeah, C++ in the implementation.
+#include <algorithm>
 #include <string>
 #include <vector>
 
