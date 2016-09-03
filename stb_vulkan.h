@@ -1867,7 +1867,7 @@ STBVKDEF VkResult stbvk_buffer_load_contents(stbvk_context const *context, VkBuf
     buf_barriers[0].offset = 0;
     buf_barriers[0].size = src_size;
     buf_barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    buf_barriers[1].srcAccessMask = 0; // TODO(cort): erm...all access, technically?
+    buf_barriers[1].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
     buf_barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     buf_barriers[1].srcQueueFamilyIndex = context->graphics_queue_family_index;
     buf_barriers[1].dstQueueFamilyIndex = context->graphics_queue_family_index;
@@ -2029,7 +2029,7 @@ STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, VkI
     img_barriers[0].subresourceRange = src_sub_range;
     img_barriers[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     img_barriers[1].pNext = NULL;
-    img_barriers[1].srcAccessMask = 0; // TODO(cort): erm...all access, technically?
+    img_barriers[1].srcAccessMask = 0;
     img_barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     img_barriers[1].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     img_barriers[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
