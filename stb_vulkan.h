@@ -414,7 +414,7 @@ static void stbvk__log_default(const char *format, ...) {
 #   define STBVK__X86_TARGET
 #endif
 
-// TODO: proper return-value test
+// TODO(cort): proper return-value test
 #if defined(_MSC_VER)
 #   define STBVK__RETVAL_CHECK(expected, expr) \
     do {  \
@@ -1949,7 +1949,7 @@ STBVKDEF VkResult stbvk_image_load_subresource(stbvk_context const *context, VkI
     STBVK_ASSERT(dst_ci->usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
     VkImage staging_image = stbvk__create_staging_image(context, dst_ci, subresource);
-    // TODO: pass in a device_arena to allocate from.
+    // TODO(cort): pass in a device_arena to allocate from.
     stbvk_device_memory_arena *device_arena = NULL;
     VkDeviceMemory staging_device_memory = VK_NULL_HANDLE;
     VkDeviceSize staging_memory_offset = 0;

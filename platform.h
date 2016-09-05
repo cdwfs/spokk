@@ -180,7 +180,7 @@ extern "C"
 #   define ZOMBO_POPCNT32(x) _mm_popcnt_u32(x)
 #   define ZOMBO_POPCNT64(x) _mm_popcnt_u64(x)
 #elif defined(ZOMBO_COMPILER_GNU)
-// TODO
+// TODO(cort): gcc support
 #endif
 
 
