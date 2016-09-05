@@ -140,7 +140,13 @@ extern "C" {
         VkImage *swapchain_images;
         VkImageView *swapchain_image_views;
 
-        void *enabled_layers_and_extensions;  // query with stbvk_is_[device,instance]_[layer,extension]_enabled()
+        // query with stbvk_is_[device,instance]_[layer,extension]_enabled()
+        const VkLayerProperties *enabled_instance_layers;
+        uint32_t enabled_instance_layer_count;
+        const VkExtensionProperties *enabled_instance_extensions;
+        uint32_t enabled_instance_extension_count;
+        const VkExtensionProperties *enabled_device_extensions;
+        uint32_t enabled_device_extension_count;
     } stbvk_context;
 
     typedef struct
@@ -350,11 +356,6 @@ extern "C" {
 #   include <assert.h>
 #   define STBVK_ASSERT(x) assert(x)
 #endif
-
-// Yeah, yeah, C++ in the implementation.
-#include <algorithm>
-#include <string>
-#include <vector>
 
 #ifndef _MSC_VER
 #   ifdef __cplusplus
@@ -786,101 +787,178 @@ void stbvk_destroy_device_memory_arena_flat(VkDevice device,
 
 //////////////////////////// stbvk_context
 
-// I am currently too lazy to implement these in C.
-class stbvk__enabled_layers_and_extensions
-{
-public:
-    std::vector<std::string> instance_layers;
-    std::vector<std::string> instance_extensions;
-    std::vector<std::string> device_extensions;
-};
-
 STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_info, stbvk_context *context)
 {
-    // Query all core layers
-    uint32_t instance_layer_count = 0;
-    STBVK__CHECK( vkEnumerateInstanceLayerProperties(&instance_layer_count, NULL) );
-    std::vector<VkLayerProperties> instance_layer_properties(instance_layer_count);
-    STBVK__CHECK( vkEnumerateInstanceLayerProperties(&instance_layer_count, instance_layer_properties.data()) );
-    std::vector<std::string> all_instance_layer_names(instance_layer_count);
-    for(uint32_t iLayer=0; iLayer<instance_layer_count; iLayer+=1)
-    {
-        all_instance_layer_names[iLayer] = std::string(instance_layer_properties[iLayer].layerName);
-    }
-    // Filter available layers by what was required/optional
-    std::vector<const char*> layer_names_c;
-    layer_names_c.reserve(all_instance_layer_names.size());
-    // Optional layers come first, as a quick hack to ensure that GOOGLE_unique_objects is last in the list.
-    // TODO(cort): LAYER_GOOGLE_unique_objects must be last in the last. For now, hack around this by listing
-    // optional layers first, but this is not terribly robust.
-    for(uint32_t iLayer = 0; iLayer<create_info->optional_instance_layer_count; iLayer += 1)
-    {
-        if (std::find(all_instance_layer_names.begin(), all_instance_layer_names.end(),
-            create_info->optional_instance_layer_names[iLayer])
-            == all_instance_layer_names.end())
-        {
-            continue;  // optional layer missing; ignore it.
-        }
-        layer_names_c.push_back( create_info->optional_instance_layer_names[iLayer] );
-    }
-    for(uint32_t iLayer = 0; iLayer<create_info->required_instance_layer_count; iLayer += 1)
-    {
-        layer_names_c.push_back( create_info->required_instance_layer_names[iLayer] );
-    }
+    VkResult result = VK_SUCCESS;
 
-    // Query all core extensions
-    uint32_t instance_extension_count = 0;
-    STBVK__CHECK( vkEnumerateInstanceExtensionProperties(NULL, &instance_extension_count, NULL) );
-    std::vector<VkExtensionProperties> instance_extension_properties(instance_extension_count);
-    STBVK__CHECK( vkEnumerateInstanceExtensionProperties(NULL, &instance_extension_count, instance_extension_properties.data()) );
-    std::vector<std::string> all_instance_extension_names(instance_extension_count);
-    for(uint32_t iExt=0; iExt<instance_extension_count; iExt+=1)
+    // Query all supported layers
+    uint32_t all_instance_layer_count = 0;
+    STBVK__CHECK( vkEnumerateInstanceLayerProperties(&all_instance_layer_count, NULL) );
+    VkLayerProperties *all_instance_layers =
+        (VkLayerProperties*)stbvk__host_alloc(all_instance_layer_count * sizeof(VkLayerProperties),
+            sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_COMMAND, context->allocation_callbacks);
+    STBVK__CHECK( vkEnumerateInstanceLayerProperties(&all_instance_layer_count, all_instance_layers) );
+    // Filter supported layers into enabled layers based on provided optional/required lists.
+    // Remove duplicates as we go; some loaders don't support them.
+    VkLayerProperties *enabled_instance_layers =
+        (VkLayerProperties*)stbvk__host_alloc(all_instance_layer_count * sizeof(VkLayerProperties),
+            sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE, context->allocation_callbacks);
+    uint32_t enabled_instance_layer_count = 0;
+    for(uint32_t iLayer = 0; iLayer < create_info->optional_instance_layer_count; ++iLayer)
     {
-        all_instance_extension_names[iExt] = std::string(instance_extension_properties[iExt].extensionName);
-    }
-    // Layers may also expose extensions; query them and add them to the list if we haven't already seen them.
-    // TODO(cort): multiple layers may expose the same extension with different version numbers. That...gets tricky.
-    for(uint32_t iLayer=0; iLayer<layer_names_c.size(); iLayer+=1)
-    {
-        uint32_t layer_extension_count = 0;
-        const char *layerName = layer_names_c[iLayer];
-        STBVK__CHECK( vkEnumerateInstanceExtensionProperties(layerName, &layer_extension_count, NULL) );
-        if (layer_extension_count == 0)
-            continue;
-        std::vector<VkExtensionProperties> layer_extension_properties(layer_extension_count);
-        STBVK__CHECK( vkEnumerateInstanceExtensionProperties(layerName, &layer_extension_count, layer_extension_properties.data()) );
-        for(const auto &ext_props : layer_extension_properties)
+        const char *layer_name = create_info->optional_instance_layer_names[iLayer];
+        for(uint32_t jLayer = 0; jLayer < all_instance_layer_count; ++jLayer)
         {
-            if (std::find(all_instance_extension_names.cbegin(), all_instance_extension_names.cend(), ext_props.extensionName)
-                == all_instance_extension_names.cend())
+            if (strcmp(layer_name, all_instance_layers[jLayer].layerName) == 0)
             {
-                all_instance_extension_names.push_back( std::string(ext_props.extensionName) );
+                if (all_instance_layers[jLayer].specVersion != 0xDEADC0DE)
+                {
+                    enabled_instance_layers[enabled_instance_layer_count++] = all_instance_layers[jLayer];
+                    all_instance_layers[jLayer].specVersion = 0xDEADC0DE;
+                }
+                break;
             }
         }
     }
-    // Filter available extensions by what was required/optional
-    std::vector<const char*> extension_names_c;
-    extension_names_c.reserve(all_instance_extension_names.size());
-    bool found_debug_report_extension = false;
-    for(uint32_t iExt = 0; iExt<create_info->required_instance_extension_count; iExt += 1)
+    for(uint32_t iLayer = 0; iLayer < create_info->required_instance_layer_count; ++iLayer)
     {
-        if (std::string(create_info->required_instance_extension_names[iExt]) == std::string(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
-            found_debug_report_extension = true;
-        extension_names_c.push_back( create_info->required_instance_extension_names[iExt] );
-    }
-    for(uint32_t iExt = 0; iExt<create_info->optional_instance_extension_count; iExt += 1)
-    {
-        if (std::find(all_instance_extension_names.cbegin(), all_instance_extension_names.cend(),
-            create_info->optional_instance_extension_names[iExt])
-            == all_instance_extension_names.cend())
+        const char *layer_name = create_info->required_instance_layer_names[iLayer];
+        int found = 0;
+        for(uint32_t jLayer = 0; jLayer < all_instance_layer_count; ++jLayer)
         {
-            continue;  // optional extension missing. Ignore it.
+            if (strcmp(layer_name, all_instance_layers[jLayer].layerName) == 0)
+            {
+                if (all_instance_layers[jLayer].specVersion != 0xDEADC0DE)
+                {
+                    enabled_instance_layers[enabled_instance_layer_count++] = all_instance_layers[jLayer];
+                    all_instance_layers[jLayer].specVersion = 0xDEADC0DE;
+                }
+                found = 1;
+                break;
+            }
         }
-        if (std::string(create_info->optional_instance_extension_names[iExt]) == std::string(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
-            found_debug_report_extension = true;
-        extension_names_c.push_back( create_info->optional_instance_extension_names[iExt] );
+        if (!found)
+        {
+            result = VK_ERROR_LAYER_NOT_PRESENT;
+        }
+    }
+    stbvk__host_free(all_instance_layers, context->allocation_callbacks);
+    if (result != VK_SUCCESS)
+    {
+        return result;
+    }
+    const char **enabled_instance_layer_names =
+        (const char**)stbvk__host_alloc(enabled_instance_layer_count * sizeof(const char*),
+            sizeof(const char*), VK_SYSTEM_ALLOCATION_SCOPE_COMMAND, context->allocation_callbacks);
+    for(uint32_t iLayer = 0; iLayer < enabled_instance_layer_count; ++iLayer)
+    {
+        enabled_instance_layer_names[iLayer] = enabled_instance_layers[iLayer].layerName;
     }
 
+    // Tally up total extension count for all enabled layers (including NULL, which queries
+    // core extensions exposed by the driver).
+    uint32_t all_extension_count = 0;
+    for(int32_t iLayer = -1; iLayer < (int32_t)enabled_instance_layer_count; ++iLayer)
+    {
+        const char *layer_name = (iLayer == -1) ? NULL : enabled_instance_layer_names[iLayer];
+        uint32_t layer_extension_count = 0;
+        vkEnumerateInstanceExtensionProperties(layer_name, &layer_extension_count, NULL);
+        all_extension_count += layer_extension_count;
+    }
+    // Construct a list of unique extensions provided by all layers.
+    VkExtensionProperties *all_extensions =
+        (VkExtensionProperties*)stbvk__host_alloc(all_extension_count * sizeof(VkExtensionProperties),
+        sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_COMMAND, context->allocation_callbacks);
+    uint32_t unique_extension_count = 0;
+    for(int32_t iLayer = -1; iLayer < (int32_t)enabled_instance_layer_count; ++iLayer)
+    {
+        const char *layer_name = (iLayer == -1) ? NULL : enabled_instance_layer_names[iLayer];
+        uint32_t layer_extension_count = 0;
+        vkEnumerateInstanceExtensionProperties(layer_name, &layer_extension_count, NULL);
+        STBVK_ASSERT(unique_extension_count + layer_extension_count <= all_extension_count);
+        VkExtensionProperties *layer_extensions = all_extensions + unique_extension_count;
+        vkEnumerateInstanceExtensionProperties(layer_name, &layer_extension_count,
+            layer_extensions);
+        for(uint32_t iExt = 0; iExt < layer_extension_count; ++iExt)
+        {
+            const char *ext_name = layer_extensions[iExt].extensionName;
+            int found = 0;
+            for(uint32_t jExt = 0; jExt < unique_extension_count; ++jExt)
+            {
+                if (strcmp(all_extensions[jExt].extensionName, ext_name) == 0)
+                {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                all_extensions[unique_extension_count++] = layer_extensions[iExt];
+            }
+        }
+    }
+    // Filter supported extensions into enabled extensions based on provided optional/required lists.
+    // Remove duplicates as we go; some loaders don't support them.
+    VkExtensionProperties *enabled_instance_extensions =
+        (VkExtensionProperties*)stbvk__host_alloc(unique_extension_count * sizeof(VkExtensionProperties),
+            sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE, context->allocation_callbacks);
+    uint32_t enabled_instance_extension_count = 0;
+    for(uint32_t iExt = 0; iExt < create_info->optional_instance_extension_count; ++iExt)
+    {
+        const char *ext_name = create_info->optional_instance_extension_names[iExt];
+        for(uint32_t jExtension = 0; jExtension < unique_extension_count; ++jExtension)
+        {
+            if (strcmp(ext_name, all_extensions[jExtension].extensionName) == 0)
+            {
+                if (all_extensions[jExtension].specVersion != 0xDEADC0DE)
+                {
+                    enabled_instance_extensions[enabled_instance_extension_count++] = all_extensions[jExtension];
+                    all_extensions[jExtension].specVersion = 0xDEADC0DE;
+                }
+                break;
+            }
+        }
+    }
+    for(uint32_t iExt = 0; iExt < create_info->required_instance_extension_count; ++iExt)
+    {
+        const char *ext_name = create_info->required_instance_extension_names[iExt];
+        int found = 0;
+        for(uint32_t jExtension = 0; jExtension < unique_extension_count; ++jExtension)
+        {
+            if (strcmp(ext_name, all_extensions[jExtension].extensionName) == 0)
+            {
+                if (all_extensions[jExtension].specVersion != 0xDEADC0DE)
+                {
+                    enabled_instance_extensions[enabled_instance_extension_count++] = all_extensions[jExtension];
+                    all_extensions[jExtension].specVersion = 0xDEADC0DE;
+                }
+                found = 1;
+                break;
+            }
+        }
+        if (!found)
+        {
+            result = VK_ERROR_EXTENSION_NOT_PRESENT;
+        }
+    }
+    stbvk__host_free(all_extensions, context->allocation_callbacks);
+    if (result != VK_SUCCESS)
+    {
+        return result;
+    }
+    const char **enabled_instance_extension_names =
+        (const char**)stbvk__host_alloc(enabled_instance_extension_count * sizeof(const char*),
+            sizeof(const char*), VK_SYSTEM_ALLOCATION_SCOPE_COMMAND, context->allocation_callbacks);
+    int found_debug_report_extension = 0;
+    for(uint32_t iExt = 0; iExt < enabled_instance_extension_count; ++iExt)
+    {
+        enabled_instance_extension_names[iExt] = enabled_instance_extensions[iExt].extensionName;
+        if (strcmp(enabled_instance_extension_names[iExt], VK_EXT_DEBUG_REPORT_EXTENSION_NAME) == 0)
+        {
+            found_debug_report_extension = 1;
+        }
+    }
+    
     VkApplicationInfo application_info_default = {};
     application_info_default.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     application_info_default.pNext = NULL;
@@ -895,19 +973,19 @@ STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_in
     instance_create_info.pNext = NULL;
     instance_create_info.flags = 0;
     instance_create_info.pApplicationInfo = create_info->application_info ? create_info->application_info : &application_info_default;
-    instance_create_info.enabledLayerCount       = uint32_t(layer_names_c.size());
-    instance_create_info.ppEnabledLayerNames     = layer_names_c.data();
-    instance_create_info.enabledExtensionCount   = uint32_t(extension_names_c.size());
-    instance_create_info.ppEnabledExtensionNames = extension_names_c.data();
+    instance_create_info.enabledLayerCount       = enabled_instance_layer_count;
+    instance_create_info.ppEnabledLayerNames     = enabled_instance_layer_names;
+    instance_create_info.enabledExtensionCount   = enabled_instance_extension_count;
+    instance_create_info.ppEnabledExtensionNames = enabled_instance_extension_names;
 
     STBVK__CHECK( vkCreateInstance(&instance_create_info, create_info->allocation_callbacks, &context->instance) );
+    stbvk__host_free(enabled_instance_layer_names, context->allocation_callbacks);
+    stbvk__host_free(enabled_instance_extension_names, context->allocation_callbacks);
 
-    stbvk__enabled_layers_and_extensions *elae = new stbvk__enabled_layers_and_extensions;
-    context->enabled_layers_and_extensions = (void*)elae;
-    for(uint32_t iLayer=0; iLayer<layer_names_c.size(); ++iLayer)
-        elae->instance_layers.push_back(std::string(layer_names_c[iLayer]));
-    for(uint32_t iExt=0; iExt<extension_names_c.size(); ++iExt)
-        elae->instance_extensions.push_back(std::string(extension_names_c[iExt]));
+    context->enabled_instance_layer_count = enabled_instance_layer_count;
+    context->enabled_instance_layers = enabled_instance_layers;
+    context->enabled_instance_extension_count = enabled_instance_extension_count;
+    context->enabled_instance_extensions = enabled_instance_extensions;
 
     // Set up debug report callback
     if (create_info->debug_report_callback && found_debug_report_extension)
@@ -930,6 +1008,8 @@ STBVKDEF VkResult stbvk_init_instance(stbvk_context_create_info const *create_in
 
 STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_info, VkSurfaceKHR present_surface, stbvk_context *context)
 {
+    VkResult result = VK_SUCCESS;
+
     uint32_t physical_device_count = 0;
     STBVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, NULL) );
     STBVK_ASSERT(physical_device_count > 0);
@@ -1058,56 +1138,103 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
 
     vkGetPhysicalDeviceFeatures(context->physical_device, &context->physical_device_features);
 
-    // Query all available device extensions.
-    uint32_t device_extension_count = 0;
-    STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device, NULL, &device_extension_count, NULL) );
-    std::vector<VkExtensionProperties> device_extension_properties(device_extension_count);
-    STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device, NULL, &device_extension_count, device_extension_properties.data()) );
-    std::vector<std::string> all_device_extension_names(device_extension_count);
-    printf("Implicit device extensions:\n");
-    for(uint32_t iExt=0; iExt<device_extension_count; iExt+=1)
+    // Tally up total extension count for all enabled layers (including NULL, which queries
+    // core extensions exposed by the driver).
+    uint32_t all_extension_count = 0;
+    for(int32_t iLayer = -1; iLayer < (int32_t)context->enabled_instance_layer_count; ++iLayer)
     {
-        printf("- %s\n", device_extension_properties[iExt].extensionName);
-        all_device_extension_names[iExt] = std::string(device_extension_properties[iExt].extensionName);
-    }
-    // Instance layers may expose device extensions; query those as well.
-    stbvk__enabled_layers_and_extensions *elae = (stbvk__enabled_layers_and_extensions*)context->enabled_layers_and_extensions;
-    for(uint32_t iLayer=0; iLayer<elae->instance_layers.size(); iLayer+=1)
-    {
+        const char *layer_name = (iLayer == -1) ? NULL : context->enabled_instance_layers[iLayer].layerName;
         uint32_t layer_extension_count = 0;
-        const char *layerName = elae->instance_layers[iLayer].c_str();
-        STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device,
-            layerName, &layer_extension_count, NULL) );
-        if (layer_extension_count == 0)
-            continue;
-        std::vector<VkExtensionProperties> layer_extension_properties(layer_extension_count);
-        STBVK__CHECK( vkEnumerateDeviceExtensionProperties(context->physical_device,
-            layerName, &layer_extension_count, layer_extension_properties.data()));
-        for(const auto &ext_props : layer_extension_properties)
+        vkEnumerateDeviceExtensionProperties(context->physical_device, layer_name, &layer_extension_count, NULL);
+        all_extension_count += layer_extension_count;
+    }
+    // Construct a list of unique extensions provided by all layers.
+    VkExtensionProperties *all_extensions =
+        (VkExtensionProperties*)stbvk__host_alloc(all_extension_count * sizeof(VkExtensionProperties),
+        sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_COMMAND, context->allocation_callbacks);
+    uint32_t unique_extension_count = 0;
+    for(int32_t iLayer = -1; iLayer < (int32_t)context->enabled_instance_layer_count; ++iLayer)
+    {
+        const char *layer_name = (iLayer == -1) ? NULL : context->enabled_instance_layers[iLayer].layerName;
+        uint32_t layer_extension_count = 0;
+        vkEnumerateDeviceExtensionProperties(context->physical_device, layer_name, &layer_extension_count, NULL);
+        STBVK_ASSERT(unique_extension_count + layer_extension_count <= all_extension_count);
+        VkExtensionProperties *layer_extensions = all_extensions + unique_extension_count;
+        vkEnumerateDeviceExtensionProperties(context->physical_device, layer_name, &layer_extension_count,
+            layer_extensions);
+        for(uint32_t iExt = 0; iExt < layer_extension_count; ++iExt)
         {
-            if (std::find(all_device_extension_names.cbegin(), all_device_extension_names.cend(), ext_props.extensionName)
-                == all_device_extension_names.cend())
+            const char *ext_name = layer_extensions[iExt].extensionName;
+            int found = 0;
+            for(uint32_t jExt = 0; jExt < unique_extension_count; ++jExt)
             {
-                all_device_extension_names.push_back( std::string(ext_props.extensionName) );
+                if (strcmp(all_extensions[jExt].extensionName, ext_name) == 0)
+                {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                all_extensions[unique_extension_count++] = layer_extensions[iExt];
             }
         }
     }
-    // Filter extensions based on what was requested as required/optional.
-    std::vector<const char*> extension_names_c;
-    extension_names_c.reserve(all_device_extension_names.size());
-    for(uint32_t iExt = 0; iExt<create_info->required_device_extension_count; iExt += 1)
+    // Filter supported extensions into enabled extensions based on provided optional/required lists.
+    // Remove duplicates as we go; some loaders don't support them.
+    VkExtensionProperties *enabled_device_extensions =
+        (VkExtensionProperties*)stbvk__host_alloc(unique_extension_count * sizeof(VkExtensionProperties),
+            sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, context->allocation_callbacks);
+    uint32_t enabled_device_extension_count = 0;
+    for(uint32_t iExt = 0; iExt < create_info->optional_device_extension_count; ++iExt)
     {
-        extension_names_c.push_back( create_info->required_device_extension_names[iExt] );
-    }
-    for(uint32_t iExt = 0; iExt<create_info->optional_device_extension_count; iExt += 1)
-    {
-        if (std::find(all_device_extension_names.cbegin(), all_device_extension_names.cend(),
-            create_info->optional_device_extension_names[iExt])
-            == all_device_extension_names.cend())
+        const char *ext_name = create_info->optional_device_extension_names[iExt];
+        for(uint32_t jExtension = 0; jExtension < unique_extension_count; ++jExtension)
         {
-            break;
+            if (strcmp(ext_name, all_extensions[jExtension].extensionName) == 0)
+            {
+                if (all_extensions[jExtension].specVersion != 0xDEADC0DE)
+                {
+                    enabled_device_extensions[enabled_device_extension_count++] = all_extensions[jExtension];
+                    all_extensions[jExtension].specVersion = 0xDEADC0DE;
+                }
+                break;
+            }
         }
-        extension_names_c.push_back( create_info->optional_device_extension_names[iExt] );
+    }
+    for(uint32_t iExt = 0; iExt < create_info->required_device_extension_count; ++iExt)
+    {
+        const char *ext_name = create_info->required_device_extension_names[iExt];
+        int found = 0;
+        for(uint32_t jExtension = 0; jExtension < unique_extension_count; ++jExtension)
+        {
+            if (strcmp(ext_name, all_extensions[jExtension].extensionName) == 0)
+            {
+                if (all_extensions[jExtension].specVersion != 0xDEADC0DE)
+                {
+                    enabled_device_extensions[enabled_device_extension_count++] = all_extensions[jExtension];
+                    all_extensions[jExtension].specVersion = 0xDEADC0DE;
+                }
+                found = 1;
+                break;
+            }
+        }
+        if (!found)
+        {
+            result = VK_ERROR_EXTENSION_NOT_PRESENT;
+        }
+    }
+    stbvk__host_free(all_extensions, context->allocation_callbacks);
+    if (result != VK_SUCCESS)
+    {
+        return result;
+    }
+    const char **enabled_device_extension_names =
+        (const char**)stbvk__host_alloc(enabled_device_extension_count * sizeof(const char*),
+            sizeof(const char*), VK_SYSTEM_ALLOCATION_SCOPE_COMMAND, context->allocation_callbacks);
+    for(uint32_t iExt = 0; iExt < enabled_device_extension_count; ++iExt)
+    {
+        enabled_device_extension_names[iExt] = enabled_device_extensions[iExt].extensionName;
     }
 
     VkDeviceCreateInfo device_create_info = {};
@@ -1118,20 +1245,17 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
     device_create_info.pQueueCreateInfos = device_queue_create_infos;
     device_create_info.enabledLayerCount = 0;
     device_create_info.ppEnabledLayerNames = NULL;
-    device_create_info.enabledExtensionCount = (uint32_t)extension_names_c.size();
-    device_create_info.ppEnabledExtensionNames = extension_names_c.data();
+    device_create_info.enabledExtensionCount = enabled_device_extension_count;
+    device_create_info.ppEnabledExtensionNames = enabled_device_extension_names;
     device_create_info.pEnabledFeatures = &context->physical_device_features;
     STBVK__CHECK( vkCreateDevice(context->physical_device, &device_create_info, context->allocation_callbacks, &context->device) );
-    for(uint32_t iExt=0; iExt<extension_names_c.size(); ++iExt)
-        elae->device_extensions.push_back(std::string(extension_names_c[iExt]));
+
+    stbvk__host_free(enabled_device_extension_names, context->allocation_callbacks);
     stbvk__host_free((void*)device_create_info.pQueueCreateInfos[0].pQueuePriorities, context->allocation_callbacks);
     stbvk__host_free((void*)device_create_info.pQueueCreateInfos[1].pQueuePriorities, context->allocation_callbacks);
-#if 0
-    STBVK_LOG("Created Vulkan logical device with extensions:");
-    for(uint32_t iExt=0; iExt<device_create_info.enabledExtensionCount; iExt+=1) {
-        STBVK_LOG("- %s", device_create_info.ppEnabledExtensionNames[iExt]);
-    }
-#endif
+
+    context->enabled_device_extension_count = enabled_device_extension_count;
+    context->enabled_device_extensions = enabled_device_extensions;
 
 #if VK_EXT_debug_marker
     stbvk__DebugMarkerSetObjectNameEXT = (PFN_vkDebugMarkerSetObjectNameEXT)vkGetDeviceProcAddr(context->device,
@@ -1332,8 +1456,9 @@ STBVKDEF void stbvk_destroy_context(stbvk_context *context)
     vkDestroyInstance(context->instance, context->allocation_callbacks);
     context->instance = VK_NULL_HANDLE;
 
-    stbvk__enabled_layers_and_extensions *elae = (stbvk__enabled_layers_and_extensions*)context->enabled_layers_and_extensions;
-    delete elae;
+    stbvk__host_free((VkLayerProperties*)(context->enabled_instance_layers), context->allocation_callbacks);
+    stbvk__host_free((VkExtensionProperties*)(context->enabled_instance_extensions), context->allocation_callbacks);
+    stbvk__host_free((VkExtensionProperties*)(context->enabled_device_extensions), context->allocation_callbacks);
 
     context->allocation_callbacks = NULL;
     *context = {};
@@ -1341,24 +1466,36 @@ STBVKDEF void stbvk_destroy_context(stbvk_context *context)
 
 STBVKDEF int stbvk_is_instance_layer_enabled(stbvk_context const *context, const char *layer_name)
 {
-    const stbvk__enabled_layers_and_extensions *elae =
-        (const stbvk__enabled_layers_and_extensions*)context->enabled_layers_and_extensions;
-    return (std::find(elae->instance_layers.cbegin(), elae->instance_layers.cend(),
-            std::string(layer_name)) == elae->instance_layers.cend()) ? 0 : 1;
+    for(uint32_t iLayer = 0; iLayer < context->enabled_instance_layer_count; ++iLayer)
+    {
+        if (strcmp(layer_name, context->enabled_instance_layers[iLayer].layerName) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
 }
 STBVKDEF int stbvk_is_instance_extension_enabled(stbvk_context const *context, const char *extension_name)
 {
-    const stbvk__enabled_layers_and_extensions *elae =
-        (const stbvk__enabled_layers_and_extensions*)context->enabled_layers_and_extensions;
-    return (std::find(elae->instance_extensions.cbegin(), elae->instance_extensions.cend(),
-            std::string(extension_name)) == elae->instance_extensions.cend()) ? 0 : 1;
+    for(uint32_t iExt = 0; iExt < context->enabled_instance_extension_count; ++iExt)
+    {
+        if (strcmp(extension_name, context->enabled_instance_extensions[iExt].extensionName) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
 }
 STBVKDEF int stbvk_is_device_extension_enabled(stbvk_context const *context, const char *extension_name)
 {
-    const stbvk__enabled_layers_and_extensions *elae =
-        (const stbvk__enabled_layers_and_extensions*)context->enabled_layers_and_extensions;
-    return (std::find(elae->device_extensions.cbegin(), elae->device_extensions.cend(),
-            std::string(extension_name)) == elae->device_extensions.cend()) ? 0 : 1;
+    for(uint32_t iExt = 0; iExt < context->enabled_device_extension_count; ++iExt)
+    {
+        if (strcmp(extension_name, context->enabled_device_extensions[iExt].extensionName) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 
