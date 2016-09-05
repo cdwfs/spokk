@@ -28,13 +28,13 @@
 #   pragma warning(pop)
 #endif
 
-#define STB_VULKAN_IMPLEMENTATION
-#include "stb_vulkan.h"
-
 #define CDS_MESH_IMPLEMENTATION
 #include "cds_mesh.h"
 
-#include "image_file.h"
+#include "vk_texture.h"
+
+#define STB_VULKAN_IMPLEMENTATION
+#include "stb_vulkan.h"
 
 #include <mathfu/vector.h>
 #include <mathfu/glsl_mappings.h>
@@ -461,43 +461,17 @@ int main(int argc, char *argv[]) {
     samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
     VkSampler sampler= stbvk_create_sampler(&context, &samplerCreateInfo, "default sampler");
 
-    ImageFile image_file = {};
     const char *texture_filename = "trevor/redf.png";
-    int texture_load_error = ImageFileCreate(&image_file, texture_filename);
-    assert(!texture_load_error); (void)texture_load_error;
-    VkImageCreateInfo texture_image_create_info = {};
-    ImageFileToVkImageCreateInfo(&texture_image_create_info, &image_file);
-    texture_image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    texture_image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    texture_image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    VkImage texture_image = stbvk_create_image(&context, &texture_image_create_info,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT, texture_filename);
+    VkImage texture_image = VK_NULL_HANDLE;
+    VkImageCreateInfo texture_image_create_info;
     VkDeviceMemory texture_image_mem = VK_NULL_HANDLE;
     VkDeviceSize texture_image_mem_offset = 0;
-    VULKAN_CHECK(stbvk_allocate_and_bind_image_memory(&context, texture_image, device_arena,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "texture image memory",
-        &texture_image_mem, &texture_image_mem_offset));
+    int texture_load_error = load_vkimage_from_file(&texture_image, &texture_image_create_info,
+        &texture_image_mem, &texture_image_mem_offset, &context, texture_filename, VK_TRUE,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
+    assert(!texture_load_error); (void)texture_load_error;
     VkImageView texture_image_view = stbvk_create_image_view_from_image(&context, texture_image,
         &texture_image_create_info, "texture image view");
-    for(uint32_t iMip=0; iMip<image_file.mip_levels; ++iMip)
-    {
-        for(uint32_t iLayer=0; iLayer<image_file.array_layers; ++iLayer)
-        {
-            VkImageSubresource texture_subresource = {};
-            texture_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            texture_subresource.arrayLayer = iLayer;
-            texture_subresource.mipLevel = iMip;
-            ImageFileSubresource file_subresource = {};
-            file_subresource.array_layer = iLayer;
-            file_subresource.mip_level = iMip;
-            VkSubresourceLayout texture_subresource_layout = stbvk_image_get_subresource_source_layout(&context,
-                &texture_image_create_info, texture_subresource);
-            VULKAN_CHECK(stbvk_image_load_subresource(&context, texture_image, &texture_image_create_info,
-                texture_subresource, texture_subresource_layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                VK_ACCESS_SHADER_READ_BIT, ImageFileGetSubresourceData(&image_file, file_subresource)));
-        }
-    }
-    ImageFileDestroy(&image_file);
 
     // Create render pass
     enum

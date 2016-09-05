@@ -4,6 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef enum ImageFileFlagBits
 {
 	IMAGE_FILE_FLAG_CUBE_BIT = 1,
@@ -85,6 +89,7 @@ typedef enum ImageFileDataFormat
     IMAGE_FILE_DATA_FORMAT_ASTC_12x12_UNORM   = 58,
     IMAGE_FILE_DATA_FORMAT_ASTC_12x12_SRGB    = 59,
 } ImageFileDataFormat;
+uint32_t ImageFileGetBytesPerTexelBlock(ImageFileDataFormat format);
 
 typedef struct ImageFileSubresource
 {
@@ -112,7 +117,8 @@ void ImageFileDestroy(const ImageFile *image);
 size_t ImageFileGetSubresourceSize(const ImageFile *image, const ImageFileSubresource subresource);
 void *ImageFileGetSubresourceData(const ImageFile *image, const ImageFileSubresource subresource);
 
-struct VkImageCreateInfo; // from vulkan.h
-void ImageFileToVkImageCreateInfo(VkImageCreateInfo *out_ci, const ImageFile *image);
+#ifdef __cplusplus
+}
+#endif
 
 #endif // IMAGE_FILE_H

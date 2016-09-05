@@ -14,119 +14,86 @@
 #ifdef _MSC_VER
 #   pragma warning(pop)
 // Warning C4505 (unreferenced function removed) can not be suppressed, by design.
-// When STB_IMAGE_STATIC is defined, the only workaround is to include dummy references to
-// all unused functions. Yes, this means they're not dead-code-stripped. Lovely!
-static int UseUnreferencedStbFuncs(void)
-{
-#   define UNUSED_STBI_FUNC(func) { void *dummy0 = (void*)(func); (void)dummy0; }
-    UNUSED_STBI_FUNC(stbi_convert_iphone_png_to_rgb);
-    UNUSED_STBI_FUNC(stbi_info);
-    UNUSED_STBI_FUNC(stbi_info_from_memory);
-    UNUSED_STBI_FUNC(stbi_info_from_callbacks);
-    UNUSED_STBI_FUNC(stbi_failure_reason);
-    UNUSED_STBI_FUNC(stbi_hdr_to_ldr_gamma);
-    UNUSED_STBI_FUNC(stbi_hdr_to_ldr_scale);
-    UNUSED_STBI_FUNC(stbi_ldr_to_hdr_gamma);
-    UNUSED_STBI_FUNC(stbi_ldr_to_hdr_scale);
-    UNUSED_STBI_FUNC(stbi_set_flip_vertically_on_load);
-    UNUSED_STBI_FUNC(stbi_load_from_memory);
-    UNUSED_STBI_FUNC(stbi_load_from_callbacks);
-    UNUSED_STBI_FUNC(stbi_loadf);
-    UNUSED_STBI_FUNC(stbi_loadf_from_memory);
-    UNUSED_STBI_FUNC(stbi_loadf_from_callbacks);
-    UNUSED_STBI_FUNC(stbi_is_hdr);
-    UNUSED_STBI_FUNC(stbi_is_hdr_from_memory);
-    UNUSED_STBI_FUNC(stbi_is_hdr_from_callbacks);
-    UNUSED_STBI_FUNC(stbi_zlib_decode_malloc);
-    UNUSED_STBI_FUNC(stbi_zlib_decode_buffer);
-    UNUSED_STBI_FUNC(stbi_zlib_decode_noheader_malloc);
-    UNUSED_STBI_FUNC(stbi_zlib_decode_noheader_buffer);
-    UNUSED_STBI_FUNC(stbi_set_unpremultiply_on_load);
-#   undef UNUSED_STBI_FUNC
-    return 0;
-}
-static const int NeverUsed = UseUnreferencedStbFuncs();
+// When STB_IMAGE_STATIC is defined, you get a ton of them. Sorry!
 #endif
 
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
-template<typename T>
-static const T& imagefile__min(const T& a, const T& b) { return (a<b) ? a : b; }
-template<typename T>
-static const T& imagefile__max(const T& a, const T& b) { return (a>b) ? a : b; }
+#define IMAGEFILE__MIN(a, b) ((a)<(b) ? (a) : (b))
+#define IMAGEFILE__MAX(a, b) ((a)>(b) ? (a) : (b))
 
-static bool IsSubresourceValid(const ImageFile *image, const ImageFileSubresource subresource)
+static int IsSubresourceValid(const ImageFile *image, const ImageFileSubresource subresource)
 {
     return (subresource.mip_level >= 0 && subresource.mip_level < image->mip_levels &&
         subresource.array_layer >= 0 && subresource.array_layer < image->array_layers);
 }
 
-static uint32_t GetBitsPerTexelBlock(ImageFileDataFormat format)
+uint32_t ImageFileGetBytesPerTexelBlock(ImageFileDataFormat format)
 {
     switch(format)
     {
     case IMAGE_FILE_DATA_FORMAT_UNKNOWN:            return 0;
-    case IMAGE_FILE_DATA_FORMAT_R8G8B8_UNORM:       return 24;
-    case IMAGE_FILE_DATA_FORMAT_R8G8B8A8_UNORM:     return 32;
-    case IMAGE_FILE_DATA_FORMAT_B8G8R8_UNORM:       return 24;
-    case IMAGE_FILE_DATA_FORMAT_B8G8R8A8_UNORM:     return 32;
-    case IMAGE_FILE_DATA_FORMAT_R4G4B4A4_UNORM:     return 16;
-    case IMAGE_FILE_DATA_FORMAT_B4G4R4A4_UNORM:     return 16;
-    case IMAGE_FILE_DATA_FORMAT_R32G32B32A32_FLOAT: return 128;
-    case IMAGE_FILE_DATA_FORMAT_R32G32B32_FLOAT:    return 96;
-    case IMAGE_FILE_DATA_FORMAT_R32G32_FLOAT:       return 64;
-    case IMAGE_FILE_DATA_FORMAT_R32_FLOAT:          return 32;
-    case IMAGE_FILE_DATA_FORMAT_R16G16B16A16_FLOAT: return 64;
-    case IMAGE_FILE_DATA_FORMAT_R16G16B16A16_UNORM: return 64;
-    case IMAGE_FILE_DATA_FORMAT_R16G16_FLOAT:       return 32;
-    case IMAGE_FILE_DATA_FORMAT_R16G16_UNORM:       return 32;
-    case IMAGE_FILE_DATA_FORMAT_R16_FLOAT:          return 16;
-    case IMAGE_FILE_DATA_FORMAT_R16_UNORM:          return 16;
-    case IMAGE_FILE_DATA_FORMAT_R8_UNORM:           return 8;
-    case IMAGE_FILE_DATA_FORMAT_BC1_UNORM:          return 64;
-    case IMAGE_FILE_DATA_FORMAT_BC1_SRGB:           return 64;
-    case IMAGE_FILE_DATA_FORMAT_BC2_UNORM:          return 128;
-    case IMAGE_FILE_DATA_FORMAT_BC2_SRGB:           return 128;
-    case IMAGE_FILE_DATA_FORMAT_BC3_UNORM:          return 128;
-    case IMAGE_FILE_DATA_FORMAT_BC3_SRGB:           return 128;
-    case IMAGE_FILE_DATA_FORMAT_BC4_UNORM:          return 64;
-    case IMAGE_FILE_DATA_FORMAT_BC4_SNORM:          return 64;
-    case IMAGE_FILE_DATA_FORMAT_BC5_UNORM:          return 128;
-    case IMAGE_FILE_DATA_FORMAT_BC5_SNORM:          return 128;
-    case IMAGE_FILE_DATA_FORMAT_BC6H_UF16:          return 128;
-    case IMAGE_FILE_DATA_FORMAT_BC6H_SF16:          return 128;
-    case IMAGE_FILE_DATA_FORMAT_BC7_UNORM:          return 128;
-    case IMAGE_FILE_DATA_FORMAT_BC7_SRGB:           return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_4x4_UNORM:     return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_4x4_SRGB:      return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_5x4_UNORM:     return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_5x4_SRGB:      return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_5x5_UNORM:     return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_5x5_SRGB:      return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_6x5_UNORM:     return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_6x5_SRGB:      return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_6x6_UNORM:     return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_6x6_SRGB:      return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_8x5_UNORM:     return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_8x5_SRGB:      return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_8x6_UNORM:     return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_8x6_SRGB:      return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_8x8_UNORM:     return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_8x8_SRGB:      return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x5_UNORM:    return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x5_SRGB:     return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x6_UNORM:    return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x6_SRGB:     return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x8_UNORM:    return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x8_SRGB:     return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x10_UNORM:   return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x10_SRGB:    return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_UNORM:   return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_SRGB:    return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_UNORM:   return 128;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_SRGB:    return 128;
+    case IMAGE_FILE_DATA_FORMAT_R8G8B8_UNORM:       return 3;
+    case IMAGE_FILE_DATA_FORMAT_R8G8B8A8_UNORM:     return 4;
+    case IMAGE_FILE_DATA_FORMAT_B8G8R8_UNORM:       return 3;
+    case IMAGE_FILE_DATA_FORMAT_B8G8R8A8_UNORM:     return 4;
+    case IMAGE_FILE_DATA_FORMAT_R4G4B4A4_UNORM:     return 2;
+    case IMAGE_FILE_DATA_FORMAT_B4G4R4A4_UNORM:     return 2;
+    case IMAGE_FILE_DATA_FORMAT_R32G32B32A32_FLOAT: return 16;
+    case IMAGE_FILE_DATA_FORMAT_R32G32B32_FLOAT:    return 12;
+    case IMAGE_FILE_DATA_FORMAT_R32G32_FLOAT:       return 8;
+    case IMAGE_FILE_DATA_FORMAT_R32_FLOAT:          return 4;
+    case IMAGE_FILE_DATA_FORMAT_R16G16B16A16_FLOAT: return 8;
+    case IMAGE_FILE_DATA_FORMAT_R16G16B16A16_UNORM: return 8;
+    case IMAGE_FILE_DATA_FORMAT_R16G16_FLOAT:       return 4;
+    case IMAGE_FILE_DATA_FORMAT_R16G16_UNORM:       return 4;
+    case IMAGE_FILE_DATA_FORMAT_R16_FLOAT:          return 2;
+    case IMAGE_FILE_DATA_FORMAT_R16_UNORM:          return 2;
+    case IMAGE_FILE_DATA_FORMAT_R8_UNORM:           return 1;
+    case IMAGE_FILE_DATA_FORMAT_BC1_UNORM:          return 8;
+    case IMAGE_FILE_DATA_FORMAT_BC1_SRGB:           return 8;
+    case IMAGE_FILE_DATA_FORMAT_BC2_UNORM:          return 16;
+    case IMAGE_FILE_DATA_FORMAT_BC2_SRGB:           return 16;
+    case IMAGE_FILE_DATA_FORMAT_BC3_UNORM:          return 16;
+    case IMAGE_FILE_DATA_FORMAT_BC3_SRGB:           return 16;
+    case IMAGE_FILE_DATA_FORMAT_BC4_UNORM:          return 8;
+    case IMAGE_FILE_DATA_FORMAT_BC4_SNORM:          return 8;
+    case IMAGE_FILE_DATA_FORMAT_BC5_UNORM:          return 16;
+    case IMAGE_FILE_DATA_FORMAT_BC5_SNORM:          return 16;
+    case IMAGE_FILE_DATA_FORMAT_BC6H_UF16:          return 16;
+    case IMAGE_FILE_DATA_FORMAT_BC6H_SF16:          return 16;
+    case IMAGE_FILE_DATA_FORMAT_BC7_UNORM:          return 16;
+    case IMAGE_FILE_DATA_FORMAT_BC7_SRGB:           return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_4x4_UNORM:     return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_4x4_SRGB:      return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x4_UNORM:     return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x4_SRGB:      return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x5_UNORM:     return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_5x5_SRGB:      return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x5_UNORM:     return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x5_SRGB:      return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x6_UNORM:     return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_6x6_SRGB:      return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x5_UNORM:     return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x5_SRGB:      return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x6_UNORM:     return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x6_SRGB:      return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x8_UNORM:     return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_8x8_SRGB:      return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x5_UNORM:    return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x5_SRGB:     return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x6_UNORM:    return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x6_SRGB:     return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x8_UNORM:    return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x8_SRGB:     return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x10_UNORM:   return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_10x10_SRGB:    return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_UNORM:   return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_SRGB:    return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_UNORM:   return 16;
+    case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_SRGB:    return 16;
     // no default case here, to get warnings when new formats are added!
     }
     return 0;
@@ -158,7 +125,7 @@ static int LoadImageFromStb(ImageFile *out_image, const char *image_path, ImageF
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-enum DdsHeaderFlag
+typedef enum DdsHeaderFlag
 {
     HEADER_FLAGS_CAPS        = 0x00000001,
     HEADER_FLAGS_HEIGHT      = 0x00000002,
@@ -169,16 +136,16 @@ enum DdsHeaderFlag
     HEADER_FLAGS_DEPTH       = 0x00800000,
     HEADER_FLAGS_TEXTURE     = 0x00001007,  // CAPS | HEIGHT | WIDTH | PIXELFORMAT
     HEADER_FLAGS_MIPMAP      = 0x00020000,
-};
+} DdsHeaderFlag;
 
-enum DdsSurfaceFlags
+typedef enum DdsSurfaceFlags
 {
     SURFACE_FLAGS_TEXTURE = 0x00001000, // HEADER_FLAGS_TEXTURE
     SURFACE_FLAGS_MIPMAP  = 0x00400008, // COMPLEX | MIPMAP
     SURFACE_FLAGS_COMPLEX = 0x00000008, // COMPLEX
-};
+} DdsSurfaceFlags;
 
-enum DdsCubemapFlags
+typedef enum DdsCubemapFlags
 {
     CUBEMAP_FLAG_ISCUBEMAP = 0x00000200, // CUBEMAP
     CUBEMAP_FLAG_POSITIVEX = 0x00000600, // CUBEMAP | POSITIVEX
@@ -188,18 +155,18 @@ enum DdsCubemapFlags
     CUBEMAP_FLAG_POSITIVEZ = 0x00004200, // CUBEMAP | POSITIVEZ
     CUBEMAP_FLAG_NEGATIVEZ = 0x00008200, // CUBEMAP | NEGATIVEZ
     CUBEMAP_FLAG_VOLUME    = 0x00200000, // VOLUME
-};
+} DdsCubemapFlags;
 
-enum DdsDimensions
+typedef enum DdsDimensions
 {
     DIMENSIONS_UNKNOWN   = 0,
     DIMENSIONS_BUFFER    = 1,
     DIMENSIONS_TEXTURE1D = 2,
     DIMENSIONS_TEXTURE2D = 3,
     DIMENSIONS_TEXTURE3D = 4,
-};
+} DdsDimensions;
 
-enum DxFormat
+typedef enum DxFormat
 {
     DX_FORMAT_UNKNOWN                     = 0,
     DX_FORMAT_R32G32B32A32_TYPELESS       = 1,
@@ -301,9 +268,9 @@ enum DxFormat
     DX_FORMAT_BC7_TYPELESS                = 97,
     DX_FORMAT_BC7_UNORM                   = 98,
     DX_FORMAT_BC7_UNORM_SRGB              = 99,
-};
+} DxFormat;
 
-struct DdsPixelFormat
+typedef struct DdsPixelFormat
 {
     uint32_t structSize;
     uint32_t flags;
@@ -313,18 +280,18 @@ struct DdsPixelFormat
     uint32_t maskG;
     uint32_t maskB;
     uint32_t maskA;
-};
+} DdsPixelFormat;
 
-enum DdsPixelFormatFlags
+typedef enum DdsPixelFormatFlags
 {
     PF_FLAGS_CODE4     = 0x00000004,  // DDPF_FOURCC
     PF_FLAGS_RGB       = 0x00000040,  // DDPF_RGB
     PF_FLAGS_RGBA      = 0x00000041,  // DDPF_RGB | DDPF_ALPHAPIXELS
     PF_FLAGS_LUMINANCE = 0x00020000,  // DDPF_LUMINANCE
     PF_FLAGS_ALPHA     = 0x00000002,  // DDPF_ALPHA
-};
+} DdsPixelFormatFlags;
 
-struct DdsHeader
+typedef struct DdsHeader
 {
     uint32_t structSize;
     DdsHeaderFlag flags;
@@ -338,16 +305,16 @@ struct DdsHeader
     uint32_t caps;
     uint32_t caps2;
     uint32_t unused2[3];
-};
+} DdsHeader;
 
-struct DdsHeader10
+typedef struct DdsHeader10
 {
     DxFormat dxgiFormat;
     DdsDimensions resourceDimension;
     uint32_t flag;
     uint32_t arraySize;
     uint32_t unused;
-};
+} DdsHeader10;
 
 static uint32_t DdsMakeCode4(char c0, char c1, char c2, char c3) // TODO(cort): constexpr
 {
@@ -358,7 +325,7 @@ static uint32_t DdsMakeCode4(char c0, char c1, char c2, char c3) // TODO(cort): 
         ((uint32_t)(uint8_t)(c3) << 24);
 }
 
-static bool DdsContainsCompressedTexture(ImageFileDataFormat format) // TODO(cort): constexpr
+static int DdsContainsCompressedTexture(ImageFileDataFormat format) // TODO(cort): constexpr
 {
     switch(format)
     {
@@ -404,8 +371,7 @@ static bool DdsContainsCompressedTexture(ImageFileDataFormat format) // TODO(cor
     case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_SRGB:
     case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_UNORM:
     case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_SRGB:
-
-        return true;
+        return 1;
     case IMAGE_FILE_DATA_FORMAT_UNKNOWN:
     case IMAGE_FILE_DATA_FORMAT_R8G8B8_UNORM:
     case IMAGE_FILE_DATA_FORMAT_R8G8B8A8_UNORM:
@@ -424,17 +390,17 @@ static bool DdsContainsCompressedTexture(ImageFileDataFormat format) // TODO(cor
     case IMAGE_FILE_DATA_FORMAT_R16_FLOAT:
     case IMAGE_FILE_DATA_FORMAT_R16_UNORM:
     case IMAGE_FILE_DATA_FORMAT_R8_UNORM:
-        return false;
+        return 0;
     // no default case here, to get warnings when new formats are added!
     }
-    return false;
+    return 0;
 }
 
-static inline bool DdsIsPfMask(const DdsPixelFormat &pf, uint32_t r, uint32_t g, uint32_t b, uint32_t a)
+static int DdsIsPfMask(const DdsPixelFormat pf, uint32_t r, uint32_t g, uint32_t b, uint32_t a)
 {
     return (pf.maskR == r && pf.maskG == g && pf.maskB == b && pf.maskA == a);
 }
-static ImageFileDataFormat DdsParsePixelFormat(const DdsPixelFormat& pf)
+static ImageFileDataFormat DdsParsePixelFormat(const DdsPixelFormat pf)
 {
     if( pf.flags & PF_FLAGS_RGBA )
     {
@@ -723,7 +689,7 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
     }
 
     // Check if the contents are a cubemap.  If so, all six faces must be present.
-    bool is_cube_map = false;
+    int is_cube_map = 0;
     if ((header->caps & SURFACE_FLAGS_COMPLEX) && (header->caps2 & CUBEMAP_FLAG_ISCUBEMAP))
     {
         const uint32_t kCubemapFlagAllFaces =
@@ -736,11 +702,11 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
             free(dds_bytes);
             return -9; // The cubemap is missing one or more faces.
         }
-        is_cube_map = true;
+        is_cube_map = 1;
     }
 
     // Check if the contents are a volume texture.
-    bool is_volume_texture = false;
+    int is_volume_texture = 0;
     if ((header->flags & HEADER_FLAGS_DEPTH) && (header->caps2 & CUBEMAP_FLAG_VOLUME)) // (header->dwCaps & SURFACE_FLAGS_COMPLEX) -- doesn't always seem to be set?
     {
         if (header->depth == 0)
@@ -748,7 +714,7 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
             free(dds_bytes);
             return -10; // The file is marked as a volume texture, but depth is <1
         }
-        is_volume_texture = true;
+        is_volume_texture = 1;
     }
 
     uint32_t mipMapCount = 1;
@@ -772,8 +738,8 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
         return -11; // It is either unknown or unsupported format
     }
 
-    uint32_t bits_per_texel_block = GetBitsPerTexelBlock(data_format);
-    bool is_compressed = DdsContainsCompressedTexture(data_format);
+    uint32_t bytes_per_texel_block = (uint32_t)ImageFileGetBytesPerTexelBlock(data_format);
+    int is_compressed = DdsContainsCompressedTexture(data_format);
 
     out_image->width = header->width;
     out_image->height = header->height;
@@ -787,8 +753,8 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
     // Official DDS specs on MSDN suggest that the pitchOrLinearSize field can not be trusted.
     // and recommend the following computation for pitch.
     out_image->row_pitch_bytes = is_compressed ?
-        ((bits_per_texel_block/8) * imagefile__max(1U, (header->width+3U)/4U)) :
-        ((header->width * bits_per_texel_block + 7) / 8);
+        (bytes_per_texel_block * IMAGEFILE__MAX(1U, (header->width+3U)/4U)) :
+        (header->width * bytes_per_texel_block);
     out_image->depth_pitch_bytes = out_image->row_pitch_bytes * header->height;
     out_image->file_type = IMAGE_FILE_TYPE_DDS;
     out_image->flags = 0;
@@ -805,7 +771,7 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct AstcHeader
+typedef struct AstcHeader
 {
     uint8_t magic[4];
     uint8_t blockdim_x;
@@ -814,7 +780,7 @@ struct AstcHeader
     uint8_t xsize[3];
     uint8_t ysize[3];
     uint8_t zsize[3];
-};
+} AstcHeader;
 
 static int LoadImageFromAstc(ImageFile *out_image, const char *image_path)
 {
@@ -863,7 +829,7 @@ static int LoadImageFromAstc(ImageFile *out_image, const char *image_path)
     out_image->depth_pitch_bytes = xblocks * yblocks * 16;
     out_image->file_type = IMAGE_FILE_TYPE_ASTC;
     out_image->flags = 0;
-    bool is_srgb = 0; // TODO(cort): where would this come from?
+    int is_srgb = 0; // TODO(cort): where would this come from?
 #define ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT(dimx, dimy) \
     if (header->blockdim_x == (dimx) && header->blockdim_y == (dimy)) \
     out_image->data_format = is_srgb ? \
@@ -888,7 +854,7 @@ static int LoadImageFromAstc(ImageFile *out_image, const char *image_path)
     ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT(12,12);
     else
         out_image->data_format = IMAGE_FILE_DATA_FORMAT_UNKNOWN;
-#undef BLOCKDIM_TO_FORMAT
+#undef ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT
     out_image->file_contents = astc_bytes;  // NOTE: includes header data
     
     return 0;
@@ -985,12 +951,12 @@ size_t ImageFileGetSubresourceSize(const ImageFile *image, const ImageFileSubres
         return image->depth_pitch_bytes * image->depth;
     case IMAGE_FILE_TYPE_DDS:
     {
-        bool is_compressed = DdsContainsCompressedTexture(image->data_format);
-        uint32_t bits_per_texel_block = GetBitsPerTexelBlock(image->data_format);
-        uint32_t mip_width  = imagefile__max(image->width >> subresource.mip_level, 1U);
-        uint32_t mip_height = imagefile__max(image->height >> subresource.mip_level, 1U);
-        uint32_t mip_depth = imagefile__max(image->depth >> subresource.mip_level, 1U);
-        uint32_t mip_pitch  = is_compressed ? ((mip_width+3)/4)*(bits_per_texel_block/8) : mip_width*(bits_per_texel_block/8);
+        int is_compressed = DdsContainsCompressedTexture(image->data_format);
+        uint32_t bytes_per_texel_block = (uint32_t)ImageFileGetBytesPerTexelBlock(image->data_format);
+        uint32_t mip_width  = IMAGEFILE__MAX(image->width  >> subresource.mip_level, 1U);
+        uint32_t mip_height = IMAGEFILE__MAX(image->height >> subresource.mip_level, 1U);
+        uint32_t mip_depth  = IMAGEFILE__MAX(image->depth  >> subresource.mip_level, 1U);
+        uint32_t mip_pitch  = is_compressed ? ((mip_width+3)/4)*bytes_per_texel_block : mip_width*bytes_per_texel_block;
         uint32_t num_rows = is_compressed ? ((mip_height+3)/4) : mip_height;
         return mip_pitch * num_rows * mip_depth;
     }
@@ -1017,124 +983,30 @@ void *ImageFileGetSubresourceData(const ImageFile *image, const ImageFileSubreso
     case IMAGE_FILE_TYPE_DDS:
     {
         // DDS files store all mips of layer 0 (large to small), then all mips of layer 1, etc.
-        assert(image->mip_levels <= 64);  // 64 mip levels should be enough for anyone!
+        assert(image->mip_levels > 0 && image->mip_levels <= 64);  // 64 mip levels should be enough for anyone!
         size_t mip_offsets[64];  // offset within an array layer of each mip
-        mip_offsets[0] = 0;
         size_t layer_size = 0;  // total mipchain size for each layer
-        for(uint32_t iMip=1; iMip<image->mip_levels; ++iMip)
+        for(uint32_t iMip=0; iMip<image->mip_levels; ++iMip)
         {
             ImageFileSubresource temp_sub;
             temp_sub.array_layer = 0;
             temp_sub.mip_level = iMip;
-            mip_offsets[iMip] = ImageFileGetSubresourceSize(image, temp_sub);
-            layer_size += mip_offsets[iMip];
+            mip_offsets[iMip] = layer_size;
+            layer_size += ImageFileGetSubresourceSize(image, temp_sub);
         }
         uint32_t texels_base_offset = *(const uint32_t*)(image->file_contents);
-        intptr_t out_ptr = intptr_t(image->file_contents) + texels_base_offset +
+        intptr_t out_ptr = (intptr_t)image->file_contents + texels_base_offset +
             subresource.array_layer * layer_size +
             mip_offsets[subresource.mip_level];
         return (void*)out_ptr;
     }
     case IMAGE_FILE_TYPE_ASTC:
     {
-        intptr_t out_ptr = intptr_t(image->file_contents) + sizeof(AstcHeader);
+        intptr_t out_ptr = (intptr_t)image->file_contents + sizeof(AstcHeader);
         return (void*)out_ptr;
     }
     case IMAGE_FILE_TYPE_UNKNOWN:
         break;
     }
     return NULL;
-}
-
-#include <vulkan/vulkan.h>
-void ImageFileToVkImageCreateInfo(VkImageCreateInfo *out_ci, const ImageFile *image)
-{
-    out_ci->sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    out_ci->pNext = NULL;
-    out_ci->flags = 0;
-    if (image->flags & IMAGE_FILE_FLAG_CUBE_BIT)
-        out_ci->flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-    if (image->depth == 1 && image->height == 1)
-        out_ci->imageType = VK_IMAGE_TYPE_1D;
-    else if (image->depth == 1)
-        out_ci->imageType = VK_IMAGE_TYPE_2D;
-    else
-        out_ci->imageType = VK_IMAGE_TYPE_3D;
-    switch(image->data_format)
-    {
-    case IMAGE_FILE_DATA_FORMAT_UNKNOWN:            out_ci->format = VK_FORMAT_UNDEFINED; break;
-    case IMAGE_FILE_DATA_FORMAT_R8G8B8_UNORM:       out_ci->format = VK_FORMAT_R8G8B8_UNORM; break;
-    case IMAGE_FILE_DATA_FORMAT_R8G8B8A8_UNORM:     out_ci->format = VK_FORMAT_R8G8B8A8_UNORM; break;
-    case IMAGE_FILE_DATA_FORMAT_B8G8R8_UNORM:       out_ci->format = VK_FORMAT_B8G8R8_UNORM; break;
-    case IMAGE_FILE_DATA_FORMAT_B8G8R8A8_UNORM:     out_ci->format = VK_FORMAT_B8G8R8A8_UNORM; break;
-    case IMAGE_FILE_DATA_FORMAT_R4G4B4A4_UNORM:     out_ci->format = VK_FORMAT_R4G4B4A4_UNORM_PACK16; break;
-    case IMAGE_FILE_DATA_FORMAT_B4G4R4A4_UNORM:     out_ci->format = VK_FORMAT_B4G4R4A4_UNORM_PACK16; break;
-    case IMAGE_FILE_DATA_FORMAT_R32G32B32A32_FLOAT: out_ci->format = VK_FORMAT_R32G32B32A32_SFLOAT; break;
-    case IMAGE_FILE_DATA_FORMAT_R32G32B32_FLOAT:    out_ci->format = VK_FORMAT_R32G32B32_SFLOAT; break;
-    case IMAGE_FILE_DATA_FORMAT_R32G32_FLOAT:       out_ci->format = VK_FORMAT_R32G32_SFLOAT; break;
-    case IMAGE_FILE_DATA_FORMAT_R32_FLOAT:          out_ci->format = VK_FORMAT_R32_SFLOAT; break;
-    case IMAGE_FILE_DATA_FORMAT_R16G16B16A16_FLOAT: out_ci->format = VK_FORMAT_R16G16B16A16_SFLOAT; break;
-    case IMAGE_FILE_DATA_FORMAT_R16G16B16A16_UNORM: out_ci->format = VK_FORMAT_R16G16B16A16_UNORM; break;
-    case IMAGE_FILE_DATA_FORMAT_R16G16_FLOAT:       out_ci->format = VK_FORMAT_R16G16_SFLOAT; break;
-    case IMAGE_FILE_DATA_FORMAT_R16G16_UNORM:       out_ci->format = VK_FORMAT_R16G16_UNORM; break;
-    case IMAGE_FILE_DATA_FORMAT_R16_FLOAT:          out_ci->format = VK_FORMAT_R16_SFLOAT; break;
-    case IMAGE_FILE_DATA_FORMAT_R16_UNORM:          out_ci->format = VK_FORMAT_R16_UNORM; break;
-    case IMAGE_FILE_DATA_FORMAT_R8_UNORM:           out_ci->format = VK_FORMAT_R8_UNORM; break;
-    case IMAGE_FILE_DATA_FORMAT_BC1_UNORM:          out_ci->format = VK_FORMAT_BC1_RGBA_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC1_SRGB:           out_ci->format = VK_FORMAT_BC1_RGBA_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC2_UNORM:          out_ci->format = VK_FORMAT_BC2_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC2_SRGB:           out_ci->format = VK_FORMAT_BC2_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC3_UNORM:          out_ci->format = VK_FORMAT_BC3_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC3_SRGB:           out_ci->format = VK_FORMAT_BC3_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC4_UNORM:          out_ci->format = VK_FORMAT_BC4_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC4_SNORM:          out_ci->format = VK_FORMAT_BC4_SNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC5_UNORM:          out_ci->format = VK_FORMAT_BC5_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC5_SNORM:          out_ci->format = VK_FORMAT_BC5_SNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC6H_UF16:          out_ci->format = VK_FORMAT_BC6H_UFLOAT_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC6H_SF16:          out_ci->format = VK_FORMAT_BC6H_SFLOAT_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC7_UNORM:          out_ci->format = VK_FORMAT_BC7_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_BC7_SRGB:           out_ci->format = VK_FORMAT_BC7_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_4x4_UNORM:     out_ci->format = VK_FORMAT_ASTC_4x4_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_4x4_SRGB:      out_ci->format = VK_FORMAT_ASTC_4x4_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_5x4_UNORM:     out_ci->format = VK_FORMAT_ASTC_5x4_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_5x4_SRGB:      out_ci->format = VK_FORMAT_ASTC_5x4_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_5x5_UNORM:     out_ci->format = VK_FORMAT_ASTC_5x5_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_5x5_SRGB:      out_ci->format = VK_FORMAT_ASTC_5x5_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_6x5_UNORM:     out_ci->format = VK_FORMAT_ASTC_6x5_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_6x5_SRGB:      out_ci->format = VK_FORMAT_ASTC_6x5_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_6x6_UNORM:     out_ci->format = VK_FORMAT_ASTC_6x6_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_6x6_SRGB:      out_ci->format = VK_FORMAT_ASTC_6x6_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_8x5_UNORM:     out_ci->format = VK_FORMAT_ASTC_8x5_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_8x5_SRGB:      out_ci->format = VK_FORMAT_ASTC_8x5_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_8x6_UNORM:     out_ci->format = VK_FORMAT_ASTC_8x6_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_8x6_SRGB:      out_ci->format = VK_FORMAT_ASTC_8x6_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_8x8_UNORM:     out_ci->format = VK_FORMAT_ASTC_8x8_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_8x8_SRGB:      out_ci->format = VK_FORMAT_ASTC_8x8_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x5_UNORM:    out_ci->format = VK_FORMAT_ASTC_10x5_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x5_SRGB:     out_ci->format = VK_FORMAT_ASTC_10x5_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x6_UNORM:    out_ci->format = VK_FORMAT_ASTC_10x6_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x6_SRGB:     out_ci->format = VK_FORMAT_ASTC_10x6_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x8_UNORM:    out_ci->format = VK_FORMAT_ASTC_10x8_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x8_SRGB:     out_ci->format = VK_FORMAT_ASTC_10x8_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x10_UNORM:   out_ci->format = VK_FORMAT_ASTC_10x10_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_10x10_SRGB:    out_ci->format = VK_FORMAT_ASTC_10x10_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_UNORM:   out_ci->format = VK_FORMAT_ASTC_12x10_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_SRGB:    out_ci->format = VK_FORMAT_ASTC_12x10_SRGB_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_UNORM:   out_ci->format = VK_FORMAT_ASTC_12x12_UNORM_BLOCK; break;
-    case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_SRGB:    out_ci->format = VK_FORMAT_ASTC_12x12_SRGB_BLOCK; break;
-    // no default case here, to get warnings when new formats are added!
-    }
-    out_ci->extent.width  = image->width;
-    out_ci->extent.height = image->height;
-    out_ci->extent.depth  = image->depth;
-    out_ci->mipLevels = image->mip_levels;
-    out_ci->arrayLayers = image->array_layers;
-    out_ci->samples = VK_SAMPLE_COUNT_1_BIT;
-    // Everything below here is a guess. Let's assume we're building the staging image!
-    out_ci->tiling = VK_IMAGE_TILING_LINEAR;
-    out_ci->usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    out_ci->sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    out_ci->queueFamilyIndexCount = 0;
-    out_ci->pQueueFamilyIndices = NULL;
-    out_ci->initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
 }

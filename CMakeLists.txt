@@ -20,9 +20,11 @@ SET(headers
     platform.h
     stb_image.h
     stb_vulkan.h
+    vk_texture.h
     )
 SET(sources
-    image_file.cpp
+    image_file.c
+    vk_texture.c
     vulkswagen.cpp
     )
 
