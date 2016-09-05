@@ -54,6 +54,41 @@ typedef cdsm_u32 cdsm_index_t;
 extern "C"
 {
 #endif
+    typedef enum
+    {
+        CDSM_ATTRIBUTE_FORMAT_UNKNOWN            =  0,
+        CDSM_ATTRIBUTE_FORMAT_R32_FLOAT          =  1,
+        CDSM_ATTRIBUTE_FORMAT_R32G32_FLOAT       =  2,
+        CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT    =  3,
+        CDSM_ATTRIBUTE_FORMAT_R32G32B32A32_FLOAT =  4,
+        CDSM_ATTRIBUTE_FORMAT_R16_FLOAT          =  5,
+        CDSM_ATTRIBUTE_FORMAT_R16G16_FLOAT       =  6,
+        CDSM_ATTRIBUTE_FORMAT_R16G16B16_FLOAT    =  7,
+        CDSM_ATTRIBUTE_FORMAT_R16G16B16A16_FLOAT =  8,
+        CDSM_ATTRIBUTE_FORMAT_R8_UNORM           =  9,
+        CDSM_ATTRIBUTE_FORMAT_R8G8_UNORM         = 10,
+        CDSM_ATTRIBUTE_FORMAT_R8G8B8_UNORM       = 11,
+        CDSM_ATTRIBUTE_FORMAT_R8G8B8A8_UNORM     = 12,
+    } cdsm_attribute_format_t;
+
+    typedef struct
+    {
+        uint32_t id;
+        uint32_t offset;
+        cdsm_attribute_format_t format;
+    } cdsm_attribute_inf_t;
+
+    #define CDSM_MAX_VERTEX_ATTRIBUTE_COUNT 16
+    typedef struct
+    {
+        uint32_t stride;
+        uint32_t attribute_count;
+        cdsm_attribute_inf_t attributes[CDSM_MAX_VERTEX_ATTRIBUTE_COUNT];
+    } cdsm_vertex_layout_t;
+
+    CDSM_DEF
+    cdsm_error_t cdsm_convert_vertex_buffer(const void *src_vertices, const cdsm_vertex_layout_t *src_layout,
+        void *dst_vertices, const cdsm_vertex_layout_t *dst_layout, size_t vertex_count);
 
     typedef struct
     {
@@ -164,8 +199,192 @@ extern "C"
 #endif
 
 #define CDSM__MIN(a,b) ( (a)<(b) ? (a) : (b) )
+#define CDSM__MAX(a,b) ( (a)>(b) ? (a) : (b) )
+#define CDSM__CLAMP(x, xmin, xmax) ( ((x)<(xmin)) ? (xmin) : ( ((x)>(xmax)) ? (xmax) : (x) ) )
 #define CDSM__UNUSED(x) ((void)x)
 static const float CDSM__PI = 3.14159265358979323846f;
+
+/*************************** Vertex buffer conversion *********************************/
+
+typedef struct cdsm__attribute_format_info
+{
+    cdsm_attribute_format_t format;
+    uint32_t components;
+    uint32_t size;
+} cdsm__attribute_format_info;
+static const cdsm__attribute_format_info format_info_lut[] =
+{
+    { CDSM_ATTRIBUTE_FORMAT_UNKNOWN            , 0,  0, },
+    { CDSM_ATTRIBUTE_FORMAT_R32_FLOAT          , 1,  4, },
+    { CDSM_ATTRIBUTE_FORMAT_R32G32_FLOAT       , 2,  8, },
+    { CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT    , 3, 12, },
+    { CDSM_ATTRIBUTE_FORMAT_R32G32B32A32_FLOAT , 4, 16, },
+    { CDSM_ATTRIBUTE_FORMAT_R16_FLOAT          , 1,  2, },
+    { CDSM_ATTRIBUTE_FORMAT_R16G16_FLOAT       , 2,  4, },
+    { CDSM_ATTRIBUTE_FORMAT_R16G16B16_FLOAT    , 3,  6, },
+    { CDSM_ATTRIBUTE_FORMAT_R16G16B16A16_FLOAT , 4,  8, },
+    { CDSM_ATTRIBUTE_FORMAT_R8_UNORM           , 1,  1, },
+    { CDSM_ATTRIBUTE_FORMAT_R8G8_UNORM         , 2,  2, },
+    { CDSM_ATTRIBUTE_FORMAT_R8G8B8_UNORM       , 3,  3, },
+    { CDSM_ATTRIBUTE_FORMAT_R8G8B8A8_UNORM     , 4,  4, },
+};
+
+typedef struct cdsm__f32x4
+{
+    float elem[4];
+} cdsm__f32x4;
+typedef struct cdsm__u16x4
+{
+    uint16_t elem[4];
+} cdsm__u16x4;
+typedef struct cdsm__u8x4
+{
+    uint8_t elem[4];
+} cdsm__u8x4;
+
+static cdsm__f32x4 cdsm__convert_f16_to_f32(const cdsm__u16x4 in)
+{
+    (void)in;
+    return {{0,0,0,0}}; 
+}
+static cdsm__f32x4 cdsm__convert_u8n_to_f32(const cdsm__u8x4 in)
+{
+    return {{
+        (float)(in.elem[0]) / 255.0f,
+        (float)(in.elem[1]) / 255.0f,
+        (float)(in.elem[2]) / 255.0f,
+        (float)(in.elem[3]) / 255.0f,
+    }};
+}
+
+static cdsm__u16x4 cdsm__convert_f32_to_f16(const cdsm__f32x4 in)
+{
+    (void)in;
+    return {{0,0,0,0}}; 
+}
+static cdsm__u8x4 cdsm__convert_f32_to_u8n(const cdsm__f32x4 in)
+{
+    return {{
+        (uint8_t)( CDSM__CLAMP(in.elem[0], 0.0f, 1.0f) * 255.0f ),
+        (uint8_t)( CDSM__CLAMP(in.elem[1], 0.0f, 1.0f) * 255.0f ),
+        (uint8_t)( CDSM__CLAMP(in.elem[2], 0.0f, 1.0f) * 255.0f ),
+        (uint8_t)( CDSM__CLAMP(in.elem[3], 0.0f, 1.0f) * 255.0f ),
+    }};
+}
+
+static void cdsm__convert_attribute(const void *in, cdsm_attribute_format_t in_format,
+    void *out, cdsm_attribute_format_t out_format)
+{
+    /* TODO(cort): special case for in_format == out_format that's just a small memcpy? */
+
+    uint32_t in_comp = format_info_lut[in_format].components;
+    uint32_t out_comp = format_info_lut[out_format].components;
+
+    /* Load/decompress input data into an f32x4 */
+    cdsm__f32x4 temp_f32 = {{0,0,0,0}};
+    switch(in_format)
+    {
+    case CDSM_ATTRIBUTE_FORMAT_UNKNOWN:
+        break;
+    case CDSM_ATTRIBUTE_FORMAT_R32_FLOAT:
+    case CDSM_ATTRIBUTE_FORMAT_R32G32_FLOAT:
+    case CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT:
+    case CDSM_ATTRIBUTE_FORMAT_R32G32B32A32_FLOAT:
+    {
+        const float *in_f32 = (const float*)in;
+        for(uint32_t i=0; i<in_comp; ++i)
+            temp_f32.elem[i] = in_f32[i];
+        break;
+    }
+    case CDSM_ATTRIBUTE_FORMAT_R16_FLOAT:
+    case CDSM_ATTRIBUTE_FORMAT_R16G16_FLOAT:
+    case CDSM_ATTRIBUTE_FORMAT_R16G16B16_FLOAT:
+    case CDSM_ATTRIBUTE_FORMAT_R16G16B16A16_FLOAT:
+    {
+        cdsm__u16x4 temp_u16 = {{0,0,0,0}};
+        const uint16_t *in_u16 = (const uint16_t*)in;
+        for(uint32_t i=0; i<in_comp; ++i)
+            temp_u16.elem[i] = in_u16[i];
+        temp_f32 = cdsm__convert_f16_to_f32(temp_u16);
+        break;
+    }
+    case CDSM_ATTRIBUTE_FORMAT_R8_UNORM:
+    case CDSM_ATTRIBUTE_FORMAT_R8G8_UNORM:
+    case CDSM_ATTRIBUTE_FORMAT_R8G8B8_UNORM:
+    case CDSM_ATTRIBUTE_FORMAT_R8G8B8A8_UNORM:
+    {
+        cdsm__u8x4 temp_u8 = {{0,0,0,0}};
+        const uint8_t *in_u8 = (const uint8_t*)in;
+        for(uint32_t i=0; i<in_comp; ++i)
+            temp_u8.elem[i] = in_u8[i];
+        temp_f32 = cdsm__convert_u8n_to_f32(temp_u8);
+        break;
+    }
+    }
+
+    /* Convert temp f32 to output format. */
+    switch(in_format)
+    {
+    case CDSM_ATTRIBUTE_FORMAT_UNKNOWN:
+        break;
+    case CDSM_ATTRIBUTE_FORMAT_R32_FLOAT:
+    case CDSM_ATTRIBUTE_FORMAT_R32G32_FLOAT:
+    case CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT:
+    case CDSM_ATTRIBUTE_FORMAT_R32G32B32A32_FLOAT:
+    {
+        float *out_f32 = (float*)out;
+        for(uint32_t i=0; i<out_comp; ++i)
+            out_f32[i] = temp_f32.elem[i];
+        break;
+    }
+    case CDSM_ATTRIBUTE_FORMAT_R16_FLOAT:
+    case CDSM_ATTRIBUTE_FORMAT_R16G16_FLOAT:
+    case CDSM_ATTRIBUTE_FORMAT_R16G16B16_FLOAT:
+    case CDSM_ATTRIBUTE_FORMAT_R16G16B16A16_FLOAT:
+    {
+        cdsm__u16x4 temp_u16 = {{0,0,0,0}};
+        temp_u16 = cdsm__convert_f32_to_f16(temp_f32);
+        uint16_t *out_u16 = (uint16_t*)out;
+        for(uint32_t i=0; i<out_comp; ++i)
+            out_u16[i] = temp_u16.elem[i];
+        break;
+    }
+    case CDSM_ATTRIBUTE_FORMAT_R8_UNORM:
+    case CDSM_ATTRIBUTE_FORMAT_R8G8_UNORM:
+    case CDSM_ATTRIBUTE_FORMAT_R8G8B8_UNORM:
+    case CDSM_ATTRIBUTE_FORMAT_R8G8B8A8_UNORM:
+    {
+        cdsm__u8x4 temp_u8 = {{0,0,0,0}};
+        temp_u8 = cdsm__convert_f32_to_u8n(temp_f32);
+        uint8_t *out_u8 = (uint8_t*)out;
+        for(uint32_t i=0; i<out_comp; ++i)
+            out_u8[i] = temp_u8.elem[i];
+        break;
+    }
+    }
+}
+
+CDSM_DEF
+cdsm_error_t cdsm_convert_vertex_buffer(const void *src_vertices, const cdsm_vertex_layout_t *src_layout,
+    void *dst_vertices, const cdsm_vertex_layout_t *dst_layout, size_t vertex_count)
+{
+    const uint8_t *src_bytes = (const uint8_t*)src_vertices;
+    uint8_t *dst_bytes = (uint8_t*)dst_vertices;
+    for(size_t v = 0; v < vertex_count; ++v)
+    {
+        for(uint32_t a = 0; a < src_layout->attribute_count; ++a)
+        {
+            cdsm__convert_attribute(src_bytes + src_layout->attributes[a].offset, src_layout->attributes[a].format,
+                dst_bytes + dst_layout->attributes[a].offset, dst_layout->attributes[a].format);
+        }
+        src_bytes += src_layout->stride;
+        dst_bytes += src_layout->stride;
+    }
+    return 0;
+}
+
+/*************************** Mesh generation *****************************/
+
 CDSM_DEF
 cdsm_error_t cdsm_create_cube(cdsm_metadata_t *out_metadata,
     cdsm_vertex_t *out_vertices, size_t *out_vertices_size,
