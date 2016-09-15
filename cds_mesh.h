@@ -1626,6 +1626,56 @@ int main(int argc, char *argv[])
 
     free(vertices);
     free(indices);
+
+    /* Test vertex attribute conversion */
+    {
+        printf("Testing f32 <-> f16 conversion...\n");
+        uint32_t errors = 0;
+        for(uint32_t i = 0; i < 65536; ++i)
+        {
+            cdsm__f16 f16_in, f16_out;
+            cdsm__f32 f32;
+            f16_in.asInt = (uint16_t)i;
+            f32.asFloat = cdsm__convert1_f16_to_f32(f16_in.asInt);
+            f16_out.asInt = cdsm__convert1_f32_to_f16(f32.asFloat);
+            int isNan = 0;
+            if      (f32.parts.exponent == 0xFF)
+            {
+                if (f32.parts.mantissa == 0)
+                {
+                    //printf("%04x -> %cinfinity -> %04x\n", h_in.asInt, f.parts.sign ? '-' : '+', h_out.asInt);
+                }
+                else
+                {
+                    isNan = 1;
+                    //printf("%04x -> %c%cNaN -> %04x\n", h_in.asInt, f.parts.sign ? '-' : '+',
+                    //    (f.parts.mantissa & (1<<22)) ? 'q' : 's', h_out.asInt);
+                }
+            }
+            else
+            {
+                //printf("%04x -> %.20f -> %04x\n", h_in.asInt, (double)f, h_out.asInt);
+            }
+            if (isNan)
+            {
+                if (f16_in.parts.sign != f16_out.parts.sign ||
+                    f16_in.parts.exponent != 0x1F || f16_out.parts.exponent != 0x1F ||
+                    (f16_in.parts.mantissa & (1<<9)) != (f16_out.parts.mantissa & (1<<9)))
+                {
+                    errors += 1;
+                }
+            }
+            else
+            {
+                if (f16_in.asInt != f16_out.asInt)
+                {
+                    errors += 1;
+                }
+            }
+        }
+        printf("Test complete (%u errors)\n", errors);
+    }
+    
     return 0;
 }
 #endif /*------------------- send self-test section ------------*/
