@@ -49,7 +49,7 @@
 #define kDemoTextureCount 1U
 #define kWindowWidthDefault 1280U
 #define kWindowHeightDefault 720U
-
+#define kVframeCount 2U
 
 static void myGlfwErrorCallback(int error, const char *description)
 {
@@ -227,8 +227,8 @@ int main(int argc, char *argv[]) {
     commandBufferAllocateInfo.pNext = NULL;
     commandBufferAllocateInfo.commandPool = command_pool;
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    commandBufferAllocateInfo.commandBufferCount = context.swapchain_image_count;
-    VkCommandBuffer *commandBuffers = (VkCommandBuffer*)malloc(context.swapchain_image_count * sizeof(VkCommandBuffer));
+    commandBufferAllocateInfo.commandBufferCount = kVframeCount;
+    VkCommandBuffer *commandBuffers = (VkCommandBuffer*)malloc(commandBufferAllocateInfo.commandBufferCount * sizeof(VkCommandBuffer));
     VULKAN_CHECK( vkAllocateCommandBuffers(context.device, &commandBufferAllocateInfo, commandBuffers) );
 
     // Create depth buffer
@@ -378,7 +378,7 @@ int main(int argc, char *argv[]) {
     free(index_buffer_contents);
     free(vertex_buffer_contents);
 
-    // Create buffer of per-mesh object-to-world matrices
+    // Create buffer of per-mesh object-to-world matrices. TODO(cort): This should be per-vframe.
     const uint32_t mesh_count = 1024;
     VkBufferCreateInfo o2w_buffer_create_info = {};
     o2w_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -393,7 +393,7 @@ int main(int argc, char *argv[]) {
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, "o2w buffer memory",
         &o2w_buffer_mem, &o2w_buffer_mem_offset));
 
-    // Create push constants
+    // Create push constants.  TODO(cort): this should be a per-vframe uniform buffer.
     struct {
         mathfu::vec4_packed time; // .x=seconds, .yzw=???
         mathfu::vec4_packed eye;  // .xyz=world-space eye position, .w=???
@@ -622,8 +622,8 @@ int main(int argc, char *argv[]) {
     fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fence_create_info.pNext = NULL;
     fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    VkFence *queue_submitted_fences = (VkFence*)malloc(context.swapchain_image_count * sizeof(VkFence));
-    for(uint32_t iFence=0; iFence<context.swapchain_image_count; ++iFence)
+    VkFence *queue_submitted_fences = (VkFence*)malloc(kVframeCount * sizeof(VkFence));
+    for(uint32_t iFence=0; iFence<kVframeCount; ++iFence)
     {
         queue_submitted_fences[iFence] = stbvk_create_fence(&context, &fence_create_info, "queue submitted fence");
     }
@@ -635,7 +635,7 @@ int main(int argc, char *argv[]) {
         +0.0f, +0.0f, +0.5f, +0.5f,
         +0.0f, +0.0f, +0.0f, +1.0f);
 
-    // Create timestamp query pools (one per swapchain image).
+    // Create timestamp query pools.
     typedef enum
     {
         TIMESTAMP_ID_BEGIN_FRAME = 0,
@@ -649,40 +649,29 @@ int main(int argc, char *argv[]) {
     timestamp_query_pool_create_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
     timestamp_query_pool_create_info.queryCount = TIMESTAMP_ID_RANGE_SIZE;
     timestamp_query_pool_create_info.pipelineStatistics = 0;
-    VkQueryPool *timestamp_query_pools = (VkQueryPool*)malloc(context.swapchain_image_count * sizeof(VkQueryPool));
-    for(uint32_t iPool=0; iPool<context.swapchain_image_count; ++iPool)
+    VkQueryPool *timestamp_query_pools = (VkQueryPool*)malloc(kVframeCount * sizeof(VkQueryPool));
+    for(uint32_t iPool=0; iPool<kVframeCount; ++iPool)
     {
         timestamp_query_pools[iPool] = stbvk_create_query_pool(&context, &timestamp_query_pool_create_info, "timestamp query pool");
     }
     uint64_t counterStart = zomboClockTicks();
     double timestampSecondsPrevious[TIMESTAMP_ID_RANGE_SIZE] = {};
+    uint32_t vframeIndex = 0;
     while(!glfwWindowShouldClose(window)) {
-        // Retrieve the index of the next available swapchain index
-        uint32_t swapchain_image_index = UINT32_MAX;
-        VkFence image_acquired_fence = VK_NULL_HANDLE; // currently unused, but if you want the CPU to wait for an image to be acquired...
-        VkResult result = vkAcquireNextImageKHR(context.device, context.swapchain, UINT64_MAX, swapchainImageReady,
-            image_acquired_fence, &swapchain_image_index);
-        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-            assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
-        } else if (result == VK_SUBOPTIMAL_KHR) {
-            // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
-        } else {
-            VULKAN_CHECK(result);
-        }
-
         // Wait for the command buffer previously used to generate this swapchain image to be submitted.
         // TODO(cort): this does not guarantee memory accesses from that submission will be visible on the host;
         // there'd need to be a memory barrier for that.
-        vkWaitForFences(context.device, 1, &queue_submitted_fences[swapchain_image_index], VK_TRUE, UINT64_MAX);
-        vkResetFences(context.device, 1, &queue_submitted_fences[swapchain_image_index]);
+        vkWaitForFences(context.device, 1, &queue_submitted_fences[vframeIndex], VK_TRUE, UINT64_MAX);
+        vkResetFences(context.device, 1, &queue_submitted_fences[vframeIndex]);
+
         // The host can now safely reset and rebuild this command buffer, even if the GPU hasn't finished presenting the
         // resulting frame yet. The swapchainImageReady semaphore handles waiting for the present to complete before the
         // new command buffer contents are submitted.
         // The host could also wait for the previous present to complete by passing a VkFence to vkAcquireNextImageKHR()
         // and waiting on it, but that would only be necessary if the host were going to be modifying/destroying the
         // swapchain image or using its contents.
-        VkCommandBuffer commandBuffer = commandBuffers[swapchain_image_index];
-        VkQueryPool timestamp_query_pool = timestamp_query_pools[swapchain_image_index];
+        VkCommandBuffer commandBuffer = commandBuffers[vframeIndex];
+        VkQueryPool timestamp_query_pool = timestamp_query_pools[vframeIndex];
 
         // Read the timestamp query results from the frame that was just presented. We'll process and report them later,
         // but we need to get the old data out before we reuse the query pool for the current frame.
@@ -722,11 +711,25 @@ int main(int argc, char *argv[]) {
         }
         vkUnmapMemory(context.device, o2w_buffer_mem);
 
-        // Draw!
+        // Retrieve the index of the next available swapchain index
+        uint32_t swapchain_image_index = UINT32_MAX;
+        VkFence image_acquired_fence = VK_NULL_HANDLE; // currently unused, but if you want the CPU to wait for an image to be acquired...
+        VkResult result = vkAcquireNextImageKHR(context.device, context.swapchain, UINT64_MAX, swapchainImageReady,
+            image_acquired_fence, &swapchain_image_index);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+            assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
+        } else if (result == VK_SUBOPTIMAL_KHR) {
+            // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
+        } else {
+            VULKAN_CHECK(result);
+        }
+        VkFramebuffer framebuffer = framebuffers[swapchain_image_index];
+
+        // Draw! (record secondary command buffer)
         VkCommandBufferBeginInfo cmdBufDrawBeginInfo = {};
         cmdBufDrawBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         cmdBufDrawBeginInfo.pNext = NULL;
-        cmdBufDrawBeginInfo.flags = 0;
+        cmdBufDrawBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         cmdBufDrawBeginInfo.pInheritanceInfo = NULL;
         VULKAN_CHECK( vkBeginCommandBuffer(commandBuffer, &cmdBufDrawBeginInfo) );
         vkCmdResetQueryPool(commandBuffer, timestamp_query_pool, 0, TIMESTAMP_ID_RANGE_SIZE);
@@ -743,7 +746,7 @@ int main(int argc, char *argv[]) {
         renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.pNext = NULL;
         renderPassBeginInfo.renderPass = renderPass;
-        renderPassBeginInfo.framebuffer = framebuffers[swapchain_image_index];
+        renderPassBeginInfo.framebuffer = framebuffer;
         renderPassBeginInfo.renderArea.offset.x = 0;
         renderPassBeginInfo.renderArea.offset.y = 0;
         renderPassBeginInfo.renderArea.extent.width  = kWindowWidthDefault;
@@ -804,7 +807,7 @@ int main(int argc, char *argv[]) {
         submitInfo.pCommandBuffers = &commandBuffer;
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = &renderingComplete;
-        VULKAN_CHECK( vkQueueSubmit(context.graphics_queue, 1, &submitInfo, queue_submitted_fences[swapchain_image_index]) );
+        VULKAN_CHECK( vkQueueSubmit(context.graphics_queue, 1, &submitInfo, queue_submitted_fences[vframeIndex]) );
         VkPresentInfoKHR presentInfo = {};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.pNext = NULL;
@@ -841,6 +844,10 @@ int main(int argc, char *argv[]) {
 
         glfwPollEvents();
         frameIndex += 1;
+        vframeIndex += 1;
+        if (vframeIndex == kVframeCount) {
+            vframeIndex = 0;
+        }
     }
 
     // NOTE: vkDeviceWaitIdle() only waits for all queue operations to complete; swapchain images may still be
@@ -850,12 +857,12 @@ int main(int argc, char *argv[]) {
     // It looks like this is still under discussion (Khronos Vulkan issue #243, #245)
     vkDeviceWaitIdle(context.device);
 
-    for(uint32_t iPool=0; iPool<context.swapchain_image_count; ++iPool) {
+    for(uint32_t iPool=0; iPool<kVframeCount; ++iPool) {
         stbvk_destroy_query_pool(&context, timestamp_query_pools[iPool]);
     }
     free(timestamp_query_pools);
 
-    for(uint32_t iFence=0; iFence<context.swapchain_image_count; ++iFence) {
+    for(uint32_t iFence=0; iFence<kVframeCount; ++iFence) {
         stbvk_destroy_fence(&context, queue_submitted_fences[iFence]);
     }
     free(queue_submitted_fences);
