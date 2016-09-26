@@ -333,6 +333,20 @@ int main(int argc, char *argv[]) {
     VkDeviceSize bufferVerticesMemOffset = 0;
     VULKAN_CHECK(stbvk_allocate_and_bind_buffer_memory(&context, bufferVertices, device_arena,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "vertex buffer memory", &bufferVerticesMem, &bufferVerticesMemOffset));
+    const cdsm_vertex_layout_t src_vertex_layout = {
+        32, 3, {
+            {0, 0, CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT},
+            {1, 12, CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT},
+            {2,24, CDSM_ATTRIBUTE_FORMAT_R32G32_FLOAT},
+        }
+    };
+    const cdsm_vertex_layout_t dst_vertex_layout = {
+        22, 3, {
+            {0, 0, CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT},
+            {1, 12, CDSM_ATTRIBUTE_FORMAT_R16G16B16_SNORM},
+            {2,18, CDSM_ATTRIBUTE_FORMAT_R16G16_FLOAT},
+        }
+    };
     stbvk_vertex_buffer_layout vertexBufferLayout = {};
     vertexBufferLayout.stride = sizeof(cdsm_vertex_t);
     vertexBufferLayout.attribute_count = 3;
