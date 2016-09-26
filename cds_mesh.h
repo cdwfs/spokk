@@ -990,7 +990,7 @@ cdsm_error_t cdsm_convert_vertex_buffer(const void *src_vertices, const cdsm_ver
                 dst_bytes + dst_layout->attributes[a].offset, dst_layout->attributes[a].format);
         }
         src_bytes += src_layout->stride;
-        dst_bytes += src_layout->stride;
+        dst_bytes += dst_layout->stride;
     }
     return 0;
 }
