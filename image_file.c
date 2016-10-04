@@ -94,6 +94,17 @@ uint32_t ImageFileGetBytesPerTexelBlock(ImageFileDataFormat format)
     case IMAGE_FILE_DATA_FORMAT_ASTC_12x10_SRGB:    return 16;
     case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_UNORM:   return 16;
     case IMAGE_FILE_DATA_FORMAT_ASTC_12x12_SRGB:    return 16;
+    case IMAGE_FILE_DATA_FORMAT_ETC2_R8G8B8_UNORM:  return 16;
+    case IMAGE_FILE_DATA_FORMAT_ETC2_R8G8B8_SRGB:   return 16;
+    case IMAGE_FILE_DATA_FORMAT_ETC2_R8G8B8A1_UNORM:return 16;
+    case IMAGE_FILE_DATA_FORMAT_ETC2_R8G8B8A1_SRGB: return 16;
+    case IMAGE_FILE_DATA_FORMAT_ETC2_R8G8B8A8_UNORM:return 16;
+    case IMAGE_FILE_DATA_FORMAT_ETC2_R8G8B8A8_SRGB: return 16;
+    case IMAGE_FILE_DATA_FORMAT_EAC_R11_UNORM:      return 16;
+    case IMAGE_FILE_DATA_FORMAT_EAC_R11_SNORM:      return 16;
+    case IMAGE_FILE_DATA_FORMAT_EAC_R11G11_UNORM:   return 16;
+    case IMAGE_FILE_DATA_FORMAT_EAC_R11G11_SNORM:   return 16;
+
     // no default case here, to get warnings when new formats are added!
     }
     return 0;
@@ -391,6 +402,17 @@ static int DdsContainsCompressedTexture(ImageFileDataFormat format) // TODO(cort
     case IMAGE_FILE_DATA_FORMAT_R16_UNORM:
     case IMAGE_FILE_DATA_FORMAT_R8_UNORM:
         return 0;
+    case IMAGE_FILE_DATA_FORMAT_ETC2_R8G8B8_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ETC2_R8G8B8_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ETC2_R8G8B8A1_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ETC2_R8G8B8A1_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_ETC2_R8G8B8A8_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_ETC2_R8G8B8A8_SRGB:
+    case IMAGE_FILE_DATA_FORMAT_EAC_R11_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_EAC_R11_SNORM:
+    case IMAGE_FILE_DATA_FORMAT_EAC_R11G11_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_EAC_R11G11_SNORM:
+        return 1; // ...but DDS files can't contain these formats, I think
     // no default case here, to get warnings when new formats are added!
     }
     return 0;
@@ -862,6 +884,228 @@ static int LoadImageFromAstc(ImageFile *out_image, const char *image_path)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+typedef struct KtxHeader {
+    uint8_t identifier[12];
+    uint32_t endianness;
+    uint32_t glType;
+    uint32_t glTypeSize;
+    uint32_t glFormat;
+    uint32_t glInternalFormat;
+    uint32_t glBaseInternalFormat;
+    uint32_t pixelWidth;
+    uint32_t pixelHeight;
+    uint32_t pixelDepth;
+    uint32_t numberOfArrayElements;
+    uint32_t numberOfFaces;
+    uint32_t numberOfMipmapLevels;
+    uint32_t bytesOfKeyValueData;
+} KtxHeader;
+
+typedef enum GlInternalFormat {
+    GL__COMPRESSED_RGB_S3TC_DXT1_EXT           = 0x83F0, // BC1 (no alpha)
+    GL__COMPRESSED_RGBA_S3TC_DXT1_EXT          = 0x83F1, // BC1 (alpha)
+    GL__COMPRESSED_RGBA_S3TC_DXT5_EXT          = 0x83F3, // BC3
+    GL__COMPRESSED_RGBA_BPTC_UNORM_ARB         = 0x8E8C, // BC7
+} GlInternalFormat;
+
+static uint16_t byte_swap_u16(uint16_t in)
+{
+    return ((in & 0xFF) << 8) | ((in & 0xFF00) >> 8);
+}
+static uint32_t byte_swap_u32(uint32_t in)
+{
+    return ((in & 0xFF) << 24) | ((in & 0xFF00) << 8) | ((in & 0xFF0000) >> 8) | ((in & 0xFF000000) >> 24);
+}
+static uint64_t byte_swap_u64(uint64_t in)
+{
+    return ((in & 0xFFULL) << 56) | ((in & 0xFF00ULL) << 40) | ((in & 0xFF0000ULL) << 24) | ((in & 0xFF000000ULL) << 8)
+        | ((in &     0xFF00000000ULL) >> 8)  | ((in &     0xFF0000000000ULL) >> 24)
+        | ((in & 0xFF000000000000ULL) >> 40) | ((in & 0xFF00000000000000ULL) >> 56);
+}
+static void byte_swap_in_place(uint8_t *p, uint32_t nbytes)
+{
+    if (nbytes == 2) {
+        uint16_t *p16 = (uint16_t*)p;
+        *p16 = byte_swap_u16(*p16);
+    } else if (nbytes == 4) {
+        uint32_t *p32 = (uint32_t*)p;
+        *p32 = byte_swap_u32(*p32);
+    } else if (nbytes == 8) {
+        uint64_t *p64 = (uint64_t*)p;
+        *p64 = byte_swap_u64(*p64);
+    } else {
+        fprintf(stderr, "Unsupported nbytes (%u) in byte_swap_in_place()", nbytes);
+        assert(0);
+    }
+}
+
+static int LoadImageFromKtx(ImageFile *out_image, const char *image_path)
+{
+    FILE *ktx_file = fopen(image_path, "rb");
+    if (!ktx_file)
+        return -3;  // Couldn't open file for reading
+    fseek(ktx_file, 0, SEEK_END);
+    size_t ktx_file_size = ftell(ktx_file);
+    fseek(ktx_file, 0, SEEK_SET);
+    uint8_t *ktx_bytes = (uint8_t*)malloc(ktx_file_size);
+
+    KtxHeader *header = (KtxHeader*)ktx_bytes;
+    size_t read_size = fread(header, sizeof(*header), 1, ktx_file);
+    if (read_size != 1)
+    {
+        fclose(ktx_file);
+        free(ktx_bytes);
+        return -1;
+    }
+    const uint8_t ktx_magic_id[12] =
+    {
+        0xAB, 0x4B, 0x54, 0x58,
+        0x20, 0x31, 0x31, 0xBB,
+        0x0D, 0x0A, 0x1A, 0x0A
+    };
+    if (memcmp(ktx_magic_id, header->identifier, 12) != 0)
+    {
+        fclose(ktx_file);
+        free(ktx_bytes);
+        return -2;
+    }
+    int byte_swap_contents = 0;
+    if (header->endianness == 0x04030201)
+    {
+        // No byte swap necessary
+    }
+    else if (header->endianness == 0x01020304)
+    {
+        // Remaining fields must be byte-swapped. We swap the header in-place
+        byte_swap_contents = 1;
+        header->glType = byte_swap_u32(header->glType);
+        header->glTypeSize = byte_swap_u32(header->glTypeSize);
+        header->glFormat = byte_swap_u32(header->glFormat);
+        header->glInternalFormat = byte_swap_u32(header->glInternalFormat);
+        header->glBaseInternalFormat = byte_swap_u32(header->glBaseInternalFormat);
+        header->pixelWidth = byte_swap_u32(header->pixelWidth);
+        header->pixelHeight = byte_swap_u32(header->pixelHeight);
+        header->pixelDepth = byte_swap_u32(header->pixelDepth);
+        header->numberOfArrayElements = byte_swap_u32(header->numberOfArrayElements);
+        header->numberOfFaces = byte_swap_u32(header->numberOfFaces);
+        header->numberOfMipmapLevels = byte_swap_u32(header->numberOfMipmapLevels);
+        header->bytesOfKeyValueData = byte_swap_u32(header->bytesOfKeyValueData);
+    }
+    else
+    {
+        fclose(ktx_file);
+        free(ktx_bytes);
+        return -3;
+    }
+    assert(byte_swap_contents == 0);
+
+    // Read key/value pairs.
+    if (header->bytesOfKeyValueData != 0)
+    {
+        uint8_t *key_value_bytes = ktx_bytes + sizeof(*header);
+        const uint8_t *key_value_bytes_end = key_value_bytes + header->bytesOfKeyValueData;
+        read_size = fread(key_value_bytes, header->bytesOfKeyValueData, 1, ktx_file);
+        if (read_size != 1)
+        {
+            fclose(ktx_file);
+            free(ktx_bytes);
+            return -4;
+        }
+        const uint8_t *next_key_value = key_value_bytes;
+        while(next_key_value != key_value_bytes_end)
+        {
+            const uint32_t *pair_size = (const uint32_t*)next_key_value;
+            uint32_t final_pair_size = byte_swap_contents ? byte_swap_u32(*pair_size) : *pair_size;
+            const uint8_t *key_and_value = next_key_value + sizeof(*pair_size);
+            uint32_t padding_size = 3 - ((final_pair_size + 3) % 4);
+            next_key_value += final_pair_size + padding_size;
+
+            const uint8_t *key_utf8 = key_and_value;
+            const uint8_t *value = (const uint8_t*)memchr(key_and_value, 0, final_pair_size);
+            // TODO(cort): what to look for here?
+            (void)key_utf8;
+            (void)value;
+        }
+    }
+
+    // Read surface data
+    uint8_t *surface_data = ktx_bytes + sizeof(*header) + header->bytesOfKeyValueData;
+    size_t surface_data_size = ktx_file_size - (sizeof(*header) + header->bytesOfKeyValueData);
+    read_size = fread(surface_data, surface_data_size, 1, ktx_file);
+    fclose(ktx_file);
+    if (read_size != 1)
+    {
+        free(ktx_bytes);
+        return -5;
+    }
+    if (header->endianness == 0x01020304)
+    {
+        uint8_t *surface_start = surface_data;
+        for(int iMip=0; iMip < header->numberOfMipmapLevels; ++iMip)
+        {
+            uint32_t *image_size = (uint32_t*)surface_start;
+            *image_size = byte_swap_u32(*image_size);
+            uint32_t padded_image_size = (*image_size + 3) & ~3; // TODO: this is different for non-array cubemaps. Test it.
+            uint8_t *image_start = (uint8_t*)(image_size+1);
+            uint8_t *image_end = image_start + padded_image_size;
+            if (header->glTypeSize != 1)
+            {
+                uint8_t *next_pixel = image_start;
+                while (next_pixel + header->glTypeSize <= image_end)
+                {
+                    byte_swap_in_place(next_pixel, header->glTypeSize);
+                    next_pixel += header->glTypeSize;
+                }
+            }
+            surface_start = image_end;
+        }
+    }
+    out_image->width = header->pixelWidth;
+    out_image->height = IMAGEFILE__MAX(1, header->pixelHeight); // will be 0 for 1D textures
+    out_image->depth = IMAGEFILE__MAX(1, header->pixelDepth); // will be 0 for 1D/2D textures
+    out_image->mip_levels = IMAGEFILE__MAX(1, header->numberOfMipmapLevels); // 0 is a request to generate the full mip chain.
+    // For basic (non-array/cubemap) textures, arrayElements=0 and faces=1.
+    // For non-array cubemaps: arrayElements=0 and faces=6.
+    // For non-cubemap arrays: arrayElements=#elements and faces=1.
+    // For cubemap arrays: arrayElements=#cubes and faces=6.
+    out_image->array_layers = IMAGEFILE__MAX(1, header->numberOfArrayElements) * header->numberOfFaces;
+    out_image->file_type = IMAGE_FILE_TYPE_KTX;
+    uint32_t block_dim_x = 1;
+    int is_compressed = 0;
+    if      (header->glInternalFormat == GL__COMPRESSED_RGB_S3TC_DXT1_EXT) {
+        out_image->data_format = IMAGE_FILE_DATA_FORMAT_BC1_UNORM;
+        is_compressed = 1;
+        block_dim_x = 4;
+    } else if (header->glInternalFormat == GL__COMPRESSED_RGBA_S3TC_DXT1_EXT) {
+        out_image->data_format = IMAGE_FILE_DATA_FORMAT_BC1_UNORM;
+        is_compressed = 1;
+        block_dim_x = 4;
+    } else if (header->glInternalFormat == GL__COMPRESSED_RGBA_S3TC_DXT5_EXT) {
+        out_image->data_format = IMAGE_FILE_DATA_FORMAT_BC3_UNORM;
+        is_compressed = 1;
+        block_dim_x = 4;
+    } else if (header->glInternalFormat == GL__COMPRESSED_RGBA_BPTC_UNORM_ARB) {
+        out_image->data_format = IMAGE_FILE_DATA_FORMAT_BC7_UNORM;
+        is_compressed = 1;
+        block_dim_x = 4;
+    } else {
+        free(ktx_bytes);
+        return -6;
+    }
+    uint32_t bytes_per_texel_block = ImageFileGetBytesPerTexelBlock(out_image->data_format);
+    out_image->row_pitch_bytes = is_compressed ? 
+            (bytes_per_texel_block * IMAGEFILE__MAX(1U, (header->pixelWidth + block_dim_x - 1) / block_dim_x)) :
+            (bytes_per_texel_block * header->pixelWidth);
+    out_image->depth_pitch_bytes = out_image->row_pitch_bytes * out_image->height;
+    out_image->file_contents = ktx_bytes;
+    out_image->flags = 0;
+    if (header->numberOfFaces == 6)
+        out_image->flags |= IMAGE_FILE_FLAG_CUBE_BIT;
+    return 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
 int ImageFileCreate(ImageFile *out_image, const char *image_path)
 {
     memset(out_image, 0, sizeof(*out_image));
@@ -892,6 +1136,8 @@ int ImageFileCreate(ImageFile *out_image, const char *image_path)
         file_type = IMAGE_FILE_TYPE_DDS;
     else if (strcmp(suffix_lower, ".astc") == 0)
         file_type = IMAGE_FILE_TYPE_ASTC;
+    else if (strcmp(suffix_lower, ".ktx") == 0)
+        file_type = IMAGE_FILE_TYPE_KTX;
     else
         return -2;  // Unrecognized filename suffix
 
@@ -910,10 +1156,18 @@ int ImageFileCreate(ImageFile *out_image, const char *image_path)
     case IMAGE_FILE_TYPE_ASTC:
         load_error = LoadImageFromAstc(out_image, image_path);
         break;
+    case IMAGE_FILE_TYPE_KTX:
+        load_error = LoadImageFromKtx(out_image, image_path);
+        break;
     case IMAGE_FILE_TYPE_UNKNOWN:
         break;  // unrecognized file types already handled above
     }
 
+    if (load_error != 0)
+    {
+        out_image->file_type = IMAGE_FILE_TYPE_UNKNOWN;
+        out_image->data_format = IMAGE_FILE_DATA_FORMAT_UNKNOWN;
+    }
     return load_error;
 }
 
@@ -931,6 +1185,9 @@ void ImageFileDestroy(const ImageFile *image)
         free(image->file_contents);
         break;
     case IMAGE_FILE_TYPE_ASTC:
+        free(image->file_contents);
+        break;
+    case IMAGE_FILE_TYPE_KTX:
         free(image->file_contents);
         break;
     case IMAGE_FILE_TYPE_UNKNOWN:
@@ -962,6 +1219,27 @@ size_t ImageFileGetSubresourceSize(const ImageFile *image, const ImageFileSubres
     }
     case IMAGE_FILE_TYPE_ASTC:
         return image->depth_pitch_bytes * image->depth;
+    case IMAGE_FILE_TYPE_KTX:
+    {
+        const KtxHeader *header = (const KtxHeader*)image->file_contents;
+        uintptr_t next_mip = (uintptr_t)(header) + sizeof(*header) + header->bytesOfKeyValueData;
+        uint32_t image_size = 0;
+        for(uint32_t i = 0; i <= subresource.mip_level; ++i)
+        {
+            image_size = *(const uint32_t*)(next_mip);
+            image_size = (image_size + 3) & ~3;
+            if ((image->flags & IMAGE_FILE_FLAG_CUBE_BIT) && image->array_layers == 1)
+            {
+                // For non-array cubemaps, the imageSize field stores the unpadded size of one cube face.
+                // Otherwise, it's the unpadded size of all data in this mip level.
+                // TODO(cort): this needs to be tested; I'm pretty sure it's wrong.
+                image_size *= 6;
+                image_size = (image_size + 3) & ~3;
+            }
+            next_mip += sizeof(image_size) + image_size;
+        }
+        return image_size / image->array_layers;
+    }
     case IMAGE_FILE_TYPE_UNKNOWN:
         break;
     }
@@ -1004,6 +1282,28 @@ void *ImageFileGetSubresourceData(const ImageFile *image, const ImageFileSubreso
     {
         intptr_t out_ptr = (intptr_t)image->file_contents + sizeof(AstcHeader);
         return (void*)out_ptr;
+    }
+    case IMAGE_FILE_TYPE_KTX:
+    {
+        const KtxHeader *header = (const KtxHeader*)image->file_contents;
+        uintptr_t next_mip = (uintptr_t)(header) + sizeof(*header) + header->bytesOfKeyValueData;
+        uint32_t image_size = 0;
+        for(uint32_t i = 0; i < subresource.mip_level; ++i)
+        {
+            image_size = *(const uint32_t*)(next_mip);
+            image_size = (image_size + 3) & ~3;
+            if ((image->flags & IMAGE_FILE_FLAG_CUBE_BIT) && image->array_layers == 1)
+            {
+                // For non-array cubemaps, the imageSize field stores the unpadded size of one cube face.
+                // Otherwise, it's the unpadded size of all data in this mip level.
+                // TODO(cort): this needs to be tested; I'm pretty sure it's wrong.
+                image_size *= 6;
+                image_size = (image_size + 3) & ~3;
+            }
+            next_mip += sizeof(image_size) + image_size;
+        }
+        image_size = *(const uint32_t*)(next_mip);
+        return next_mip + sizeof(image_size) + (image_size / image->array_layers) * subresource.array_layer;
     }
     case IMAGE_FILE_TYPE_UNKNOWN:
         break;
