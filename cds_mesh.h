@@ -164,6 +164,8 @@ extern "C"
         struct { float x,y,z; } min_extent;
         struct { float x,y,z; } max_extent;
         cdsm_front_face_t front_face;
+        cdsm_vertex_layout_t *vertex_layouts;
+        uint32_t vertex_layout_count;
     } cdsm_cube_recipe_t;
 
     CDSM_DEF
@@ -1057,8 +1059,20 @@ cdsm_error_t cdsm_create_cube(cdsm_metadata_t *out_metadata,
     cdsm_index_t index_offset[2];
     index_offset[0] = (recipe->front_face == CDSM_FRONT_FACE_CCW) ? 1 : 2;
     index_offset[1] = (recipe->front_face == CDSM_FRONT_FACE_CCW) ? 2 : 1;
+    cdsm_vertex_t vertex;
     for(int iFace=0; iFace<6; ++iFace)
     {
+#if 0
+        vertex.position[0] = face_pos[ face_pos_indices[12*iFace+ 0] ];
+        vertex.position[1] = face_pos[ face_pos_indices[12*iFace+ 1] ];
+        vertex.position[2] = face_pos[ face_pos_indices[12*iFace+ 2] ];
+        vertex.normal[0] = face_normals[3*iFace+0];
+        vertex.normal[1] = face_normals[3*iFace+1];
+        vertex.normal[2] = face_normals[3*iFace+2];
+        vertex.texcoord[0] = face_uvs[0];
+        vertex.texcoord[1] = face_uvs[1];
+        cdsm_convert_vertex_buffer(&vertex, 
+#endif
         out_vertices[4*iFace+0].position[0] = face_pos[ face_pos_indices[12*iFace+ 0] ];
         out_vertices[4*iFace+0].position[1] = face_pos[ face_pos_indices[12*iFace+ 1] ];
         out_vertices[4*iFace+0].position[2] = face_pos[ face_pos_indices[12*iFace+ 2] ];
