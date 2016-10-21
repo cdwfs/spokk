@@ -274,20 +274,32 @@ int main(int argc, char *argv[]) {
         MESH_TYPE_AXES     = 3,
         MESH_TYPE_CYLINDER = 2,
     } meshType = MESH_TYPE_CUBE;
+    const cdsm_vertex_layout_t vertex_layout = {
+        22, 3, {
+            {0, 0, CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT},
+            {1, 12, CDSM_ATTRIBUTE_FORMAT_R16G16B16_SNORM},
+            {2,18, CDSM_ATTRIBUTE_FORMAT_R16G16_FLOAT},
+        }
+    };
     cdsm_cube_recipe_t cube_recipe = {};
+    cube_recipe.vertex_layout = vertex_layout;
     cube_recipe.min_extent = {-0.2f,-0.2f,-0.2f};
     cube_recipe.max_extent = {+0.2f,+0.2f,+0.2f};
+    cube_recipe.front_face = CDSM_FRONT_FACE_CCW;
     cdsm_sphere_recipe_t sphere_recipe = {};
+    sphere_recipe.vertex_layout = vertex_layout;
     sphere_recipe.latitudinal_segments = 30;
     sphere_recipe.longitudinal_segments = 30;
     sphere_recipe.radius = 0.2f;
     cdsm_cylinder_recipe_t cylinder_recipe = {};
+    cylinder_recipe.vertex_layout = vertex_layout;
     cylinder_recipe.length = 0.3f;
     cylinder_recipe.axial_segments = 3;
     cylinder_recipe.radial_segments = 60;
     cylinder_recipe.radius0 = 0.3f;
     cylinder_recipe.radius1 = 0.4f;
     cdsm_axes_recipe_t axes_recipe = {};
+    axes_recipe.vertex_layout = vertex_layout;
     axes_recipe.length = 1.0f;
     if      (meshType == MESH_TYPE_CUBE)
         cdsm_create_cube(&mesh_metadata, NULL, &mesh_vertices_size, NULL, &mesh_indices_size, &cube_recipe);
@@ -321,42 +333,27 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK(stbvk_allocate_and_bind_buffer_memory(&context, bufferIndices, device_arena,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "index buffer memory", &bufferIndicesMem, &bufferIndicesMemOffset));
 
-    // Define vertex stream layouts
-    const cdsm_vertex_layout_t src_vertex_layout = {
-        32, 3, {
-            {0, 0, CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT},
-            {1, 12, CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT},
-            {2,24, CDSM_ATTRIBUTE_FORMAT_R32G32_FLOAT},
-        }
-    };
-    const cdsm_vertex_layout_t dst_vertex_layout = {
-        22, 3, {
-            {0, 0, CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT},
-            {1, 12, CDSM_ATTRIBUTE_FORMAT_R16G16B16_SNORM},
-            {2,18, CDSM_ATTRIBUTE_FORMAT_R16G16_FLOAT},
-        }
-    };
     stbvk_vertex_buffer_layout vertexBufferLayout = {};
-    vertexBufferLayout.stride = dst_vertex_layout.stride;
-    vertexBufferLayout.attribute_count = dst_vertex_layout.attribute_count;
+    vertexBufferLayout.stride = vertex_layout.stride;
+    vertexBufferLayout.attribute_count = vertex_layout.attribute_count;
     vertexBufferLayout.attributes[0].binding = 0;
     vertexBufferLayout.attributes[0].location = 0;
     vertexBufferLayout.attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    vertexBufferLayout.attributes[0].offset = dst_vertex_layout.attributes[0].offset;
+    vertexBufferLayout.attributes[0].offset = vertex_layout.attributes[0].offset;
     vertexBufferLayout.attributes[1].binding = 0;
     vertexBufferLayout.attributes[1].location = 1;
     vertexBufferLayout.attributes[1].format = VK_FORMAT_R16G16B16_SNORM; // TODO(cort): convert from CDSM_* enum
-    vertexBufferLayout.attributes[1].offset = dst_vertex_layout.attributes[1].offset;
+    vertexBufferLayout.attributes[1].offset = vertex_layout.attributes[1].offset;
     vertexBufferLayout.attributes[2].binding = 0;
     vertexBufferLayout.attributes[2].location = 2;
     vertexBufferLayout.attributes[2].format = VK_FORMAT_R16G16_SFLOAT;
-    vertexBufferLayout.attributes[2].offset = dst_vertex_layout.attributes[2].offset;
+    vertexBufferLayout.attributes[2].offset = vertex_layout.attributes[2].offset;
 
     // Create vertex buffer
     VkBufferCreateInfo bufferCreateInfoVertices = {};
     bufferCreateInfoVertices.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferCreateInfoVertices.pNext = NULL;
-    bufferCreateInfoVertices.size = mesh_metadata.vertex_count * dst_vertex_layout.stride;
+    bufferCreateInfoVertices.size = mesh_vertices_size;
     bufferCreateInfoVertices.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferCreateInfoVertices.flags = 0;
     VkBuffer bufferVertices = stbvk_create_buffer(&context, &bufferCreateInfoVertices, "vertex buffer");
@@ -367,29 +364,24 @@ int main(int argc, char *argv[]) {
 
     // Populate vertex/index buffers
     void *index_buffer_contents  = malloc(mesh_indices_size);
-    void *vertex_buffer_contents_temp = malloc(mesh_vertices_size);
-    void *vertex_buffer_contents = malloc(mesh_metadata.vertex_count * dst_vertex_layout.stride);
+    void *vertex_buffer_contents = malloc(mesh_metadata.vertex_count * vertex_layout.stride);
     if      (meshType == MESH_TYPE_CUBE)
-        cdsm_create_cube(&mesh_metadata, (cdsm_vertex_t*)vertex_buffer_contents_temp, &mesh_vertices_size,
+        cdsm_create_cube(&mesh_metadata, vertex_buffer_contents, &mesh_vertices_size,
             (cdsm_index_t*)index_buffer_contents, &mesh_indices_size, &cube_recipe);
     else if (meshType == MESH_TYPE_SPHERE)
-        cdsm_create_sphere(&mesh_metadata, (cdsm_vertex_t*)vertex_buffer_contents_temp, &mesh_vertices_size,
+        cdsm_create_sphere(&mesh_metadata, vertex_buffer_contents, &mesh_vertices_size,
             (cdsm_index_t*)index_buffer_contents, &mesh_indices_size, &sphere_recipe);
     else if (meshType == MESH_TYPE_AXES)
-        cdsm_create_axes(&mesh_metadata, (cdsm_vertex_t*)vertex_buffer_contents_temp, &mesh_vertices_size,
+        cdsm_create_axes(&mesh_metadata, vertex_buffer_contents, &mesh_vertices_size,
             (cdsm_index_t*)index_buffer_contents, &mesh_indices_size, &axes_recipe);
     else if (meshType == MESH_TYPE_CYLINDER)
-        cdsm_create_cylinder(&mesh_metadata, (cdsm_vertex_t*)vertex_buffer_contents_temp, &mesh_vertices_size,
+        cdsm_create_cylinder(&mesh_metadata, vertex_buffer_contents, &mesh_vertices_size,
             (cdsm_index_t*)index_buffer_contents, &mesh_indices_size, &cylinder_recipe);
-    cdsm_convert_vertex_buffer(vertex_buffer_contents_temp, &src_vertex_layout,
-        vertex_buffer_contents, &dst_vertex_layout, mesh_metadata.vertex_count);
-    free(vertex_buffer_contents_temp);
 
     VULKAN_CHECK( stbvk_buffer_load_contents(&context, bufferIndices, &bufferCreateInfoIndices,
         0, index_buffer_contents, mesh_indices_size, VK_ACCESS_INDEX_READ_BIT) );
     VULKAN_CHECK( stbvk_buffer_load_contents(&context, bufferVertices, &bufferCreateInfoVertices,
-        0, vertex_buffer_contents, mesh_metadata.vertex_count * dst_vertex_layout.stride,
-        VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT) );
+        0, vertex_buffer_contents, mesh_vertices_size, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT) );
     free(index_buffer_contents);
     free(vertex_buffer_contents);
 

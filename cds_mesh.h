@@ -130,17 +130,6 @@ extern "C"
     cdsm_error_t cdsm_convert_vertex_buffer(const void *src_vertices, const cdsm_vertex_layout_t *src_layout,
         void *dst_vertices, const cdsm_vertex_layout_t *dst_layout, size_t vertex_count);
 
-    typedef struct
-    {
-        float position[3];
-        float normal[3];
-#if 0
-        float tangent[3];
-        float bitangent[3];
-#endif
-        float texcoord[2];
-    } cdsm_vertex_t;
-
     typedef enum {
         CDSM_PRIMITIVE_TYPE_TRIANGLE_LIST = 0,
         CDSM_PRIMITIVE_TYPE_LINE_LIST     = 1,
@@ -153,6 +142,7 @@ extern "C"
 
     typedef struct
     {
+        cdsm_vertex_layout_t vertex_layout;
         cdsm_primitive_type_t primitive_type;
         cdsm_front_face_t front_face;
         cdsm_s32 vertex_count;
@@ -161,21 +151,21 @@ extern "C"
 
     typedef struct
     {
+        cdsm_vertex_layout_t vertex_layout;
         struct { float x,y,z; } min_extent;
         struct { float x,y,z; } max_extent;
         cdsm_front_face_t front_face;
-        cdsm_vertex_layout_t *vertex_layouts;
-        uint32_t vertex_layout_count;
     } cdsm_cube_recipe_t;
 
     CDSM_DEF
     cdsm_error_t cdsm_create_cube(cdsm_metadata_t *out_metadata,
-        cdsm_vertex_t *out_vertices, size_t *out_vertices_size,
+        void *out_vertices, size_t *out_vertices_size,
         cdsm_index_t *out_indices, size_t *out_indices_size,
         const cdsm_cube_recipe_t *recipe);
 
     typedef struct
     {
+        cdsm_vertex_layout_t vertex_layout;
         cdsm_s32 latitudinal_segments;
         cdsm_s32 longitudinal_segments;
         float radius;
@@ -183,23 +173,25 @@ extern "C"
 
     CDSM_DEF
     cdsm_error_t cdsm_create_sphere(cdsm_metadata_t *out_metadata,
-        cdsm_vertex_t *out_vertices, size_t *out_vertices_size,
+        void *out_vertices, size_t *out_vertices_size,
         cdsm_index_t *out_indices, size_t *out_indices_size,
         const cdsm_sphere_recipe_t *recipe);
 
     typedef struct
     {
+        cdsm_vertex_layout_t vertex_layout;
         float length;
     } cdsm_axes_recipe_t;
 
     CDSM_DEF
     cdsm_error_t cdsm_create_axes(cdsm_metadata_t *out_metadata,
-        cdsm_vertex_t *out_vertices, size_t *out_vertices_size,
+        void *out_vertices, size_t *out_vertices_size,
         cdsm_index_t *out_indices, size_t *out_indices_size,
         const cdsm_axes_recipe_t *recipe);
 
     typedef struct
     {
+        cdsm_vertex_layout_t vertex_layout;
         float length;
         float radius0, radius1;
         cdsm_s32 axial_segments;
@@ -208,7 +200,7 @@ extern "C"
 
     CDSM_DEF
     cdsm_error_t cdsm_create_cylinder(cdsm_metadata_t *out_metadata,
-        cdsm_vertex_t *out_vertices, size_t *out_vertices_size,
+        void *out_vertices, size_t *out_vertices_size,
         cdsm_index_t *out_indices, size_t *out_indices_size,
         const cdsm_cylinder_recipe_t *recipe);
 
@@ -216,8 +208,7 @@ extern "C"
     /* Export functions */
     CDSM_DEF
     cdsm_error_t cdsm_export_to_header(const char *filename, const char *prefix,
-        cdsm_metadata_t const *metadata,
-        cdsm_vertex_t const *vertices, cdsm_index_t const *indices);
+        cdsm_metadata_t const *metadata, void const *vertices, cdsm_index_t const *indices);
 
 #ifdef __cplusplus
 }
@@ -245,6 +236,27 @@ extern "C"
 #define CDSM__CLAMP(x, xmin, xmax) ( ((x)<(xmin)) ? (xmin) : ( ((x)>(xmax)) ? (xmax) : (x) ) )
 #define CDSM__UNUSED(x) ((void)x)
 static const float CDSM__PI = 3.14159265358979323846f;
+
+typedef struct
+{
+    float position[3];
+    float normal[3];
+#if 0
+    float tangent[3];
+    float bitangent[3];
+#endif
+    float texcoord[2];
+} cdsm__default_vertex_t;
+
+static const cdsm_vertex_layout_t cdsm__default_vertex_layout = {
+    sizeof(cdsm__default_vertex_t),
+    3,
+    {
+        {0,  0, CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT},
+        {1, 12, CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT},
+        {2, 24, CDSM_ATTRIBUTE_FORMAT_R32G32_FLOAT},
+    }
+};
 
 /*************************** Vertex buffer conversion *********************************/
 
@@ -1001,7 +1013,7 @@ cdsm_error_t cdsm_convert_vertex_buffer(const void *src_vertices, const cdsm_ver
 
 CDSM_DEF
 cdsm_error_t cdsm_create_cube(cdsm_metadata_t *out_metadata,
-    cdsm_vertex_t *out_vertices, size_t *out_vertices_size,
+    void *out_vertices, size_t *out_vertices_size,
     cdsm_index_t *out_indices, size_t *out_indices_size,
     const cdsm_cube_recipe_t *recipe)
 {
@@ -1009,12 +1021,13 @@ cdsm_error_t cdsm_create_cube(cdsm_metadata_t *out_metadata,
     {
         return -1; /* both must be NULL or both must be non-NULL. */
     }
+    out_metadata->vertex_layout = recipe->vertex_layout;
     out_metadata->index_count  = 3 * 2 * 6;
     out_metadata->vertex_count = 4 * 6;
     out_metadata->primitive_type = CDSM_PRIMITIVE_TYPE_TRIANGLE_LIST;
     out_metadata->front_face = recipe->front_face;
 
-    const size_t min_vertices_size = out_metadata->vertex_count * sizeof(cdsm_vertex_t);
+    const size_t min_vertices_size = out_metadata->vertex_count * recipe->vertex_layout.stride;
     const size_t min_indices_size  = out_metadata->index_count  * sizeof(cdsm_index_t);
     if (out_vertices == 0 || out_indices == 0)
     {
@@ -1059,55 +1072,57 @@ cdsm_error_t cdsm_create_cube(cdsm_metadata_t *out_metadata,
     cdsm_index_t index_offset[2];
     index_offset[0] = (recipe->front_face == CDSM_FRONT_FACE_CCW) ? 1 : 2;
     index_offset[1] = (recipe->front_face == CDSM_FRONT_FACE_CCW) ? 2 : 1;
-    cdsm_vertex_t vertex;
+    uint8_t *next_out_vertex = (uint8_t*)out_vertices;
     for(int iFace=0; iFace<6; ++iFace)
     {
-#if 0
-        vertex.position[0] = face_pos[ face_pos_indices[12*iFace+ 0] ];
-        vertex.position[1] = face_pos[ face_pos_indices[12*iFace+ 1] ];
-        vertex.position[2] = face_pos[ face_pos_indices[12*iFace+ 2] ];
-        vertex.normal[0] = face_normals[3*iFace+0];
-        vertex.normal[1] = face_normals[3*iFace+1];
-        vertex.normal[2] = face_normals[3*iFace+2];
-        vertex.texcoord[0] = face_uvs[0];
-        vertex.texcoord[1] = face_uvs[1];
-        cdsm_convert_vertex_buffer(&vertex, 
-#endif
-        out_vertices[4*iFace+0].position[0] = face_pos[ face_pos_indices[12*iFace+ 0] ];
-        out_vertices[4*iFace+0].position[1] = face_pos[ face_pos_indices[12*iFace+ 1] ];
-        out_vertices[4*iFace+0].position[2] = face_pos[ face_pos_indices[12*iFace+ 2] ];
-        out_vertices[4*iFace+0].normal[0] = face_normals[3*iFace+0];
-        out_vertices[4*iFace+0].normal[1] = face_normals[3*iFace+1];
-        out_vertices[4*iFace+0].normal[2] = face_normals[3*iFace+2];
-        out_vertices[4*iFace+0].texcoord[0] = face_uvs[0];
-        out_vertices[4*iFace+0].texcoord[1] = face_uvs[1];
+        cdsm__default_vertex_t temp_vertex = {};
+        temp_vertex.position[0] = face_pos[ face_pos_indices[12*iFace+ 0] ];
+        temp_vertex.position[1] = face_pos[ face_pos_indices[12*iFace+ 1] ];
+        temp_vertex.position[2] = face_pos[ face_pos_indices[12*iFace+ 2] ];
+        temp_vertex.normal[0] = face_normals[3*iFace+0];
+        temp_vertex.normal[1] = face_normals[3*iFace+1];
+        temp_vertex.normal[2] = face_normals[3*iFace+2];
+        temp_vertex.texcoord[0] = face_uvs[0];
+        temp_vertex.texcoord[1] = face_uvs[1];
+        cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout,
+            next_out_vertex, &recipe->vertex_layout, 1);
+        next_out_vertex += recipe->vertex_layout.stride;
 
-        out_vertices[4*iFace+1].position[0] = face_pos[ face_pos_indices[12*iFace+ 3] ];
-        out_vertices[4*iFace+1].position[1] = face_pos[ face_pos_indices[12*iFace+ 4] ];
-        out_vertices[4*iFace+1].position[2] = face_pos[ face_pos_indices[12*iFace+ 5] ];
-        out_vertices[4*iFace+1].normal[0] = face_normals[3*iFace+0];
-        out_vertices[4*iFace+1].normal[1] = face_normals[3*iFace+1];
-        out_vertices[4*iFace+1].normal[2] = face_normals[3*iFace+2];
-        out_vertices[4*iFace+1].texcoord[0] = face_uvs[2];
-        out_vertices[4*iFace+1].texcoord[1] = face_uvs[3];
+        temp_vertex.position[0] = face_pos[ face_pos_indices[12*iFace+ 3] ];
+        temp_vertex.position[1] = face_pos[ face_pos_indices[12*iFace+ 4] ];
+        temp_vertex.position[2] = face_pos[ face_pos_indices[12*iFace+ 5] ];
+        temp_vertex.normal[0] = face_normals[3*iFace+0];
+        temp_vertex.normal[1] = face_normals[3*iFace+1];
+        temp_vertex.normal[2] = face_normals[3*iFace+2];
+        temp_vertex.texcoord[0] = face_uvs[2];
+        temp_vertex.texcoord[1] = face_uvs[3];
+        cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout,
+            next_out_vertex, &recipe->vertex_layout, 1);
+        next_out_vertex += recipe->vertex_layout.stride;
 
-        out_vertices[4*iFace+2].position[0] = face_pos[ face_pos_indices[12*iFace+ 6] ];
-        out_vertices[4*iFace+2].position[1] = face_pos[ face_pos_indices[12*iFace+ 7] ];
-        out_vertices[4*iFace+2].position[2] = face_pos[ face_pos_indices[12*iFace+ 8] ];
-        out_vertices[4*iFace+2].normal[0] = face_normals[3*iFace+0];
-        out_vertices[4*iFace+2].normal[1] = face_normals[3*iFace+1];
-        out_vertices[4*iFace+2].normal[2] = face_normals[3*iFace+2];
-        out_vertices[4*iFace+2].texcoord[0] = face_uvs[4];
-        out_vertices[4*iFace+2].texcoord[1] = face_uvs[5];
+        temp_vertex.position[0] = face_pos[ face_pos_indices[12*iFace+ 6] ];
+        temp_vertex.position[1] = face_pos[ face_pos_indices[12*iFace+ 7] ];
+        temp_vertex.position[2] = face_pos[ face_pos_indices[12*iFace+ 8] ];
+        temp_vertex.normal[0] = face_normals[3*iFace+0];
+        temp_vertex.normal[1] = face_normals[3*iFace+1];
+        temp_vertex.normal[2] = face_normals[3*iFace+2];
+        temp_vertex.texcoord[0] = face_uvs[4];
+        temp_vertex.texcoord[1] = face_uvs[5];
+        cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout,
+            next_out_vertex, &recipe->vertex_layout, 1);
+        next_out_vertex += recipe->vertex_layout.stride;
 
-        out_vertices[4*iFace+3].position[0] = face_pos[ face_pos_indices[12*iFace+ 9] ];
-        out_vertices[4*iFace+3].position[1] = face_pos[ face_pos_indices[12*iFace+10] ];
-        out_vertices[4*iFace+3].position[2] = face_pos[ face_pos_indices[12*iFace+11] ];
-        out_vertices[4*iFace+3].normal[0] = face_normals[3*iFace+0];
-        out_vertices[4*iFace+3].normal[1] = face_normals[3*iFace+1];
-        out_vertices[4*iFace+3].normal[2] = face_normals[3*iFace+2];
-        out_vertices[4*iFace+3].texcoord[0] = face_uvs[6];
-        out_vertices[4*iFace+3].texcoord[1] = face_uvs[7];
+        temp_vertex.position[0] = face_pos[ face_pos_indices[12*iFace+ 9] ];
+        temp_vertex.position[1] = face_pos[ face_pos_indices[12*iFace+10] ];
+        temp_vertex.position[2] = face_pos[ face_pos_indices[12*iFace+11] ];
+        temp_vertex.normal[0] = face_normals[3*iFace+0];
+        temp_vertex.normal[1] = face_normals[3*iFace+1];
+        temp_vertex.normal[2] = face_normals[3*iFace+2];
+        temp_vertex.texcoord[0] = face_uvs[6];
+        temp_vertex.texcoord[1] = face_uvs[7];
+        cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout,
+            next_out_vertex, &recipe->vertex_layout, 1);
+        next_out_vertex += recipe->vertex_layout.stride;
 
         out_indices[6*iFace+0] = 4*iFace+0;
         out_indices[6*iFace+1] = 4*iFace+index_offset[0];
@@ -1121,7 +1136,7 @@ cdsm_error_t cdsm_create_cube(cdsm_metadata_t *out_metadata,
 
 CDSM_DEF
 cdsm_error_t cdsm_create_sphere(cdsm_metadata_t *out_metadata,
-    cdsm_vertex_t *out_vertices, size_t *out_vertices_size,
+    void *out_vertices, size_t *out_vertices_size,
     cdsm_index_t *out_indices, size_t *out_indices_size,
     const cdsm_sphere_recipe_t *recipe)
 {
@@ -1133,6 +1148,7 @@ cdsm_error_t cdsm_create_sphere(cdsm_metadata_t *out_metadata,
     {
         return -3;
     }
+    out_metadata->vertex_layout = recipe->vertex_layout;
     // Each longitudinal segment has one triangle for each of the firs two latitudinal segments,
     // and two triangles for each additional latitudinal segment beyond that.
     out_metadata->index_count  = recipe->longitudinal_segments * (1 + 1 + 2*(recipe->latitudinal_segments-2)) * 3;
@@ -1141,7 +1157,7 @@ cdsm_error_t cdsm_create_sphere(cdsm_metadata_t *out_metadata,
     out_metadata->primitive_type = CDSM_PRIMITIVE_TYPE_TRIANGLE_LIST;
     out_metadata->front_face = CDSM_FRONT_FACE_CCW;
 
-    const size_t min_vertices_size = out_metadata->vertex_count * sizeof(cdsm_vertex_t);
+    const size_t min_vertices_size = out_metadata->vertex_count * recipe->vertex_layout.stride;
     const size_t min_indices_size  = out_metadata->index_count  * sizeof(cdsm_index_t);
     if (out_vertices == 0 || out_indices == 0)
     {
@@ -1155,7 +1171,8 @@ cdsm_error_t cdsm_create_sphere(cdsm_metadata_t *out_metadata,
         return -2;
     }
 
-    cdsm_vertex_t *vert = out_vertices;
+    uint8_t *vert = (uint8_t*)out_vertices;
+    cdsm__default_vertex_t temp_vertex = {};
     for(int i_ring = 0; i_ring <= recipe->latitudinal_segments; ++i_ring)
     {
         const float phi_lerp = (float)i_ring / (float)recipe->latitudinal_segments; // [0..1]
@@ -1172,18 +1189,19 @@ cdsm_error_t cdsm_create_sphere(cdsm_metadata_t *out_metadata,
             const float theta = (2.0f * CDSM__PI) * radial_lerp;
             const float sin_t = sinf(theta);
             const float cos_t = cosf(theta);
-            vert->position[0] = cos_t * ring_radius;
-            vert->position[1] = sin_t * ring_radius;
-            vert->position[2] = z;
-            vert->normal[0] = cos_t * normal_xy_scale;
-            vert->normal[1] = sin_t * normal_xy_scale;
-            vert->normal[2] = normal_z;
-            vert->texcoord[0] = radial_lerp + texcoord_u_offset;
-            vert->texcoord[1] = phi_lerp;
-            vert += 1;
+            temp_vertex.position[0] = cos_t * ring_radius;
+            temp_vertex.position[1] = sin_t * ring_radius;
+            temp_vertex.position[2] = z;
+            temp_vertex.normal[0] = cos_t * normal_xy_scale;
+            temp_vertex.normal[1] = sin_t * normal_xy_scale;
+            temp_vertex.normal[2] = normal_z;
+            temp_vertex.texcoord[0] = radial_lerp + texcoord_u_offset;
+            temp_vertex.texcoord[1] = phi_lerp;
+            cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout, vert, &recipe->vertex_layout, 1);
+            vert += recipe->vertex_layout.stride;
         }
     }
-    assert(vert == out_vertices + out_metadata->vertex_count);
+    assert(vert == (uint8_t*)out_vertices + out_metadata->vertex_count * recipe->vertex_layout.stride);
 
     cdsm_index_t *tri = out_indices;
     for(int i_strip = 0; i_strip < recipe->longitudinal_segments; ++i_strip)
@@ -1219,7 +1237,7 @@ cdsm_error_t cdsm_create_sphere(cdsm_metadata_t *out_metadata,
 
 CDSM_DEF
 cdsm_error_t cdsm_create_axes(cdsm_metadata_t *out_metadata,
-    cdsm_vertex_t *out_vertices, size_t *out_vertices_size,
+    void *out_vertices, size_t *out_vertices_size,
     cdsm_index_t *out_indices, size_t *out_indices_size,
     const cdsm_axes_recipe_t *recipe)
 {
@@ -1227,12 +1245,13 @@ cdsm_error_t cdsm_create_axes(cdsm_metadata_t *out_metadata,
     {
         return -1; /* both must be NULL or both must be non-NULL. */
     }
+    out_metadata->vertex_layout = recipe->vertex_layout;
     out_metadata->index_count  = 2 * 3;
     out_metadata->vertex_count = 2 * 3;
     out_metadata->primitive_type = CDSM_PRIMITIVE_TYPE_LINE_LIST;
     out_metadata->front_face = CDSM_FRONT_FACE_CCW;
     
-    const size_t min_vertices_size = out_metadata->vertex_count * sizeof(cdsm_vertex_t);
+    const size_t min_vertices_size = out_metadata->vertex_count * recipe->vertex_layout.stride;
     const size_t min_indices_size  = out_metadata->index_count  * sizeof(cdsm_index_t);
     if (out_vertices == 0 || out_indices == 0)
     {
@@ -1246,44 +1265,71 @@ cdsm_error_t cdsm_create_axes(cdsm_metadata_t *out_metadata,
         return -2;
     }
 
-    out_vertices[0].position[0] = 0;
-    out_vertices[0].position[1] = 0;
-    out_vertices[0].position[2] = 0;
-    out_vertices[0].normal[0] = 1;
-    out_vertices[0].normal[1] = 0;
-    out_vertices[0].normal[2] = 0;
-    out_vertices[1].position[0] = recipe->length;
-    out_vertices[1].position[1] = 0;
-    out_vertices[1].position[2] = 0;
-    out_vertices[1].normal[0] = 1;
-    out_vertices[1].normal[1] = 0;
-    out_vertices[1].normal[2] = 0;
+    cdsm__default_vertex_t temp_vertex;
+    uint8_t *vert = (uint8_t*)out_vertices;
 
-    out_vertices[2].position[0] = 0;
-    out_vertices[2].position[1] = 0;
-    out_vertices[2].position[2] = 0;
-    out_vertices[2].normal[0] = 0;
-    out_vertices[2].normal[1] = 1;
-    out_vertices[2].normal[2] = 0;
-    out_vertices[3].position[0] = 0;
-    out_vertices[3].position[1] = recipe->length;
-    out_vertices[3].position[2] = 0;
-    out_vertices[3].normal[0] = 0;
-    out_vertices[3].normal[1] = 1;
-    out_vertices[3].normal[2] = 0;
+    temp_vertex.position[0] = 0;
+    temp_vertex.position[1] = 0;
+    temp_vertex.position[2] = 0;
+    temp_vertex.normal[0] = 1;
+    temp_vertex.normal[1] = 0;
+    temp_vertex.normal[2] = 0;
+    temp_vertex.texcoord[0] = 0;
+    temp_vertex.texcoord[1] = 0;
+    cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout, vert, &recipe->vertex_layout, 1);
+    vert += recipe->vertex_layout.stride;
+    temp_vertex.position[0] = recipe->length;
+    temp_vertex.position[1] = 0;
+    temp_vertex.position[2] = 0;
+    temp_vertex.normal[0] = 1;
+    temp_vertex.normal[1] = 0;
+    temp_vertex.normal[2] = 0;
+    temp_vertex.texcoord[0] = 1;
+    temp_vertex.texcoord[1] = 0;
+    cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout, vert, &recipe->vertex_layout, 1);
+    vert += recipe->vertex_layout.stride;
 
-    out_vertices[4].position[0] = 0;
-    out_vertices[4].position[1] = 0;
-    out_vertices[4].position[2] = 0;
-    out_vertices[4].normal[0] = 0;
-    out_vertices[4].normal[1] = 0;
-    out_vertices[4].normal[2] = 1;
-    out_vertices[5].position[0] = 0;
-    out_vertices[5].position[1] = 0;
-    out_vertices[5].position[2] = recipe->length;
-    out_vertices[5].normal[0] = 0;
-    out_vertices[5].normal[1] = 0;
-    out_vertices[5].normal[2] = 1;
+    temp_vertex.position[0] = 0;
+    temp_vertex.position[1] = 0;
+    temp_vertex.position[2] = 0;
+    temp_vertex.normal[0] = 0;
+    temp_vertex.normal[1] = 1;
+    temp_vertex.normal[2] = 0;
+    temp_vertex.texcoord[0] = 0;
+    temp_vertex.texcoord[1] = 0;
+    cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout, vert, &recipe->vertex_layout, 1);
+    vert += recipe->vertex_layout.stride;
+    temp_vertex.position[0] = 0;
+    temp_vertex.position[1] = recipe->length;
+    temp_vertex.position[2] = 0;
+    temp_vertex.normal[0] = 0;
+    temp_vertex.normal[1] = 1;
+    temp_vertex.normal[2] = 0;
+    temp_vertex.texcoord[0] = 1;
+    temp_vertex.texcoord[1] = 0;
+    cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout, vert, &recipe->vertex_layout, 1);
+    vert += recipe->vertex_layout.stride;
+
+    temp_vertex.position[0] = 0;
+    temp_vertex.position[1] = 0;
+    temp_vertex.position[2] = 0;
+    temp_vertex.normal[0] = 0;
+    temp_vertex.normal[1] = 0;
+    temp_vertex.normal[2] = 1;
+    temp_vertex.texcoord[0] = 0;
+    temp_vertex.texcoord[1] = 0;
+    cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout, vert, &recipe->vertex_layout, 1);
+    vert += recipe->vertex_layout.stride;
+    temp_vertex.position[0] = 0;
+    temp_vertex.position[1] = 0;
+    temp_vertex.position[2] = recipe->length;
+    temp_vertex.normal[0] = 0;
+    temp_vertex.normal[1] = 0;
+    temp_vertex.normal[2] = 1;
+    temp_vertex.texcoord[0] = 1;
+    temp_vertex.texcoord[1] = 0;
+    cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout, vert, &recipe->vertex_layout, 1);
+    vert += recipe->vertex_layout.stride;
 
     out_indices[0] = 0;
     out_indices[1] = 1;
@@ -1296,7 +1342,7 @@ cdsm_error_t cdsm_create_axes(cdsm_metadata_t *out_metadata,
 
 CDSM_DEF
 cdsm_error_t cdsm_create_cylinder(cdsm_metadata_t *out_metadata,
-    cdsm_vertex_t *out_vertices, size_t *out_vertices_size,
+    void *out_vertices, size_t *out_vertices_size,
     cdsm_index_t *out_indices, size_t *out_indices_size,
     const cdsm_cylinder_recipe_t *recipe)
 {
@@ -1308,6 +1354,7 @@ cdsm_error_t cdsm_create_cylinder(cdsm_metadata_t *out_metadata,
     {
         return -3;
     }
+    out_metadata->vertex_layout = recipe->vertex_layout;
     // Each endcap has radial_segments triangles.
     // Each length segment has radial_segments*2 triangles.
     out_metadata->index_count  = 3 *
@@ -1321,7 +1368,7 @@ cdsm_error_t cdsm_create_cylinder(cdsm_metadata_t *out_metadata,
     out_metadata->primitive_type = CDSM_PRIMITIVE_TYPE_TRIANGLE_LIST;
     out_metadata->front_face = CDSM_FRONT_FACE_CCW;
     
-    const size_t min_vertices_size = out_metadata->vertex_count * sizeof(cdsm_vertex_t);
+    const size_t min_vertices_size = out_metadata->vertex_count * recipe->vertex_layout.stride;
     const size_t min_indices_size  = out_metadata->index_count  * sizeof(cdsm_index_t);
     if (out_vertices == 0 || out_indices == 0)
     {
@@ -1340,7 +1387,8 @@ cdsm_error_t cdsm_create_cylinder(cdsm_metadata_t *out_metadata,
     const float normal_z = d_radius * denominator * (d_radius>=0 ? -1.0f : 1.0f);
     const float normal_xy_scale = d_radius ? (recipe->length * denominator) : 1.0f;
 
-    cdsm_vertex_t *vert = out_vertices;
+    cdsm__default_vertex_t temp_vertex = {};
+    uint8_t *vert = (uint8_t*)out_vertices;
     int i_ring = 0;
     for(i_ring = 0; i_ring <= recipe->axial_segments; ++i_ring)
     {
@@ -1353,20 +1401,21 @@ cdsm_error_t cdsm_create_cylinder(cdsm_metadata_t *out_metadata,
             const float theta = 2.0f * CDSM__PI * radial_lerp;
             const float sin_t = sinf(theta);
             const float cos_t = cosf(theta);
-            vert->position[0] = cos_t * ring_radius;
-            vert->position[1] = sin_t * ring_radius;
-            vert->position[2] = z;
-            vert->normal[0] = cos_t * normal_xy_scale;
-            vert->normal[1] = sin_t * normal_xy_scale;
-            vert->normal[2] = normal_z;
-            vert->texcoord[0] = radial_lerp;
-            vert->texcoord[1] = axial_lerp;
-            vert += 1;
+            temp_vertex.position[0] = cos_t * ring_radius;
+            temp_vertex.position[1] = sin_t * ring_radius;
+            temp_vertex.position[2] = z;
+            temp_vertex.normal[0] = cos_t * normal_xy_scale;
+            temp_vertex.normal[1] = sin_t * normal_xy_scale;
+            temp_vertex.normal[2] = normal_z;
+            temp_vertex.texcoord[0] = radial_lerp;
+            temp_vertex.texcoord[1] = axial_lerp;
+            cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout, vert, &recipe->vertex_layout, 1);
+            vert += recipe->vertex_layout.stride;
         }
     }
 
     i_ring = 0;
-    cdsm_index_t cap_start0 = (cdsm_index_t)(vert - out_vertices);
+    cdsm_index_t cap_start0 = (cdsm_index_t)( (vert - (uint8_t*)out_vertices) / recipe->vertex_layout.stride );
     {
         const float axial_lerp = (float)i_ring / (float)recipe->axial_segments; // [0..1]
         const float z = recipe->length * axial_lerp;
@@ -1377,30 +1426,32 @@ cdsm_error_t cdsm_create_cylinder(cdsm_metadata_t *out_metadata,
             const float theta = 2.0f * CDSM__PI * radial_lerp;
             const float sin_t = sinf(theta);
             const float cos_t = cosf(theta);
-            vert->position[0] = cos_t * ring_radius;
-            vert->position[1] = sin_t * ring_radius;
-            vert->position[2] = z;
-            vert->normal[0] = 0;
-            vert->normal[1] = 0;
-            vert->normal[2] = -1;
-            vert->texcoord[0] = radial_lerp;
-            vert->texcoord[1] = axial_lerp;
-            vert += 1;
+            temp_vertex.position[0] = cos_t * ring_radius;
+            temp_vertex.position[1] = sin_t * ring_radius;
+            temp_vertex.position[2] = z;
+            temp_vertex.normal[0] = 0;
+            temp_vertex.normal[1] = 0;
+            temp_vertex.normal[2] = -1;
+            temp_vertex.texcoord[0] = radial_lerp;
+            temp_vertex.texcoord[1] = axial_lerp;
+            cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout, vert, &recipe->vertex_layout, 1);
+            vert += recipe->vertex_layout.stride;
         }
     }
-    cdsm_index_t cap_center0 = (cdsm_index_t)(vert - out_vertices);
-    vert->position[0] = 0;
-    vert->position[1] = 0;
-    vert->position[2] = 0;
-    vert->normal[0] = 0;
-    vert->normal[1] = 0;
-    vert->normal[2] = -1;
-    vert->texcoord[0] = 0;
-    vert->texcoord[1] = 0;
-    vert += 1;
+    cdsm_index_t cap_center0 = (cdsm_index_t)( (vert - (uint8_t*)out_vertices) / recipe->vertex_layout.stride );
+    temp_vertex.position[0] = 0;
+    temp_vertex.position[1] = 0;
+    temp_vertex.position[2] = 0;
+    temp_vertex.normal[0] = 0;
+    temp_vertex.normal[1] = 0;
+    temp_vertex.normal[2] = -1;
+    temp_vertex.texcoord[0] = 0;
+    temp_vertex.texcoord[1] = 0;
+    cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout, vert, &recipe->vertex_layout, 1);
+    vert += recipe->vertex_layout.stride;
 
     i_ring = recipe->axial_segments;
-    cdsm_index_t cap_start1 = (cdsm_index_t)(vert - out_vertices);
+    cdsm_index_t cap_start1 = (cdsm_index_t)( (vert - (uint8_t*)out_vertices) / recipe->vertex_layout.stride );
     {
         const float axial_lerp = (float)i_ring / (float)recipe->axial_segments; // [0..1]
         const float z = recipe->length * axial_lerp;
@@ -1411,28 +1462,30 @@ cdsm_error_t cdsm_create_cylinder(cdsm_metadata_t *out_metadata,
             const float theta = 2.0f * CDSM__PI * radial_lerp;
             const float sin_t = sinf(theta);
             const float cos_t = cosf(theta);
-            vert->position[0] = cos_t * ring_radius;
-            vert->position[1] = sin_t * ring_radius;
-            vert->position[2] = z;
-            vert->normal[0] = 0;
-            vert->normal[1] = 0;
-            vert->normal[2] = 1;
-            vert->texcoord[0] = radial_lerp;
-            vert->texcoord[1] = axial_lerp;
-            vert += 1;
+            temp_vertex.position[0] = cos_t * ring_radius;
+            temp_vertex.position[1] = sin_t * ring_radius;
+            temp_vertex.position[2] = z;
+            temp_vertex.normal[0] = 0;
+            temp_vertex.normal[1] = 0;
+            temp_vertex.normal[2] = 1;
+            temp_vertex.texcoord[0] = radial_lerp;
+            temp_vertex.texcoord[1] = axial_lerp;
+            cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout, vert, &recipe->vertex_layout, 1);
+            vert += recipe->vertex_layout.stride;
         }
     }
-    cdsm_index_t cap_center1 = (cdsm_index_t)(vert - out_vertices);
-    vert->position[0] = 0;
-    vert->position[1] = 0;
-    vert->position[2] = recipe->length;
-    vert->normal[0] = 0;
-    vert->normal[1] = 0;
-    vert->normal[2] = 1;
-    vert->texcoord[0] = 0;
-    vert->texcoord[1] = 0;
-    vert += 1;
-    assert(vert == out_vertices + out_metadata->vertex_count);
+    cdsm_index_t cap_center1 = (cdsm_index_t)( (vert - (uint8_t*)out_vertices) / recipe->vertex_layout.stride );
+    temp_vertex.position[0] = 0;
+    temp_vertex.position[1] = 0;
+    temp_vertex.position[2] = recipe->length;
+    temp_vertex.normal[0] = 0;
+    temp_vertex.normal[1] = 0;
+    temp_vertex.normal[2] = 1;
+    temp_vertex.texcoord[0] = 0;
+    temp_vertex.texcoord[1] = 0;
+    cdsm_convert_vertex_buffer(&temp_vertex, &cdsm__default_vertex_layout, vert, &recipe->vertex_layout, 1);
+    vert += recipe->vertex_layout.stride;
+    assert(vert == (uint8_t*)out_vertices + out_metadata->vertex_count * recipe->vertex_layout.stride);
 
     cdsm_index_t *tri = out_indices;
     for(i_ring = 0; i_ring < recipe->axial_segments; ++i_ring)
@@ -1485,7 +1538,7 @@ static FILE *cdsm__fopen(char const *filename, char const *mode)
 CDSM_DEF
 cdsm_error_t cdsm_export_to_header(const char *filename, const char *prefix,
     cdsm_metadata_t const *metadata,
-    cdsm_vertex_t const *vertices, cdsm_index_t const *indices)
+    cdsm__default_vertex_t const *vertices, cdsm_index_t const *indices)
 {
     FILE *f = cdsm__fopen(filename, "w");
     
@@ -1508,10 +1561,14 @@ struct {\n\
     fprintf(f, "static const %s %svertices[%d] = {\n", vertex_type, prefix, metadata->vertex_count);
     for(cdsm_s32 iVert=0; iVert<metadata->vertex_count; ++iVert)
     {
+        cdsm__default_vertex_t temp_vertex = {};
+        cdsm_convert_vertex_buffer( (uint8_t*)vertices + iVert, &metadata->vertex_layout,
+            &temp_vertex, &cdsm__default_vertex_layout, 1);
+
         fprintf(f, "\t{\t{%.9ff, %.9ff, %.9ff},\n\t\t{%.9ff, %.9ff, %.9ff},\n\t\t{%.9ff, %.9ff} },\n",
-            vertices[iVert].position[0], vertices[iVert].position[1], vertices[iVert].position[2],
-            vertices[iVert].normal[0], vertices[iVert].normal[1], vertices[iVert].normal[2],
-            vertices[iVert].texcoord[0], vertices[iVert].texcoord[1]);
+            temp_vertex.position[0], temp_vertex.position[1], temp_vertex.position[2],
+            temp_vertex.normal[0], temp_vertex.normal[1], temp_vertex.normal[2],
+            temp_vertex.texcoord[0], temp_vertex.texcoord[1]);
     }
     fprintf(f, "};\n");
 
@@ -1581,6 +1638,14 @@ int main(int argc, char *argv[])
     CDSM__UNUSED(argc);
     CDSM__UNUSED(argv);
 
+    const cdsm_vertex_layout_t vertex_layout = {
+        22, 3, {
+            {0, 0, CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT},
+            {1, 12, CDSM_ATTRIBUTE_FORMAT_R16G16B16_SNORM},
+            {2,18, CDSM_ATTRIBUTE_FORMAT_R16G16_FLOAT},
+        }
+    };
+
     enum
     {
         MESH_TYPE_CUBE     = 0,
@@ -1589,6 +1654,7 @@ int main(int argc, char *argv[])
         MESH_TYPE_CYLINDER = 2,
     } meshType = MESH_TYPE_SPHERE;
     cdsm_cube_recipe_t cube_recipe;
+    cube_recipe.vertex_layout = vertex_layout;
     cube_recipe.min_extent.x = -0.5f;
     cube_recipe.min_extent.y = -0.5f;
     cube_recipe.min_extent.z = -0.5f;
@@ -1597,16 +1663,19 @@ int main(int argc, char *argv[])
     cube_recipe.max_extent.z = +0.5f;
     cube_recipe.front_face = CDSM_FRONT_FACE_CCW;
     cdsm_sphere_recipe_t sphere_recipe;
+    sphere_recipe.vertex_layout = vertex_layout;
     sphere_recipe.latitudinal_segments = 30;
     sphere_recipe.longitudinal_segments = 30;
     sphere_recipe.radius = 0.5f;
     cdsm_cylinder_recipe_t cylinder_recipe;
+    cylinder_recipe.vertex_layout = vertex_layout;
     cylinder_recipe.length = 1.0f;
     cylinder_recipe.axial_segments = 3;
     cylinder_recipe.radial_segments = 60;
     cylinder_recipe.radius0 = -1.0f;
     cylinder_recipe.radius1 = 1.0f;
     cdsm_axes_recipe_t axes_recipe;
+    axes_recipe.vertex_layout = vertex_layout;
     axes_recipe.length = 1.0f;
 
     cdsm_metadata_t metadata;
@@ -1622,7 +1691,7 @@ int main(int argc, char *argv[])
       result = cdsm_create_cylinder(&metadata, NULL, &vertices_size, NULL, &indices_size, &cylinder_recipe);
     assert(result == 0);
 
-    cdsm_vertex_t *vertices = (cdsm_vertex_t*)malloc(vertices_size);
+    void *vertices = malloc(vertices_size);
     cdsm_index_t *indices = (cdsm_index_t*)malloc(indices_size);
     if      (meshType == MESH_TYPE_CUBE)
       result = cdsm_create_cube(&metadata, vertices, &vertices_size, indices, &indices_size, &cube_recipe);
