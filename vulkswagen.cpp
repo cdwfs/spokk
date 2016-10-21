@@ -454,7 +454,7 @@ int main(int argc, char *argv[]) {
     samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
     VkSampler sampler= stbvk_create_sampler(&context, &samplerCreateInfo, "default sampler");
 
-    const char *texture_filename = "trevor/redf.png";
+    const char *texture_filename = "trevor/redf.ktx";
     VkImage texture_image = VK_NULL_HANDLE;
     VkImageCreateInfo texture_image_create_info;
     VkDeviceMemory texture_image_mem = VK_NULL_HANDLE;
