@@ -1041,7 +1041,7 @@ static int LoadImageFromKtx(ImageFile *out_image, const char *image_path)
     if (header->endianness == 0x01020304)
     {
         uint8_t *surface_start = surface_data;
-        for(int iMip=0; iMip < header->numberOfMipmapLevels; ++iMip)
+        for(uint32_t iMip=0; iMip < header->numberOfMipmapLevels; ++iMip)
         {
             uint32_t *image_size = (uint32_t*)surface_start;
             *image_size = byte_swap_u32(*image_size);
@@ -1303,7 +1303,7 @@ void *ImageFileGetSubresourceData(const ImageFile *image, const ImageFileSubreso
             next_mip += sizeof(image_size) + image_size;
         }
         image_size = *(const uint32_t*)(next_mip);
-        return next_mip + sizeof(image_size) + (image_size / image->array_layers) * subresource.array_layer;
+        return (void*)( next_mip + sizeof(image_size) + (image_size / image->array_layers) * subresource.array_layer );
     }
     case IMAGE_FILE_TYPE_UNKNOWN:
         break;

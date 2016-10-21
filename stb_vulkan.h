@@ -1259,7 +1259,7 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
 
 #if VK_EXT_debug_marker
     bool debug_marker_extension_loaded = false;
-    for(int iExt=0; iExt<context->enabled_device_extension_count; ++iExt)
+    for(uint32_t iExt=0; iExt<context->enabled_device_extension_count; ++iExt)
     {
         if (strcmp(context->enabled_device_extensions[iExt].extensionName, "VK_EXT_debug_marker") == 0)
         {
