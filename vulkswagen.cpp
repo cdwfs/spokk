@@ -152,11 +152,11 @@ int main(int argc, char *argv[]) {
     const char *optional_instance_layers[] = {
         "VK_LAYER_LUNARG_device_limits",  // deprecated in 1.0.13; ask for it optionally, just in case.
 #if !defined(NDEBUG)
-        // Do not explicitly enable! only needed to test EXT_debug_marker support, and may generate other
+        // Do not explicitly enable! only needed to test VK_EXT_debug_marker support, and may generate other
         // spurious errors.
         //"VK_LAYER_RENDERDOC_Capture",
 #endif
-            "" // placeholder; empty initializers arrays aren't allowed
+        "" // placeholder; empty initializers arrays aren't allowed
     };
     const char *required_instance_extensions[] = {
         VK_KHR_SURFACE_EXTENSION_NAME,

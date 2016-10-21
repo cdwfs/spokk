@@ -1258,8 +1258,20 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
     context->enabled_device_extensions = enabled_device_extensions;
 
 #if VK_EXT_debug_marker
-    stbvk__DebugMarkerSetObjectNameEXT = (PFN_vkDebugMarkerSetObjectNameEXT)vkGetDeviceProcAddr(context->device,
-        "vkDebugMarkerSetObjectNameEXT");
+    bool debug_marker_extension_loaded = false;
+    for(int iExt=0; iExt<context->enabled_device_extension_count; ++iExt)
+    {
+        if (strcmp(context->enabled_device_extensions[iExt].extensionName, "VK_EXT_debug_marker") == 0)
+        {
+            debug_marker_extension_loaded = true;
+            break;
+        }
+    }
+    if (debug_marker_extension_loaded)
+    {
+        stbvk__DebugMarkerSetObjectNameEXT = (PFN_vkDebugMarkerSetObjectNameEXT)vkGetDeviceProcAddr(context->device,
+            "vkDebugMarkerSetObjectNameEXT");
+    }
     // Name the things we've already created
     STBVK__CHECK(stbvk_name_instance(context->device, context->instance, "stbvk_context instance"));
     STBVK__CHECK(stbvk_name_physical_device(context->device, context->physical_device, "stbvk_context physical device"));
