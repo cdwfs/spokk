@@ -141,16 +141,9 @@ int main(int argc, char *argv[]) {
     applicationInfo.engineVersion = 0x1001;
     applicationInfo.apiVersion = VK_MAKE_VERSION(1,0,21);
     const char *required_instance_layers[] = {
-        "VK_LAYER_GOOGLE_threading",
-        "VK_LAYER_LUNARG_parameter_validation",
-        "VK_LAYER_LUNARG_object_tracker",
-        "VK_LAYER_LUNARG_image",
-        "VK_LAYER_LUNARG_core_validation",
-        "VK_LAYER_LUNARG_swapchain",
-        "VK_LAYER_GOOGLE_unique_objects",
+        "VK_LAYER_LUNARG_standard_validation", // TODO: fallback if standard_validation metalayer is not available
     };
     const char *optional_instance_layers[] = {
-        "VK_LAYER_LUNARG_device_limits",  // deprecated in 1.0.13; ask for it optionally, just in case.
 #if !defined(NDEBUG)
         // Do not explicitly enable! only needed to test VK_EXT_debug_marker support, and may generate other
         // spurious errors.
@@ -210,7 +203,7 @@ int main(int argc, char *argv[]) {
     contextCreateInfo.debug_report_flags = 0;
 #endif
     stbvk_context context = {};
-    my_stbvk_init_context(&contextCreateInfo, window, &context);
+    VULKAN_CHECK(my_stbvk_init_context(&contextCreateInfo, window, &context));
 
     stbvk_device_memory_arena *device_arena = NULL;
 
