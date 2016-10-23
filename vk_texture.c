@@ -1,6 +1,7 @@
 #include "image_file.h"
 #include "vk_texture.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -223,6 +224,12 @@ static uint32_t GetMipDimension(uint32_t base, uint32_t mip)
     return (out < 1) ? 1 : out;
 }
 
+static uint32_t align_to_n(uint32_t x, uint32_t n)
+{
+    assert( (n & (n-1)) == 0); // n must be a power of 2
+    return (x + n-1) & ~(n-1);
+}
+
 int load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
     VkDeviceMemory *out_mem, VkDeviceSize *out_mem_offset,
     const stbvk_context *context, const char *filename, VkBool32 generate_mipmaps,
@@ -312,12 +319,16 @@ int load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
         subresource.mip_level = i_mip;
         subresource.array_layer = 0;
         copy_regions[i_mip].bufferOffset = staging_offset;
-        // copy region dimensions are specified in pixels (not texel blocks or bytes), so
-        // we need some gymnastics to get the pitch in pixels for compressed formats.
+        // copy region dimensions are specified in pixels (not texel blocks or bytes), but must be
+        // an even integer multiple of the texel block dimensions for compressed formats.
+        // It must also respect the minImageTransferGranularity, but I don't have a good way of testing
+        // that right now.
         copy_regions[i_mip].bufferRowLength = GetMipDimension(
             image_file.row_pitch_bytes * texel_block_width / ImageFileGetBytesPerTexelBlock(image_file.data_format),
             i_mip);
-        copy_regions[i_mip].bufferImageHeight = GetMipDimension(image_file.height, i_mip);
+        copy_regions[i_mip].bufferImageHeight = GetMipDimension(image_file.height, i_mip) * texel_block_height;
+        copy_regions[i_mip].bufferRowLength = align_to_n(copy_regions[i_mip].bufferRowLength, texel_block_width);
+        copy_regions[i_mip].bufferImageHeight = align_to_n(copy_regions[i_mip].bufferImageHeight, texel_block_height);
         copy_regions[i_mip].imageSubresource.aspectMask = aspect_flags;
         copy_regions[i_mip].imageSubresource.mipLevel = i_mip;
         copy_regions[i_mip].imageSubresource.baseArrayLayer = 0;  // TODO(cort): take a VkImageSubresourceRange?
