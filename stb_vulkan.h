@@ -481,7 +481,11 @@ static void *stbvk__host_alloc(size_t size, size_t alignment, VkSystemAllocation
     }
     else
     {
+#if defined(_MSC_VER)
+        return _mm_malloc(size, alignment);
+#else
         return malloc(size); // TODO(cort): ignores alignment :(
+#endif
     }
 }
 static void stbvk__host_free(void *ptr, const VkAllocationCallbacks *pAllocator)
@@ -492,7 +496,11 @@ static void stbvk__host_free(void *ptr, const VkAllocationCallbacks *pAllocator)
     }
     else
     {
+#if defined(_MSC_VER)
+        return _mm_free(ptr);
+#else
         return free(ptr);
+#endif
     }
 }
 
@@ -1041,7 +1049,7 @@ STBVKDEF VkResult stbvk_init_device(stbvk_context_create_info const * create_inf
         uint32_t queue_family_count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(all_physical_devices[iPD], &queue_family_count, NULL);
         VkQueueFamilyProperties *queue_family_properties_all = (VkQueueFamilyProperties*)stbvk__host_alloc(
-            queue_family_count * sizeof(VkQueueFamilyProperties), sizeof(VkQueueFamilyProperties),
+            queue_family_count * sizeof(VkQueueFamilyProperties), sizeof(VkQueueFamilyProperties*),
             VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, context->allocation_callbacks);
         vkGetPhysicalDeviceQueueFamilyProperties(all_physical_devices[iPD], &queue_family_count, queue_family_properties_all);
 
