@@ -661,6 +661,53 @@ int main(int argc, char *argv[]) {
     {
         timestamp_query_pools[iPool] = stbvk_create_query_pool(&context, &timestamp_query_pool_create_info, "timestamp query pool");
     }
+    {
+        VkCommandPoolCreateInfo cpool_ci;
+        memset(&cpool_ci, 0, sizeof(cpool_ci));
+        cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+        cpool_ci.queueFamilyIndex = context.graphics_queue_family_index;
+        VkCommandPool cpool = stbvk_create_command_pool(&context, &cpool_ci, "staging command buffer");
+        VkCommandBufferAllocateInfo cb_allocate_info;
+        memset(&cb_allocate_info, 0, sizeof(cb_allocate_info));
+        cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cb_allocate_info.commandPool = cpool;
+        cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cb_allocate_info.commandBufferCount = 1;
+        VkCommandBuffer cb = VK_NULL_HANDLE;
+        vkAllocateCommandBuffers(context.device, &cb_allocate_info, &cb);
+
+        VkFenceCreateInfo fence_ci;
+        memset(&fence_ci, 0, sizeof(fence_ci));
+        fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        VkFence fence = stbvk_create_fence(&context, &fence_ci, "staging fence");
+
+        VkCommandBufferBeginInfo cb_begin_info;
+        memset(&cb_begin_info, 0, sizeof(cb_begin_info));
+        cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(cb, &cb_begin_info);
+
+        // Submit dummy timestamp commands for the first frame to wait for.
+        for(uint32_t iPool=0; iPool<kVframeCount; ++iPool)
+        {
+            for(uint32_t iTS=0; iTS<TIMESTAMP_ID_RANGE_SIZE; ++iTS)
+            {
+                vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestamp_query_pools[iPool], iTS);
+            }
+        }
+
+        vkEndCommandBuffer(cb);
+        VkSubmitInfo submit_info;
+        memset(&submit_info, 0, sizeof(submit_info));
+        submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit_info.commandBufferCount = 1;
+        submit_info.pCommandBuffers = &cb;
+        vkQueueSubmit(context.graphics_queue, 1, &submit_info, fence);
+        vkWaitForFences(context.device, 1, &fence, VK_TRUE, UINT64_MAX);
+        stbvk_destroy_command_pool(&context, cpool);
+        stbvk_destroy_fence(&context, fence);
+    }
     uint64_t counterStart = zomboClockTicks();
     double timestampSecondsPrevious[TIMESTAMP_ID_RANGE_SIZE] = {};
     uint32_t vframeIndex = 0;
@@ -682,14 +729,12 @@ int main(int argc, char *argv[]) {
 
         // Read the timestamp query results from the frame that was just presented. We'll process and report them later,
         // but we need to get the old data out before we reuse the query pool for the current frame.
-        // TODO(cort): We can't pass VK_QUERY_RESULT_WAIT_BIT, because it hangs forever on the first frame.
-        // We either need to seed some dummy values or just accept that the result for the first few frames may be VK_NOT_READY.
         uint64_t timestamps[TIMESTAMP_ID_RANGE_SIZE] = {};
-        VkQueryResultFlags query_result_flags = VK_QUERY_RESULT_64_BIT;
+        VkQueryResultFlags query_result_flags = VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT;
         VkResult get_timestamps_result = vkGetQueryPoolResults(context.device, timestamp_query_pool,
             0,TIMESTAMP_ID_RANGE_SIZE, sizeof(timestamps),
             timestamps, sizeof(timestamps[0]), query_result_flags);
-        assert(get_timestamps_result == VK_SUCCESS || get_timestamps_result == VK_NOT_READY);
+        assert(get_timestamps_result == VK_SUCCESS);
 
         // Update object-to-world matrices.
         // TODO(cort): multi-buffer this data. And maybe make it device-local, with a staging buffer?
@@ -834,7 +879,6 @@ int main(int argc, char *argv[]) {
 
         // TODO(cort): Now that the CPU and GPU execution is decoupled, we may need to emit a memory barrier to
         // make these query results visible to the host at the end of the submit.
-        if (get_timestamps_result == VK_SUCCESS)
         {
             double timestampSeconds[TIMESTAMP_ID_RANGE_SIZE] = {};
             for(int iTS=0; iTS<TIMESTAMP_ID_RANGE_SIZE; ++iTS)
