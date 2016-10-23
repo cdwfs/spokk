@@ -129,7 +129,6 @@ static void get_texel_block_dimensions(VkFormat format, uint32_t *out_width, uin
     case VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK:
     case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
     case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
-        // TODO(cort): confirm!
         *out_width = 4;
         *out_height = 4;
         break;
@@ -137,7 +136,6 @@ static void get_texel_block_dimensions(VkFormat format, uint32_t *out_width, uin
     case VK_FORMAT_EAC_R11_SNORM_BLOCK:
     case VK_FORMAT_EAC_R11G11_UNORM_BLOCK:
     case VK_FORMAT_EAC_R11G11_SNORM_BLOCK:
-        // TODO(cort): confirm!
         *out_width = 4;
         *out_height = 4;
         break;
@@ -172,16 +170,18 @@ static void get_texel_block_dimensions(VkFormat format, uint32_t *out_width, uin
         *out_width = 4;
         *out_height = 4;
         break;
-    case VK_FORMAT_PVRTC1_2BPP_UNORM_BLOCK_IMG:
     case VK_FORMAT_PVRTC1_4BPP_UNORM_BLOCK_IMG:
-    case VK_FORMAT_PVRTC2_2BPP_UNORM_BLOCK_IMG:
     case VK_FORMAT_PVRTC2_4BPP_UNORM_BLOCK_IMG:
-    case VK_FORMAT_PVRTC1_2BPP_SRGB_BLOCK_IMG:
     case VK_FORMAT_PVRTC1_4BPP_SRGB_BLOCK_IMG:
-    case VK_FORMAT_PVRTC2_2BPP_SRGB_BLOCK_IMG:
     case VK_FORMAT_PVRTC2_4BPP_SRGB_BLOCK_IMG:
-        // TODO(cort): confirm!
         *out_width = 4;
+        *out_height = 4;
+        break;
+    case VK_FORMAT_PVRTC1_2BPP_UNORM_BLOCK_IMG:
+    case VK_FORMAT_PVRTC2_2BPP_UNORM_BLOCK_IMG:
+    case VK_FORMAT_PVRTC1_2BPP_SRGB_BLOCK_IMG:
+    case VK_FORMAT_PVRTC2_2BPP_SRGB_BLOCK_IMG:
+        *out_width = 8;
         *out_height = 4;
         break;
     default:
