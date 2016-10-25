@@ -384,12 +384,13 @@ int main(int argc, char *argv[]) {
     free(index_buffer_contents);
     free(vertex_buffer_contents);
 
-    // Create buffer of per-mesh object-to-world matrices. TODO(cort): This should be per-vframe.
     const uint32_t mesh_count = 1024;
+    // Create buffer of per-mesh object-to-world matrices.
+    // TODO(cort): Make this DEVICE_LOCAL & upload every frame?
     VkBufferCreateInfo o2w_buffer_create_info = {};
     o2w_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     o2w_buffer_create_info.pNext = NULL;
-    o2w_buffer_create_info.size = mesh_count * sizeof(mathfu::mat4);
+    o2w_buffer_create_info.size = mesh_count * sizeof(mathfu::mat4) * kVframeCount;
     o2w_buffer_create_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     o2w_buffer_create_info.flags = 0;
     VkBuffer o2w_buffer = cdsvk_create_buffer(&context, &o2w_buffer_create_info, "o2w buffer");
@@ -420,7 +421,7 @@ int main(int argc, char *argv[]) {
     descriptorSetLayoutBindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     descriptorSetLayoutBindings[0].pImmutableSamplers = NULL;
     descriptorSetLayoutBindings[1].binding = 1;
-    descriptorSetLayoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorSetLayoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     descriptorSetLayoutBindings[1].descriptorCount = 1;
     descriptorSetLayoutBindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     descriptorSetLayoutBindings[1].pImmutableSamplers = NULL;
@@ -611,7 +612,7 @@ int main(int argc, char *argv[]) {
     descriptorBufferInfo.range = VK_WHOLE_SIZE;
     writeDescriptorSet.dstBinding = 1;
     writeDescriptorSet.descriptorCount = 1;
-    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     writeDescriptorSet.pBufferInfo = &descriptorBufferInfo;
     vkUpdateDescriptorSets(context.device, 1,&writeDescriptorSet, 0,NULL);
 
@@ -737,13 +738,14 @@ int main(int argc, char *argv[]) {
         assert(get_timestamps_result == VK_SUCCESS);
 
         // Update object-to-world matrices.
-        // TODO(cort): multi-buffer this data. And maybe make it device-local, with a staging buffer?
-        // No memory barrier needed if it's HOST_COHERENT.
-        const float seconds_elapsed = (float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) );
         VkMemoryMapFlags o2w_buffer_map_flags = 0;
         mathfu::vec4 *mapped_o2w_buffer = NULL;
-        VULKAN_CHECK(vkMapMemory(context.device, o2w_buffer_mem, 0, o2w_buffer_create_info.size,
+        VkDeviceSize uniform_buffer_vframe_size = o2w_buffer_create_info.size / kVframeCount;
+        uint32_t uniform_buffer_vframe_offset = (uint32_t)uniform_buffer_vframe_size * vframeIndex;
+        VULKAN_CHECK(vkMapMemory(context.device, o2w_buffer_mem,
+            (VkDeviceSize)uniform_buffer_vframe_offset, uniform_buffer_vframe_size,
             o2w_buffer_map_flags, (void**)&mapped_o2w_buffer));
+        const float seconds_elapsed = (float)( zomboTicksToSeconds(zomboClockTicks() - counterStart) );
         for(int iMesh=0; iMesh<mesh_count; ++iMesh)
         {
             mathfu::quat q = mathfu::quat::FromAngleAxis(seconds_elapsed + (float)iMesh, mathfu::vec3(0,1,0));
@@ -807,7 +809,8 @@ int main(int argc, char *argv[]) {
         renderPassBeginInfo.pClearValues = clearValues;
         vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineGraphics);
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,1,&descriptorSet, 0,NULL);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            pipelineLayout, 0,1,&descriptorSet, 1,&uniform_buffer_vframe_offset);
         pushConstants.time = mathfu::vec4(seconds_elapsed, 0, 0, 0);
         pushConstants.eye = mathfu::vec4(
             0.0f,
