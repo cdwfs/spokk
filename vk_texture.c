@@ -232,7 +232,7 @@ static uint32_t align_to_n(uint32_t x, uint32_t n)
 
 int load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
     VkDeviceMemory *out_mem, VkDeviceSize *out_mem_offset,
-    const stbvk_context *context, const char *filename, VkBool32 generate_mipmaps,
+    const cdsvk_context *context, const char *filename, VkBool32 generate_mipmaps,
     VkImageLayout final_layout, VkAccessFlags final_access_flags)
 {
     VkResult result = VK_SUCCESS;
@@ -297,10 +297,10 @@ int load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
             staging_buffer_ci.size += ImageFileGetSubresourceSize(&image_file, subresource);
         }
     }
-    VkBuffer staging_buffer = stbvk_create_buffer(context, &staging_buffer_ci, "texture loader staging buffer");
+    VkBuffer staging_buffer = cdsvk_create_buffer(context, &staging_buffer_ci, "texture loader staging buffer");
     VkDeviceMemory staging_buffer_mem = VK_NULL_HANDLE;
     VkDeviceSize staging_buffer_mem_offset = 0;
-    result = stbvk_allocate_and_bind_buffer_memory(context, staging_buffer, NULL,
+    result = cdsvk_allocate_and_bind_buffer_memory(context, staging_buffer, NULL,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         "texture loader staging buffer memory", &staging_buffer_mem, &staging_buffer_mem_offset);
     uint8_t *staging_buffer_data = NULL;
@@ -351,9 +351,9 @@ int load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
     vkUnmapMemory(context->device, staging_buffer_mem);
 
     // Create final image
-    *out_image = stbvk_create_image(context, out_image_ci, VK_IMAGE_LAYOUT_UNDEFINED,
+    *out_image = cdsvk_create_image(context, out_image_ci, VK_IMAGE_LAYOUT_UNDEFINED,
         VK_ACCESS_TRANSFER_WRITE_BIT, filename);
-    stbvk_allocate_and_bind_image_memory(context, *out_image, NULL, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    cdsvk_allocate_and_bind_image_memory(context, *out_image, NULL, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         filename, out_mem, out_mem_offset);
 
     // Build command buffer 
@@ -362,7 +362,7 @@ int load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
     cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
     cpool_ci.queueFamilyIndex = context->graphics_queue_family_index;
-    VkCommandPool cpool = stbvk_create_command_pool(context, &cpool_ci, "staging command buffer");
+    VkCommandPool cpool = cdsvk_create_command_pool(context, &cpool_ci, "staging command buffer");
     VkCommandBufferAllocateInfo cb_allocate_info;
     memset(&cb_allocate_info, 0, sizeof(cb_allocate_info));
     cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -375,7 +375,7 @@ int load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
     VkFenceCreateInfo fence_ci;
     memset(&fence_ci, 0, sizeof(fence_ci));
     fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    VkFence fence = stbvk_create_fence(context, &fence_ci, "staging fence");
+    VkFence fence = cdsvk_create_fence(context, &fence_ci, "staging fence");
 
     VkCommandBufferBeginInfo cb_begin_info;
     memset(&cb_begin_info, 0, sizeof(cb_begin_info));
@@ -523,15 +523,15 @@ int load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
     vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX);
 
     ImageFileDestroy(&image_file);
-    stbvk_destroy_command_pool(context, cpool);
-    stbvk_destroy_fence(context, fence);
-    stbvk_destroy_buffer(context, staging_buffer);
-    stbvk_free_device_memory(context, NULL, staging_buffer_mem, staging_buffer_mem_offset);
+    cdsvk_destroy_command_pool(context, cpool);
+    cdsvk_destroy_fence(context, fence);
+    cdsvk_destroy_buffer(context, staging_buffer);
+    cdsvk_free_device_memory(context, NULL, staging_buffer_mem, staging_buffer_mem_offset);
     return 0;
 }
 
 int generate_vkimage_mipmaps(VkImage image, const VkImageCreateInfo *image_ci,
-    const stbvk_context *context, VkImageLayout input_layout, VkAccessFlags input_access_flags,
+    const cdsvk_context *context, VkImageLayout input_layout, VkAccessFlags input_access_flags,
     VkImageLayout final_layout, VkAccessFlags final_access_flags)
 {
     if (image_ci->mipLevels == 1)
@@ -555,7 +555,7 @@ int generate_vkimage_mipmaps(VkImage image, const VkImageCreateInfo *image_ci,
     cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
     cpool_ci.queueFamilyIndex = context->graphics_queue_family_index;
-    VkCommandPool cpool = stbvk_create_command_pool(context, &cpool_ci, "staging command buffer");
+    VkCommandPool cpool = cdsvk_create_command_pool(context, &cpool_ci, "staging command buffer");
     VkCommandBufferAllocateInfo cb_allocate_info;
     memset(&cb_allocate_info, 0, sizeof(cb_allocate_info));
     cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -568,7 +568,7 @@ int generate_vkimage_mipmaps(VkImage image, const VkImageCreateInfo *image_ci,
     VkFenceCreateInfo fence_ci;
     memset(&fence_ci, 0, sizeof(fence_ci));
     fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    VkFence fence = stbvk_create_fence(context, &fence_ci, "staging fence");
+    VkFence fence = cdsvk_create_fence(context, &fence_ci, "staging fence");
 
     VkCommandBufferBeginInfo cb_begin_info;
     memset(&cb_begin_info, 0, sizeof(cb_begin_info));
@@ -679,7 +679,7 @@ int generate_vkimage_mipmaps(VkImage image, const VkImageCreateInfo *image_ci,
     vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence);
     vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX);
 
-    stbvk_destroy_command_pool(context, cpool);
-    stbvk_destroy_fence(context, fence);
+    cdsvk_destroy_command_pool(context, cpool);
+    cdsvk_destroy_fence(context, fence);
     return 0;
 }

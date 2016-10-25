@@ -16,10 +16,10 @@ project(vulkswagen)
 
 SET(headers
     cds_mesh.h
+    cds_vulkan.h
     image_file.h
     platform.h
     stb_image.h
-    stb_vulkan.h
     vk_texture.h
     )
 SET(sources

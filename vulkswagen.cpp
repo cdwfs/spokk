@@ -33,8 +33,8 @@
 
 #include "vk_texture.h"
 
-#define STB_VULKAN_IMPLEMENTATION
-#include "stb_vulkan.h"
+#define CDS_VULKAN_IMPLEMENTATION
+#include "cds_vulkan.h"
 
 #include <mathfu/vector.h>
 #include <mathfu/glsl_mappings.h>
@@ -79,13 +79,13 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallbackFunc(VkFlags msgFlags,
     return VK_FALSE; // false = don't bail out of an API call with validation failures.
 }
 
-static VkResult my_stbvk_init_context(stbvk_context_create_info const *createInfo, GLFWwindow *window, stbvk_context *c)
+static VkResult my_cdsvk_init_context(cdsvk_context_create_info const *createInfo, GLFWwindow *window, cdsvk_context *c)
 {
     VkResult result = VK_SUCCESS;
     *c = {};
     c->allocation_callbacks = createInfo->allocation_callbacks;
 
-    result = stbvk_init_instance(createInfo, c);
+    result = cdsvk_init_instance(createInfo, c);
     if (result != VK_SUCCESS)
     {
         return result;
@@ -95,13 +95,13 @@ static VkResult my_stbvk_init_context(stbvk_context_create_info const *createInf
     VkSurfaceKHR presentSurface = VK_NULL_HANDLE;
     VULKAN_CHECK( glfwCreateWindowSurface(c->instance, window, c->allocation_callbacks, &presentSurface) );
 
-    result = stbvk_init_device(createInfo, presentSurface, c);
+    result = cdsvk_init_device(createInfo, presentSurface, c);
     if (result != VK_SUCCESS)
     {
         return result;
     }
 
-    result = stbvk_init_swapchain(createInfo, c, VK_NULL_HANDLE);
+    result = cdsvk_init_swapchain(createInfo, c, VK_NULL_HANDLE);
 
     return result;
 }
@@ -178,7 +178,7 @@ int main(int argc, char *argv[]) {
 #endif
         ""  // placeholder; empty initializers arrays aren't allowed
     };
-    stbvk_context_create_info contextCreateInfo = {};
+    cdsvk_context_create_info contextCreateInfo = {};
     contextCreateInfo.allocation_callbacks = NULL;
     contextCreateInfo.required_instance_layer_count     = sizeof(required_instance_layers) / sizeof(required_instance_layers[0]);
     contextCreateInfo.required_instance_layer_names     = required_instance_layers;
@@ -202,10 +202,10 @@ int main(int argc, char *argv[]) {
     contextCreateInfo.debug_report_callback = NULL;
     contextCreateInfo.debug_report_flags = 0;
 #endif
-    stbvk_context context = {};
-    VULKAN_CHECK(my_stbvk_init_context(&contextCreateInfo, window, &context));
+    cdsvk_context context = {};
+    VULKAN_CHECK(my_cdsvk_init_context(&contextCreateInfo, window, &context));
 
-    stbvk_device_memory_arena *device_arena = NULL;
+    cdsvk_device_memory_arena *device_arena = NULL;
 
     // Allocate command buffers
     VkCommandPoolCreateInfo command_pool_ci = {};
@@ -214,7 +214,7 @@ int main(int argc, char *argv[]) {
     command_pool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT // not reusing command buffer contents yet!
         | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // needed to call begin without an explicit reset
     command_pool_ci.queueFamilyIndex = context.graphics_queue_family_index;
-    VkCommandPool command_pool = stbvk_create_command_pool(&context, &command_pool_ci, "Command Pool");
+    VkCommandPool command_pool = cdsvk_create_command_pool(&context, &command_pool_ci, "Command Pool");
     VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
     commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     commandBufferAllocateInfo.pNext = NULL;
@@ -254,15 +254,15 @@ int main(int argc, char *argv[]) {
         }
     }
     assert(depth_image_create_info.format != VK_FORMAT_UNDEFINED);
-    VkImage depth_image = stbvk_create_image(&context, &depth_image_create_info, VK_IMAGE_LAYOUT_UNDEFINED,
+    VkImage depth_image = cdsvk_create_image(&context, &depth_image_create_info, VK_IMAGE_LAYOUT_UNDEFINED,
         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
         "depth buffer image");
     VkDeviceMemory depth_image_mem = VK_NULL_HANDLE;
     VkDeviceSize depth_image_mem_offset = 0;
-    VULKAN_CHECK(stbvk_allocate_and_bind_image_memory(&context, depth_image, device_arena,
+    VULKAN_CHECK(cdsvk_allocate_and_bind_image_memory(&context, depth_image, device_arena,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "depth buffer image memory",
         &depth_image_mem, &depth_image_mem_offset));
-    VkImageView depth_image_view = stbvk_create_image_view_from_image(&context, depth_image,
+    VkImageView depth_image_view = cdsvk_create_image_view_from_image(&context, depth_image,
         &depth_image_create_info, "depth buffer image view");
 
     cdsm_metadata_t mesh_metadata = {};
@@ -327,13 +327,13 @@ int main(int argc, char *argv[]) {
     bufferCreateInfoIndices.size = mesh_indices_size;
     bufferCreateInfoIndices.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferCreateInfoIndices.flags = 0;
-    VkBuffer bufferIndices = stbvk_create_buffer(&context, &bufferCreateInfoIndices, "index buffer");
+    VkBuffer bufferIndices = cdsvk_create_buffer(&context, &bufferCreateInfoIndices, "index buffer");
     VkDeviceMemory bufferIndicesMem = VK_NULL_HANDLE;
     VkDeviceSize bufferIndicesMemOffset = 0;
-    VULKAN_CHECK(stbvk_allocate_and_bind_buffer_memory(&context, bufferIndices, device_arena,
+    VULKAN_CHECK(cdsvk_allocate_and_bind_buffer_memory(&context, bufferIndices, device_arena,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "index buffer memory", &bufferIndicesMem, &bufferIndicesMemOffset));
 
-    stbvk_vertex_buffer_layout vertexBufferLayout = {};
+    cdsvk_vertex_buffer_layout vertexBufferLayout = {};
     vertexBufferLayout.stride = vertex_layout.stride;
     vertexBufferLayout.attribute_count = vertex_layout.attribute_count;
     vertexBufferLayout.attributes[0].binding = 0;
@@ -356,10 +356,10 @@ int main(int argc, char *argv[]) {
     bufferCreateInfoVertices.size = mesh_vertices_size;
     bufferCreateInfoVertices.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferCreateInfoVertices.flags = 0;
-    VkBuffer bufferVertices = stbvk_create_buffer(&context, &bufferCreateInfoVertices, "vertex buffer");
+    VkBuffer bufferVertices = cdsvk_create_buffer(&context, &bufferCreateInfoVertices, "vertex buffer");
     VkDeviceMemory bufferVerticesMem = VK_NULL_HANDLE;
     VkDeviceSize bufferVerticesMemOffset = 0;
-    VULKAN_CHECK(stbvk_allocate_and_bind_buffer_memory(&context, bufferVertices, device_arena,
+    VULKAN_CHECK(cdsvk_allocate_and_bind_buffer_memory(&context, bufferVertices, device_arena,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "vertex buffer memory", &bufferVerticesMem, &bufferVerticesMemOffset));
 
     // Populate vertex/index buffers
@@ -378,9 +378,9 @@ int main(int argc, char *argv[]) {
         cdsm_create_cylinder(&mesh_metadata, vertex_buffer_contents, &mesh_vertices_size,
             (cdsm_index_t*)index_buffer_contents, &mesh_indices_size, &cylinder_recipe);
 
-    VULKAN_CHECK( stbvk_buffer_load_contents(&context, bufferIndices, &bufferCreateInfoIndices,
+    VULKAN_CHECK( cdsvk_buffer_load_contents(&context, bufferIndices, &bufferCreateInfoIndices,
         0, index_buffer_contents, mesh_indices_size, VK_ACCESS_INDEX_READ_BIT) );
-    VULKAN_CHECK( stbvk_buffer_load_contents(&context, bufferVertices, &bufferCreateInfoVertices,
+    VULKAN_CHECK( cdsvk_buffer_load_contents(&context, bufferVertices, &bufferCreateInfoVertices,
         0, vertex_buffer_contents, mesh_vertices_size, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT) );
     free(index_buffer_contents);
     free(vertex_buffer_contents);
@@ -393,10 +393,10 @@ int main(int argc, char *argv[]) {
     o2w_buffer_create_info.size = mesh_count * sizeof(mathfu::mat4);
     o2w_buffer_create_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     o2w_buffer_create_info.flags = 0;
-    VkBuffer o2w_buffer = stbvk_create_buffer(&context, &o2w_buffer_create_info, "o2w buffer");
+    VkBuffer o2w_buffer = cdsvk_create_buffer(&context, &o2w_buffer_create_info, "o2w buffer");
     VkDeviceMemory o2w_buffer_mem = VK_NULL_HANDLE;
     VkDeviceSize o2w_buffer_mem_offset = 0;
-    VULKAN_CHECK(stbvk_allocate_and_bind_buffer_memory(&context, o2w_buffer, device_arena,
+    VULKAN_CHECK(cdsvk_allocate_and_bind_buffer_memory(&context, o2w_buffer, device_arena,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, "o2w buffer memory",
         &o2w_buffer_mem, &o2w_buffer_mem_offset));
 
@@ -430,7 +430,7 @@ int main(int argc, char *argv[]) {
     descriptorSetLayoutCreateInfo.flags = 0;
     descriptorSetLayoutCreateInfo.bindingCount = sizeof(descriptorSetLayoutBindings) / sizeof(descriptorSetLayoutBindings[0]);
     descriptorSetLayoutCreateInfo.pBindings = descriptorSetLayoutBindings;
-    VkDescriptorSetLayout descriptorSetLayout = stbvk_create_descriptor_set_layout(&context, &descriptorSetLayoutCreateInfo, "descriptor set layout");
+    VkDescriptorSetLayout descriptorSetLayout = cdsvk_create_descriptor_set_layout(&context, &descriptorSetLayoutCreateInfo, "descriptor set layout");
     VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {};
     pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutCreateInfo.pNext = NULL;
@@ -439,12 +439,12 @@ int main(int argc, char *argv[]) {
     pipelineLayoutCreateInfo.pSetLayouts = &descriptorSetLayout;
     pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
     pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
-    VkPipelineLayout pipelineLayout = stbvk_create_pipeline_layout(&context, &pipelineLayoutCreateInfo, "pipeline layout");
+    VkPipelineLayout pipelineLayout = cdsvk_create_pipeline_layout(&context, &pipelineLayoutCreateInfo, "pipeline layout");
 
     // Load shaders
-    VkShaderModule vertexShaderModule = stbvk_load_shader(&context, "tri.vert.spv");
+    VkShaderModule vertexShaderModule = cdsvk_load_shader(&context, "tri.vert.spv");
     assert(vertexShaderModule != VK_NULL_HANDLE);
-    VkShaderModule fragmentShaderModule = stbvk_load_shader(&context, "tri.frag.spv");
+    VkShaderModule fragmentShaderModule = cdsvk_load_shader(&context, "tri.frag.spv");
     assert(fragmentShaderModule != VK_NULL_HANDLE);
 
     // Load textures, create sampler and image view
@@ -466,7 +466,7 @@ int main(int argc, char *argv[]) {
     samplerCreateInfo.maxLod = 0.0f;
     samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
     samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
-    VkSampler sampler= stbvk_create_sampler(&context, &samplerCreateInfo, "default sampler");
+    VkSampler sampler= cdsvk_create_sampler(&context, &samplerCreateInfo, "default sampler");
 
     const char *texture_filename = "trevor/redf.ktx";
     VkImage texture_image = VK_NULL_HANDLE;
@@ -477,7 +477,7 @@ int main(int argc, char *argv[]) {
         &texture_image_mem, &texture_image_mem_offset, &context, texture_filename, VK_TRUE,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
     assert(!texture_load_error); (void)texture_load_error;
-    VkImageView texture_image_view = stbvk_create_image_view_from_image(&context, texture_image,
+    VkImageView texture_image_view = cdsvk_create_image_view_from_image(&context, texture_image,
         &texture_image_create_info, "texture image view");
 
     // Create render pass
@@ -533,7 +533,7 @@ int main(int argc, char *argv[]) {
     renderPassCreateInfo.pSubpasses = &subpassDescription;
     renderPassCreateInfo.dependencyCount = 0;
     renderPassCreateInfo.pDependencies = NULL;
-    VkRenderPass renderPass = stbvk_create_render_pass(&context, &renderPassCreateInfo, "default render pass");
+    VkRenderPass renderPass = cdsvk_create_render_pass(&context, &renderPassCreateInfo, "default render pass");
 
     // Create framebuffers
     VkImageView attachmentImageViews[kAttachmentCount] = {};
@@ -552,11 +552,11 @@ int main(int argc, char *argv[]) {
     VkFramebuffer *framebuffers = (VkFramebuffer*)malloc(context.swapchain_image_count * sizeof(VkFramebuffer));
     for(uint32_t iFB=0; iFB<context.swapchain_image_count; iFB += 1) {
         attachmentImageViews[kColorAttachmentIndex] = context.swapchain_image_views[iFB];
-        framebuffers[iFB] = stbvk_create_framebuffer(&context, &framebufferCreateInfo, "default framebuffer");
+        framebuffers[iFB] = cdsvk_create_framebuffer(&context, &framebufferCreateInfo, "default framebuffer");
     }
 
     // Create Vulkan graphics pipeline
-    stbvk_graphics_pipeline_settings_vsps graphicsPipelineSettings = {};
+    cdsvk_graphics_pipeline_settings_vsps graphicsPipelineSettings = {};
     graphicsPipelineSettings.vertex_buffer_layout = vertexBufferLayout;
     graphicsPipelineSettings.dynamic_state_mask = 0
         | (1<<VK_DYNAMIC_STATE_VIEWPORT)
@@ -569,17 +569,17 @@ int main(int argc, char *argv[]) {
     graphicsPipelineSettings.subpass_color_attachment_count = 1;
     graphicsPipelineSettings.vertex_shader = vertexShaderModule;
     graphicsPipelineSettings.fragment_shader = fragmentShaderModule;
-    stbvk_graphics_pipeline_create_info graphicsPipelineCreateInfo = {};
-    stbvk_prepare_graphics_pipeline_create_info_vsps(&graphicsPipelineSettings, &graphicsPipelineCreateInfo);
+    cdsvk_graphics_pipeline_create_info graphicsPipelineCreateInfo = {};
+    cdsvk_prepare_graphics_pipeline_create_info_vsps(&graphicsPipelineSettings, &graphicsPipelineCreateInfo);
     if (mesh_metadata.front_face == CDSM_FRONT_FACE_CW)
         graphicsPipelineCreateInfo.rasterization_state_create_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
-    VkPipeline pipelineGraphics = stbvk_create_graphics_pipeline(&context,
+    VkPipeline pipelineGraphics = cdsvk_create_graphics_pipeline(&context,
         &graphicsPipelineCreateInfo.graphics_pipeline_create_info, "default graphics pipeline");
 
     // Create Vulkan descriptor pool and descriptor set.
     // TODO(cort): the current descriptors are constant; we'd need a set per swapchain if it was going to change
     // per-frame.
-    VkDescriptorPool descriptorPool = stbvk_create_descriptor_pool_from_layout(&context,
+    VkDescriptorPool descriptorPool = cdsvk_create_descriptor_pool_from_layout(&context,
         &descriptorSetLayoutCreateInfo, 1, 0, "Descriptor pool");
     VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
     descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -589,7 +589,7 @@ int main(int argc, char *argv[]) {
     descriptorSetAllocateInfo.pSetLayouts = &descriptorSetLayout;
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
     VULKAN_CHECK( vkAllocateDescriptorSets(context.device, &descriptorSetAllocateInfo, &descriptorSet) );
-    VULKAN_CHECK(stbvk_name_descriptor_set(context.device, descriptorSet, "default descriptor set"));
+    VULKAN_CHECK(cdsvk_name_descriptor_set(context.device, descriptorSet, "default descriptor set"));
     VkDescriptorImageInfo descriptorImageInfos[kDemoTextureCount] = {0};
     for(uint32_t iTexture=0; iTexture<kDemoTextureCount; iTexture += 1) {
         descriptorImageInfos[iTexture].sampler = sampler;
@@ -620,8 +620,8 @@ int main(int argc, char *argv[]) {
     semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     semaphoreCreateInfo.pNext = NULL;
     semaphoreCreateInfo.flags = 0;
-    VkSemaphore swapchainImageReady = stbvk_create_semaphore(&context, &semaphoreCreateInfo, "image ready semaphore");
-    VkSemaphore renderingComplete = stbvk_create_semaphore(&context, &semaphoreCreateInfo, "rendering complete semaphore");
+    VkSemaphore swapchainImageReady = cdsvk_create_semaphore(&context, &semaphoreCreateInfo, "image ready semaphore");
+    VkSemaphore renderingComplete = cdsvk_create_semaphore(&context, &semaphoreCreateInfo, "rendering complete semaphore");
 
     // Create the fences used to wait for each swapchain image's command buffer to be submitted.
     // This prevents re-writing the command buffer contents before it's been submitted and processed.
@@ -632,7 +632,7 @@ int main(int argc, char *argv[]) {
     VkFence *queue_submitted_fences = (VkFence*)malloc(kVframeCount * sizeof(VkFence));
     for(uint32_t iFence=0; iFence<kVframeCount; ++iFence)
     {
-        queue_submitted_fences[iFence] = stbvk_create_fence(&context, &fence_create_info, "queue submitted fence");
+        queue_submitted_fences[iFence] = cdsvk_create_fence(&context, &fence_create_info, "queue submitted fence");
     }
     uint32_t frameIndex = 0;
 
@@ -659,7 +659,7 @@ int main(int argc, char *argv[]) {
     VkQueryPool *timestamp_query_pools = (VkQueryPool*)malloc(kVframeCount * sizeof(VkQueryPool));
     for(uint32_t iPool=0; iPool<kVframeCount; ++iPool)
     {
-        timestamp_query_pools[iPool] = stbvk_create_query_pool(&context, &timestamp_query_pool_create_info, "timestamp query pool");
+        timestamp_query_pools[iPool] = cdsvk_create_query_pool(&context, &timestamp_query_pool_create_info, "timestamp query pool");
     }
     {
         VkCommandPoolCreateInfo cpool_ci;
@@ -667,7 +667,7 @@ int main(int argc, char *argv[]) {
         cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
         cpool_ci.queueFamilyIndex = context.graphics_queue_family_index;
-        VkCommandPool cpool = stbvk_create_command_pool(&context, &cpool_ci, "staging command buffer");
+        VkCommandPool cpool = cdsvk_create_command_pool(&context, &cpool_ci, "staging command buffer");
         VkCommandBufferAllocateInfo cb_allocate_info;
         memset(&cb_allocate_info, 0, sizeof(cb_allocate_info));
         cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -680,7 +680,7 @@ int main(int argc, char *argv[]) {
         VkFenceCreateInfo fence_ci;
         memset(&fence_ci, 0, sizeof(fence_ci));
         fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        VkFence fence = stbvk_create_fence(&context, &fence_ci, "staging fence");
+        VkFence fence = cdsvk_create_fence(&context, &fence_ci, "staging fence");
 
         VkCommandBufferBeginInfo cb_begin_info;
         memset(&cb_begin_info, 0, sizeof(cb_begin_info));
@@ -705,8 +705,8 @@ int main(int argc, char *argv[]) {
         submit_info.pCommandBuffers = &cb;
         vkQueueSubmit(context.graphics_queue, 1, &submit_info, fence);
         vkWaitForFences(context.device, 1, &fence, VK_TRUE, UINT64_MAX);
-        stbvk_destroy_command_pool(&context, cpool);
-        stbvk_destroy_fence(&context, fence);
+        cdsvk_destroy_command_pool(&context, cpool);
+        cdsvk_destroy_fence(&context, fence);
     }
     uint64_t counterStart = zomboClockTicks();
     double timestampSecondsPrevious[TIMESTAMP_ID_RANGE_SIZE] = {};
@@ -909,55 +909,55 @@ int main(int argc, char *argv[]) {
     vkDeviceWaitIdle(context.device);
 
     for(uint32_t iPool=0; iPool<kVframeCount; ++iPool) {
-        stbvk_destroy_query_pool(&context, timestamp_query_pools[iPool]);
+        cdsvk_destroy_query_pool(&context, timestamp_query_pools[iPool]);
     }
     free(timestamp_query_pools);
 
     for(uint32_t iFence=0; iFence<kVframeCount; ++iFence) {
-        stbvk_destroy_fence(&context, queue_submitted_fences[iFence]);
+        cdsvk_destroy_fence(&context, queue_submitted_fences[iFence]);
     }
     free(queue_submitted_fences);
 
-    stbvk_destroy_semaphore(&context, swapchainImageReady);
-    stbvk_destroy_semaphore(&context, renderingComplete);
+    cdsvk_destroy_semaphore(&context, swapchainImageReady);
+    cdsvk_destroy_semaphore(&context, renderingComplete);
 
     for(uint32_t iFB=0; iFB<context.swapchain_image_count; iFB+=1) {
-        stbvk_destroy_framebuffer(&context, framebuffers[iFB]);
+        cdsvk_destroy_framebuffer(&context, framebuffers[iFB]);
     }
     free(framebuffers);
 
-    stbvk_free_device_memory(&context, device_arena, depth_image_mem, depth_image_mem_offset);
-    stbvk_destroy_image_view(&context, depth_image_view);
-    stbvk_destroy_image(&context, depth_image);
+    cdsvk_free_device_memory(&context, device_arena, depth_image_mem, depth_image_mem_offset);
+    cdsvk_destroy_image_view(&context, depth_image_view);
+    cdsvk_destroy_image(&context, depth_image);
 
-    stbvk_free_device_memory(&context, device_arena, o2w_buffer_mem, o2w_buffer_mem_offset);
-    stbvk_destroy_buffer(&context, o2w_buffer);
-    stbvk_free_device_memory(&context, device_arena, bufferIndicesMem, bufferIndicesMemOffset);
-    stbvk_destroy_buffer(&context, bufferIndices);
-    stbvk_free_device_memory(&context, device_arena, bufferVerticesMem, bufferVerticesMemOffset);
-    stbvk_destroy_buffer(&context, bufferVertices);
+    cdsvk_free_device_memory(&context, device_arena, o2w_buffer_mem, o2w_buffer_mem_offset);
+    cdsvk_destroy_buffer(&context, o2w_buffer);
+    cdsvk_free_device_memory(&context, device_arena, bufferIndicesMem, bufferIndicesMemOffset);
+    cdsvk_destroy_buffer(&context, bufferIndices);
+    cdsvk_free_device_memory(&context, device_arena, bufferVerticesMem, bufferVerticesMemOffset);
+    cdsvk_destroy_buffer(&context, bufferVertices);
 
-    stbvk_destroy_descriptor_set_layout(&context, descriptorSetLayout);
-    stbvk_destroy_descriptor_pool(&context, descriptorPool);
+    cdsvk_destroy_descriptor_set_layout(&context, descriptorSetLayout);
+    cdsvk_destroy_descriptor_pool(&context, descriptorPool);
 
-    stbvk_destroy_render_pass(&context, renderPass);
+    cdsvk_destroy_render_pass(&context, renderPass);
 
-    stbvk_destroy_shader(&context, vertexShaderModule);
-    stbvk_destroy_shader(&context, fragmentShaderModule);
+    cdsvk_destroy_shader(&context, vertexShaderModule);
+    cdsvk_destroy_shader(&context, fragmentShaderModule);
 
 
-    stbvk_free_device_memory(&context, device_arena, texture_image_mem, texture_image_mem_offset);
-    stbvk_destroy_image_view(&context, texture_image_view);
-    stbvk_destroy_image(&context, texture_image);
-    stbvk_destroy_sampler(&context, sampler);
+    cdsvk_free_device_memory(&context, device_arena, texture_image_mem, texture_image_mem_offset);
+    cdsvk_destroy_image_view(&context, texture_image_view);
+    cdsvk_destroy_image(&context, texture_image);
+    cdsvk_destroy_sampler(&context, sampler);
 
-    stbvk_destroy_pipeline_layout(&context, pipelineLayout);
-    stbvk_destroy_pipeline(&context, pipelineGraphics);
+    cdsvk_destroy_pipeline_layout(&context, pipelineLayout);
+    cdsvk_destroy_pipeline(&context, pipelineGraphics);
 
     free(commandBuffers);
-    stbvk_destroy_command_pool(&context, command_pool);
+    cdsvk_destroy_command_pool(&context, command_pool);
 
     glfwTerminate();
-    stbvk_destroy_context(&context);
+    cdsvk_destroy_context(&context);
     return 0;
 }
