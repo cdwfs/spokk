@@ -265,6 +265,7 @@ int main(int argc, char *argv[]) {
     VkImageView depth_image_view = cdsvk_create_image_view_from_image(&context, depth_image,
         &depth_image_create_info, "depth buffer image view");
 
+    // Generate a procedural mesh
     cdsm_metadata_t mesh_metadata = {};
     size_t mesh_vertices_size = 0, mesh_indices_size = 0;
     enum
@@ -333,6 +334,7 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK(cdsvk_allocate_and_bind_buffer_memory(&context, bufferIndices, device_arena,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "index buffer memory", &bufferIndicesMem, &bufferIndicesMemOffset));
 
+    // Create vertex buffer
     cdsvk_vertex_buffer_layout vertexBufferLayout = {};
     vertexBufferLayout.stride = vertex_layout.stride;
     vertexBufferLayout.attribute_count = vertex_layout.attribute_count;
@@ -348,8 +350,6 @@ int main(int argc, char *argv[]) {
     vertexBufferLayout.attributes[2].location = 2;
     vertexBufferLayout.attributes[2].format = VK_FORMAT_R16G16_SFLOAT;
     vertexBufferLayout.attributes[2].offset = vertex_layout.attributes[2].offset;
-
-    // Create vertex buffer
     VkBufferCreateInfo bufferCreateInfoVertices = {};
     bufferCreateInfoVertices.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferCreateInfoVertices.pNext = NULL;
@@ -377,7 +377,6 @@ int main(int argc, char *argv[]) {
     else if (meshType == MESH_TYPE_CYLINDER)
         cdsm_create_cylinder(&mesh_metadata, vertex_buffer_contents, &mesh_vertices_size,
             (cdsm_index_t*)index_buffer_contents, &mesh_indices_size, &cylinder_recipe);
-
     VULKAN_CHECK( cdsvk_buffer_load_contents(&context, bufferIndices, &bufferCreateInfoIndices,
         0, index_buffer_contents, mesh_indices_size, VK_ACCESS_INDEX_READ_BIT) );
     VULKAN_CHECK( cdsvk_buffer_load_contents(&context, bufferVertices, &bufferCreateInfoVertices,
@@ -400,7 +399,8 @@ int main(int argc, char *argv[]) {
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, "o2w buffer memory",
         &o2w_buffer_mem, &o2w_buffer_mem_offset));
 
-    // Create push constants.  TODO(cort): this should be a per-vframe uniform buffer.
+    // Create push constants.
+    // TODO(cort): this should be a per-vframe uniform buffer.
     struct {
         mathfu::vec4_packed time; // .x=seconds, .yzw=???
         mathfu::vec4_packed eye;  // .xyz=world-space eye position, .w=???
@@ -535,7 +535,7 @@ int main(int argc, char *argv[]) {
     renderPassCreateInfo.pDependencies = NULL;
     VkRenderPass renderPass = cdsvk_create_render_pass(&context, &renderPassCreateInfo, "default render pass");
 
-    // Create framebuffers
+    // Create VkFramebuffers
     VkImageView attachmentImageViews[kAttachmentCount] = {};
     attachmentImageViews[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below;
     attachmentImageViews[kDepthAttachmentIndex] = depth_image_view;
@@ -555,7 +555,7 @@ int main(int argc, char *argv[]) {
         framebuffers[iFB] = cdsvk_create_framebuffer(&context, &framebufferCreateInfo, "default framebuffer");
     }
 
-    // Create Vulkan graphics pipeline
+    // Create VkPipeline
     cdsvk_graphics_pipeline_settings_vsps graphicsPipelineSettings = {};
     graphicsPipelineSettings.vertex_buffer_layout = vertexBufferLayout;
     graphicsPipelineSettings.dynamic_state_mask = 0
@@ -566,7 +566,7 @@ int main(int argc, char *argv[]) {
     graphicsPipelineSettings.pipeline_layout = pipelineLayout;
     graphicsPipelineSettings.render_pass = renderPass;
     graphicsPipelineSettings.subpass = 0;
-    graphicsPipelineSettings.subpass_color_attachment_count = 1;
+    graphicsPipelineSettings.subpass_color_attachment_count = subpassDescription.colorAttachmentCount;
     graphicsPipelineSettings.vertex_shader = vertexShaderModule;
     graphicsPipelineSettings.fragment_shader = fragmentShaderModule;
     cdsvk_graphics_pipeline_create_info graphicsPipelineCreateInfo = {};
@@ -577,7 +577,7 @@ int main(int argc, char *argv[]) {
         &graphicsPipelineCreateInfo.graphics_pipeline_create_info, "default graphics pipeline");
 
     // Create Vulkan descriptor pool and descriptor set.
-    // TODO(cort): the current descriptors are constant; we'd need a set per swapchain if it was going to change
+    // TODO(cort): the current descriptors are constant; we'd need a set per-vframe if it was going to change
     // per-frame.
     VkDescriptorPool descriptorPool = cdsvk_create_descriptor_pool_from_layout(&context,
         &descriptorSetLayoutCreateInfo, 1, 0, "Descriptor pool");
