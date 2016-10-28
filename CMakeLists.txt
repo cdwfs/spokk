@@ -15,16 +15,16 @@ include_directories(glfw/include)
 project(vulkswagen)
 
 SET(headers
-    #cds_mesh.h
+    cds_mesh.h
     #cds_vulkan.h
     cds_vulkan.hpp
-    #image_file.h
+    image_file.h
     platform.h
     #stb_image.h
     #vk_texture.h
     )
 SET(sources
-    #image_file.c
+    image_file.c
     #vk_texture.c
     #vulkswagen.cpp
     vkhpp_test.cpp

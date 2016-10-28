@@ -165,6 +165,11 @@ namespace cdsvk {
         vk::PhysicalDevice physical_device() const { return physical_device_; }
         vk::Device device() const { return device_; }
         uint32_t graphics_queue_family_index() const { return graphics_queue_family_index_; }
+        vk::SwapchainKHR swapchain() const { return swapchain_; }
+        vk::Queue graphics_queue() const { return graphics_queue_; }
+        vk::Queue present_queue() const { return present_queue_; }
+        vk::Format swapchain_format() const { return swapchain_surface_format_.format; }
+        const std::vector<vk::ImageView>& swapchain_image_views() const { return swapchain_image_views_; }
 
         // Active layer/extension queries
         bool is_instance_layer_enabled(const std::string& layer_name) const;
@@ -172,9 +177,9 @@ namespace cdsvk {
         bool is_device_extension_enabled(const std::string& ext_name) const;
 
         // Load/destroy shader modules
-        vk::ShaderModule load_shader_from_memory(const void *buf, int len) const;
-        vk::ShaderModule load_shader_from_file(FILE *f, int len) const;
-        vk::ShaderModule load_shader(const std::string &filename) const;
+        vk::ShaderModule load_shader_from_memory(const void *buf, int len, const std::string &name = "Anonymous") const;
+        vk::ShaderModule load_shader_from_file(FILE *f, int len, const std::string &name = "Anonymous") const;
+        vk::ShaderModule load_shader(const std::string &filename, const std::string &name = "Anonymous") const;
         void destroy_shader(vk::ShaderModule shader) const;
 
         // Create/destroy helpers for various Vulkan objects.
@@ -1046,22 +1051,23 @@ bool Context::is_device_extension_enabled(const std::string &extension_name) con
 
 ////////////////////// Shader module loading
 
-vk::ShaderModule Context::load_shader_from_memory(const void *buffer, int len) const {
+vk::ShaderModule Context::load_shader_from_memory(const void *buffer, int len, const std::string &name) const {
     CDSVK_ASSERT( (len % sizeof(uint32_t)) == 0);
     vk::ShaderModuleCreateInfo shader_ci(vk::ShaderModuleCreateFlags(), len,
         static_cast<const uint32_t*>(buffer));
     vk::ShaderModule shader = device_.createShaderModule(shader_ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(shader, name));
     return shader;
 }
-vk::ShaderModule Context::load_shader_from_file(FILE *f, int len) const {
+vk::ShaderModule Context::load_shader_from_file(FILE *f, int len, const std::string &name) const {
     std::vector<uint8_t> shader_bin(len);
     size_t bytes_read = fread(shader_bin.data(), 1, len, f);
     if ( (int)bytes_read != len) {
         return vk::ShaderModule();
     }
-    return load_shader_from_memory(shader_bin.data(), len);
+    return load_shader_from_memory(shader_bin.data(), len, name);
 }
-vk::ShaderModule Context::load_shader(const std::string &filename) const {
+vk::ShaderModule Context::load_shader(const std::string &filename, const std::string &name) const {
     FILE *spv_file = cdsvk__fopen(filename.c_str(), "rb");
     if (!spv_file) {
         return VK_NULL_HANDLE;
@@ -1069,7 +1075,7 @@ vk::ShaderModule Context::load_shader(const std::string &filename) const {
     fseek(spv_file, 0, SEEK_END);
     long spv_file_size = ftell(spv_file);
     fseek(spv_file, 0, SEEK_SET);
-    vk::ShaderModule shader = load_shader_from_file(spv_file, spv_file_size);
+    vk::ShaderModule shader = load_shader_from_file(spv_file, spv_file_size, name);
     fclose(spv_file);
     return shader;
 }

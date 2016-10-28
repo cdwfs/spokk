@@ -12,11 +12,17 @@
 # error Unsupported platform
 #endif
 
+#define CDS_MESH_IMPLEMENTATION
+#include "cds_mesh.h"
+
 #define CDS_VULKAN_IMPLEMENTATION
 #include "cds_vulkan.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+
+#include <mathfu/vector.h>
+#include <mathfu/glsl_mappings.h>
 
 #include <assert.h>
 
@@ -166,6 +172,280 @@ int main(int argc, char *argv[]) {
         &depth_image_mem, &depth_image_mem_offset);
     VkImageView depth_image_view = context->create_image_view(depth_image, depth_image_ci, "depth buffer image view");
 
+    // Generate a procedural mesh
+    cdsm_metadata_t mesh_metadata = {};
+    size_t mesh_vertices_size = 0, mesh_indices_size = 0;
+    enum {
+        MESH_TYPE_CUBE     = 0,
+        MESH_TYPE_SPHERE   = 1,
+        MESH_TYPE_AXES     = 3,
+        MESH_TYPE_CYLINDER = 2,
+    } meshType = MESH_TYPE_CUBE;
+    const cdsm_vertex_layout_t vertex_layout = {
+        22, 3, {
+            {0, 0, CDSM_ATTRIBUTE_FORMAT_R32G32B32_FLOAT},
+            {1, 12, CDSM_ATTRIBUTE_FORMAT_R16G16B16_SNORM},
+            {2,18, CDSM_ATTRIBUTE_FORMAT_R16G16_FLOAT},
+        }
+    };
+    cdsm_cube_recipe_t cube_recipe = {};
+    cube_recipe.vertex_layout = vertex_layout;
+    cube_recipe.min_extent = {-0.2f,-0.2f,-0.2f};
+    cube_recipe.max_extent = {+0.2f,+0.2f,+0.2f};
+    cube_recipe.front_face = CDSM_FRONT_FACE_CCW;
+    cdsm_sphere_recipe_t sphere_recipe = {};
+    sphere_recipe.vertex_layout = vertex_layout;
+    sphere_recipe.latitudinal_segments = 30;
+    sphere_recipe.longitudinal_segments = 30;
+    sphere_recipe.radius = 0.2f;
+    cdsm_cylinder_recipe_t cylinder_recipe = {};
+    cylinder_recipe.vertex_layout = vertex_layout;
+    cylinder_recipe.length = 0.3f;
+    cylinder_recipe.axial_segments = 3;
+    cylinder_recipe.radial_segments = 60;
+    cylinder_recipe.radius0 = 0.3f;
+    cylinder_recipe.radius1 = 0.4f;
+    cdsm_axes_recipe_t axes_recipe = {};
+    axes_recipe.vertex_layout = vertex_layout;
+    axes_recipe.length = 1.0f;
+    if (meshType == MESH_TYPE_CUBE) {
+        cdsm_create_cube(&mesh_metadata, NULL, &mesh_vertices_size, NULL, &mesh_indices_size, &cube_recipe);
+    } else if (meshType == MESH_TYPE_SPHERE) {
+        cdsm_create_sphere(&mesh_metadata, NULL, &mesh_vertices_size, NULL, &mesh_indices_size, &sphere_recipe);
+    } else if (meshType == MESH_TYPE_AXES) {
+        cdsm_create_axes(&mesh_metadata, NULL, &mesh_vertices_size, NULL, &mesh_indices_size, &axes_recipe);
+    } else if (meshType == MESH_TYPE_CYLINDER) {
+        cdsm_create_cylinder(&mesh_metadata, NULL, &mesh_vertices_size, NULL, &mesh_indices_size, &cylinder_recipe);
+    }
+    vk::PrimitiveTopology primitive_topology = (vk::PrimitiveTopology)VK_PRIMITIVE_TOPOLOGY_RANGE_SIZE;
+    if (mesh_metadata.primitive_type == CDSM_PRIMITIVE_TYPE_TRIANGLE_LIST) {
+        primitive_topology = vk::PrimitiveTopology::eTriangleList;
+    } else if (mesh_metadata.primitive_type == CDSM_PRIMITIVE_TYPE_LINE_LIST) {
+        primitive_topology = vk::PrimitiveTopology::eLineList;
+    } else {
+        assert(0); // unknown primitive topology
+    }
+
+    // Create index buffer
+    vk::IndexType indexType = (sizeof(cdsm_index_t) == sizeof(uint32_t)) ? vk::IndexType::eUint32 : vk::IndexType::eUint16;
+    vk::BufferCreateInfo index_buffer_ci(vk::BufferCreateFlags(), mesh_indices_size,
+        vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst);
+    vk::Buffer index_buffer = context->create_buffer(index_buffer_ci, "index buffer");
+    vk::DeviceMemory index_buffer_mem = VK_NULL_HANDLE;
+    vk::DeviceSize index_buffer_mem_offset = 0;
+    VULKAN_CHECK(context->allocate_and_bind_buffer_memory(index_buffer, vk::MemoryPropertyFlagBits::eDeviceLocal,
+        &index_buffer_mem, &index_buffer_mem_offset));
+
+    // Create vertex buffer
+    // TODO(cort): Automate cdsm_vertex_layout_t to cdsvk::VertexBufferLayout conversion
+    cdsvk::VertexBufferLayout vertex_buffer_layout = {
+        vertex_layout.stride,
+        vk::VertexInputRate::eVertex,
+        {
+            vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32B32Sfloat, vertex_layout.attributes[0].offset),
+            vk::VertexInputAttributeDescription(1, 0, vk::Format::eR16G16B16Snorm, vertex_layout.attributes[1].offset),
+            vk::VertexInputAttributeDescription(2, 0, vk::Format::eR16G16Sfloat, vertex_layout.attributes[2].offset),
+        },
+    };
+    vk::BufferCreateInfo vertex_buffer_ci(vk::BufferCreateFlags(), mesh_vertices_size,
+        vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst);
+    vk::Buffer vertex_buffer = context->create_buffer(vertex_buffer_ci, "vertex buffer");
+    vk::DeviceMemory vertex_buffer_mem = VK_NULL_HANDLE;
+    vk::DeviceSize vertex_buffer_mem_offset = 0;
+    VULKAN_CHECK(context->allocate_and_bind_buffer_memory(vertex_buffer, vk::MemoryPropertyFlagBits::eDeviceLocal,
+        &vertex_buffer_mem, &vertex_buffer_mem_offset));
+
+    // Populate vertex/index buffers
+    {
+        std::vector<uint8_t> index_buffer_contents(mesh_indices_size);
+        std::vector<uint8_t> vertex_buffer_contents(mesh_vertices_size);
+        if (meshType == MESH_TYPE_CUBE) {
+            cdsm_create_cube(&mesh_metadata, vertex_buffer_contents.data(), &mesh_vertices_size,
+                (cdsm_index_t*)index_buffer_contents.data(), &mesh_indices_size, &cube_recipe);
+        } else if (meshType == MESH_TYPE_SPHERE) {
+            cdsm_create_sphere(&mesh_metadata, vertex_buffer_contents.data(), &mesh_vertices_size,
+                (cdsm_index_t*)index_buffer_contents.data(), &mesh_indices_size, &sphere_recipe);
+        } else if (meshType == MESH_TYPE_AXES) {
+            cdsm_create_axes(&mesh_metadata, vertex_buffer_contents.data(), &mesh_vertices_size,
+                (cdsm_index_t*)index_buffer_contents.data(), &mesh_indices_size, &axes_recipe);
+        } else if (meshType == MESH_TYPE_CYLINDER) {
+            cdsm_create_cylinder(&mesh_metadata, vertex_buffer_contents.data(), &mesh_vertices_size,
+                (cdsm_index_t*)index_buffer_contents.data(), &mesh_indices_size, &cylinder_recipe);
+        }
+        VULKAN_CHECK(context->load_buffer_contents(index_buffer, index_buffer_ci, 
+            0, index_buffer_contents.data(), mesh_indices_size, vk::AccessFlagBits::eIndexRead));
+        VULKAN_CHECK(context->load_buffer_contents(vertex_buffer, vertex_buffer_ci,
+            0, vertex_buffer_contents.data(), mesh_vertices_size, vk::AccessFlagBits::eVertexAttributeRead));
+    }
+
+    const uint32_t kMeshCount = 1024;
+    // Create buffer of per-mesh object-to-world matrices.
+    // TODO(cort): Make this DEVICE_LOCAL & upload every frame?
+    vk::BufferCreateInfo o2w_buffer_ci(vk::BufferCreateFlags(),
+        kMeshCount * sizeof(mathfu::mat4) * kVframeCount,
+        vk::BufferUsageFlagBits::eUniformBuffer);
+    VkBuffer o2w_buffer = context->create_buffer(o2w_buffer_ci, "o2w buffer");
+    vk::DeviceMemory o2w_buffer_mem = VK_NULL_HANDLE;
+    vk::DeviceSize o2w_buffer_mem_offset = 0;
+    VULKAN_CHECK(context->allocate_and_bind_buffer_memory(o2w_buffer,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+        &o2w_buffer_mem, &o2w_buffer_mem_offset));
+
+    // Load shaders
+    vk::ShaderModule vertex_shader = context->load_shader("tri.vert.spv");
+    vk::ShaderModule fragment_shader = context->load_shader("tri.frag.spv");
+
+    // Create render pass
+    enum {
+        kColorAttachmentIndex = 0,
+        kDepthAttachmentIndex = 1,
+        kAttachmentCount
+    };
+    std::array<vk::AttachmentDescription, kAttachmentCount> attachment_descs = {
+        vk::AttachmentDescription(vk::AttachmentDescriptionFlags(), context->swapchain_format(),
+            vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore,
+            vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
+            vk::ImageLayout::eUndefined, vk::ImageLayout::ePresentSrcKHR),
+        vk::AttachmentDescription(vk::AttachmentDescriptionFlags(), depth_image_ci.format,
+            depth_image_ci.samples, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eDontCare,
+            vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
+            vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal),
+    };
+    std::array<vk::AttachmentReference, kAttachmentCount> attachment_refs = {
+        vk::AttachmentReference(kColorAttachmentIndex, vk::ImageLayout::eColorAttachmentOptimal),
+        vk::AttachmentReference(kDepthAttachmentIndex, vk::ImageLayout::eDepthStencilAttachmentOptimal),
+    };
+    vk::SubpassDescription subpass_desc(vk::SubpassDescriptionFlags(), vk::PipelineBindPoint::eGraphics,
+        0,nullptr, // input attachments
+        1,&attachment_refs[kColorAttachmentIndex], // color attachments
+        nullptr, // resolve attachment
+        &attachment_refs[kDepthAttachmentIndex], // depth attachment
+        0,nullptr); // preserve attachments
+    std::array<vk::SubpassDependency, 2> subpass_dependencies = {
+        vk::SubpassDependency(VK_SUBPASS_EXTERNAL, 0,
+            vk::PipelineStageFlagBits::eAllCommands, vk::PipelineStageFlagBits::eAllCommands,
+            vk::AccessFlagBits::eMemoryRead | vk::AccessFlagBits::eMemoryWrite,
+            vk::AccessFlagBits::eMemoryRead | vk::AccessFlagBits::eMemoryWrite,
+            vk::DependencyFlagBits::eByRegion),
+        vk::SubpassDependency(0, VK_SUBPASS_EXTERNAL,
+            vk::PipelineStageFlagBits::eAllCommands, vk::PipelineStageFlagBits::eAllCommands,
+            vk::AccessFlagBits::eMemoryRead | vk::AccessFlagBits::eMemoryWrite,
+            vk::AccessFlagBits::eMemoryRead | vk::AccessFlagBits::eMemoryWrite,
+            vk::DependencyFlagBits::eByRegion),
+    };
+    vk::RenderPassCreateInfo render_pass_ci(vk::RenderPassCreateFlags(),
+        (uint32_t)attachment_descs.size(), attachment_descs.data(), 1,&subpass_desc,
+        (uint32_t)subpass_dependencies.size(), subpass_dependencies.data());
+    vk::RenderPass render_pass = context->create_render_pass(render_pass_ci, "default render pass");
+
+    // Create VkFramebuffers
+    std::array<vk::ImageView, kAttachmentCount> attachment_views = {};
+    attachment_views[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below;
+    attachment_views[kDepthAttachmentIndex] = depth_image_view;
+    // TODO(cort): use actual target extents instead of kWindow* constants
+    vk::FramebufferCreateInfo framebuffer_ci(vk::FramebufferCreateFlags(), render_pass,
+        (uint32_t)attachment_views.size(), attachment_views.data(),
+        kWindowWidthDefault, kWindowHeightDefault, 1);
+    std::vector<vk::Framebuffer> framebuffers;
+    framebuffers.reserve(context->swapchain_image_views().size());
+    for(auto view : context->swapchain_image_views()) {
+        attachment_views[kColorAttachmentIndex] = view;
+        framebuffers.push_back(context->create_framebuffer(framebuffer_ci, "Default framebuffer"));
+    }
+
+    // Create the semaphores used to synchronize access to swapchain images
+    vk::SemaphoreCreateInfo semaphore_ci = {};
+    vk::Semaphore swapchain_image_ready_sem = context->create_semaphore(semaphore_ci, "image ready semaphore");
+    vk::Semaphore render_complete_sem = context->create_semaphore(semaphore_ci, "rendering complete semaphore");
+
+    // Create the fences used to wait for each swapchain image's command buffer to be submitted.
+    // This prevents re-writing the command buffer contents before it's been submitted and processed.
+    vk::FenceCreateInfo fence_ci(vk::FenceCreateFlagBits::eSignaled);
+    std::vector<vk::Fence> submission_complete_fences(kVframeCount);
+    for(auto &fence : submission_complete_fences) {
+        fence = context->create_fence(fence_ci, "queue submitted fence");
+    }
+
+    uint32_t vframeIndex = 0;
+    while(!glfwWindowShouldClose(window)) {
+        // Wait for the command buffer previously used to generate this swapchain image to be submitted.
+        // TODO(cort): this does not guarantee memory accesses from this submission will be visible on the host;
+        // there'd need to be a memory barrier for that.
+        context->device().waitForFences(submission_complete_fences[vframeIndex], VK_TRUE, UINT64_MAX);
+        context->device().resetFences(submission_complete_fences[vframeIndex]);
+
+        // The host can now safely reset and rebuild this command buffer, even if the GPU hasn't finished presenting the
+        // resulting frame yet.
+        vk::CommandBuffer cb = command_buffers[vframeIndex];
+
+        // Retrieve the index of the next available swapchain index
+        uint32_t swapchain_image_index = 0;
+        vk::Result result = context->device().acquireNextImageKHR(context->swapchain(), UINT64_MAX,
+            swapchain_image_ready_sem, VK_NULL_HANDLE, &swapchain_image_index);
+        if (result == vk::Result::eErrorOutOfDateKHR) {
+            assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
+        } else if (result == vk::Result::eSuboptimalKHR) {
+            // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
+        } else {
+            VULKAN_CHECK(result);
+        }
+        vk::Framebuffer framebuffer = framebuffers[swapchain_image_index];
+
+        vk::CommandBufferBeginInfo cb_begin_info(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+        cb.begin(cb_begin_info);
+        std::array<vk::ClearValue, kAttachmentCount> clear_values = {
+            vk::ClearColorValue(std::array<float,4>{{0,0,0,1}}),
+            vk::ClearDepthStencilValue(1.0f, 0)
+        };
+        vk::RenderPassBeginInfo render_pass_begin_info(render_pass, framebuffer,
+            vk::Rect2D({0,0}, {framebuffer_ci.width, framebuffer_ci.height}),
+            (uint32_t)clear_values.size(), clear_values.data());
+        cb.beginRenderPass(render_pass_begin_info, vk::SubpassContents::eInline);
+        cb.endRenderPass();
+
+        VULKAN_CHECK(vkEndCommandBuffer(cb));
+        vk::PipelineStageFlags submit_wait_stage = vk::PipelineStageFlagBits::eAllCommands;
+        vk::SubmitInfo submit_info(1, &swapchain_image_ready_sem, &submit_wait_stage, 1, &cb, 1, &render_complete_sem);
+        context->graphics_queue().submit(submit_info, submission_complete_fences[vframeIndex]);
+
+        // Present
+        vk::SwapchainKHR swapchain = context->swapchain();
+        vk::PresentInfoKHR present_info(1,&render_complete_sem, 1,&swapchain, &swapchain_image_index);
+        result = context->present_queue().presentKHR(present_info);
+        if (result == vk::Result::eErrorOutOfDateKHR) {
+            assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
+        } else if (result == vk::Result::eSuboptimalKHR) {
+            // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
+        } else {
+            VULKAN_CHECK(result);
+        }
+
+        glfwPollEvents();
+        vframeIndex += 1;
+        if (vframeIndex == kVframeCount) {
+            vframeIndex = 0;
+        }
+    }
+
+    context->device().waitIdle();
+    // Cleanup
+    context->destroy_semaphore(swapchain_image_ready_sem);
+    context->destroy_semaphore(render_complete_sem);
+    for(auto fence : submission_complete_fences) {
+        context->destroy_fence(fence);
+    }
+    context->destroy_render_pass(render_pass);
+    for(auto framebuffer : framebuffers) {
+        context->destroy_framebuffer(framebuffer);
+    }
+    context->destroy_shader(vertex_shader);
+    context->destroy_shader(fragment_shader);
+    context->free_device_memory(o2w_buffer_mem, o2w_buffer_mem_offset);
+    context->destroy_buffer(o2w_buffer);
+    context->free_device_memory(index_buffer_mem, index_buffer_mem_offset);
+    context->destroy_buffer(index_buffer);
+    context->free_device_memory(vertex_buffer_mem, vertex_buffer_mem_offset);
+    context->destroy_buffer(vertex_buffer);
     context->free_device_memory(depth_image_mem, depth_image_mem_offset);
     context->destroy_image_view(depth_image_view);
     context->destroy_image(depth_image);
