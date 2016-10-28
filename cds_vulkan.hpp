@@ -26,6 +26,7 @@ distribute, and modify this file as you see fit.
 #define CDSVK_INCLUDE_CDS_VULKAN_HPP
 
 #include <vulkan/vulkan.hpp>
+#include <mutex>
 #include <vector>
 
 #ifndef CDSVK_NO_STDIO
@@ -47,6 +48,88 @@ typedef unsigned char cdsvk_uc;
 // PUBLIC API
 //
 namespace cdsvk {
+    // Shortcut to populate a VkGraphicsPipelineCreateInfo for graphics, using reasonable default values wherever
+    // possible. The final VkGraphicsPipelineCreateInfo can still be customized before the pipeline is created.
+    struct VertexBufferLayout {
+        uint32_t stride;
+        vk::VertexInputRate input_rate;
+        std::vector<vk::VertexInputAttributeDescription> attributes;
+    } cdsvk_vertex_buffer_layout;
+    struct GraphicsPipelineSettingsVsPs {
+        VertexBufferLayout vertex_buffer_layout; // assumed to be bound at slot 0
+        uint32_t dynamic_state_mask;
+        vk::PrimitiveTopology primitive_topology;
+        vk::Viewport viewport;   // ignored if dynamic_state_mask & (1<<VK_DYNAMIC_STATE_VIEWPORT)
+        vk::Rect2D scissor_rect; // ignored if dynamic_state_mask & (1<<VK_DYNAMIC_STATE_SCISSOR)
+        vk::PipelineLayout pipeline_layout;
+        vk::RenderPass render_pass;
+        uint32_t subpass;
+        uint32_t subpass_color_attachment_count;
+        vk::ShaderModule vertex_shader;
+        vk::ShaderModule fragment_shader;
+    };
+    class GraphicsPipelineCreateInfo {
+    public:
+        GraphicsPipelineCreateInfo();
+        explicit GraphicsPipelineCreateInfo(const GraphicsPipelineSettingsVsPs &settings);
+        operator const vk::GraphicsPipelineCreateInfo&() const {
+            return graphics_pipeline_ci;
+        }
+        operator vk::GraphicsPipelineCreateInfo&() {
+            return graphics_pipeline_ci;
+        }
+
+	    vk::GraphicsPipelineCreateInfo graphics_pipeline_ci;
+        // Various structures referred to by graphics_pipeline_ci:
+	    std::vector<vk::PipelineShaderStageCreateInfo> shader_stage_cis;
+        std::vector<vk::VertexInputBindingDescription> vertex_input_binding_descriptions;
+        std::vector<vk::VertexInputAttributeDescription> vertex_input_attribute_descriptions;
+        vk::PipelineVertexInputStateCreateInfo vertex_input_state_ci;
+	    vk::PipelineInputAssemblyStateCreateInfo input_assembly_state_ci;
+        vk::PipelineTessellationStateCreateInfo tessellation_state_ci;
+        std::vector<vk::Viewport> viewports;
+        std::vector<vk::Rect2D> scissor_rects;
+	    vk::PipelineViewportStateCreateInfo viewport_state_ci;
+	    vk::PipelineRasterizationStateCreateInfo rasterization_state_ci;
+	    vk::PipelineMultisampleStateCreateInfo multisample_state_ci;
+	    vk::PipelineDepthStencilStateCreateInfo depth_stencil_state_ci;
+	    std::vector<vk::PipelineColorBlendAttachmentState> color_blend_attachment_states;
+	    vk::PipelineColorBlendStateCreateInfo color_blend_state_ci;
+        std::vector<vk::DynamicState> dynamic_states;
+	    vk::PipelineDynamicStateCreateInfo dynamic_state_ci;
+    };
+
+    // Interface for device memory allocators.
+    class DeviceMemoryAllocator {
+    public:
+        virtual vk::Result allocate(const vk::MemoryAllocateInfo &alloc_info, vk::DeviceSize alignment,
+                vk::DeviceMemory *out_mem, vk::DeviceSize *out_offset) = 0;
+        virtual void free(vk::DeviceMemory mem, vk::DeviceSize offset) = 0;
+    };
+    // Default device memory allocator (used internally if NULL is passed for a device allocator).
+    // Just forwards allocations to the default vkAllocateMemory()/vkFreeMemory().
+    class DefaultDeviceMemoryAllocator : public DeviceMemoryAllocator {
+    public:
+        explicit DefaultDeviceMemoryAllocator(vk::Device device, const vk::AllocationCallbacks *allocation_callbacks = nullptr) :
+               device_(device),
+               allocation_callbacks_(allocation_callbacks) {
+        }
+        virtual vk::Result allocate(const vk::MemoryAllocateInfo &alloc_info, vk::DeviceSize alignment,
+               vk::DeviceMemory *out_mem, vk::DeviceSize *out_offset) {
+            (void)alignment;
+            *out_mem = device_.allocateMemory(alloc_info, allocation_callbacks_);
+            *out_offset = 0;
+            return vk::Result::eSuccess;
+        }
+        virtual void free(vk::DeviceMemory mem, vk::DeviceSize offset) {
+            (void)offset;
+            device_.freeMemory(mem, allocation_callbacks_);
+        }
+    private:
+        vk::Device device_;
+        const vk::AllocationCallbacks *allocation_callbacks_;
+    };
+
     typedef VkSurfaceKHR FN_GetVkSurface(VkInstance instance, const VkAllocationCallbacks *allocation_callbacks, void *userdata);
 
     struct ContextCreateInfo {
@@ -81,16 +164,147 @@ namespace cdsvk {
         vk::Instance instance() const { return instance_; }
         vk::PhysicalDevice physical_device() const { return physical_device_; }
         vk::Device device() const { return device_; }
+        uint32_t graphics_queue_family_index() const { return graphics_queue_family_index_; }
 
+        // Active layer/extension queries
         bool is_instance_layer_enabled(const std::string& layer_name) const;
         bool is_instance_extension_enabled(const std::string& ext_name) const;
         bool is_device_extension_enabled(const std::string& ext_name) const;
+
+        // Load/destroy shader modules
+        vk::ShaderModule load_shader_from_memory(const void *buf, int len) const;
+        vk::ShaderModule load_shader_from_file(FILE *f, int len) const;
+        vk::ShaderModule load_shader(const std::string &filename) const;
+        void destroy_shader(vk::ShaderModule shader) const;
+
+        // Create/destroy helpers for various Vulkan objects.
+        // Mostly just a way to avoid passing device/allocation_callbacks everywhere, but in a few cases
+        // more significant shortcuts are provided.
+        vk::CommandPool create_command_pool(const vk::CommandPoolCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_command_pool(vk::CommandPool cpool) const;
+
+        vk::Semaphore create_semaphore(const vk::SemaphoreCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_semaphore(vk::Semaphore semaphore) const;
+
+        vk::Fence create_fence(const vk::FenceCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_fence(vk::Fence fence) const;
+
+        vk::Event create_event(const vk::EventCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_event(vk::Event event) const;
+
+        vk::QueryPool create_query_pool(const VkQueryPoolCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_query_pool(vk::QueryPool pool) const;
+
+        vk::PipelineCache create_pipeline_cache(const vk::PipelineCacheCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_pipeline_cache(vk::PipelineCache cache) const;
+
+        vk::PipelineLayout create_pipeline_layout(const vk::PipelineLayoutCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_pipeline_layout(vk::PipelineLayout layout) const;
+
+        vk::RenderPass create_render_pass(const vk::RenderPassCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_render_pass(vk::RenderPass render_pass) const;
+
+        vk::Pipeline create_graphics_pipeline(const vk::GraphicsPipelineCreateInfo &ci, const std::string &name = "Anonymous") const;
+        vk::Pipeline create_compute_pipeline(const vk::ComputePipelineCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_pipeline(vk::Pipeline pipeline) const;
+
+        vk::DescriptorSetLayout create_descriptor_set_layout(const vk::DescriptorSetLayoutCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_descriptor_set_layout(vk::DescriptorSetLayout layout) const;
+
+        vk::Sampler create_sampler(const vk::SamplerCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_sampler(vk::Sampler sampler) const;
+
+        vk::Framebuffer create_framebuffer(const vk::FramebufferCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_framebuffer(vk::Framebuffer framebuffer) const;
+
+        vk::Buffer create_buffer(const vk::BufferCreateInfo &ci, const std::string &name = "Anonymous") const;
+        void destroy_buffer(vk::Buffer buffer) const;
+
+        vk::BufferView create_buffer_view(const vk::BufferViewCreateInfo &ci, const std::string &name = "Anonymous") const;
+        vk::BufferView create_buffer_view(vk::Buffer buffer, vk::Format format, const std::string &name = "Anonymous") const;
+        void destroy_buffer_view(vk::BufferView view) const;
+
+        vk::Image create_image(const vk::ImageCreateInfo &ci, vk::ImageLayout final_layout,
+            vk::AccessFlags final_access_flags, const std::string &name = "Anonymous") const;
+        void destroy_image(vk::Image image) const;
+
+        vk::ImageView create_image_view(const vk::ImageViewCreateInfo &ci, const std::string &name = "Anonymous") const;
+        vk::ImageView create_image_view(vk::Image image, const vk::ImageCreateInfo &image_ci, const std::string &name = "Anonymous") const;
+        void destroy_image_view(vk::ImageView view) const;
+
+        vk::DescriptorPool create_descriptor_pool(const vk::DescriptorPoolCreateInfo &ci, const std::string &name = "Anonymous") const;
+        vk::DescriptorPool create_descriptor_pool(const vk::DescriptorSetLayoutCreateInfo &layout_ci, uint32_t max_sets,
+            vk::DescriptorPoolCreateFlags flags, const std::string &name = "Anonymous") const;
+        void destroy_descriptor_pool(vk::DescriptorPool pool) const;
+
+        // Object naming (using VK_EXT_debug_marker, if present)
+#ifndef VK_EXT_debug_marker
+        // TODO(cort): If we had a VkT -> VK_DEBUG_REPORT_OBJECT_TYPE_* mapping, we could use
+        // a template for both cases...
+        template<typename VkT>
+        VkResult set_debug_name(VkT handle, const std::string &name) const {
+            (void)handle;
+            (void)name;
+            return VK_SUCCESS;
+        }
+#else
+        VkResult set_debug_name(VkInstance name_me, const std::string &name) const { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eInstance, name); }
+        VkResult set_debug_name(VkPhysicalDevice name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::ePhysicalDevice, name); }
+        VkResult set_debug_name(VkDevice name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eDevice, name); }
+        VkResult set_debug_name(VkQueue name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eQueue, name); }
+        VkResult set_debug_name(VkSemaphore name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eSemaphore, name); }
+        VkResult set_debug_name(VkCommandBuffer name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eCommandBuffer, name); }
+        VkResult set_debug_name(VkFence name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eFence, name); }
+        VkResult set_debug_name(VkDeviceMemory name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eDeviceMemory, name); }
+        VkResult set_debug_name(VkBuffer name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eBuffer, name); }
+        VkResult set_debug_name(VkImage name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eImage, name); }
+        VkResult set_debug_name(VkEvent name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eEvent, name); }
+        VkResult set_debug_name(VkQueryPool name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eQueryPool, name); }
+        VkResult set_debug_name(VkBufferView name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eBufferView, name); }
+        VkResult set_debug_name(VkImageView name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eImageView, name); }
+        VkResult set_debug_name(VkShaderModule name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eShaderModule, name); }
+        VkResult set_debug_name(VkPipelineCache name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::ePipelineCache, name); }
+        VkResult set_debug_name(VkPipelineLayout name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::ePipelineLayout, name); }
+        VkResult set_debug_name(VkRenderPass name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eRenderPass, name); }
+        VkResult set_debug_name(VkPipeline name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::ePipeline, name); }
+        VkResult set_debug_name(VkDescriptorSetLayout name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eDescriptorSetLayout, name); }
+        VkResult set_debug_name(VkSampler name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eSampler, name); }
+        VkResult set_debug_name(VkDescriptorPool name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eDescriptorPool, name); }
+        VkResult set_debug_name(VkDescriptorSet name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eDescriptorSet, name); }
+        VkResult set_debug_name(VkFramebuffer name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eFramebuffer, name); }
+        VkResult set_debug_name(VkCommandPool name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eCommandPool, name); }
+        VkResult set_debug_name(VkSurfaceKHR name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eSurfaceKhr, name); }
+        VkResult set_debug_name(VkSwapchainKHR name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eSwapchainKhr, name); }
+        VkResult set_debug_name(VkDebugReportCallbackEXT name_me, const std::string &name) const  { return set_debug_name_impl((uint64_t)name_me, vk::DebugReportObjectTypeEXT::eDebugReport, name); }
+#endif
+
+        // Helpers for one-shot command buffers.
+        vk::CommandBuffer begin_one_shot_command_buffer(void) const;
+        vk::Result end_and_submit_one_shot_command_buffer(vk::CommandBuffer cb) const;
+
+        vk::Result allocate_device_memory(const vk::MemoryRequirements &mem_reqs, vk::MemoryPropertyFlags memory_properties_mask,
+            vk::DeviceMemory *out_mem, vk::DeviceSize *out_offset, DeviceMemoryAllocator *device_allocator = nullptr) const;
+        void free_device_memory(vk::DeviceMemory mem, vk::DeviceSize offset, DeviceMemoryAllocator *device_allocator = nullptr) const;
+        // Shortcuts for the most common types of allocations
+        vk::Result allocate_and_bind_image_memory(vk::Image image, vk::MemoryPropertyFlags memory_properties_mask,
+            vk::DeviceMemory *out_mem, vk::DeviceSize *out_offset, DeviceMemoryAllocator *device_allocator = nullptr) const;
+        vk::Result allocate_and_bind_buffer_memory(vk::Buffer buffer, vk::MemoryPropertyFlags memory_properties_mask,
+            vk::DeviceMemory *out_mem, vk::DeviceSize *out_offset, DeviceMemoryAllocator *device_allocator = nullptr) const;
+        // Helper to locate the optimal memory type for a given allocation.
+        uint32_t find_memory_type_index(const vk::MemoryRequirements &memory_reqs,
+            vk::MemoryPropertyFlags memory_properties_mask) const;
+
+        // Load buffer contents
+        vk::Result Context::load_buffer_contents(vk::Buffer dst_buffer,
+            const vk::BufferCreateInfo &dst_buffer_ci, vk::DeviceSize dst_offset,
+            const void *src_data, vk::DeviceSize src_size, vk::AccessFlags final_access_flags) const;
+
     private:
         const vk::AllocationCallbacks *allocation_callbacks_;
-
+        std::unique_ptr<DefaultDeviceMemoryAllocator> default_device_allocator;
         vk::Instance instance_;
         vk::DebugReportCallbackEXT debug_report_callback_;
-
+        
         vk::PhysicalDevice physical_device_;
         vk::PhysicalDeviceProperties physical_device_properties_;
         vk::PhysicalDeviceMemoryProperties physical_device_memory_properties_;
@@ -104,6 +318,9 @@ namespace cdsvk {
 
         vk::PipelineCache pipeline_cache_;
 
+        mutable std::mutex one_shot_cpool_mutex_;
+        vk::CommandPool one_shot_cpool_;
+
         // These members are only used if a present surface is passed at init time.
         vk::SurfaceKHR present_surface_;
         vk::Queue present_queue_;
@@ -113,6 +330,17 @@ namespace cdsvk {
         vk::SurfaceFormatKHR swapchain_surface_format_;
         std::vector<vk::Image> swapchain_images_;
         std::vector<vk::ImageView> swapchain_image_views_;
+
+        // Allocate/free host memory using the provided allocation callbacks (or the default allocator
+        // if no callbacks were provided)
+        void *Context::host_alloc(size_t size, size_t alignment, vk::SystemAllocationScope scope) const;
+        void Context::host_free(void *ptr) const;
+
+#if defined(VK_EXT_debug_marker)
+        PFN_vkDebugMarkerSetObjectNameEXT pfn_vkDebugMarkerSetObjectName;
+        PFN_vkDebugMarkerSetObjectTagEXT pfn_vkDebugMarkerSetObjectTag;
+        VkResult set_debug_name_impl(uint64_t object_as_u64, vk::DebugReportObjectTypeEXT object_type, const std::string &name) const;
+#endif
 
         std::vector<vk::LayerProperties> enabled_instance_layers_;
         std::vector<vk::ExtensionProperties> enabled_instance_extensions_;
@@ -127,9 +355,8 @@ namespace cdsvk {
 
 #if defined(CDS_VULKAN_IMPLEMENTATION)
 
-#ifndef CDSVK_NO_STDIO
-#   include <stdio.h>
-#endif
+#include <array>
+#include <stdio.h>
 
 #ifndef CDSVK_ASSERT
 #   include <assert.h>
@@ -191,7 +418,7 @@ static void cdsvk__log_default(const char *format, ...) {
 #if defined(_MSC_VER)
 #   define CDSVK__RETVAL_CHECK(expected, expr) \
     do {  \
-        int err = (expr);                             \
+        int err = (int)(expr);                             \
         if (err != (expected)) {                                            \
             CDSVK_LOG("%s(%d): error in %s() -- %s returned %d", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
             __debugbreak();                                                   \
@@ -204,7 +431,7 @@ static void cdsvk__log_default(const char *format, ...) {
 #elif defined(__ANDROID__)
 #   define CDSVK__RETVAL_CHECK(expected, expr) \
     do {  \
-        int err = (expr);                                                   \
+        int err = (int)(expr);                                                   \
         if (err != (expected)) {                                            \
             CDSVK_LOG("%s(%d): error in %s() -- %s returned %d", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
             /*__asm__("int $3"); */                 \
@@ -214,7 +441,7 @@ static void cdsvk__log_default(const char *format, ...) {
 #else
 #   define CDSVK__RETVAL_CHECK(expected, expr) \
     do {  \
-        int err = (expr);                                                   \
+        int err = (int)(expr);                                                   \
         if (err != (expected)) {                                            \
             CDSVK_LOG("%s(%d): error in %s() -- %s returned %d", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
             /*__asm__("int $3"); */                 \
@@ -247,59 +474,148 @@ static FILE *cdsvk__fopen(char const *filename, char const *mode)
 
 using namespace cdsvk;
 
-static void *cdsvk__host_alloc(size_t size, size_t alignment, VkSystemAllocationScope scope, const VkAllocationCallbacks *pAllocator)
-{
-    if (pAllocator)
-    {
-        return pAllocator->pfnAllocation(pAllocator->pUserData, size, alignment, scope);
+namespace {
+    vk::ImageAspectFlags vk_format_to_image_aspect(vk::Format format) {
+        switch(format) {
+        case vk::Format::eD16Unorm:
+        case vk::Format::eD32Sfloat:
+        case vk::Format::eX8D24UnormPack32:
+            return vk::ImageAspectFlagBits::eDepth;
+        case vk::Format::eD16UnormS8Uint:
+        case vk::Format::eD24UnormS8Uint:
+        case vk::Format::eD32SfloatS8Uint:
+            return vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil;
+        case vk::Format::eUndefined:
+            return static_cast<vk::ImageAspectFlagBits>(0);
+        default:
+            return vk::ImageAspectFlagBits::eColor;
+        }
     }
-    else
-    {
-#if defined(_MSC_VER)
-        return _mm_malloc(size, alignment);
-#else
-        return malloc(size); // TODO(cort): ignores alignment :(
+}  // namespace
+
+cdsvk::GraphicsPipelineCreateInfo::GraphicsPipelineCreateInfo() : 
+        graphics_pipeline_ci(),
+        shader_stage_cis(),
+        vertex_input_binding_descriptions(),
+        vertex_input_attribute_descriptions(),
+        vertex_input_state_ci(),
+        input_assembly_state_ci(),
+        tessellation_state_ci(),
+        viewports{},
+        scissor_rects{},
+        viewport_state_ci(),
+        rasterization_state_ci(),
+        multisample_state_ci(),
+        depth_stencil_state_ci(),
+        color_blend_attachment_states(),
+        color_blend_state_ci(),
+        dynamic_states(),
+        dynamic_state_ci() {
+}
+cdsvk::GraphicsPipelineCreateInfo::GraphicsPipelineCreateInfo(const GraphicsPipelineSettingsVsPs &settings) {
+    shader_stage_cis.reserve(2);
+    shader_stage_cis.push_back(vk::PipelineShaderStageCreateInfo(vk::PipelineShaderStageCreateFlags(),
+        vk::ShaderStageFlagBits::eVertex, settings.vertex_shader, "main", nullptr));
+    shader_stage_cis.push_back(vk::PipelineShaderStageCreateInfo(vk::PipelineShaderStageCreateFlags(),
+        vk::ShaderStageFlagBits::eFragment, settings.fragment_shader, "main", nullptr));
+
+    vertex_input_binding_descriptions.reserve(1); // TODO(cort): multiple vertex streams?
+    vertex_input_binding_descriptions.push_back(
+        vk::VertexInputBindingDescription(0, settings.vertex_buffer_layout.stride, settings.vertex_buffer_layout.input_rate));
+    vertex_input_attribute_descriptions = settings.vertex_buffer_layout.attributes;
+    for(auto &attr : vertex_input_attribute_descriptions) {
+        attr.binding = vertex_input_binding_descriptions[0].binding;
+    }
+    vertex_input_state_ci = vk::PipelineVertexInputStateCreateInfo(vk::PipelineVertexInputStateCreateFlags(),
+        (uint32_t)vertex_input_binding_descriptions.size(), vertex_input_binding_descriptions.data(),
+        (uint32_t)vertex_input_attribute_descriptions.size(), vertex_input_attribute_descriptions.data());
+
+    input_assembly_state_ci = vk::PipelineInputAssemblyStateCreateInfo(vk::PipelineInputAssemblyStateCreateFlags(),
+        settings.primitive_topology, VK_FALSE);
+
+    tessellation_state_ci = vk::PipelineTessellationStateCreateInfo();
+
+    viewports.resize(1);
+    viewports[0] = settings.viewport;
+    scissor_rects.resize(1);
+    scissor_rects[0] = settings.scissor_rect;
+    viewport_state_ci = vk::PipelineViewportStateCreateInfo(vk::PipelineViewportStateCreateFlags(),
+        (uint32_t)viewports.size(), viewports.data(), (uint32_t)scissor_rects.size(), scissor_rects.data());
+
+    rasterization_state_ci = vk::PipelineRasterizationStateCreateInfo()
+        .setPolygonMode(vk::PolygonMode::eFill)
+        .setCullMode(vk::CullModeFlagBits::eBack)
+        .setFrontFace(vk::FrontFace::eCounterClockwise)
+        .setLineWidth(1.0f);
+
+    multisample_state_ci = vk::PipelineMultisampleStateCreateInfo()
+        .setRasterizationSamples(vk::SampleCountFlagBits::e1);
+
+    depth_stencil_state_ci = vk::PipelineDepthStencilStateCreateInfo()
+        .setDepthTestEnable(VK_TRUE)
+        .setDepthWriteEnable(VK_TRUE)
+        .setDepthCompareOp(vk::CompareOp::eLessOrEqual)
+        .setStencilTestEnable(VK_FALSE);
+
+    color_blend_attachment_states.resize(settings.subpass_color_attachment_count);
+    for(auto &attachment : color_blend_attachment_states) {
+        attachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
+            | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+        attachment.blendEnable = VK_FALSE;
+    }
+    color_blend_state_ci = vk::PipelineColorBlendStateCreateInfo()
+        .setAttachmentCount((uint32_t)color_blend_attachment_states.size())
+        .setPAttachments(color_blend_attachment_states.data());
+
+    dynamic_states.reserve(VK_DYNAMIC_STATE_END_RANGE);
+    for(int iDS=VK_DYNAMIC_STATE_BEGIN_RANGE; iDS<=VK_DYNAMIC_STATE_END_RANGE; ++iDS) {
+        if (settings.dynamic_state_mask & (1<<iDS)) {
+            dynamic_states.push_back((vk::DynamicState)iDS);
+        }
+    }
+    dynamic_state_ci = vk::PipelineDynamicStateCreateInfo(vk::PipelineDynamicStateCreateFlags(),
+        (uint32_t)dynamic_states.size(), dynamic_states.data());
+
+    graphics_pipeline_ci = vk::GraphicsPipelineCreateInfo(vk::PipelineCreateFlags(),
+        (uint32_t)shader_stage_cis.size(), shader_stage_cis.data(), &vertex_input_state_ci,
+        &input_assembly_state_ci, &tessellation_state_ci, &viewport_state_ci,
+        &rasterization_state_ci, &multisample_state_ci, &depth_stencil_state_ci,
+        &color_blend_state_ci, &dynamic_state_ci, settings.pipeline_layout,
+        settings.render_pass, settings.subpass, VK_NULL_HANDLE, 0);
+}
+
+
+Context::Context(const ContextCreateInfo &context_ci) :
+        allocation_callbacks_(context_ci.allocation_callbacks),
+        default_device_allocator(),
+        instance_(),
+        debug_report_callback_(),
+        physical_device_(),
+        physical_device_properties_(),
+        physical_device_memory_properties_(),
+        physical_device_features_(),
+        device_(),
+        graphics_queue_family_index_(VK_QUEUE_FAMILY_IGNORED),
+        graphics_queue_family_properties_(),
+        graphics_queue_(),
+        pipeline_cache_(),
+        one_shot_cpool_mutex_(),
+        one_shot_cpool_(),
+        present_surface_(),
+        present_queue_(),
+        present_queue_family_index_(VK_QUEUE_FAMILY_IGNORED),
+        present_queue_family_properties_(),
+        swapchain_(),
+        swapchain_surface_format_({vk::Format::eUndefined, vk::ColorSpaceKHR::eSrgbNonlinear}),
+        swapchain_images_(),
+        swapchain_image_views_(),
+#if defined(VK_EXT_debug_marker)
+        pfn_vkDebugMarkerSetObjectName(nullptr),
+        pfn_vkDebugMarkerSetObjectTag(nullptr),
 #endif
-    }
-}
-static void cdsvk__host_free(void *ptr, const VkAllocationCallbacks *pAllocator)
-{
-    if (pAllocator)
-    {
-        return pAllocator->pfnFree(pAllocator->pUserData, ptr);
-    }
-    else
-    {
-#if defined(_MSC_VER)
-        return _mm_free(ptr);
-#else
-        return free(ptr);
-#endif
-    }
-}
-
-static vk::ImageAspectFlags cdsvk__image_aspect_from_format(vk::Format format)
-{
-    switch(format)
-    {
-    case vk::Format::eD16Unorm:
-    case vk::Format::eD32Sfloat:
-    case vk::Format::eX8D24UnormPack32:
-        return vk::ImageAspectFlagBits::eDepth;
-    case vk::Format::eD16UnormS8Uint:
-    case vk::Format::eD24UnormS8Uint:
-    case vk::Format::eD32SfloatS8Uint:
-        return vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil;
-    case vk::Format::eUndefined:
-        return static_cast<vk::ImageAspectFlagBits>(0);
-    default:
-        return vk::ImageAspectFlagBits::eColor;
-    }
-}
-
-Context::Context(const ContextCreateInfo &context_ci) {
-    allocation_callbacks_ = context_ci.allocation_callbacks;
-
+        enabled_instance_layers_(),
+        enabled_instance_extensions_(),
+        enabled_device_extensions_() {
     // Build a list of instance layers to enable
     {
         auto all_instance_layers = vk::enumerateInstanceLayerProperties();
@@ -566,19 +882,125 @@ Context::Context(const ContextCreateInfo &context_ci) {
         if (present_surface_) {
             present_queue_ = device_.getQueue(present_queue_family_index_, 0);
         }
+
+        default_device_allocator.reset(new DefaultDeviceMemoryAllocator(device_, allocation_callbacks_));
     }
 
     // TODO(cort): we can now assign debug names to things.
+    {
+#if defined(VK_EXT_debug_marker)
+        if (is_device_extension_enabled(VK_EXT_DEBUG_MARKER_EXTENSION_NAME))
+        {
+            pfn_vkDebugMarkerSetObjectName = (PFN_vkDebugMarkerSetObjectNameEXT)device_.getProcAddr("vkDebugMarkerSetObjectNameEXT");
+            pfn_vkDebugMarkerSetObjectTag  = (PFN_vkDebugMarkerSetObjectTagEXT)device_.getProcAddr("vkDebugMarkerSetObjectTagEXT");
+        } else {
+            pfn_vkDebugMarkerSetObjectName = nullptr;
+            pfn_vkDebugMarkerSetObjectTag  = nullptr;
+        }
+#endif
+        set_debug_name(instance_, "Context instance");
+        //set_debug_name(physical_device_, "Context physical device");
+        set_debug_name(device_, "Context logical device");
+    }
 
     // Create a pipeline cache. TODO(cort): optionally load cache contents from disk.
     {
         vk::PipelineCacheCreateInfo pipeline_cache_ci = {};
-        pipeline_cache_ = device_.createPipelineCache(pipeline_cache_ci, allocation_callbacks_);
+        pipeline_cache_ = create_pipeline_cache(pipeline_cache_ci, "Context pipeline cache");
     }
 
+    // Create a command pool for one-shot command buffers
+    {
+        vk::CommandPoolCreateInfo cpool_ci(vk::CommandPoolCreateFlagBits::eTransient, graphics_queue_family_index_);
+        one_shot_cpool_ = create_command_pool(cpool_ci, "Context one-shot command pool");
+    }
+
+    // Create swapchain. TODO(cort): Should this be moved outside the context? It seems common enough for this
+    // to be handled by a separate library.
+    if (present_surface_) {
+        vk::SurfaceCapabilitiesKHR surface_caps = physical_device_.getSurfaceCapabilitiesKHR(present_surface_);
+        vk::Extent2D swapchain_extent = surface_caps.currentExtent;
+        if ((int32_t)swapchain_extent.width == -1) {
+            CDSVK_ASSERT( (int32_t)swapchain_extent.height == -1 );
+            // TODO(cort): better defaults here, when we can't detect the present surface extent?
+            swapchain_extent.width =
+                CDSVK__CLAMP(1280, surface_caps.minImageExtent.width, surface_caps.maxImageExtent.width);
+            swapchain_extent.height =
+                CDSVK__CLAMP( 720, surface_caps.minImageExtent.height, surface_caps.maxImageExtent.height);
+        }
+
+        auto device_surface_formats = physical_device_.getSurfaceFormatsKHR(present_surface_);
+        if (device_surface_formats.size() == 1 && device_surface_formats[0].format == vk::Format::eUndefined) {
+            // No preferred format.
+            swapchain_surface_format_.format = vk::Format::eB8G8R8A8Unorm;
+            swapchain_surface_format_.colorSpace = vk::ColorSpaceKHR::eSrgbNonlinear;
+        } else {
+            CDSVK_ASSERT(device_surface_formats.size() >= 1);
+            swapchain_surface_format_ = device_surface_formats[0];
+        }
+
+        auto device_present_modes = physical_device_.getSurfacePresentModesKHR(present_surface_);
+        bool found_mailbox_mode = false;
+        for(auto mode : device_present_modes) {
+            if (mode == vk::PresentModeKHR::eMailbox) {
+                found_mailbox_mode = true;
+                break;
+            }
+        }
+        vk::PresentModeKHR present_mode = found_mailbox_mode
+            ? vk::PresentModeKHR::eMailbox : vk::PresentModeKHR::eFifo;
+
+        uint32_t desired_swapchain_image_count = surface_caps.minImageCount+1;
+        if (surface_caps.maxImageCount > 0 && desired_swapchain_image_count > surface_caps.maxImageCount) {
+            desired_swapchain_image_count = surface_caps.maxImageCount;
+        }
+
+        vk::SurfaceTransformFlagBitsKHR surface_transform = surface_caps.currentTransform;
+
+        vk::ImageUsageFlags swapchain_image_usage = vk::ImageUsageFlagBits(0)
+            | vk::ImageUsageFlagBits::eColorAttachment
+            | vk::ImageUsageFlagBits::eTransferDst
+            ;
+        CDSVK_ASSERT( (surface_caps.supportedUsageFlags & swapchain_image_usage) == swapchain_image_usage );
+
+        CDSVK_ASSERT(surface_caps.supportedCompositeAlpha); // at least one mode must be supported
+        CDSVK_ASSERT(surface_caps.supportedCompositeAlpha & vk::CompositeAlphaFlagBitsKHR::eOpaque);
+        vk::CompositeAlphaFlagBitsKHR composite_alpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
+
+        vk::SwapchainKHR old_swapchain = {};
+        vk::SwapchainCreateInfoKHR swapchain_ci(vk::SwapchainCreateFlagsKHR(), present_surface_,
+            desired_swapchain_image_count, swapchain_surface_format_.format, swapchain_surface_format_.colorSpace,
+            swapchain_extent, 1, swapchain_image_usage, vk::SharingMode::eExclusive, 0, nullptr,
+            surface_transform, composite_alpha, present_mode, VK_TRUE, old_swapchain);
+        swapchain_ = device_.createSwapchainKHR(swapchain_ci, allocation_callbacks_);
+        set_debug_name(swapchain_, "Context swapchain");
+        if (old_swapchain) {
+            device_.destroySwapchainKHR(old_swapchain, allocation_callbacks_);
+        }
+
+        swapchain_images_ = device_.getSwapchainImagesKHR(swapchain_);
+        vk::ImageViewCreateInfo image_view_ci(vk::ImageViewCreateFlags(),
+            VK_NULL_HANDLE, vk::ImageViewType::e2D,
+            swapchain_surface_format_.format, vk::ComponentMapping(),
+            vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+        swapchain_image_views_.reserve(swapchain_images_.size());
+        for(auto image : swapchain_images_) {
+            image_view_ci.image = image;
+            swapchain_image_views_.push_back(create_image_view(image_view_ci, "Swapchain image view"));
+        }
+    }
 }
 Context::~Context() {
     if (device_) {
+        device_.waitIdle();
+
+        default_device_allocator.reset();
+        destroy_command_pool(one_shot_cpool_);
+        for(auto view : swapchain_image_views_) {
+            device_.destroyImageView(view, allocation_callbacks_);
+        }
+        device_.destroySwapchainKHR(swapchain_);
+        device_.destroyPipelineCache(pipeline_cache_, allocation_callbacks_);
         device_.destroy(allocation_callbacks_);
     }
     if (present_surface_)
@@ -622,1448 +1044,413 @@ bool Context::is_device_extension_enabled(const std::string &extension_name) con
     return false;
 }
 
-#if 0
-CDSVKDEF VkResult cdsvk_init_device(cdsvk_context_create_info const * create_info, VkSurfaceKHR present_surface, cdsvk_context *context)
-{
-    VkResult result = VK_SUCCESS;
-
-    uint32_t physical_device_count = 0;
-    CDSVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, NULL) );
-    CDSVK_ASSERT(physical_device_count > 0);
-    VkPhysicalDevice *all_physical_devices = (VkPhysicalDevice*)cdsvk__host_alloc(physical_device_count * sizeof(VkPhysicalDevice),
-        sizeof(VkPhysicalDevice), VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE, context->allocation_callbacks);
-    CDSVK__CHECK( vkEnumeratePhysicalDevices(context->instance, &physical_device_count, all_physical_devices) );
-
-    // Select a physical device.
-    // Loop over all physical devices and all queue families of each device, looking for at least
-    // one queue that supports graphics & at least one that can present to the present surface. Preferably
-    // the same quque, but not always.
-    // TODO(cort): Right now, we use the first physical device that suits our needs. It may be worth trying harder
-    // to identify the *best* GPU in a multi-GPU system, >1 of which may fully support Vulkan.
-    // Maybe let the caller pass in an optional device name (which they've queried for themselves, or prompted a user for)
-    // and skip devices that don't match it?
-    bool found_graphics_queue_family = false;
-    bool found_present_queue_family = false;
-    uint32_t graphics_queue_family_index = UINT32_MAX;
-    uint32_t present_queue_family_index = UINT32_MAX;
-    VkDeviceQueueCreateInfo device_queue_create_infos[2] = {};
-    uint32_t device_queue_create_info_count = 0;
-    for(uint32_t iPD=0; iPD< physical_device_count; ++iPD)
-    {
-        found_graphics_queue_family = false;
-        found_present_queue_family = false;
-        graphics_queue_family_index = UINT32_MAX;
-        present_queue_family_index = UINT32_MAX;
-
-        uint32_t queue_family_count = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(all_physical_devices[iPD], &queue_family_count, NULL);
-        VkQueueFamilyProperties *queue_family_properties_all = (VkQueueFamilyProperties*)cdsvk__host_alloc(
-            queue_family_count * sizeof(VkQueueFamilyProperties), sizeof(VkQueueFamilyProperties*),
-            VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, context->allocation_callbacks);
-        vkGetPhysicalDeviceQueueFamilyProperties(all_physical_devices[iPD], &queue_family_count, queue_family_properties_all);
-
-        for(uint32_t iQF=0; iQF<queue_family_count; ++iQF)
-        {
-            bool queue_supports_graphics = (queue_family_properties_all[iQF].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
-            VkBool32 queue_supports_present = VK_FALSE;
-            CDSVK__CHECK( vkGetPhysicalDeviceSurfaceSupportKHR(all_physical_devices[iPD], iQF,
-                present_surface, &queue_supports_present) );
-            if (queue_supports_graphics && queue_supports_present)
-            {
-                // prefer a queue that supports both if possible.
-                graphics_queue_family_index = present_queue_family_index = iQF;
-                found_graphics_queue_family = found_present_queue_family = true;
-                context->graphics_queue_family_properties = queue_family_properties_all[iQF];
-                context->present_queue_family_properties  = queue_family_properties_all[iQF];
-            }
-            else
-            {
-                if (!found_present_queue_family && queue_supports_present)
-                {
-                    present_queue_family_index = iQF;
-                    found_present_queue_family = true;
-                    context->present_queue_family_properties = queue_family_properties_all[iQF];
-                }
-                if (!found_graphics_queue_family && queue_supports_graphics)
-                {
-                    graphics_queue_family_index = iQF;
-                    found_graphics_queue_family = true;
-                    context->graphics_queue_family_properties = queue_family_properties_all[iQF];
-                }
-            }
-            if (found_graphics_queue_family && found_present_queue_family)
-            {
-                break;
-            }
-        }
-        cdsvk__host_free(queue_family_properties_all, context->allocation_callbacks);
-        queue_family_properties_all = NULL;
-
-        if (found_present_queue_family && found_graphics_queue_family)
-        {
-            context->physical_device = all_physical_devices[iPD];
-            context->graphics_queue_family_index = graphics_queue_family_index;
-            context->present_queue_family_index  = present_queue_family_index;
-
-            uint32_t graphics_queue_count = context->graphics_queue_family_properties.queueCount;
-            float *graphics_queue_priorities = (float*)cdsvk__host_alloc(graphics_queue_count * sizeof(float),
-                sizeof(float), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, context->allocation_callbacks);
-            for(uint32_t iQ=0; iQ<graphics_queue_count; ++iQ) {
-                graphics_queue_priorities[iQ] = 1.0f;
-            }
-            device_queue_create_info_count += 1;
-            device_queue_create_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            device_queue_create_infos[0].pNext = NULL;
-            device_queue_create_infos[0].flags = 0;
-            device_queue_create_infos[0].queueFamilyIndex = graphics_queue_family_index;
-            device_queue_create_infos[0].queueCount = graphics_queue_count;
-            device_queue_create_infos[0].pQueuePriorities = graphics_queue_priorities;
-
-            if (present_queue_family_index != graphics_queue_family_index)
-            {
-                uint32_t present_queue_count = context->present_queue_family_properties.queueCount;
-                float *present_queue_priorities = (float*)cdsvk__host_alloc(present_queue_count * sizeof(float),
-                    sizeof(float), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, context->allocation_callbacks);
-                for(uint32_t iQ=0; iQ<present_queue_count; ++iQ) {
-                    present_queue_priorities[iQ] = 1.0f;
-                }
-                device_queue_create_info_count += 1;
-                device_queue_create_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-                device_queue_create_infos[1].pNext = NULL;
-                device_queue_create_infos[1].flags = 0;
-                device_queue_create_infos[1].queueFamilyIndex = present_queue_family_index;
-                device_queue_create_infos[1].queueCount = present_queue_count;
-                device_queue_create_infos[1].pQueuePriorities = present_queue_priorities;
-            }
-        }
-    }
-    CDSVK_ASSERT(found_graphics_queue_family && found_present_queue_family);
-    cdsvk__host_free(all_physical_devices, context->allocation_callbacks);
-    context->present_surface = present_surface;
-
-    vkGetPhysicalDeviceProperties(context->physical_device, &context->physical_device_properties);
-#if 0
-    CDSVK_LOG("Physical device #%u: '%s', API version %u.%u.%u",
-        0,
-        context->physical_device_properties.deviceName,
-        VK_VERSION_MAJOR(context->physical_device_properties.apiVersion),
-        VK_VERSION_MINOR(context->physical_device_properties.apiVersion),
-        VK_VERSION_PATCH(context->physical_device_properties.apiVersion));
-#endif
-
-    vkGetPhysicalDeviceMemoryProperties(context->physical_device, &context->physical_device_memory_properties);
-
-    vkGetPhysicalDeviceFeatures(context->physical_device, &context->physical_device_features);
-
-    // Tally up total extension count for all enabled layers (including NULL, which queries
-    // core extensions exposed by the driver).
-    uint32_t all_extension_count = 0;
-    for(int32_t iLayer = -1; iLayer < (int32_t)context->enabled_instance_layer_count; ++iLayer)
-    {
-        const char *layer_name = (iLayer == -1) ? NULL : context->enabled_instance_layers[iLayer].layerName;
-        uint32_t layer_extension_count = 0;
-        vkEnumerateDeviceExtensionProperties(context->physical_device, layer_name, &layer_extension_count, NULL);
-        all_extension_count += layer_extension_count;
-    }
-    // Construct a list of unique extensions provided by all layers.
-    VkExtensionProperties *all_extensions =
-        (VkExtensionProperties*)cdsvk__host_alloc(all_extension_count * sizeof(VkExtensionProperties),
-        sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_COMMAND, context->allocation_callbacks);
-    uint32_t unique_extension_count = 0;
-    for(int32_t iLayer = -1; iLayer < (int32_t)context->enabled_instance_layer_count; ++iLayer)
-    {
-        const char *layer_name = (iLayer == -1) ? NULL : context->enabled_instance_layers[iLayer].layerName;
-        uint32_t layer_extension_count = 0;
-        vkEnumerateDeviceExtensionProperties(context->physical_device, layer_name, &layer_extension_count, NULL);
-        CDSVK_ASSERT(unique_extension_count + layer_extension_count <= all_extension_count);
-        VkExtensionProperties *layer_extensions = all_extensions + unique_extension_count;
-        vkEnumerateDeviceExtensionProperties(context->physical_device, layer_name, &layer_extension_count,
-            layer_extensions);
-        for(uint32_t iExt = 0; iExt < layer_extension_count; ++iExt)
-        {
-            const char *ext_name = layer_extensions[iExt].extensionName;
-            int found = 0;
-            for(uint32_t jExt = 0; jExt < unique_extension_count; ++jExt)
-            {
-                if (strcmp(all_extensions[jExt].extensionName, ext_name) == 0)
-                {
-                    found = 1;
-                    break;
-                }
-            }
-            if (!found)
-            {
-                all_extensions[unique_extension_count++] = layer_extensions[iExt];
-            }
-        }
-    }
-    // Filter supported extensions into enabled extensions based on provided optional/required lists.
-    // Remove duplicates as we go; some loaders don't support them.
-    VkExtensionProperties *enabled_device_extensions =
-        (VkExtensionProperties*)cdsvk__host_alloc(unique_extension_count * sizeof(VkExtensionProperties),
-            sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, context->allocation_callbacks);
-    uint32_t enabled_device_extension_count = 0;
-    for(uint32_t iExt = 0; iExt < create_info->optional_device_extension_count; ++iExt)
-    {
-        const char *ext_name = create_info->optional_device_extension_names[iExt];
-        for(uint32_t jExtension = 0; jExtension < unique_extension_count; ++jExtension)
-        {
-            if (strcmp(ext_name, all_extensions[jExtension].extensionName) == 0)
-            {
-                if (all_extensions[jExtension].specVersion != 0xDEADC0DE)
-                {
-                    enabled_device_extensions[enabled_device_extension_count++] = all_extensions[jExtension];
-                    all_extensions[jExtension].specVersion = 0xDEADC0DE;
-                }
-                break;
-            }
-        }
-    }
-    for(uint32_t iExt = 0; iExt < create_info->required_device_extension_count; ++iExt)
-    {
-        const char *ext_name = create_info->required_device_extension_names[iExt];
-        int found = 0;
-        for(uint32_t jExtension = 0; jExtension < unique_extension_count; ++jExtension)
-        {
-            if (strcmp(ext_name, all_extensions[jExtension].extensionName) == 0)
-            {
-                if (all_extensions[jExtension].specVersion != 0xDEADC0DE)
-                {
-                    enabled_device_extensions[enabled_device_extension_count++] = all_extensions[jExtension];
-                    all_extensions[jExtension].specVersion = 0xDEADC0DE;
-                }
-                found = 1;
-                break;
-            }
-        }
-        if (!found)
-        {
-            result = VK_ERROR_EXTENSION_NOT_PRESENT;
-        }
-    }
-    cdsvk__host_free(all_extensions, context->allocation_callbacks);
-    if (result != VK_SUCCESS)
-    {
-        return result;
-    }
-    const char **enabled_device_extension_names =
-        (const char**)cdsvk__host_alloc(enabled_device_extension_count * sizeof(const char*),
-            sizeof(const char*), VK_SYSTEM_ALLOCATION_SCOPE_COMMAND, context->allocation_callbacks);
-    for(uint32_t iExt = 0; iExt < enabled_device_extension_count; ++iExt)
-    {
-        enabled_device_extension_names[iExt] = enabled_device_extensions[iExt].extensionName;
-    }
-
-    VkDeviceCreateInfo device_create_info = {};
-    device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    device_create_info.pNext = NULL;
-    device_create_info.flags = 0;
-    device_create_info.queueCreateInfoCount = device_queue_create_info_count;
-    device_create_info.pQueueCreateInfos = device_queue_create_infos;
-    device_create_info.enabledLayerCount = 0;
-    device_create_info.ppEnabledLayerNames = NULL;
-    device_create_info.enabledExtensionCount = enabled_device_extension_count;
-    device_create_info.ppEnabledExtensionNames = enabled_device_extension_names;
-    device_create_info.pEnabledFeatures = &context->physical_device_features;
-    CDSVK__CHECK( vkCreateDevice(context->physical_device, &device_create_info, context->allocation_callbacks, &context->device) );
-
-    cdsvk__host_free(enabled_device_extension_names, context->allocation_callbacks);
-    cdsvk__host_free((void*)device_create_info.pQueueCreateInfos[0].pQueuePriorities, context->allocation_callbacks);
-    cdsvk__host_free((void*)device_create_info.pQueueCreateInfos[1].pQueuePriorities, context->allocation_callbacks);
-
-    context->enabled_device_extension_count = enabled_device_extension_count;
-    context->enabled_device_extensions = enabled_device_extensions;
-
-#if VK_EXT_debug_marker
-    bool debug_marker_extension_loaded = false;
-    for(uint32_t iExt=0; iExt<context->enabled_device_extension_count; ++iExt)
-    {
-        if (strcmp(context->enabled_device_extensions[iExt].extensionName, "VK_EXT_debug_marker") == 0)
-        {
-            debug_marker_extension_loaded = true;
-            break;
-        }
-    }
-    if (debug_marker_extension_loaded)
-    {
-        cdsvk__DebugMarkerSetObjectNameEXT = (PFN_vkDebugMarkerSetObjectNameEXT)vkGetDeviceProcAddr(context->device,
-            "vkDebugMarkerSetObjectNameEXT");
-    }
-    // Name the things we've already created
-    CDSVK__CHECK(cdsvk_name_instance(context->device, context->instance, "cdsvk_context instance"));
-    CDSVK__CHECK(cdsvk_name_physical_device(context->device, context->physical_device, "cdsvk_context physical device"));
-    CDSVK__CHECK(cdsvk_name_device(context->device, context->device, "cdsvk_context device"));
-    CDSVK__CHECK(cdsvk_name_surface(context->device, present_surface, "cdsvk_context present surface"));
-    CDSVK__CHECK(cdsvk_name_debug_report_callback(context->device, context->debug_report_callback, "cdsvk_context debug report callback"));
-#endif
-
-    CDSVK_ASSERT(context->present_queue_family_properties.queueCount > 0);
-    vkGetDeviceQueue(context->device, context->present_queue_family_index, 0, &context->present_queue);
-    CDSVK_ASSERT(context->graphics_queue_family_properties.queueCount > 0);
-    vkGetDeviceQueue(context->device, context->graphics_queue_family_index, 0, &context->graphics_queue);
-
-    VkPipelineCacheCreateInfo pipeline_cache_create_info = {};
-    pipeline_cache_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-    pipeline_cache_create_info.pNext = NULL;
-    pipeline_cache_create_info.flags = 0;
-    pipeline_cache_create_info.initialDataSize = 0;
-    pipeline_cache_create_info.pInitialData = NULL;
-    context->pipeline_cache = cdsvk_create_pipeline_cache(context, &pipeline_cache_create_info, "pipeline cache");
-    return VK_SUCCESS;
-}
-
-CDSVKDEF VkResult cdsvk_init_swapchain(cdsvk_context_create_info const * /*create_info*/, cdsvk_context *context, VkSwapchainKHR old_swapchain)
-{
-    VkSurfaceCapabilitiesKHR surface_capabilities;
-    CDSVK__CHECK( vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physical_device, context->present_surface, &surface_capabilities) );
-    VkExtent2D swapchain_extent;
-    if ( (int32_t)surface_capabilities.currentExtent.width == -1 )
-    {
-        CDSVK_ASSERT( (int32_t)surface_capabilities.currentExtent.height == -1 );
-        // TODO(cort): better defaults here, when we can't detect the present surface extent?
-        swapchain_extent.width  = CDSVK__CLAMP(1280, surface_capabilities.minImageExtent.width,  surface_capabilities.maxImageExtent.width);
-        swapchain_extent.height = CDSVK__CLAMP( 720, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
-    }
-    else
-    {
-        swapchain_extent = surface_capabilities.currentExtent;
-    }
-    uint32_t device_surface_format_count = 0;
-    CDSVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->present_surface, &device_surface_format_count, NULL) );
-    VkSurfaceFormatKHR *device_surface_formats = (VkSurfaceFormatKHR*)cdsvk__host_alloc(device_surface_format_count * sizeof(VkSurfaceFormatKHR),
-        sizeof(VkSurfaceFormatKHR), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, context->allocation_callbacks);
-    CDSVK__CHECK( vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->present_surface, &device_surface_format_count, device_surface_formats) );
-    if (device_surface_format_count == 1 && device_surface_formats[0].format == VK_FORMAT_UNDEFINED)
-    {
-        // No preferred format.
-        context->swapchain_surface_format.format = VK_FORMAT_B8G8R8A8_UNORM;
-        context->swapchain_surface_format.colorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR;
-    }
-    else
-    {
-        assert(device_surface_format_count >= 1);
-        context->swapchain_surface_format = device_surface_formats[0];
-    }
-    cdsvk__host_free(device_surface_formats, context->allocation_callbacks);
-
-    uint32_t device_present_mode_count = 0;
-    CDSVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &device_present_mode_count, NULL) );
-    VkPresentModeKHR *device_present_modes = (VkPresentModeKHR*)cdsvk__host_alloc(device_present_mode_count * sizeof(VkPresentModeKHR),
-        sizeof(VkPresentModeKHR), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, context->allocation_callbacks);
-    CDSVK__CHECK( vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->present_surface, &device_present_mode_count, device_present_modes) );
-    VkPresentModeKHR swapchain_present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
-    bool found_mailbox_mode = false;
-    for(uint32_t iMode=0; iMode<device_present_mode_count; ++iMode) {
-      if (device_present_modes[iMode] == VK_PRESENT_MODE_MAILBOX_KHR) {
-        found_mailbox_mode = true;
-        break;
-      }
-    }
-    if (!found_mailbox_mode)
-      swapchain_present_mode = VK_PRESENT_MODE_FIFO_KHR;
-    cdsvk__host_free(device_present_modes, context->allocation_callbacks);
-
-    uint32_t desired_swapchain_image_count = surface_capabilities.minImageCount+1;
-    if (	surface_capabilities.maxImageCount > 0
-        &&	desired_swapchain_image_count > surface_capabilities.maxImageCount)
-    {
-        desired_swapchain_image_count = surface_capabilities.maxImageCount;
-    }
-    VkSurfaceTransformFlagBitsKHR swapchain_surface_transform;
-    if (0 != (surface_capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR))
-    {
-        swapchain_surface_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-    }
-    else
-    {
-        swapchain_surface_transform = surface_capabilities.currentTransform;
-    }
-
-    VkImageUsageFlags swapchain_image_usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    if (surface_capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
-    {
-        swapchain_image_usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT; // used for image clears
-    }
-    CDSVK_ASSERT( (swapchain_image_usage & surface_capabilities.supportedUsageFlags) == swapchain_image_usage );
-
-    CDSVK_ASSERT(surface_capabilities.supportedCompositeAlpha != 0);
-    VkCompositeAlphaFlagBitsKHR composite_alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    if ( !(surface_capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) )
-    {
-      composite_alpha = VkCompositeAlphaFlagBitsKHR(
-            int(surface_capabilities.supportedCompositeAlpha) &
-            -int(surface_capabilities.supportedCompositeAlpha) );
-    }
-
-    VkSwapchainCreateInfoKHR swapchain_create_info = {};
-    swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    swapchain_create_info.pNext = NULL;
-    swapchain_create_info.surface = context->present_surface;
-    swapchain_create_info.minImageCount = desired_swapchain_image_count;
-    swapchain_create_info.imageFormat = context->swapchain_surface_format.format;
-    swapchain_create_info.imageColorSpace = context->swapchain_surface_format.colorSpace;
-    swapchain_create_info.imageExtent.width = swapchain_extent.width;
-    swapchain_create_info.imageExtent.height = swapchain_extent.height;
-    swapchain_create_info.imageUsage = swapchain_image_usage;
-    swapchain_create_info.preTransform = swapchain_surface_transform;
-    swapchain_create_info.compositeAlpha = composite_alpha;
-    swapchain_create_info.imageArrayLayers = 1;
-    swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    swapchain_create_info.queueFamilyIndexCount = 0;
-    swapchain_create_info.pQueueFamilyIndices = NULL;
-    swapchain_create_info.presentMode = swapchain_present_mode;
-    swapchain_create_info.clipped = VK_TRUE;
-    swapchain_create_info.oldSwapchain = old_swapchain;
-    CDSVK__CHECK( vkCreateSwapchainKHR(context->device, &swapchain_create_info, context->allocation_callbacks, &context->swapchain) );
-    if (old_swapchain != VK_NULL_HANDLE)
-    {
-        vkDestroySwapchainKHR(context->device, old_swapchain, context->allocation_callbacks);
-    }
-
-    CDSVK__CHECK( vkGetSwapchainImagesKHR(context->device, context->swapchain, &context->swapchain_image_count, NULL) );
-    context->swapchain_images = (VkImage*)cdsvk__host_alloc(context->swapchain_image_count * sizeof(VkImage),
-        sizeof(VkImage), VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, context->allocation_callbacks);
-    CDSVK__CHECK( vkGetSwapchainImagesKHR(context->device, context->swapchain, &context->swapchain_image_count, context->swapchain_images) );
-
-    VkImageViewCreateInfo image_view_create_info = {};
-    image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    image_view_create_info.pNext = NULL;
-    image_view_create_info.flags = 0;
-    image_view_create_info.format = context->swapchain_surface_format.format;
-    image_view_create_info.components = {};
-    image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-    image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-    image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-    image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-    image_view_create_info.subresourceRange = {};
-    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    image_view_create_info.subresourceRange.baseMipLevel = 0;
-    image_view_create_info.subresourceRange.levelCount = 1;
-    image_view_create_info.subresourceRange.baseArrayLayer = 0;
-    image_view_create_info.subresourceRange.layerCount = 1;
-    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    image_view_create_info.image = VK_NULL_HANDLE; // filled in below
-    context->swapchain_image_views = (VkImageView*)cdsvk__host_alloc(context->swapchain_image_count * sizeof(VkImageView),
-        sizeof(VkImageView), VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, context->allocation_callbacks);
-    for(uint32_t iSCI=0; iSCI<context->swapchain_image_count; iSCI+=1)
-    {
-        image_view_create_info.image = context->swapchain_images[iSCI];
-        context->swapchain_image_views[iSCI] = cdsvk_create_image_view(context, &image_view_create_info, "swapchain image view");
-    }
-
-    return VK_SUCCESS;
-}
-
-CDSVKDEF void cdsvk_destroy_context(cdsvk_context *context)
-{
-    vkDeviceWaitIdle(context->device);
-
-    for(uint32_t iSCI=0; iSCI<context->swapchain_image_count; ++iSCI)
-    {
-        vkDestroyImageView(context->device, context->swapchain_image_views[iSCI], context->allocation_callbacks);
-    }
-    cdsvk__host_free(context->swapchain_image_views, context->allocation_callbacks);
-    context->swapchain_image_views = NULL;
-    cdsvk__host_free(context->swapchain_images, context->allocation_callbacks);
-    context->swapchain_images = NULL;
-    vkDestroySwapchainKHR(context->device, context->swapchain, context->allocation_callbacks);
-
-    vkDestroyPipelineCache(context->device, context->pipeline_cache, context->allocation_callbacks);
-
-    vkDestroyDevice(context->device, context->allocation_callbacks);
-    context->device = VK_NULL_HANDLE;
-
-    if (context->debug_report_callback != VK_NULL_HANDLE)
-    {
-        PFN_vkDestroyDebugReportCallbackEXT DestroyDebugReportCallback =
-            (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(context->instance, "vkDestroyDebugReportCallbackEXT");
-        DestroyDebugReportCallback(context->instance, context->debug_report_callback, context->allocation_callbacks);
-    }
-
-    vkDestroySurfaceKHR(context->instance, context->present_surface, context->allocation_callbacks);
-
-    vkDestroyInstance(context->instance, context->allocation_callbacks);
-    context->instance = VK_NULL_HANDLE;
-
-    cdsvk__host_free((VkLayerProperties*)(context->enabled_instance_layers), context->allocation_callbacks);
-    cdsvk__host_free((VkExtensionProperties*)(context->enabled_instance_extensions), context->allocation_callbacks);
-    cdsvk__host_free((VkExtensionProperties*)(context->enabled_device_extensions), context->allocation_callbacks);
-
-    context->allocation_callbacks = NULL;
-    *context = {};
-}
-
-CDSVKDEF int cdsvk_is_instance_layer_enabled(cdsvk_context const *context, const char *layer_name)
-{
-    for(uint32_t iLayer = 0; iLayer < context->enabled_instance_layer_count; ++iLayer)
-    {
-        if (strcmp(layer_name, context->enabled_instance_layers[iLayer].layerName) == 0)
-        {
-            return 1;
-        }
-    }
-    return 0;
-}
-CDSVKDEF int cdsvk_is_instance_extension_enabled(cdsvk_context const *context, const char *extension_name)
-{
-    for(uint32_t iExt = 0; iExt < context->enabled_instance_extension_count; ++iExt)
-    {
-        if (strcmp(extension_name, context->enabled_instance_extensions[iExt].extensionName) == 0)
-        {
-            return 1;
-        }
-    }
-    return 0;
-}
-CDSVKDEF int cdsvk_is_device_extension_enabled(cdsvk_context const *context, const char *extension_name)
-{
-    for(uint32_t iExt = 0; iExt < context->enabled_device_extension_count; ++iExt)
-    {
-        if (strcmp(extension_name, context->enabled_device_extensions[iExt].extensionName) == 0)
-        {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-
-//////////////////////// Device memory allocation
-
-CDSVKDEF VkResult cdsvk_allocate_device_memory(cdsvk_context const *context, VkMemoryRequirements const *mem_reqs,
-    cdsvk_device_memory_arena const *arena, VkMemoryPropertyFlags memory_properties_mask, const char *name,
-    VkDeviceMemory *out_mem, VkDeviceSize *out_offset)
-{
-    VkMemoryAllocateInfo memory_allocate_info = {};
-    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memory_allocate_info.pNext = NULL;
-    memory_allocate_info.allocationSize = mem_reqs->size;
-    memory_allocate_info.memoryTypeIndex = cdsvk_find_memory_type_index(&context->physical_device_memory_properties,
-        mem_reqs, memory_properties_mask);
-    CDSVK_ASSERT(memory_allocate_info.memoryTypeIndex < VK_MAX_MEMORY_TYPES);
-
-    return cdsvk__device_alloc(context, &memory_allocate_info, mem_reqs->alignment, arena, name,
-        out_mem, out_offset);
-}
-
-CDSVKDEF void cdsvk_free_device_memory(cdsvk_context const *context, cdsvk_device_memory_arena const *arena,
-    VkDeviceMemory mem, VkDeviceSize offset)
-{
-    return cdsvk__device_free(context, arena, mem, offset);
-}
-
-CDSVKDEF VkResult cdsvk_allocate_and_bind_image_memory(cdsvk_context const *context, VkImage image,
-    cdsvk_device_memory_arena const *arena, VkMemoryPropertyFlags memory_properties_mask, const char *name,
-    VkDeviceMemory *out_mem, VkDeviceSize *out_offset)
-{
-    VkMemoryRequirements mem_reqs = {};
-    vkGetImageMemoryRequirements(context->device, image, &mem_reqs);
-    VkResult result = cdsvk_allocate_device_memory(context, &mem_reqs, arena, memory_properties_mask,
-        name, out_mem, out_offset);
-    if (result != VK_SUCCESS)
-        return result;
-    return vkBindImageMemory(context->device, image, *out_mem, *out_offset);
-}
-CDSVKDEF VkResult cdsvk_allocate_and_bind_buffer_memory(cdsvk_context const *context, VkBuffer buffer,
-    cdsvk_device_memory_arena const *arena, VkMemoryPropertyFlags memory_properties_mask, const char *name,
-    VkDeviceMemory *out_mem, VkDeviceSize *out_offset)
-{
-    VkMemoryRequirements mem_reqs = {};
-    vkGetBufferMemoryRequirements(context->device, buffer, &mem_reqs);
-    VkResult result = cdsvk_allocate_device_memory(context, &mem_reqs, arena, memory_properties_mask,
-        name, out_mem, out_offset);
-    if (result != VK_SUCCESS)
-        return result;
-    return vkBindBufferMemory(context->device, buffer, *out_mem, *out_offset);
-}
-
-CDSVKDEF uint32_t cdsvk_find_memory_type_index(VkPhysicalDeviceMemoryProperties const *device_memory_properties,
-    VkMemoryRequirements const *memory_reqs, VkMemoryPropertyFlags memory_properties_mask)
-{
-    for(uint32_t iMemType=0; iMemType<VK_MAX_MEMORY_TYPES; iMemType+=1)
-    {
-        if (	(memory_reqs->memoryTypeBits & (1<<iMemType)) != 0
-            &&	(device_memory_properties->memoryTypes[iMemType].propertyFlags & memory_properties_mask) == memory_properties_mask)
-        {
-            return iMemType;
-        }
-    }
-    return VK_MAX_MEMORY_TYPES; /* invalid index */
-}
-
-
-///////////////////////////// Object creation/deletion helpers
-
-CDSVKDEF VkCommandPool cdsvk_create_command_pool(cdsvk_context const *context, VkCommandPoolCreateInfo const *ci, const char *name)
-{
-    VkCommandPool cpool = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateCommandPool(context->device, ci, context->allocation_callbacks, &cpool));
-    CDSVK__CHECK(cdsvk_name_command_pool(context->device, cpool, name));
-    return cpool;
-}
-CDSVKDEF void cdsvk_destroy_command_pool(cdsvk_context const *context, VkCommandPool cpool)
-{
-    vkDestroyCommandPool(context->device, cpool, context->allocation_callbacks);
-}
-
-CDSVKDEF VkSemaphore cdsvk_create_semaphore(cdsvk_context const *context, VkSemaphoreCreateInfo const *ci, const char *name)
-{
-    VkSemaphore semaphore = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateSemaphore(context->device, ci, context->allocation_callbacks, &semaphore));
-    CDSVK__CHECK(cdsvk_name_semaphore(context->device, semaphore, name));
-    return semaphore;
-}
-CDSVKDEF void cdsvk_destroy_semaphore(cdsvk_context const *context, VkSemaphore semaphore)
-{
-    vkDestroySemaphore(context->device, semaphore, context->allocation_callbacks);
-}
-
-CDSVKDEF VkFence cdsvk_create_fence(cdsvk_context const *context, VkFenceCreateInfo const *ci, const char *name)
-{
-    VkFence fence = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateFence(context->device, ci, context->allocation_callbacks, &fence));
-    CDSVK__CHECK(cdsvk_name_fence(context->device, fence, name));
-    return fence;
-}
-CDSVKDEF void cdsvk_destroy_fence(cdsvk_context const *context, VkFence fence)
-{
-    vkDestroyFence(context->device, fence, context->allocation_callbacks);
-}
-
-CDSVKDEF VkEvent cdsvk_create_event(cdsvk_context const *context, VkEventCreateInfo const *ci, const char *name)
-{
-    VkEvent event = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateEvent(context->device, ci, context->allocation_callbacks, &event));
-    CDSVK__CHECK(cdsvk_name_event(context->device, event, name));
-    return event;
-}
-CDSVKDEF void cdsvk_destroy_event(cdsvk_context const *context, VkEvent event)
-{
-    vkDestroyEvent(context->device, event, context->allocation_callbacks);
-}
-
-CDSVKDEF VkQueryPool cdsvk_create_query_pool(cdsvk_context const *context, VkQueryPoolCreateInfo const *ci, const char *name)
-{
-    VkQueryPool pool = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateQueryPool(context->device, ci, context->allocation_callbacks, &pool));
-    CDSVK__CHECK(cdsvk_name_query_pool(context->device, pool, name));
-    return pool;
-}
-CDSVKDEF void cdsvk_destroy_query_pool(cdsvk_context const *context, VkQueryPool pool)
-{
-    vkDestroyQueryPool(context->device, pool, context->allocation_callbacks);
-}
-
-CDSVKDEF VkPipelineCache cdsvk_create_pipeline_cache(cdsvk_context const *context, VkPipelineCacheCreateInfo const *ci, const char *name)
-{
-    VkPipelineCache cache = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreatePipelineCache(context->device, ci, context->allocation_callbacks, &cache));
-    CDSVK__CHECK(cdsvk_name_pipeline_cache(context->device, cache, name));
-    return cache;
-}
-CDSVKDEF void cdsvk_destroy_pipeline_cache(cdsvk_context const *context, VkPipelineCache cache)
-{
-    vkDestroyPipelineCache(context->device, cache, context->allocation_callbacks);
-}
-
-CDSVKDEF VkPipelineLayout cdsvk_create_pipeline_layout(cdsvk_context const *context, VkPipelineLayoutCreateInfo const *ci, const char *name)
-{
-    VkPipelineLayout layout = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreatePipelineLayout(context->device, ci, context->allocation_callbacks, &layout));
-    CDSVK__CHECK(cdsvk_name_pipeline_layout(context->device, layout, name));
-    return layout;
-}
-CDSVKDEF void cdsvk_destroy_pipeline_layout(cdsvk_context const *context, VkPipelineLayout layout)
-{
-    vkDestroyPipelineLayout(context->device, layout, context->allocation_callbacks);
-}
-
-CDSVKDEF VkRenderPass cdsvk_create_render_pass(cdsvk_context const *context, VkRenderPassCreateInfo const *ci, const char *name)
-{
-    VkRenderPass render_pass = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateRenderPass(context->device, ci, context->allocation_callbacks, &render_pass));
-    CDSVK__CHECK(cdsvk_name_render_pass(context->device, render_pass, name));
-    return render_pass;
-}
-CDSVKDEF void cdsvk_destroy_render_pass(cdsvk_context const *context, VkRenderPass render_pass)
-{
-    vkDestroyRenderPass(context->device, render_pass, context->allocation_callbacks);
-}
-
-CDSVKDEF VkPipeline cdsvk_create_graphics_pipeline(cdsvk_context const *context, VkGraphicsPipelineCreateInfo const *ci, const char *name)
-{
-    VkPipeline pipeline = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateGraphicsPipelines(context->device, context->pipeline_cache, 1, ci, context->allocation_callbacks, &pipeline));
-    CDSVK__CHECK(cdsvk_name_pipeline(context->device, pipeline, name));
-    return pipeline;
-}
-CDSVKDEF VkPipeline cdsvk_create_compute_pipeline(cdsvk_context const *context, VkComputePipelineCreateInfo const *ci, const char *name)
-{
-    VkPipeline pipeline = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateComputePipelines(context->device, context->pipeline_cache, 1, ci, context->allocation_callbacks, &pipeline));
-    CDSVK__CHECK(cdsvk_name_pipeline(context->device, pipeline, name));
-    return pipeline;
-}
-CDSVKDEF void cdsvk_destroy_pipeline(cdsvk_context const *context, VkPipeline pipeline)
-{
-    vkDestroyPipeline(context->device, pipeline, context->allocation_callbacks);
-}
-
-CDSVKDEF VkDescriptorSetLayout cdsvk_create_descriptor_set_layout(cdsvk_context const *context, VkDescriptorSetLayoutCreateInfo const *ci, const char *name)
-{
-    VkDescriptorSetLayout layout = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateDescriptorSetLayout(context->device, ci, context->allocation_callbacks, &layout));
-    CDSVK__CHECK(cdsvk_name_descriptor_set_layout(context->device, layout, name));
-    return layout;
-}
-CDSVKDEF void cdsvk_destroy_descriptor_set_layout(cdsvk_context const *context, VkDescriptorSetLayout layout)
-{
-    vkDestroyDescriptorSetLayout(context->device, layout, context->allocation_callbacks);
-}
-
-CDSVKDEF VkSampler cdsvk_create_sampler(cdsvk_context const *context, VkSamplerCreateInfo const *ci, const char *name)
-{
-    VkSampler sampler = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateSampler(context->device, ci, context->allocation_callbacks, &sampler));
-    CDSVK__CHECK(cdsvk_name_sampler(context->device, sampler, name));
-    return sampler;
-}
-CDSVKDEF void cdsvk_destroy_sampler(cdsvk_context const *context, VkSampler sampler)
-{
-    vkDestroySampler(context->device, sampler, context->allocation_callbacks);
-}
-
-CDSVKDEF VkFramebuffer cdsvk_create_framebuffer(cdsvk_context const *context, VkFramebufferCreateInfo const *ci, const char *name)
-{
-    VkFramebuffer framebuffer = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateFramebuffer(context->device, ci, context->allocation_callbacks, &framebuffer));
-    CDSVK__CHECK(cdsvk_name_framebuffer(context->device, framebuffer, name));
-    return framebuffer;
-}
-CDSVKDEF void cdsvk_destroy_framebuffer(cdsvk_context const *context, VkFramebuffer framebuffer)
-{
-    vkDestroyFramebuffer(context->device, framebuffer, context->allocation_callbacks);
-}
-
-CDSVKDEF VkBuffer cdsvk_create_buffer(cdsvk_context const *context, VkBufferCreateInfo const *ci,
-    const char *name)
-{
-    VkBuffer buffer = VK_NULL_HANDLE;
-    CDSVK__CHECK( vkCreateBuffer(context->device, ci, context->allocation_callbacks, &buffer) );
-    CDSVK__CHECK(cdsvk_name_buffer(context->device, buffer, name));
-    return buffer;
-}
-
-CDSVKDEF void cdsvk_destroy_buffer(cdsvk_context const *context, VkBuffer buffer)
-{
-    vkDestroyBuffer(context->device, buffer, context->allocation_callbacks);
-}
-
-CDSVKDEF VkBufferView cdsvk_create_buffer_view(cdsvk_context const *context, VkBufferViewCreateInfo const *ci,
-    const char *name)
-{
-    VkBufferView view = VK_NULL_HANDLE;
-    CDSVK__CHECK( vkCreateBufferView(context->device, ci, context->allocation_callbacks, &view) );
-    CDSVK__CHECK(cdsvk_name_buffer_view(context->device, view, name));
-    return view;
-}
-
-CDSVKDEF VkBufferView cdsvk_create_buffer_view_from_buffer(cdsvk_context const *context, VkBuffer buffer,
-    VkFormat format, const char *name)
-{
-    VkBufferViewCreateInfo view_ci = {};
-    view_ci.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
-    view_ci.buffer = buffer;
-    view_ci.format = format;
-    view_ci.offset = 0;
-    view_ci.range = VK_WHOLE_SIZE;
-    return cdsvk_create_buffer_view(context, &view_ci, name);
-}
-
-CDSVKDEF void cdsvk_destroy_buffer_view(cdsvk_context const *context, VkBufferView view)
-{
-    vkDestroyBufferView(context->device, view, context->allocation_callbacks);
-}
-
-CDSVKDEF VkImage cdsvk_create_image(cdsvk_context const *context, VkImageCreateInfo const *ci,
-    VkImageLayout final_layout, VkAccessFlags final_access_flags, const char *name)
-{
-    VkImage image = VK_NULL_HANDLE;
-    CDSVK__CHECK( vkCreateImage(context->device, ci, context->allocation_callbacks, &image) );
-    CDSVK__CHECK(cdsvk_name_image(context->device, image, name));
-    if (final_layout != ci->initialLayout)
-    {
-        VkCommandPoolCreateInfo cpool_ci;
-        cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        cpool_ci.pNext = NULL;
-        cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-        cpool_ci.queueFamilyIndex = context->graphics_queue_family_index;
-        VkCommandPool cpool = cdsvk_create_command_pool(context, &cpool_ci, "cdsvk_create_image temp cpool");
-
-        VkFenceCreateInfo fence_ci;
-        fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fence_ci.pNext = NULL;
-        fence_ci.flags = 0;
-        VkFence fence = cdsvk_create_fence(context, &fence_ci, "cdsvk_create_image temp fence");
-
-        VkCommandBufferAllocateInfo cb_allocate_info = {};
-        cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        cb_allocate_info.pNext = NULL;
-        cb_allocate_info.commandPool = cpool;
-        cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        cb_allocate_info.commandBufferCount = 1;
-        VkCommandBuffer cb = VK_NULL_HANDLE;
-        CDSVK__CHECK( vkAllocateCommandBuffers(context->device, &cb_allocate_info, &cb) );
-        VkCommandBufferBeginInfo cb_begin_info = {};
-        cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        cb_begin_info.pNext = NULL;
-        cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        cb_begin_info.pInheritanceInfo = NULL;
-        CDSVK__CHECK( vkBeginCommandBuffer(cb, &cb_begin_info) );
-
-        VkImageSubresourceRange sub_range;
-        sub_range.aspectMask = cdsvk__image_aspect_from_format(ci->format);
-        sub_range.baseMipLevel = 0;
-        sub_range.baseArrayLayer = 0;
-        sub_range.levelCount = VK_REMAINING_MIP_LEVELS;
-        sub_range.layerCount = VK_REMAINING_ARRAY_LAYERS;
-        VkImageMemoryBarrier img_barrier = {};
-        img_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        img_barrier.pNext = NULL;
-        img_barrier.srcAccessMask = 0;
-        img_barrier.dstAccessMask = final_access_flags;
-        img_barrier.oldLayout = ci->initialLayout;
-        img_barrier.newLayout = final_layout;
-        img_barrier.image = image;
-        img_barrier.subresourceRange = sub_range;
-        vkCmdPipelineBarrier(cb,
-            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
-            0,NULL, 0,NULL, 1,&img_barrier);
-
-        CDSVK__CHECK( vkEndCommandBuffer(cb) );
-        VkSubmitInfo submit_info = {};
-        submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit_info.pNext = NULL;
-        submit_info.waitSemaphoreCount = 0;
-        submit_info.pWaitSemaphores = NULL;
-        submit_info.pWaitDstStageMask = NULL;
-        submit_info.commandBufferCount = 1;
-        submit_info.pCommandBuffers = &cb;
-        submit_info.signalSemaphoreCount = 0;
-        submit_info.pSignalSemaphores = NULL;
-        CDSVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence) );
-        CDSVK__CHECK( vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX) );
-        cdsvk_destroy_fence(context, fence);
-        cdsvk_destroy_command_pool(context, cpool);
-    }
-    return image;
-}
-CDSVKDEF void cdsvk_destroy_image(cdsvk_context const *context, VkImage image)
-{
-    vkDestroyImage(context->device, image, context->allocation_callbacks);
-}
-
-CDSVKDEF VkImageView cdsvk_create_image_view(cdsvk_context const *context, VkImageViewCreateInfo const *ci, const char *name)
-{
-    VkImageView image_view = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateImageView(context->device, ci, context->allocation_callbacks, &image_view));
-    CDSVK__CHECK(cdsvk_name_image_view(context->device, image_view, name));
-    return image_view;
-}
-CDSVKDEF VkImageView cdsvk_create_image_view_from_image(cdsvk_context const *context, VkImage image,
-    VkImageCreateInfo const *image_ci, const char *name)
-{
-    VkImageViewCreateInfo view_ci = {};
-    view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    view_ci.image = image;
-    if (image_ci->imageType == VK_IMAGE_TYPE_1D)
-    {
-        view_ci.viewType = (image_ci->arrayLayers == 1) ? VK_IMAGE_VIEW_TYPE_1D : VK_IMAGE_VIEW_TYPE_1D_ARRAY;
-    }
-    else if (image_ci->imageType == VK_IMAGE_TYPE_2D)
-    {
-        if (image_ci->flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
-        {
-            assert((image_ci->arrayLayers) % 6 == 0);
-            view_ci.viewType = (image_ci->arrayLayers == 6) ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
-        }
-        else
-        {
-            view_ci.viewType = (image_ci->arrayLayers == 1) ? VK_IMAGE_VIEW_TYPE_2D : VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-        }
-    }
-    else if (image_ci->imageType == VK_IMAGE_TYPE_3D)
-    {
-        view_ci.viewType = VK_IMAGE_VIEW_TYPE_3D;
-    }
-    view_ci.format = image_ci->format;
-    view_ci.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-    view_ci.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-    view_ci.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-    view_ci.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-    view_ci.subresourceRange.aspectMask = cdsvk__image_aspect_from_format(view_ci.format);
-    view_ci.subresourceRange.baseMipLevel = 0;
-    view_ci.subresourceRange.levelCount = image_ci->mipLevels;
-    view_ci.subresourceRange.baseArrayLayer = 0;
-    view_ci.subresourceRange.layerCount = image_ci->arrayLayers;
-    return cdsvk_create_image_view(context, &view_ci, name);
-}
-CDSVKDEF void cdsvk_destroy_image_view(cdsvk_context const *context, VkImageView imageView)
-{
-    vkDestroyImageView(context->device, imageView, context->allocation_callbacks);
-}
-
-CDSVKDEF VkDescriptorPool cdsvk_create_descriptor_pool(cdsvk_context const *context,
-    const VkDescriptorPoolCreateInfo *ci, const char *name)
-{
-    VkDescriptorPool dpool = VK_NULL_HANDLE;
-    CDSVK__CHECK(vkCreateDescriptorPool(context->device, ci, context->allocation_callbacks, &dpool));
-    CDSVK__CHECK(cdsvk_name_descriptor_pool(context->device, dpool, name));
-    return dpool;
-}
-
-CDSVKDEF VkDescriptorPool cdsvk_create_descriptor_pool_from_layout(cdsvk_context const *c, const VkDescriptorSetLayoutCreateInfo *layout_ci, uint32_t max_sets,
-    VkDescriptorPoolCreateFlags flags, const char *name)
-{
-    // TODO(cort): should this function take an array of layout_cis and set its sizes based on the total descriptor counts
-    // across all sets? That would allow one monolithic pool for each thread, instead of one per descriptor set.
-    // max_sets would need to be an array as well most likely: the number of instances of each set.
-	VkDescriptorPoolSize pool_sizes[VK_DESCRIPTOR_TYPE_RANGE_SIZE];
-	for(int iType=0; iType<VK_DESCRIPTOR_TYPE_RANGE_SIZE; ++iType)
-	{
-		pool_sizes[iType].descriptorCount = 0;
-        pool_sizes[iType].type = (VkDescriptorType)iType;
-	}
-	for(uint32_t iBinding=0; iBinding<layout_ci->bindingCount; iBinding+=1)
-    {
-        CDSVK_ASSERT(
-            layout_ci->pBindings[iBinding].descriptorType >= VK_DESCRIPTOR_TYPE_BEGIN_RANGE &&
-            layout_ci->pBindings[iBinding].descriptorType <= VK_DESCRIPTOR_TYPE_END_RANGE);
-		pool_sizes[ layout_ci->pBindings[iBinding].descriptorType ].descriptorCount +=
-            layout_ci->pBindings[iBinding].descriptorCount;
-	}
-
-	VkDescriptorPoolCreateInfo pool_ci = {};
-    pool_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_ci.pNext = NULL;
-    pool_ci.flags = flags;
-	pool_ci.maxSets = max_sets;
-    pool_ci.poolSizeCount = VK_DESCRIPTOR_TYPE_RANGE_SIZE;
-    pool_ci.pPoolSizes = pool_sizes;
-    return cdsvk_create_descriptor_pool(c, &pool_ci, name);
-}
-
-CDSVKDEF void cdsvk_destroy_descriptor_pool(cdsvk_context const *c, VkDescriptorPool pool)
-{
-    vkDestroyDescriptorPool(c->device, pool, c->allocation_callbacks);
-}
-
-CDSVKDEF VkResult cdsvk_buffer_load_contents(cdsvk_context const *context, VkBuffer dst_buffer,
-    VkBufferCreateInfo const *dst_ci, VkDeviceSize dst_offset,
-    const void *src_data, VkDeviceSize src_size, VkAccessFlagBits final_access_flags)
-{
-    // TODO(cort): Make sure I'm clear that dst_offset is relative to buffer start, not relative
-    // to the backing VkDeviceMemory objects!
-    CDSVK_ASSERT(src_size <= dst_offset + dst_ci->size);
-    CDSVK_ASSERT(dst_ci->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-    (void)dst_ci; // only needed for asserts
-
-    VkBufferCreateInfo staging_buffer_create_info = {};
-    staging_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    staging_buffer_create_info.pNext = NULL;
-    staging_buffer_create_info.flags = 0;
-    staging_buffer_create_info.size = src_size;
-    staging_buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    staging_buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    staging_buffer_create_info.queueFamilyIndexCount = 0;
-    staging_buffer_create_info.pQueueFamilyIndices = NULL;
-    VkBuffer staging_buffer = cdsvk_create_buffer(context, &staging_buffer_create_info,
-        "cdsvk_buffer_load_contents() staging");
-    // TODO(cort): pass an arena to allocate from
-    cdsvk_device_memory_arena *device_arena = NULL;
-    VkDeviceMemory staging_buffer_mem = VK_NULL_HANDLE;
-    VkDeviceSize staging_buffer_mem_offset = 0;
-    CDSVK__CHECK(cdsvk_allocate_and_bind_buffer_memory(context, staging_buffer, device_arena,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        "cdsvk_buffer_load_contents() staging buffer memory",
-        &staging_buffer_mem, &staging_buffer_mem_offset));
-
-    void *mapped_data = NULL;
-    VkMemoryMapFlags map_flags = 0;
-    CDSVK__CHECK( vkMapMemory(context->device, staging_buffer_mem, 0, src_size, map_flags, &mapped_data) );
-    memcpy(mapped_data, src_data, src_size);
-    vkUnmapMemory(context->device, staging_buffer_mem);
-
-    VkCommandPoolCreateInfo cpool_ci;
-    cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    cpool_ci.pNext = NULL;
-    cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-    cpool_ci.queueFamilyIndex = context->graphics_queue_family_index;
-    VkCommandPool cpool = cdsvk_create_command_pool(context, &cpool_ci, "cdsvk_buffer_load_contents temp cpool");
-
-    VkFenceCreateInfo fence_ci = {};
-    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_ci.pNext = NULL;
-    fence_ci.flags = 0;
-    VkFence fence = cdsvk_create_fence(context, &fence_ci, "cdsvk_buffer_load_contents temp fence");
-
-    VkCommandBufferAllocateInfo cb_allocate_info = {};
-    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cb_allocate_info.pNext = NULL;
-    cb_allocate_info.commandPool = cpool;
-    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cb_allocate_info.commandBufferCount = 1;
-    VkCommandBuffer cb = VK_NULL_HANDLE;
-    CDSVK__CHECK( vkAllocateCommandBuffers(context->device, &cb_allocate_info, &cb) );
-    CDSVK__CHECK(cdsvk_name_command_buffer(context->device, cb, "cdsvk_load_buffer_contents() cb"));
-    VkCommandBufferBeginInfo cb_begin_info = {};
-    cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cb_begin_info.pNext = NULL;
-    cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
-    cb_begin_info.pInheritanceInfo = NULL;
-    CDSVK__CHECK( vkBeginCommandBuffer(cb, &cb_begin_info) );
-
-    VkBufferMemoryBarrier buf_barriers[2] = {};
-    buf_barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    buf_barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-    buf_barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    buf_barriers[0].srcQueueFamilyIndex = context->graphics_queue_family_index;
-    buf_barriers[0].dstQueueFamilyIndex = context->graphics_queue_family_index;
-    buf_barriers[0].buffer = staging_buffer;
-    buf_barriers[0].offset = 0;
-    buf_barriers[0].size = src_size;
-    buf_barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    buf_barriers[1].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
-    buf_barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    buf_barriers[1].srcQueueFamilyIndex = context->graphics_queue_family_index;
-    buf_barriers[1].dstQueueFamilyIndex = context->graphics_queue_family_index;
-    buf_barriers[1].buffer = dst_buffer;
-    buf_barriers[1].offset = dst_offset;
-    buf_barriers[1].size = src_size;
-    vkCmdPipelineBarrier(cb,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
-        0,NULL, 2,buf_barriers, 0,NULL);
-
-    VkBufferCopy buffer_copy_region = {};
-    buffer_copy_region.srcOffset = 0;
-    buffer_copy_region.dstOffset = dst_offset;
-    buffer_copy_region.size = src_size;
-    vkCmdCopyBuffer(cb, staging_buffer, dst_buffer, 1, &buffer_copy_region);
-
-    buf_barriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    buf_barriers[1].dstAccessMask = final_access_flags;
-    vkCmdPipelineBarrier(cb,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
-        0,NULL, 1,&buf_barriers[1], 0,NULL);
-
-    CDSVK__CHECK( vkEndCommandBuffer(cb) );
-    VkSubmitInfo submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.pNext = NULL;
-    submit_info.waitSemaphoreCount = 0;
-    submit_info.pWaitSemaphores = NULL;
-    submit_info.pWaitDstStageMask = NULL;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &cb;
-    submit_info.signalSemaphoreCount = 0;
-    submit_info.pSignalSemaphores = NULL;
-    CDSVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence) );
-    CDSVK__CHECK( vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX) );
-
-    cdsvk_free_device_memory(context, device_arena, staging_buffer_mem, staging_buffer_mem_offset);
-    cdsvk_destroy_buffer(context, staging_buffer);
-    cdsvk_destroy_fence(context, fence);
-    cdsvk_destroy_command_pool(context, cpool);
-
-    return VK_SUCCESS;
-}
-
-static VkImage cdsvk__create_staging_image(cdsvk_context const *context, VkImageCreateInfo const *final_ci,
-    VkImageSubresource subresource)
-{
-    VkImageCreateInfo staging_ci = *final_ci;
-    staging_ci.flags &= ~VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-    staging_ci.tiling = VK_IMAGE_TILING_LINEAR;
-    staging_ci.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    staging_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    staging_ci.queueFamilyIndexCount = 0;
-    staging_ci.pQueueFamilyIndices = NULL;
-    staging_ci.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
-    staging_ci.arrayLayers = 1;
-    staging_ci.mipLevels = 1;
-    staging_ci.extent.width  = cdsvk__max(final_ci->extent.width  >> subresource.mipLevel, 1U);
-    staging_ci.extent.height = cdsvk__max(final_ci->extent.height >> subresource.mipLevel, 1U);
-    staging_ci.extent.depth  = cdsvk__max(final_ci->extent.depth  >> subresource.mipLevel, 1U);
-    return cdsvk_create_image(context, &staging_ci, staging_ci.initialLayout, 0, "cdsvk staging image");
-}
-
-CDSVKDEF VkSubresourceLayout cdsvk_image_get_subresource_source_layout(cdsvk_context const *context,
-    VkImageCreateInfo const *ci, VkImageSubresource subresource)
-{
-    // TODO(cort): validate subresource against image bounds
-    VkImage staging_image_temp = cdsvk__create_staging_image(context, ci, subresource);
-    VkSubresourceLayout sub_layout;
-    vkGetImageSubresourceLayout(context->device, staging_image_temp, &subresource, &sub_layout);
-    cdsvk_destroy_image(context, staging_image_temp);
-    return sub_layout;
-}
-
-CDSVKDEF VkResult cdsvk_image_load_subresource(cdsvk_context const *context, VkImage dst_image,
-    VkImageCreateInfo const *dst_ci, VkImageSubresource subresource, VkSubresourceLayout subresource_layout,
-    VkImageLayout final_image_layout, VkAccessFlagBits final_access_flags, void const *pixels)
-{
-    CDSVK_ASSERT(dst_ci->usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-
-    VkImage staging_image = cdsvk__create_staging_image(context, dst_ci, subresource);
-    // TODO(cort): pass in a device_arena to allocate from.
-    cdsvk_device_memory_arena *device_arena = NULL;
-    VkDeviceMemory staging_device_memory = VK_NULL_HANDLE;
-    VkDeviceSize staging_memory_offset = 0;
-    CDSVK__CHECK(cdsvk_allocate_and_bind_image_memory(context, staging_image, device_arena,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        "cdsvk_image_load_subresource() staging image memory",
-        &staging_device_memory, &staging_memory_offset));
-
-    VkSubresourceLayout layout_sanity_check = {};
-    vkGetImageSubresourceLayout(context->device, staging_image, &subresource, &layout_sanity_check);
-    CDSVK_ASSERT(
-        layout_sanity_check.offset     == subresource_layout.offset &&
-        layout_sanity_check.size       == subresource_layout.size &&
-        layout_sanity_check.rowPitch   == subresource_layout.rowPitch &&
-        layout_sanity_check.arrayPitch == subresource_layout.arrayPitch &&
-        layout_sanity_check.depthPitch == subresource_layout.depthPitch);
-
-    void *mapped_subresource_data = NULL;
-    VkMemoryMapFlags memory_map_flags = 0;
-    // TODO(cort): return memory reqs from allocate_and_bind functions
-    VkMemoryRequirements staging_memory_reqs = {};
-    vkGetImageMemoryRequirements(context->device, staging_image, &staging_memory_reqs);
-    CDSVK__CHECK( vkMapMemory(context->device, staging_device_memory, staging_memory_offset,
-        staging_memory_reqs.size, memory_map_flags, &mapped_subresource_data) );
-    memcpy(mapped_subresource_data, pixels, subresource_layout.size);
-    vkUnmapMemory(context->device, staging_device_memory);
-
-    VkCommandPoolCreateInfo cpool_ci;
-    cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    cpool_ci.pNext = NULL;
-    cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-    cpool_ci.queueFamilyIndex = context->graphics_queue_family_index;
-    VkCommandPool cpool = cdsvk_create_command_pool(context, &cpool_ci, "cdsvk_image_load_subresource temp cpool");
-
-    VkFenceCreateInfo fence_ci = {};
-    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_ci.pNext = NULL;
-    fence_ci.flags = 0;
-    VkFence fence = cdsvk_create_fence(context, &fence_ci, "cdsvk_image_load_subresource temp fence");
-
-    VkCommandBufferAllocateInfo cb_allocate_info = {};
-    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cb_allocate_info.pNext = NULL;
-    cb_allocate_info.commandPool = cpool;
-    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cb_allocate_info.commandBufferCount = 1;
-    VkCommandBuffer cb = VK_NULL_HANDLE;
-    CDSVK__CHECK( vkAllocateCommandBuffers(context->device, &cb_allocate_info, &cb) );
-    CDSVK__CHECK(cdsvk_name_command_buffer(context->device, cb, "cdsvk_image_load_subresource cb"));
-    VkCommandBufferBeginInfo cb_begin_info = {};
-    cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cb_begin_info.pNext = NULL;
-    cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT ;
-    cb_begin_info.pInheritanceInfo = NULL;
-    CDSVK__CHECK( vkBeginCommandBuffer(cb, &cb_begin_info) );
-
-    VkImageSubresourceRange src_sub_range = {};
-    src_sub_range.aspectMask = cdsvk__image_aspect_from_format(dst_ci->format);
-    src_sub_range.baseMipLevel = 0;
-    src_sub_range.baseArrayLayer = 0;
-    src_sub_range.levelCount = 1;
-    src_sub_range.layerCount = 1;
-    VkImageSubresourceRange dst_sub_range = {};
-    dst_sub_range.aspectMask = src_sub_range.aspectMask;
-    dst_sub_range.baseMipLevel = subresource.mipLevel;
-    dst_sub_range.levelCount = 1;
-    dst_sub_range.baseArrayLayer = subresource.arrayLayer;
-    dst_sub_range.layerCount = 1;
-    VkImageMemoryBarrier img_barriers[2] = {};
-    img_barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    img_barriers[0].pNext = NULL;
-    img_barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-    img_barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    img_barriers[0].oldLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
-    img_barriers[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    img_barriers[0].image = staging_image;
-    img_barriers[0].subresourceRange = src_sub_range;
-    img_barriers[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    img_barriers[1].pNext = NULL;
-    img_barriers[1].srcAccessMask = 0;
-    img_barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    img_barriers[1].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    img_barriers[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    img_barriers[1].image = dst_image;
-    img_barriers[1].subresourceRange = dst_sub_range;
-    vkCmdPipelineBarrier(cb,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
-        0,NULL, 0,NULL, 2,img_barriers);
-
-    VkImageCopy copy_region = {};
-    copy_region.srcSubresource.aspectMask = src_sub_range.aspectMask;
-    copy_region.srcSubresource.baseArrayLayer = src_sub_range.baseArrayLayer;
-    copy_region.srcSubresource.layerCount = src_sub_range.layerCount;
-    copy_region.srcSubresource.mipLevel = src_sub_range.baseMipLevel;
-    copy_region.srcOffset.x = 0;
-    copy_region.srcOffset.y = 0;
-    copy_region.srcOffset.z = 0;
-    copy_region.dstSubresource.aspectMask = dst_sub_range.aspectMask;
-    copy_region.dstSubresource.baseArrayLayer = dst_sub_range.baseArrayLayer;
-    copy_region.dstSubresource.layerCount = dst_sub_range.layerCount;
-    copy_region.dstSubresource.mipLevel = dst_sub_range.baseMipLevel;
-    copy_region.dstOffset.x = 0;
-    copy_region.dstOffset.y = 0;
-    copy_region.dstOffset.z = 0;
-    copy_region.extent.width  = cdsvk__max(dst_ci->extent.width  >> subresource.mipLevel, 1U);
-    copy_region.extent.height = cdsvk__max(dst_ci->extent.height >> subresource.mipLevel, 1U);
-    copy_region.extent.depth  = cdsvk__max(dst_ci->extent.depth  >> subresource.mipLevel, 1U);
-    vkCmdCopyImage(cb,
-        staging_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
-
-    img_barriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    img_barriers[1].dstAccessMask = final_access_flags;
-    img_barriers[1].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    img_barriers[1].newLayout = final_image_layout;
-    vkCmdPipelineBarrier(cb,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
-        0,NULL, 0,NULL, 1,&img_barriers[1]);
-
-    CDSVK__CHECK( vkEndCommandBuffer(cb) );
-    VkSubmitInfo submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.pNext = NULL;
-    submit_info.waitSemaphoreCount = 0;
-    submit_info.pWaitSemaphores = NULL;
-    submit_info.pWaitDstStageMask = NULL;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &cb;
-    submit_info.signalSemaphoreCount = 0;
-    submit_info.pSignalSemaphores = NULL;
-    CDSVK__CHECK( vkQueueSubmit(context->graphics_queue, 1, &submit_info, fence) );
-    CDSVK__CHECK( vkWaitForFences(context->device, 1, &fence, VK_TRUE, UINT64_MAX) );
-
-    cdsvk_free_device_memory(context, device_arena, staging_device_memory, staging_memory_offset);
-    cdsvk_destroy_image(context, staging_image);
-    cdsvk_destroy_fence(context, fence);
-    cdsvk_destroy_command_pool(context, cpool);
-
-    return VK_SUCCESS;
-}
-
 ////////////////////// Shader module loading
 
-#ifndef CDSVK_NO_STDIO
-CDSVKDEF VkShaderModule cdsvk_load_shader_from_file(cdsvk_context const *c, FILE *f, int len, const char *name)
-{
-    void *shader_bin = cdsvk__host_alloc(len, sizeof(void*), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, c->allocation_callbacks);
-    size_t bytes_read = fread(shader_bin, 1, len, f);
-    if ( (int)bytes_read != len)
-    {
-        cdsvk__host_free(shader_bin, c->allocation_callbacks);
-        return VK_NULL_HANDLE;
-    }
-    VkShaderModule shader_module = cdsvk_load_shader_from_memory(c, (const cdsvk_uc*)shader_bin, len, name);
-    cdsvk__host_free(shader_bin, c->allocation_callbacks);
-    return shader_module;
+vk::ShaderModule Context::load_shader_from_memory(const void *buffer, int len) const {
+    CDSVK_ASSERT( (len % sizeof(uint32_t)) == 0);
+    vk::ShaderModuleCreateInfo shader_ci(vk::ShaderModuleCreateFlags(), len,
+        static_cast<const uint32_t*>(buffer));
+    vk::ShaderModule shader = device_.createShaderModule(shader_ci, allocation_callbacks_);
+    return shader;
 }
-CDSVKDEF VkShaderModule cdsvk_load_shader(cdsvk_context const *c, char const *filename)
-{
-    FILE *spv_file = cdsvk__fopen(filename, "rb");
-    if (!spv_file)
-    {
+vk::ShaderModule Context::load_shader_from_file(FILE *f, int len) const {
+    std::vector<uint8_t> shader_bin(len);
+    size_t bytes_read = fread(shader_bin.data(), 1, len, f);
+    if ( (int)bytes_read != len) {
+        return vk::ShaderModule();
+    }
+    return load_shader_from_memory(shader_bin.data(), len);
+}
+vk::ShaderModule Context::load_shader(const std::string &filename) const {
+    FILE *spv_file = cdsvk__fopen(filename.c_str(), "rb");
+    if (!spv_file) {
         return VK_NULL_HANDLE;
     }
     fseek(spv_file, 0, SEEK_END);
     long spv_file_size = ftell(spv_file);
     fseek(spv_file, 0, SEEK_SET);
-    VkShaderModule shader_module = cdsvk_load_shader_from_file(c, spv_file, spv_file_size, filename);
+    vk::ShaderModule shader = load_shader_from_file(spv_file, spv_file_size);
     fclose(spv_file);
-    return shader_module;
+    return shader;
 }
-#endif
-
-CDSVKDEF VkShaderModule cdsvk_load_shader_from_memory(cdsvk_context const *c, cdsvk_uc const *buffer, int len, const char *name)
-{
-    VkShaderModuleCreateInfo smci = {};
-    smci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    smci.pNext = NULL;
-    smci.flags = 0;
-    smci.codeSize = len;
-    smci.pCode = (uint32_t*)buffer;
-    VkShaderModule shader_module = VK_NULL_HANDLE;
-    CDSVK__CHECK( vkCreateShaderModule(c->device, &smci, c->allocation_callbacks, &shader_module) );
-    CDSVK__CHECK(cdsvk_name_shader_module(c->device, shader_module, name));
-    return shader_module;
-}
-CDSVKDEF VkShaderModule cdsvk_load_shader_from_callbacks(cdsvk_context const * /*c*/, cdsvk_io_callbacks const * /*clbk*/, void * /*user*/,
-    const char * /*name*/)
-{
-    return VK_NULL_HANDLE;
+void Context::destroy_shader(vk::ShaderModule shader) const {
+    device_.destroyShaderModule(shader, allocation_callbacks_);
 }
 
-CDSVKDEF void cdsvk_destroy_shader(cdsvk_context const *c, VkShaderModule shader)
-{
-    vkDestroyShaderModule(c->device, shader, c->allocation_callbacks);
+vk::CommandPool Context::create_command_pool(const vk::CommandPoolCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createCommandPool(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_command_pool(vk::CommandPool cpool) const {
+    device_.destroyCommandPool(cpool, allocation_callbacks_);
 }
 
+vk::Semaphore Context::create_semaphore(const vk::SemaphoreCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createSemaphore(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_semaphore(vk::Semaphore semaphore) const {
+    device_.destroySemaphore(semaphore, allocation_callbacks_);
+}
 
-////////////////////////// VkGraphicsPipelineCreateInfo helpers
+vk::Fence Context::create_fence(const vk::FenceCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createFence(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_fence(vk::Fence fence) const {
+    device_.destroyFence(fence, allocation_callbacks_);
+}
 
-CDSVKDEF int cdsvk_prepare_graphics_pipeline_create_info_vsps(
-    cdsvk_graphics_pipeline_settings_vsps const *settings,
-    cdsvk_graphics_pipeline_create_info *out_create_info)
-{
-    *out_create_info = {};
+vk::Event Context::create_event(const vk::EventCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createEvent(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_event(vk::Event event) const {
+    device_.destroyEvent(event, allocation_callbacks_);
+}
 
-    out_create_info->shader_stage_create_infos[0] = {};
-    out_create_info->shader_stage_create_infos[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    out_create_info->shader_stage_create_infos[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    out_create_info->shader_stage_create_infos[0].module = settings->vertex_shader;
-    out_create_info->shader_stage_create_infos[0].pName = "main";
-    out_create_info->shader_stage_create_infos[1] = {};
-    out_create_info->shader_stage_create_infos[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    out_create_info->shader_stage_create_infos[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    out_create_info->shader_stage_create_infos[1].module = settings->fragment_shader;
-    out_create_info->shader_stage_create_infos[1].pName = "main";
+vk::QueryPool Context::create_query_pool(const VkQueryPoolCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createQueryPool(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_query_pool(vk::QueryPool pool) const {
+    device_.destroyQueryPool(pool, allocation_callbacks_);
+}
 
-    out_create_info->vertex_input_state_create_info = {};
-    out_create_info->vertex_input_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    out_create_info->vertex_input_state_create_info.pNext = NULL;
-    out_create_info->vertex_input_state_create_info.flags = 0;
-    out_create_info->vertex_input_state_create_info.vertexBindingDescriptionCount = 1;
-    out_create_info->vertex_input_state_create_info.pVertexBindingDescriptions = out_create_info->vertex_input_binding_descriptions;
-    CDSVK_ASSERT(settings->vertex_buffer_layout.attribute_count <=
-        sizeof(out_create_info->vertex_input_attribute_descriptions) / sizeof(out_create_info->vertex_input_attribute_descriptions[0]));
-    out_create_info->vertex_input_state_create_info.vertexAttributeDescriptionCount = settings->vertex_buffer_layout.attribute_count;
-    out_create_info->vertex_input_state_create_info.pVertexAttributeDescriptions = out_create_info->vertex_input_attribute_descriptions;
-    out_create_info->vertex_input_binding_descriptions[0] = {};
-    out_create_info->vertex_input_binding_descriptions[0].binding = 0;
-    out_create_info->vertex_input_binding_descriptions[0].stride = settings->vertex_buffer_layout.stride;
-    out_create_info->vertex_input_binding_descriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    for(uint32_t iAttr=0; iAttr<settings->vertex_buffer_layout.attribute_count; ++iAttr)
-    {
-        out_create_info->vertex_input_attribute_descriptions[iAttr] = settings->vertex_buffer_layout.attributes[iAttr];
-        out_create_info->vertex_input_attribute_descriptions[iAttr].binding = out_create_info->vertex_input_binding_descriptions[0].binding;
+vk::PipelineCache Context::create_pipeline_cache(const vk::PipelineCacheCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createPipelineCache(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_pipeline_cache(vk::PipelineCache cache) const {
+    device_.destroyPipelineCache(cache, allocation_callbacks_);
+}
+
+vk::PipelineLayout Context::create_pipeline_layout(const vk::PipelineLayoutCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createPipelineLayout(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_pipeline_layout(vk::PipelineLayout layout) const {
+    device_.destroyPipelineLayout(layout, allocation_callbacks_);
+}
+
+vk::RenderPass Context::create_render_pass(const vk::RenderPassCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createRenderPass(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_render_pass(vk::RenderPass render_pass) const {
+    device_.destroyRenderPass(render_pass, allocation_callbacks_);
+}
+
+vk::Pipeline Context::create_graphics_pipeline(const vk::GraphicsPipelineCreateInfo &ci, const std::string &name) const {
+    vk::Pipeline object;
+    CDSVK__CHECK(device_.createGraphicsPipelines(pipeline_cache_, 1, &ci, allocation_callbacks_, &object));
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+vk::Pipeline Context::create_compute_pipeline(const vk::ComputePipelineCreateInfo &ci, const std::string &name) const {
+    vk::Pipeline object;
+    CDSVK__CHECK(device_.createComputePipelines(pipeline_cache_, 1, &ci, allocation_callbacks_, &object));
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_pipeline(vk::Pipeline pipeline) const {
+    device_.destroyPipeline(pipeline, allocation_callbacks_);
+}
+
+vk::DescriptorSetLayout Context::create_descriptor_set_layout(const vk::DescriptorSetLayoutCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createDescriptorSetLayout(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_descriptor_set_layout(vk::DescriptorSetLayout layout) const {
+    device_.destroyDescriptorSetLayout(layout, allocation_callbacks_);
+}
+
+vk::Sampler Context::create_sampler(const vk::SamplerCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createSampler(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_sampler(vk::Sampler sampler) const {
+    device_.destroySampler(sampler, allocation_callbacks_);
+}
+
+vk::Framebuffer Context::create_framebuffer(const vk::FramebufferCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createFramebuffer(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_framebuffer(vk::Framebuffer framebuffer) const {
+    device_.destroyFramebuffer(framebuffer, allocation_callbacks_);
+}
+
+vk::Buffer Context::create_buffer(const vk::BufferCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createBuffer(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+void Context::destroy_buffer(vk::Buffer buffer) const {
+    device_.destroyBuffer(buffer, allocation_callbacks_);
+}
+
+vk::BufferView Context::create_buffer_view(const vk::BufferViewCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createBufferView(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+vk::BufferView Context::create_buffer_view(vk::Buffer buffer, vk::Format format, const std::string &name) const {
+    vk::BufferViewCreateInfo view_ci(vk::BufferViewCreateFlags(), buffer, format, 0, VK_WHOLE_SIZE);
+    return create_buffer_view(view_ci, name);
+}
+void Context::destroy_buffer_view(vk::BufferView view) const {
+    device_.destroyBufferView(view, allocation_callbacks_);
+}
+
+vk::Image Context::create_image(const vk::ImageCreateInfo &ci, vk::ImageLayout final_layout,
+        vk::AccessFlags final_access_flags, const std::string &name) const {
+    auto object = device_.createImage(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    if (ci.initialLayout != final_layout) {
+        // Transition to final layout
+        vk::ImageSubresourceRange sub_range(vk_format_to_image_aspect(ci.format),
+            0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS);
+        vk::ImageMemoryBarrier img_barrier(vk::AccessFlags(), final_access_flags, ci.initialLayout, final_layout,
+            graphics_queue_family_index_, graphics_queue_family_index_, object, sub_range);
+        vk::CommandBuffer cb = begin_one_shot_command_buffer();
+        cb.pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands, vk::PipelineStageFlagBits::eAllCommands,
+            vk::DependencyFlags(), nullptr, nullptr, img_barrier);
+        end_and_submit_one_shot_command_buffer(cb);
     }
+    return object;
+}
+void Context::destroy_image(vk::Image image) const {
+    device_.destroyImage(image, allocation_callbacks_);
+}
 
-    out_create_info->input_assembly_state_create_info = {};
-    out_create_info->input_assembly_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    out_create_info->input_assembly_state_create_info.pNext = NULL;
-    out_create_info->input_assembly_state_create_info.flags = 0;
-    out_create_info->input_assembly_state_create_info.topology = settings->primitive_topology;
-
-    out_create_info->tessellation_state_create_info = {};
-    out_create_info->tessellation_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO;
-    out_create_info->tessellation_state_create_info.pNext = NULL;
-    out_create_info->tessellation_state_create_info.flags = 0;
-
-    out_create_info->viewport_state_create_info = {};
-    out_create_info->viewport_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    out_create_info->viewport_state_create_info.pNext = NULL;
-    out_create_info->viewport_state_create_info.flags = 0;
-    out_create_info->viewport_state_create_info.viewportCount = 1;
-    out_create_info->viewport_state_create_info.pViewports = out_create_info->viewports;
-    out_create_info->viewport_state_create_info.scissorCount = 1;
-    out_create_info->viewport_state_create_info.pScissors = out_create_info->scissor_rects;
-    out_create_info->viewports[0] = settings->viewport;
-    out_create_info->scissor_rects[0] = settings->scissor_rect;
-
-    out_create_info->rasterization_state_create_info = {};
-    out_create_info->rasterization_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    out_create_info->rasterization_state_create_info.pNext = NULL;
-    out_create_info->rasterization_state_create_info.flags = 0;
-    out_create_info->rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_FILL;
-    out_create_info->rasterization_state_create_info.cullMode = VK_CULL_MODE_BACK_BIT;
-    out_create_info->rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    out_create_info->rasterization_state_create_info.depthClampEnable = VK_FALSE;
-    out_create_info->rasterization_state_create_info.rasterizerDiscardEnable = VK_FALSE;
-    out_create_info->rasterization_state_create_info.depthBiasEnable = VK_FALSE;
-    out_create_info->rasterization_state_create_info.lineWidth = 1.0f;
-
-    out_create_info->multisample_state_create_info = {};
-    out_create_info->multisample_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    out_create_info->multisample_state_create_info.pNext = NULL;
-    out_create_info->multisample_state_create_info.flags = 0;
-    out_create_info->multisample_state_create_info.pSampleMask = NULL;
-    out_create_info->multisample_state_create_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-    out_create_info->multisample_state_create_info.sampleShadingEnable = VK_FALSE;
-
-    out_create_info->depth_stencil_state_create_info = {};
-    out_create_info->depth_stencil_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    out_create_info->depth_stencil_state_create_info.pNext = NULL;
-    out_create_info->depth_stencil_state_create_info.flags = 0;
-    out_create_info->depth_stencil_state_create_info.depthTestEnable = VK_TRUE;
-    out_create_info->depth_stencil_state_create_info.depthWriteEnable = VK_TRUE;
-    out_create_info->depth_stencil_state_create_info.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
-    out_create_info->depth_stencil_state_create_info.depthBoundsTestEnable = VK_FALSE;
-    out_create_info->depth_stencil_state_create_info.back = {};
-    out_create_info->depth_stencil_state_create_info.back.failOp = VK_STENCIL_OP_KEEP;
-    out_create_info->depth_stencil_state_create_info.back.passOp = VK_STENCIL_OP_KEEP;
-    out_create_info->depth_stencil_state_create_info.back.compareOp = VK_COMPARE_OP_ALWAYS;
-    out_create_info->depth_stencil_state_create_info.front = {};
-    out_create_info->depth_stencil_state_create_info.front.failOp = VK_STENCIL_OP_KEEP;
-    out_create_info->depth_stencil_state_create_info.front.passOp = VK_STENCIL_OP_KEEP;
-    out_create_info->depth_stencil_state_create_info.front.compareOp = VK_COMPARE_OP_ALWAYS;
-    out_create_info->depth_stencil_state_create_info.stencilTestEnable = VK_FALSE;
-
-    out_create_info->color_blend_state_create_info = {};
-    out_create_info->color_blend_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    out_create_info->color_blend_state_create_info.pNext = NULL;
-    out_create_info->color_blend_state_create_info.flags = 0;
-    out_create_info->color_blend_state_create_info.attachmentCount = settings->subpass_color_attachment_count;
-    out_create_info->color_blend_state_create_info.pAttachments = out_create_info->color_blend_attachment_states;
-    for(uint32_t iCA=0; iCA<settings->subpass_color_attachment_count; ++iCA)
-    {
-        out_create_info->color_blend_attachment_states[iCA] = {};
-        out_create_info->color_blend_attachment_states[iCA].colorWriteMask = 0xF;
-        out_create_info->color_blend_attachment_states[iCA].blendEnable = VK_FALSE;
-        //out_create_info->color_blend_attachment_states[iCA].colorBlendOp = VK_BLEND_OP_ADD;
+vk::ImageView Context::create_image_view(const vk::ImageViewCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createImageView(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+vk::ImageView Context::create_image_view(vk::Image image, const vk::ImageCreateInfo &image_ci, const std::string &name) const {
+    vk::ImageViewType view_type = vk::ImageViewType::e2D;
+    if (image_ci.imageType == vk::ImageType::e1D) {
+        view_type = (image_ci.arrayLayers == 1) ? vk::ImageViewType::e1D : vk::ImageViewType::e1DArray;
+    } else if (image_ci.imageType == vk::ImageType::e2D) {
+        if (image_ci.flags & vk::ImageCreateFlagBits::eCubeCompatible) {
+            CDSVK_ASSERT((image_ci.arrayLayers) % 6 == 0);
+            view_type = (image_ci.arrayLayers == 6) ? vk::ImageViewType::eCube : vk::ImageViewType::eCubeArray;
+        } else {
+            view_type = (image_ci.arrayLayers == 1) ? vk::ImageViewType::e2D : vk::ImageViewType::e2DArray;
+        }
+    } else if (image_ci.imageType == vk::ImageType::e3D) {
+        view_type = vk::ImageViewType::e3D;
     }
+    vk::ImageViewCreateInfo view_ci(vk::ImageViewCreateFlags(), image, view_type, image_ci.format, vk::ComponentMapping(),
+        vk::ImageSubresourceRange(vk_format_to_image_aspect(image_ci.format), 0, image_ci.mipLevels, 0, image_ci.arrayLayers));
+    return create_image_view(view_ci, name);
+}
+void Context::destroy_image_view(vk::ImageView view) const {
+    device_.destroyImageView(view, allocation_callbacks_);
+}
 
-    out_create_info->dynamic_state_create_info = {};
-    out_create_info->dynamic_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    out_create_info->dynamic_state_create_info.pNext = NULL;
-    out_create_info->dynamic_state_create_info.flags = 0;
-    out_create_info->dynamic_state_create_info.dynamicStateCount = 0;
-    out_create_info->dynamic_state_create_info.pDynamicStates = out_create_info->dynamic_states;
-    for(int iDS=VK_DYNAMIC_STATE_BEGIN_RANGE; iDS<=VK_DYNAMIC_STATE_END_RANGE; ++iDS)
+vk::DescriptorPool Context::create_descriptor_pool(const vk::DescriptorPoolCreateInfo &ci, const std::string &name) const {
+    auto object = device_.createDescriptorPool(ci, allocation_callbacks_);
+    CDSVK__CHECK(set_debug_name(object, name));
+    return object;
+}
+vk::DescriptorPool Context::create_descriptor_pool(const vk::DescriptorSetLayoutCreateInfo &layout_ci, uint32_t max_sets,
+        vk::DescriptorPoolCreateFlags flags, const std::string &name) const {
+    // TODO(cort): should this function take an array of layout_cis and set its sizes based on the total descriptor counts
+    // across all sets? That would allow one monolithic pool for each thread, instead of one per descriptor set.
+    // max_sets would need to be an array as well most likely: the number of instances of each set.
+	std::array<vk::DescriptorPoolSize, VK_DESCRIPTOR_TYPE_RANGE_SIZE> pool_sizes;
+	for(int iType=0; iType<VK_DESCRIPTOR_TYPE_RANGE_SIZE; ++iType) {
+		pool_sizes[iType].descriptorCount = 0;
+        pool_sizes[iType].type = (vk::DescriptorType)iType;
+	}
+	for(uint32_t iBinding=0; iBinding<layout_ci.bindingCount; ++iBinding) {
+        CDSVK_ASSERT(
+            (int)layout_ci.pBindings[iBinding].descriptorType >= VK_DESCRIPTOR_TYPE_BEGIN_RANGE &&
+            (int)layout_ci.pBindings[iBinding].descriptorType <= VK_DESCRIPTOR_TYPE_END_RANGE);
+		pool_sizes[ (int)layout_ci.pBindings[iBinding].descriptorType ].descriptorCount +=
+            layout_ci.pBindings[iBinding].descriptorCount;
+	}
+	vk::DescriptorPoolCreateInfo pool_ci(flags, max_sets, (uint32_t)pool_sizes.size(), pool_sizes.data());
+    return create_descriptor_pool(pool_ci, name);
+}
+void Context::destroy_descriptor_pool(vk::DescriptorPool pool) const {
+    device_.destroyDescriptorPool(pool, allocation_callbacks_);
+}
+
+vk::CommandBuffer Context::begin_one_shot_command_buffer(void) const {
+    vk::CommandBuffer cb = VK_NULL_HANDLE;
     {
-        if (settings->dynamic_state_mask & (1<<iDS))
-        {
-            out_create_info->dynamic_states[out_create_info->dynamic_state_create_info.dynamicStateCount++] = (VkDynamicState)iDS;
+        std::lock_guard<std::mutex> lock(one_shot_cpool_mutex_);
+        vk::CommandBufferAllocateInfo cb_allocate_info(one_shot_cpool_, vk::CommandBufferLevel::ePrimary, 1);
+        CDSVK__CHECK(device_.allocateCommandBuffers(&cb_allocate_info, &cb));
+    }
+    CDSVK__CHECK(set_debug_name(cb, "one-shot command buffer"));
+    vk::CommandBufferBeginInfo cb_begin_info(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+    CDSVK__CHECK(cb.begin(&cb_begin_info));
+    return cb;
+}
+vk::Result Context::end_and_submit_one_shot_command_buffer(vk::CommandBuffer cb) const {
+    CDSVK__CHECK(vkEndCommandBuffer(cb)); // TODO(cort): cb.end() is ambiguous. Bug reported.
+    
+    vk::Fence fence = create_fence(vk::FenceCreateInfo(), "one-shot command buffer fence");
+    vk::SubmitInfo submit_info(0,nullptr,nullptr, 1,&cb, 0,nullptr);
+    graphics_queue_.submit(submit_info, fence);
+    device_.waitForFences(fence, VK_TRUE, UINT64_MAX);
+    destroy_fence(fence);
+    {
+        std::lock_guard<std::mutex> lock(one_shot_cpool_mutex_);
+        device_.freeCommandBuffers(one_shot_cpool_, cb);
+    }
+    return vk::Result::eSuccess;
+}
+
+// Shortcuts for the most common types of allocations
+vk::Result Context::allocate_device_memory(const vk::MemoryRequirements &mem_reqs,
+        vk::MemoryPropertyFlags memory_properties_mask,
+        vk::DeviceMemory *out_mem, vk::DeviceSize *out_offset, DeviceMemoryAllocator *device_allocator) const {
+    vk::MemoryAllocateInfo alloc_info(mem_reqs.size, find_memory_type_index(mem_reqs, memory_properties_mask));
+    if (!device_allocator)
+        device_allocator = default_device_allocator.get();
+    return device_allocator->allocate(alloc_info, mem_reqs.alignment, out_mem, out_offset);
+}
+void Context::free_device_memory(vk::DeviceMemory mem, vk::DeviceSize offset, DeviceMemoryAllocator *device_allocator) const {
+    if (!device_allocator)
+        device_allocator = default_device_allocator.get();
+    device_allocator->free(mem, offset);    
+}
+vk::Result Context::allocate_and_bind_image_memory(vk::Image image, vk::MemoryPropertyFlags memory_properties_mask,
+        vk::DeviceMemory *out_mem, vk::DeviceSize *out_offset, DeviceMemoryAllocator *device_allocator) const {
+    vk::MemoryRequirements mem_reqs = device_.getImageMemoryRequirements(image);
+    vk::Result result = allocate_device_memory(mem_reqs, memory_properties_mask, out_mem, out_offset, device_allocator);
+    if (result == vk::Result::eSuccess) {
+        device_.bindImageMemory(image, *out_mem, *out_offset);
+    }
+    return result;
+}
+vk::Result Context::allocate_and_bind_buffer_memory(vk::Buffer buffer, vk::MemoryPropertyFlags memory_properties_mask,
+        vk::DeviceMemory *out_mem, vk::DeviceSize *out_offset, DeviceMemoryAllocator *device_allocator) const {
+    vk::MemoryRequirements mem_reqs = device_.getBufferMemoryRequirements(buffer);
+    vk::Result result = allocate_device_memory(mem_reqs, memory_properties_mask, out_mem, out_offset, device_allocator);
+    if (result == vk::Result::eSuccess) {
+        device_.bindBufferMemory(buffer, *out_mem, *out_offset);
+    }
+    return result;
+}
+uint32_t Context::find_memory_type_index(const vk::MemoryRequirements &memory_reqs,
+       vk::MemoryPropertyFlags memory_properties_mask) const {
+    for(uint32_t iMemType=0; iMemType<VK_MAX_MEMORY_TYPES; ++iMemType) {
+        if ((memory_reqs.memoryTypeBits & (1<<iMemType)) != 0
+                && (physical_device_memory_properties_.memoryTypes[iMemType].propertyFlags & memory_properties_mask) == memory_properties_mask) {
+            return iMemType;
         }
     }
-    CDSVK_ASSERT(out_create_info->dynamic_state_create_info.dynamicStateCount <= VK_DYNAMIC_STATE_RANGE_SIZE);
-
-    out_create_info->graphics_pipeline_create_info = {};
-    out_create_info->graphics_pipeline_create_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    out_create_info->graphics_pipeline_create_info.pNext = NULL;
-    out_create_info->graphics_pipeline_create_info.flags = 0;
-    out_create_info->graphics_pipeline_create_info.layout = settings->pipeline_layout;
-    out_create_info->graphics_pipeline_create_info.stageCount = 2;
-    out_create_info->graphics_pipeline_create_info.pStages = out_create_info->shader_stage_create_infos;
-    out_create_info->graphics_pipeline_create_info.pVertexInputState = &out_create_info->vertex_input_state_create_info;
-    out_create_info->graphics_pipeline_create_info.pInputAssemblyState = &out_create_info->input_assembly_state_create_info;
-    out_create_info->graphics_pipeline_create_info.pRasterizationState = &out_create_info->rasterization_state_create_info;
-    out_create_info->graphics_pipeline_create_info.pColorBlendState = &out_create_info->color_blend_state_create_info;
-    out_create_info->graphics_pipeline_create_info.pMultisampleState = &out_create_info->multisample_state_create_info;
-    out_create_info->graphics_pipeline_create_info.pViewportState = &out_create_info->viewport_state_create_info;
-    out_create_info->graphics_pipeline_create_info.pDepthStencilState = &out_create_info->depth_stencil_state_create_info;
-    out_create_info->graphics_pipeline_create_info.renderPass = settings->render_pass;
-    out_create_info->graphics_pipeline_create_info.subpass = settings->subpass;
-    out_create_info->graphics_pipeline_create_info.pDynamicState = &out_create_info->dynamic_state_create_info;
-    out_create_info->graphics_pipeline_create_info.pTessellationState = NULL;
-
-    return 0;
+    return VK_MAX_MEMORY_TYPES; // invalid index
 }
 
-#endif // CDS_VULKAN_IMPLEMENTATION
+vk::Result Context::load_buffer_contents(vk::Buffer dst_buffer,
+        const vk::BufferCreateInfo &dst_buffer_ci, vk::DeviceSize dst_offset,
+        const void *src_data, vk::DeviceSize src_size, vk::AccessFlags final_access_flags) const {
+    // TODO(cort): Make sure I'm clear that dst_offset is relative to buffer start, not relative
+    // to the backing VkDeviceMemory objects!
+    CDSVK_ASSERT(src_size <= dst_offset + dst_buffer_ci.size);
+    CDSVK_ASSERT(dst_buffer_ci.usage & vk::BufferUsageFlagBits::eTransferDst);
+    (void)dst_buffer_ci; // only needed for asserts
 
+    vk::BufferCreateInfo staging_buffer_ci(vk::BufferCreateFlags(), src_size, vk::BufferUsageFlagBits::eTransferSrc,
+        vk::SharingMode::eExclusive, 0,nullptr);
+    vk::Buffer staging_buffer = create_buffer(staging_buffer_ci, "load_buffer_contents() staging buffer");
+
+    vk::DeviceMemory staging_buffer_mem = VK_NULL_HANDLE;
+    vk::DeviceSize staging_buffer_mem_offset = 0;
+    // TODO(cort): pass a device allocator, somehow? Maybe give the Context one at init time for staging resources?
+    DeviceMemoryAllocator *device_allocator = default_device_allocator.get();
+    allocate_and_bind_buffer_memory(staging_buffer,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+        &staging_buffer_mem, &staging_buffer_mem_offset, device_allocator);
+
+    void *mapped_data = device_.mapMemory(staging_buffer_mem, staging_buffer_mem_offset, src_size);
+    memcpy(mapped_data, src_data, src_size);
+    device_.unmapMemory(staging_buffer_mem);
+
+    vk::CommandBuffer cb = begin_one_shot_command_buffer();
+    std::array<vk::BufferMemoryBarrier,2> buf_barriers = {
+        vk::BufferMemoryBarrier(vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eTransferRead,
+            graphics_queue_family_index_, graphics_queue_family_index_, staging_buffer, 0, src_size),
+        vk::BufferMemoryBarrier(vk::AccessFlagBits::eMemoryRead | vk::AccessFlagBits::eMemoryWrite,
+            vk::AccessFlagBits::eTransferWrite, graphics_queue_family_index_, graphics_queue_family_index_,
+            dst_buffer, dst_offset, src_size),
+    };
+    cb.pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands, vk::PipelineStageFlagBits::eAllCommands,
+        vk::DependencyFlagBits::eByRegion, nullptr, buf_barriers, nullptr);
+
+    vk::BufferCopy buffer_copy_region(0, dst_offset, src_size);
+    cb.copyBuffer(staging_buffer, dst_buffer, buffer_copy_region);
+
+    buf_barriers[1].srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+    buf_barriers[1].dstAccessMask = final_access_flags;
+    cb.pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands, vk::PipelineStageFlagBits::eAllCommands,
+        vk::DependencyFlagBits::eByRegion, 0,nullptr, 1,&buf_barriers[1], 0,nullptr);
+
+    end_and_submit_one_shot_command_buffer(cb);
+
+    device_allocator->free(staging_buffer_mem, staging_buffer_mem_offset);
+    destroy_buffer(staging_buffer);
+
+    return vk::Result::eSuccess;
+}
+
+
+void *Context::host_alloc(size_t size, size_t alignment, vk::SystemAllocationScope scope) const {
+    if (allocation_callbacks_) {
+        return allocation_callbacks_->pfnAllocation(allocation_callbacks_->pUserData,
+            size, alignment, (VkSystemAllocationScope)scope);
+    } else {
+#if defined(_MSC_VER)
+        return _mm_malloc(size, alignment);
+#else
+        return malloc(size); // TODO(cort): ignores alignment :(
 #endif
+    }
+}
+void Context::host_free(void *ptr) const {
+    if (allocation_callbacks_) {
+        return allocation_callbacks_->pfnFree(allocation_callbacks_->pUserData, ptr);
+    } else {
+#if defined(_MSC_VER)
+        return _mm_free(ptr);
+#else
+        return free(ptr);
+#endif
+    }
+}
+
+#if defined(VK_EXT_debug_marker)
+VkResult Context::set_debug_name_impl(uint64_t object_as_u64, vk::DebugReportObjectTypeEXT object_type, const std::string &name) const {
+    if (pfn_vkDebugMarkerSetObjectName) {
+        VkDebugMarkerObjectNameInfoEXT debug_name_info = {};
+        debug_name_info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+        debug_name_info.pNext = nullptr;
+        debug_name_info.objectType = (VkDebugReportObjectTypeEXT)object_type;
+        debug_name_info.object = object_as_u64;
+        debug_name_info.pObjectName = name.c_str();
+        return pfn_vkDebugMarkerSetObjectName(device_, &debug_name_info);
+    }
+    return VK_SUCCESS;
+}
+#endif // defined(VK_EXT_debug_marker)
+
+#endif // CDS_VULKAN_IMPLEMENTATION
