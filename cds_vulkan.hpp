@@ -72,6 +72,7 @@ namespace cdsvk {
     public:
         GraphicsPipelineCreateInfo();
         explicit GraphicsPipelineCreateInfo(const GraphicsPipelineSettingsVsPs &settings);
+        // Cast to standard Vulkan object
         operator const vk::GraphicsPipelineCreateInfo&() const {
             return graphics_pipeline_ci;
         }
@@ -239,7 +240,7 @@ namespace cdsvk {
 
         vk::DescriptorPool create_descriptor_pool(const vk::DescriptorPoolCreateInfo &ci, const std::string &name = "Anonymous") const;
         vk::DescriptorPool create_descriptor_pool(const vk::DescriptorSetLayoutCreateInfo &layout_ci, uint32_t max_sets,
-            vk::DescriptorPoolCreateFlags flags, const std::string &name = "Anonymous") const;
+            vk::DescriptorPoolCreateFlags flags = vk::DescriptorPoolCreateFlags(), const std::string &name = "Anonymous") const;
         void destroy_descriptor_pool(vk::DescriptorPool pool) const;
 
         // Object naming (using VK_EXT_debug_marker, if present)

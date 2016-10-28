@@ -227,7 +227,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Create index buffer
-    vk::IndexType indexType = (sizeof(cdsm_index_t) == sizeof(uint32_t)) ? vk::IndexType::eUint32 : vk::IndexType::eUint16;
+    vk::IndexType index_type = (sizeof(cdsm_index_t) == sizeof(uint32_t)) ? vk::IndexType::eUint32 : vk::IndexType::eUint16;
     vk::BufferCreateInfo index_buffer_ci(vk::BufferCreateFlags(), mesh_indices_size,
         vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst);
     vk::Buffer index_buffer = context->create_buffer(index_buffer_ci, "index buffer");
@@ -291,9 +291,59 @@ int main(int argc, char *argv[]) {
         vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
         &o2w_buffer_mem, &o2w_buffer_mem_offset));
 
+    // Create push constants.
+    // TODO(cort): this should be a per-vframe uniform buffer.
+    struct {
+        mathfu::vec4_packed time; // .x=seconds, .yzw=???
+        mathfu::vec4_packed eye;  // .xyz=world-space eye position, .w=???
+        mathfu::mat4 viewproj;
+    } push_constants = {};
+    std::array<vk::PushConstantRange, 1> push_constant_ranges = {
+        vk::PushConstantRange(vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+            0, sizeof(push_constants))
+    };
+    // Create Vulkan descriptor layout & pipeline layout
+    std::array<vk::DescriptorSetLayoutBinding, 2> dset_layout_bindings = {
+        vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment),
+        vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eUniformBufferDynamic, 1, vk::ShaderStageFlagBits::eVertex),
+    };
+    vk::DescriptorSetLayoutCreateInfo dset_layout_ci(vk::DescriptorSetLayoutCreateFlags(), 
+        (uint32_t)dset_layout_bindings.size(), dset_layout_bindings.data());
+    vk::DescriptorSetLayout dset_layout = context->create_descriptor_set_layout(dset_layout_ci, "descriptor set layout");
+    vk::PipelineLayoutCreateInfo pipeline_layout_ci(vk::PipelineLayoutCreateFlags(),
+        1, &dset_layout, (uint32_t)push_constant_ranges.size(), push_constant_ranges.data());
+    vk::PipelineLayout pipeline_layout = context->create_pipeline_layout(pipeline_layout_ci, "pipeline layout");
+    
     // Load shaders
     vk::ShaderModule vertex_shader = context->load_shader("tri.vert.spv");
     vk::ShaderModule fragment_shader = context->load_shader("tri.frag.spv");
+
+    // Load textures, create sampler and image view
+    vk::SamplerCreateInfo sampler_ci = vk::SamplerCreateInfo{}
+        .setMinFilter(vk::Filter::eLinear)
+        .setMagFilter(vk::Filter::eLinear)
+        .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+        .setAnisotropyEnable(VK_TRUE)
+        .setMaxAnisotropy(16)
+        .setMinLod(0.0f)
+        .setMaxLod(99.0f);
+    vk::Sampler sampler= context->create_sampler(sampler_ci, "default sampler");
+
+    const std::string& texture_filename = "trevor/redf.ktx";
+#if 0
+    vk::Image texture_image = VK_NULL_HANDLE;
+    vk::ImageCreateInfo texture_image_ci = {};
+    vkDeviceMemory texture_image_mem = VK_NULL_HANDLE;
+    VkDeviceSize texture_image_mem_offset = 0;
+    int texture_load_error = load_vkimage_from_file(&texture_image, &texture_image_create_info,
+        &texture_image_mem, &texture_image_mem_offset, &context, texture_filename, VK_TRUE,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
+    assert(!texture_load_error); (void)texture_load_error;
+    vk::ImageView texture_image_view = cdsvk_create_image_view_from_image(&context, texture_image,
+        &texture_image_create_info, "texture image view");
+#else
+    vk::ImageView texture_image_view = VK_NULL_HANDLE;
+#endif
 
     // Create render pass
     enum {
@@ -353,6 +403,50 @@ int main(int argc, char *argv[]) {
         framebuffers.push_back(context->create_framebuffer(framebuffer_ci, "Default framebuffer"));
     }
 
+    // Create VkPipeline
+    cdsvk::GraphicsPipelineSettingsVsPs graphics_pipeline_settings = {};
+    graphics_pipeline_settings.vertex_buffer_layout = vertex_buffer_layout;
+    graphics_pipeline_settings.dynamic_state_mask = 0
+        | (1<<VK_DYNAMIC_STATE_VIEWPORT)
+        | (1<<VK_DYNAMIC_STATE_SCISSOR)
+        ;
+    graphics_pipeline_settings.primitive_topology = primitive_topology;
+    graphics_pipeline_settings.pipeline_layout = pipeline_layout;
+    graphics_pipeline_settings.render_pass = render_pass;
+    graphics_pipeline_settings.subpass = 0;
+    graphics_pipeline_settings.subpass_color_attachment_count = subpass_desc.colorAttachmentCount;
+    graphics_pipeline_settings.vertex_shader = vertex_shader;
+    graphics_pipeline_settings.fragment_shader = fragment_shader;
+    cdsvk::GraphicsPipelineCreateInfo graphics_pipeline_ci(graphics_pipeline_settings);
+    // Fixup default values if necessary
+    if (mesh_metadata.front_face == CDSM_FRONT_FACE_CW) {
+        graphics_pipeline_ci.rasterization_state_ci.frontFace = vk::FrontFace::eClockwise;
+    }
+    vk::Pipeline graphics_pipeline = context->create_graphics_pipeline(graphics_pipeline_ci,
+        "default graphics pipeline");
+
+    // Create Vulkan descriptor pool and descriptor set.
+    // TODO(cort): the current descriptors are constant; we'd need a set per-vframe if it was going to change
+    // per-frame.
+    vk::DescriptorPool dpool = context->create_descriptor_pool(dset_layout_ci, 1,
+        vk::DescriptorPoolCreateFlags(), "Descriptor pool");
+    vk::DescriptorSetAllocateInfo dset_alloc_info(dpool, 1, &dset_layout);
+    std::vector<vk::DescriptorSet> dsets = context->device().allocateDescriptorSets(dset_alloc_info);
+    VULKAN_CHECK(context->set_debug_name(dsets[0], "default descriptor set"));
+    std::vector<vk::DescriptorImageInfo> image_infos = {
+        vk::DescriptorImageInfo(sampler, texture_image_view, vk::ImageLayout::eShaderReadOnlyOptimal),
+    };
+    std::vector<vk::DescriptorBufferInfo> buffer_infos = {
+        vk::DescriptorBufferInfo(o2w_buffer, 0, VK_WHOLE_SIZE),
+    };
+    std::vector<vk::WriteDescriptorSet> write_dsets = {
+    //    vk::WriteDescriptorSet(dsets[0], 0, 0, (uint32_t)image_infos.size(),
+    //        vk::DescriptorType::eCombinedImageSampler, image_infos.data(), nullptr, nullptr),
+        vk::WriteDescriptorSet(dsets[0], 1, 0, (uint32_t)buffer_infos.size(),
+            vk::DescriptorType::eUniformBufferDynamic, nullptr, buffer_infos.data(), nullptr),
+    };
+    context->device().updateDescriptorSets(write_dsets, nullptr);
+
     // Create the semaphores used to synchronize access to swapchain images
     vk::SemaphoreCreateInfo semaphore_ci = {};
     vk::Semaphore swapchain_image_ready_sem = context->create_semaphore(semaphore_ci, "image ready semaphore");
@@ -394,7 +488,7 @@ int main(int argc, char *argv[]) {
         vk::CommandBufferBeginInfo cb_begin_info(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
         cb.begin(cb_begin_info);
         std::array<vk::ClearValue, kAttachmentCount> clear_values = {
-            vk::ClearColorValue(std::array<float,4>{{0,0,0,1}}),
+            vk::ClearColorValue(std::array<float,4>{{0,0,0.3f,1}}),
             vk::ClearDepthStencilValue(1.0f, 0)
         };
         vk::RenderPassBeginInfo render_pass_begin_info(render_pass, framebuffer,
@@ -438,6 +532,11 @@ int main(int argc, char *argv[]) {
     for(auto framebuffer : framebuffers) {
         context->destroy_framebuffer(framebuffer);
     }
+    context->destroy_pipeline(graphics_pipeline);
+    context->destroy_pipeline_layout(pipeline_layout);
+    context->destroy_descriptor_pool(dpool);
+    context->destroy_descriptor_set_layout(dset_layout);
+    context->destroy_sampler(sampler);
     context->destroy_shader(vertex_shader);
     context->destroy_shader(fragment_shader);
     context->free_device_memory(o2w_buffer_mem, o2w_buffer_mem_offset);
