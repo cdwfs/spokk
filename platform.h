@@ -147,7 +147,7 @@ extern "C"
 // ZOMBO_RETVAL_CHECK(expected, expr): if the result of evaluating expr does not equal expected, assert.
 #if   defined(ZOMBO_COMPILER_MSVC)
 #   define ZOMBO_RETVAL_CHECK(expected, expr) do { \
-            int err = (expr); \
+            int err = (int)(expr); \
             if (err != (expected)) { \
                 printf("%s(%d): error in %s() -- %s returned %d\n", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
                 ZOMBO_DEBUGBREAK(); \
@@ -159,7 +159,7 @@ extern "C"
         __pragma(warning(pop))
 #elif defined(ZOMBO_COMPILER_GNU) || defined(ZOMBO_COMPILER_CLANG)
 #   define ZOMBO_RETVAL_CHECK(expected, expr) do { \
-            int err = (expr); \
+            int err = (int)(expr); \
             if (err != (expected)) { \
                 printf("%s(%d): error in %s() -- %s returned %d\n", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
                 ZOMBO_DEBUGBREAK(); \

@@ -18,16 +18,6 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#ifdef _MSC_VER
-#   pragma warning(push)
-#   pragma warning(disable:4244) // implicit variable truncation (e.g. int32_t -> int16_t)
-#endif
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-#ifdef _MSC_VER
-#   pragma warning(pop)
-#endif
-
 #define CDS_MESH_IMPLEMENTATION
 #include "cds_mesh.h"
 
