@@ -20,12 +20,12 @@ SET(headers
     cds_vulkan.hpp
     image_file.h
     platform.h
-    #stb_image.h
-    #vk_texture.h
+    stb_image.h
+    vk_texture.h
     )
 SET(sources
     image_file.c
-    #vk_texture.c
+    vk_texture.cpp
     #vulkswagen.cpp
     vkhpp_test.cpp
     )

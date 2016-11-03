@@ -136,7 +136,7 @@ int main(int argc, char *argv[]) {
     const char *optional_instance_layers[] = {
 #if !defined(NDEBUG)
         // Do not explicitly enable! only needed to test VK_EXT_debug_marker support, and may generate other
-        // spurious errors.
+        // spurious errors. Or set ENABLE_VULKAN_RENDERDOC_CAPTURE=1 in the environment variables.
         //"VK_LAYER_RENDERDOC_Capture",
 #endif
         "" // placeholder; empty initializers arrays aren't allowed

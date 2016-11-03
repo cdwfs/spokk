@@ -100,6 +100,7 @@ typedef enum ImageFileDataFormat
     IMAGE_FILE_DATA_FORMAT_EAC_R11G11_UNORM   = 68,
     IMAGE_FILE_DATA_FORMAT_EAC_R11G11_SNORM   = 69,
 
+    IMAGE_FILE_DATA_FORMAT_COUNT
 } ImageFileDataFormat;
 uint32_t ImageFileGetBytesPerTexelBlock(ImageFileDataFormat format);
 
