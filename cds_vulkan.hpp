@@ -136,12 +136,12 @@ namespace cdsvk {
     struct ContextCreateInfo {
         VkAllocationCallbacks *allocation_callbacks;
 
-        std::vector<const std::string> required_instance_layer_names;
-        std::vector<const std::string> required_instance_extension_names;
-        std::vector<const std::string> required_device_extension_names;
-        std::vector<const std::string> optional_instance_layer_names;
-        std::vector<const std::string> optional_instance_extension_names;
-        std::vector<const std::string> optional_device_extension_names;
+        std::vector<std::string> required_instance_layer_names;
+        std::vector<std::string> required_instance_extension_names;
+        std::vector<std::string> required_device_extension_names;
+        std::vector<std::string> optional_instance_layer_names;
+        std::vector<std::string> optional_instance_extension_names;
+        std::vector<std::string> optional_device_extension_names;
 
         // If non-NULL, this function will be called after VkInstance initialization to retrieve (and possibly create)
         // a VkSurfaceKHR to present to.
@@ -309,7 +309,7 @@ namespace cdsvk {
             VkMemoryPropertyFlags memory_properties_mask) const;
 
         // Load buffer contents
-        VkResult Context::load_buffer_contents(VkBuffer dst_buffer,
+        VkResult load_buffer_contents(VkBuffer dst_buffer,
             const VkBufferCreateInfo &dst_buffer_ci, VkDeviceSize dst_offset,
             const void *src_data, VkDeviceSize src_size, VkAccessFlags final_access_flags) const;
 
@@ -347,8 +347,8 @@ namespace cdsvk {
 
         // Allocate/free host memory using the provided allocation callbacks (or the default allocator
         // if no callbacks were provided)
-        void *Context::host_alloc(size_t size, size_t alignment, VkSystemAllocationScope scope) const;
-        void Context::host_free(void *ptr) const;
+        void *host_alloc(size_t size, size_t alignment, VkSystemAllocationScope scope) const;
+        void host_free(void *ptr) const;
 
 #if defined(VK_EXT_debug_marker)
         PFN_vkDebugMarkerSetObjectNameEXT pfn_vkDebugMarkerSetObjectName;
@@ -370,7 +370,9 @@ namespace cdsvk {
 #if defined(CDS_VULKAN_IMPLEMENTATION)
 
 #include <array>
+#include <float.h>
 #include <stdio.h>
+#include <string.h>
 
 #ifndef CDSVK_ASSERT
 #   include <assert.h>
@@ -402,7 +404,6 @@ static_assert(sizeof(cdsvk__int32)  == 4, "sizeof(cdsvk__int32) != 4");
 #endif
 
 #if !defined(CDSVK_LOG)
-# if !defined(CDSVK_NO_STDIO)
 #   include <stdarg.h>
 static void cdsvk__log_default(const char *format, ...) {
     va_list args;
@@ -412,9 +413,6 @@ static void cdsvk__log_default(const char *format, ...) {
     va_end(args);
 }
 #   define CDSVK_LOG(...) cdsvk__log_default(__VA_ARGS__)
-# else
-#   define CDSVK_LOG(...) (void)(__VA_ARGS)__)
-# endif
 #endif
 
 // x86/x64 detection
