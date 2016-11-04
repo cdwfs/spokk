@@ -97,7 +97,9 @@ int main(int argc, char *argv[]) {
     cdsvk::ContextCreateInfo context_ci = {};
     context_ci.allocation_callbacks = nullptr;
     context_ci.required_instance_layer_names = {
+#if !defined(NDEBUG)
         "VK_LAYER_LUNARG_standard_validation",// TODO: fallback if standard_validation metalayer is not available
+#endif
     };
     context_ci.optional_instance_layer_names = {
 #if !defined(NDEBUG)
