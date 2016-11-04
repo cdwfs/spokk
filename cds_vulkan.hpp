@@ -164,11 +164,15 @@ namespace cdsvk {
 
         VkInstance instance() const { return instance_; }
         VkPhysicalDevice physical_device() const { return physical_device_; }
+        const VkPhysicalDeviceProperties& physical_device_properties() const { return physical_device_properties_; }
         VkDevice device() const { return device_; }
         uint32_t graphics_queue_family_index() const { return graphics_queue_family_index_; }
+        uint32_t present_queue_family_index() const { return present_queue_family_index_; }
         VkSwapchainKHR swapchain() const { return swapchain_; }
         VkQueue graphics_queue() const { return graphics_queue_; }
         VkQueue present_queue() const { return present_queue_; }
+        const VkQueueFamilyProperties& graphics_queue_family_properties() const { return graphics_queue_family_properties_; }
+        const VkQueueFamilyProperties& present_queue_family_properties() const { return present_queue_family_properties_; }
         VkFormat swapchain_format() const { return swapchain_surface_format_.format; }
         const std::vector<VkImageView>& swapchain_image_views() const { return swapchain_image_views_; }
 

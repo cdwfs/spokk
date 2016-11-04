@@ -559,21 +559,57 @@ int main(int argc, char *argv[]) {
         +0.0f, +0.0f, +0.5f, +0.5f,
         +0.0f, +0.0f, +0.0f, +1.0f);
 
+ // Create timestamp query pools.
+    typedef enum {
+        TIMESTAMP_ID_BEGIN_FRAME = 0,
+        TIMESTAMP_ID_END_FRAME = 1,
+        TIMESTAMP_ID_RANGE_SIZE
+    } TimestampId;
+    VkQueryPoolCreateInfo timestamp_query_pool_ci = {};
+    timestamp_query_pool_ci.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+    timestamp_query_pool_ci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    timestamp_query_pool_ci.queryCount = TIMESTAMP_ID_RANGE_SIZE;
+    std::array<VkQueryPool, kVframeCount> timestamp_query_pools = {};
+    for(auto& pool : timestamp_query_pools) {
+        pool = context->create_query_pool(timestamp_query_pool_ci, "timestamp query pool");
+    }
+    {
+        // Submit dummy timestamp queries for the first frame to retrieve
+        VkCommandBuffer cb = context->begin_one_shot_command_buffer();
+        for(auto pool : timestamp_query_pools) {
+            for(uint32_t iTS=0; iTS<TIMESTAMP_ID_RANGE_SIZE; ++iTS) {
+                vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, pool, iTS);
+            }
+        }
+        context->end_and_submit_one_shot_command_buffer(&cb);
+    }
+
     const uint64_t clock_start = zomboClockTicks();
-    uint32_t vframeIndex = 0;
+    std::array<double, TIMESTAMP_ID_RANGE_SIZE> timestamp_seconds_prev = {};
+    uint32_t vframe_index = 0;
+    uint32_t frame_index = 0;
     while(!glfwWindowShouldClose(window)) {
         // Wait for the command buffer previously used to generate this swapchain image to be submitted.
         // TODO(cort): this does not guarantee memory accesses from this submission will be visible on the host;
         // there'd need to be a memory barrier for that.
-        vkWaitForFences(context->device(), 1, &submission_complete_fences[vframeIndex], VK_TRUE, UINT64_MAX);
-        vkResetFences(context->device(), 1, &submission_complete_fences[vframeIndex]);
+        vkWaitForFences(context->device(), 1, &submission_complete_fences[vframe_index], VK_TRUE, UINT64_MAX);
+        vkResetFences(context->device(), 1, &submission_complete_fences[vframe_index]);
 
         // The host can now safely reset and rebuild this command buffer, even if the GPU hasn't finished presenting the
         // resulting frame yet.
-        VkCommandBuffer cb = command_buffers[vframeIndex];
+        VkCommandBuffer cb = command_buffers[vframe_index];
+
+        // Read the timestamp query results from the frame that was just presented. We'll process and report them later,
+        // but we need to get the old data out before we reuse the query pool for the current frame.
+        VkQueryPool timestamp_query_pool = timestamp_query_pools[vframe_index];
+        std::array<uint64_t, TIMESTAMP_ID_RANGE_SIZE> timestamps = {};
+        VkResult get_timestamps_result = vkGetQueryPoolResults(context->device(), timestamp_query_pool,
+            0,TIMESTAMP_ID_RANGE_SIZE, timestamps.size()*sizeof(timestamps[0]), timestamps.data(),
+            sizeof(timestamps[0]), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+        assert(get_timestamps_result == VK_SUCCESS);
 
         // Update object-to-world matrices.
-        uint32_t uniform_buffer_vframe_offset = (uint32_t)uniform_buffer_vframe_size * vframeIndex;
+        uint32_t uniform_buffer_vframe_offset = (uint32_t)uniform_buffer_vframe_size * vframe_index;
         mathfu::vec4 *mapped_o2w_buffer = nullptr;
         VULKAN_CHECK(vkMapMemory(context->device(), o2w_buffer_mem, (VkDeviceSize)uniform_buffer_vframe_offset,
             uniform_buffer_vframe_size, VkMemoryMapFlags(0), (void**)&mapped_o2w_buffer));
@@ -614,6 +650,9 @@ int main(int argc, char *argv[]) {
         cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         VULKAN_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info) );
+        vkCmdResetQueryPool(cb, timestamp_query_pool, 0, TIMESTAMP_ID_RANGE_SIZE);
+        vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestamp_query_pool, TIMESTAMP_ID_BEGIN_FRAME);
+
         std::array<VkClearValue, kAttachmentCount> clear_values;
         clear_values[0].color.float32[0] = 0.0f;
         clear_values[0].color.float32[1] = 0.0f;
@@ -671,7 +710,7 @@ int main(int argc, char *argv[]) {
         const uint32_t instance_count = kMeshCount;
         vkCmdDrawIndexed(cb, mesh_metadata.index_count, instance_count, 0,0,0);
         vkCmdEndRenderPass(cb);
-
+        vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool, TIMESTAMP_ID_END_FRAME);
         VULKAN_CHECK( vkEndCommandBuffer(cb) );
         const VkPipelineStageFlags submit_wait_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
         VkSubmitInfo submit_info = {};
@@ -683,7 +722,7 @@ int main(int argc, char *argv[]) {
         submit_info.pCommandBuffers = &cb;
         submit_info.signalSemaphoreCount = 1;
         submit_info.pSignalSemaphores = &render_complete_sem;
-        VULKAN_CHECK( vkQueueSubmit(context->graphics_queue(), 1, &submit_info, submission_complete_fences[vframeIndex]) );
+        VULKAN_CHECK( vkQueueSubmit(context->graphics_queue(), 1, &submit_info, submission_complete_fences[vframe_index]) );
         VkSwapchainKHR swapchain = context->swapchain();
         VkPresentInfoKHR present_info = {};
         present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -702,15 +741,41 @@ int main(int argc, char *argv[]) {
             VULKAN_CHECK(result);
         }
 
+        // TODO(cort): Now that the CPU and GPU execution is decoupled, we may need to emit a memory barrier to
+        // make these query results visible to the host at the end of the submit.
+        {
+            std::array<double, TIMESTAMP_ID_RANGE_SIZE> timestamp_seconds = {};
+            for(int iTS=0; iTS<TIMESTAMP_ID_RANGE_SIZE; ++iTS) {
+                if (context->graphics_queue_family_properties().timestampValidBits < sizeof(timestamps[0])*8)
+                    timestamps[iTS] &= ((1ULL<<context->graphics_queue_family_properties().timestampValidBits)-1);
+                timestamp_seconds[iTS] = (double)(timestamps[iTS])
+                    * (double)context->physical_device_properties().limits.timestampPeriod / 1e9;
+            }
+            if ((frame_index % 100)==0) {
+                printf("GPU T2B=%10.6f\tT2T=%10.6f\n",
+                    (timestamp_seconds[TIMESTAMP_ID_END_FRAME] - timestamp_seconds[TIMESTAMP_ID_BEGIN_FRAME])*1000.0,
+                    (timestamp_seconds[TIMESTAMP_ID_BEGIN_FRAME] - timestamp_seconds_prev[TIMESTAMP_ID_BEGIN_FRAME])*1000.0);
+            }
+            timestamp_seconds_prev = timestamp_seconds;
+        }
         glfwPollEvents();
-        vframeIndex += 1;
-        if (vframeIndex == kVframeCount) {
-            vframeIndex = 0;
+        frame_index += 1;
+        vframe_index += 1;
+        if (vframe_index == kVframeCount) {
+            vframe_index = 0;
         }
     }
 
+    // NOTE: vkDeviceWaitIdle() only waits for all queue operations to complete; swapchain images may still be
+    // queued for presentation when this function returns. To avoid a race condition when freeing them and
+    // their associated semaphores, the host needs to...acquire each swapchain image, passing a VkFence and
+    // immediately waiting on it? Is that sufficient? I don't think so; no guarantee of acquiring all images.
+    // It looks like this is still under discussion (Khronos Vulkan issue #243, #245)
     vkDeviceWaitIdle(context->device());
     // Cleanup
+    for(auto pool : timestamp_query_pools) {
+        context->destroy_query_pool(pool);
+    }
     context->destroy_semaphore(swapchain_image_ready_sem);
     context->destroy_semaphore(render_complete_sem);
     for(auto fence : submission_complete_fences) {
