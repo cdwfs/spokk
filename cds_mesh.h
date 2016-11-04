@@ -460,10 +460,10 @@ static cdsm__f32x4 cdsm__convert4_u8n_to_f32(const cdsm__u8x4 in)
 static cdsm__f32x4 cdsm__convert4_s8n_to_f32(const cdsm__s8x4 in)
 {
     return {{
-        (in.elem[0] == -128) ? -1.0f : (float)(in.elem[0]) / 127.0f,
-        (in.elem[1] == -128) ? -1.0f : (float)(in.elem[1]) / 127.0f,
-        (in.elem[2] == -128) ? -1.0f : (float)(in.elem[2]) / 127.0f,
-        (in.elem[3] == -128) ? -1.0f : (float)(in.elem[3]) / 127.0f,
+        (in.elem[0] == -128) ? -1.0f : ((float)(in.elem[0]) / 127.0f),
+        (in.elem[1] == -128) ? -1.0f : ((float)(in.elem[1]) / 127.0f),
+        (in.elem[2] == -128) ? -1.0f : ((float)(in.elem[2]) / 127.0f),
+        (in.elem[3] == -128) ? -1.0f : ((float)(in.elem[3]) / 127.0f),
     }};
 }
 static cdsm__f32x4 cdsm__convert4_u8_to_f32(const cdsm__u8x4 in)
@@ -496,10 +496,10 @@ static cdsm__f32x4 cdsm__convert4_u16n_to_f32(const cdsm__u16x4 in)
 static cdsm__f32x4 cdsm__convert4_s16n_to_f32(const cdsm__s16x4 in)
 {
     return {{
-        (in.elem[0] == -32768) ? 0.0f : (float)(in.elem[0]) / 32767.0f,
-        (in.elem[1] == -32768) ? 0.0f : (float)(in.elem[1]) / 32767.0f,
-        (in.elem[2] == -32768) ? 0.0f : (float)(in.elem[2]) / 32767.0f,
-        (in.elem[3] == -32768) ? 0.0f : (float)(in.elem[3]) / 32767.0f,
+        (in.elem[0] == -32768) ? 0.0f : ((float)(in.elem[0]) / 32767.0f),
+        (in.elem[1] == -32768) ? 0.0f : ((float)(in.elem[1]) / 32767.0f),
+        (in.elem[2] == -32768) ? 0.0f : ((float)(in.elem[2]) / 32767.0f),
+        (in.elem[3] == -32768) ? 0.0f : ((float)(in.elem[3]) / 32767.0f),
     }};
 }
 static cdsm__f32x4 cdsm__convert4_u16_to_f32(const cdsm__u16x4 in)
@@ -561,80 +561,80 @@ static cdsm__u8x4 cdsm__convert_f32_to_u8n(const cdsm__f32x4 in)
 static cdsm__s8x4 cdsm__convert_f32_to_s8n(const cdsm__f32x4 in)
 {
     return {{
-        (int8_t)( CDSM__CLAMP(in.elem[0], -1.0f, 1.0f) * 127.0f
-            + (in.elem[0] >= 0) ? 0.5f : -0.5f),
-        (int8_t)( CDSM__CLAMP(in.elem[1], -1.0f, 1.0f) * 127.0f
-            + (in.elem[1] >= 0) ? 0.5f : -0.5f),
-        (int8_t)( CDSM__CLAMP(in.elem[2], -1.0f, 1.0f) * 127.0f
-            + (in.elem[2] >= 0) ? 0.5f : -0.5f),
-        (int8_t)( CDSM__CLAMP(in.elem[3], -1.0f, 1.0f) * 127.0f
-            + (in.elem[3] >= 0) ? 0.5f : -0.5f),
+        (int8_t)floorf( CDSM__CLAMP(in.elem[0], -1.0f, 1.0f) * 127.0f
+            + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
+        (int8_t)floorf( CDSM__CLAMP(in.elem[1], -1.0f, 1.0f) * 127.0f
+            + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
+        (int8_t)floorf( CDSM__CLAMP(in.elem[2], -1.0f, 1.0f) * 127.0f
+            + ((in.elem[2] >= 0) ? 0.5f : -0.5f) ),
+        (int8_t)floorf( CDSM__CLAMP(in.elem[3], -1.0f, 1.0f) * 127.0f
+            + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
     }};
 }
 static cdsm__u8x4 cdsm__convert_f32_to_u8(const cdsm__f32x4 in)
 {
     return {{
-        (uint8_t)( CDSM__CLAMP(in.elem[0], 0.0f, 1.0f) + 0.5f),
-        (uint8_t)( CDSM__CLAMP(in.elem[1], 0.0f, 1.0f) + 0.5f),
-        (uint8_t)( CDSM__CLAMP(in.elem[2], 0.0f, 1.0f) + 0.5f),
-        (uint8_t)( CDSM__CLAMP(in.elem[3], 0.0f, 1.0f) + 0.5f),
+        (uint8_t)( CDSM__CLAMP(in.elem[0], 0.0f, 1.0f) + 0.5f ),
+        (uint8_t)( CDSM__CLAMP(in.elem[1], 0.0f, 1.0f) + 0.5f ),
+        (uint8_t)( CDSM__CLAMP(in.elem[2], 0.0f, 1.0f) + 0.5f ),
+        (uint8_t)( CDSM__CLAMP(in.elem[3], 0.0f, 1.0f) + 0.5f ),
     }};
 }
 static cdsm__s8x4 cdsm__convert_f32_to_s8(const cdsm__f32x4 in)
 {
     return {{
-        (int8_t)( CDSM__CLAMP(in.elem[0], -1.0f, 1.0f)
-            + (in.elem[0] >= 0) ? 0.5f : -0.5f),
-        (int8_t)( CDSM__CLAMP(in.elem[1], -1.0f, 1.0f)
-            + (in.elem[1] >= 0) ? 0.5f : -0.5f),
-        (int8_t)( CDSM__CLAMP(in.elem[2], -1.0f, 1.0f)
-            + (in.elem[2] >= 0) ? 0.5f : -0.5f),
-        (int8_t)( CDSM__CLAMP(in.elem[3], -1.0f, 1.0f)
-            + (in.elem[3] >= 0) ? 0.5f : -0.5f),
+        (int8_t)floorf( CDSM__CLAMP(in.elem[0], -1.0f, 1.0f)
+            + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
+        (int8_t)floorf( CDSM__CLAMP(in.elem[1], -1.0f, 1.0f)
+            + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
+        (int8_t)floorf( CDSM__CLAMP(in.elem[2], -1.0f, 1.0f)
+            + ((in.elem[2] >= 0) ? 0.5f : -0.5f) ),
+        (int8_t)floorf( CDSM__CLAMP(in.elem[3], -1.0f, 1.0f)
+            + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
     }};
 }
 static cdsm__u16x4 cdsm__convert_f32_to_u16n(const cdsm__f32x4 in)
 {
     return {{
-        (uint16_t)( CDSM__CLAMP(in.elem[0], 0.0f, 1.0f) * 65535.0f + 0.5f),
-        (uint16_t)( CDSM__CLAMP(in.elem[1], 0.0f, 1.0f) * 65535.0f + 0.5f),
-        (uint16_t)( CDSM__CLAMP(in.elem[2], 0.0f, 1.0f) * 65535.0f + 0.5f),
-        (uint16_t)( CDSM__CLAMP(in.elem[3], 0.0f, 1.0f) * 65535.0f + 0.5f),
+        (uint16_t)( CDSM__CLAMP(in.elem[0], 0.0f, 1.0f) * 65535.0f + 0.5f ),
+        (uint16_t)( CDSM__CLAMP(in.elem[1], 0.0f, 1.0f) * 65535.0f + 0.5f ),
+        (uint16_t)( CDSM__CLAMP(in.elem[2], 0.0f, 1.0f) * 65535.0f + 0.5f ),
+        (uint16_t)( CDSM__CLAMP(in.elem[3], 0.0f, 1.0f) * 65535.0f + 0.5f ),
     }};
 }
 static cdsm__s16x4 cdsm__convert_f32_to_s16n(const cdsm__f32x4 in)
 {
     return {{
-        (int16_t)( CDSM__CLAMP(in.elem[0], 0.0f, 1.0f) * 32767.0f
-            + (in.elem[0] >= 0) ? 0.5f : -0.5f),
-        (int16_t)( CDSM__CLAMP(in.elem[1], 0.0f, 1.0f) * 32767.0f
-            + (in.elem[1] >= 0) ? 0.5f : -0.5f),
-        (int16_t)( CDSM__CLAMP(in.elem[2], 0.0f, 1.0f) * 32767.0f
-            + (in.elem[2] >= 0) ? 0.5f : -0.5f),
-        (int16_t)( CDSM__CLAMP(in.elem[3], 0.0f, 1.0f) * 32767.0f
-            + (in.elem[3] >= 0) ? 0.5f : -0.5f),
+        (int16_t)floorf( CDSM__CLAMP(in.elem[0], -1.0f, 1.0f) * 32767.0f
+            + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
+        (int16_t)floorf( CDSM__CLAMP(in.elem[1], -1.0f, 1.0f) * 32767.0f
+            + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
+        (int16_t)floorf( CDSM__CLAMP(in.elem[2], -1.0f, 1.0f) * 32767.0f
+            + ((in.elem[2] >= 0) ? 0.5f : -0.5f) ),
+        (int16_t)floorf( CDSM__CLAMP(in.elem[3], -1.0f, 1.0f) * 32767.0f
+            + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
     }};
 }
 static cdsm__u16x4 cdsm__convert_f32_to_u16(const cdsm__f32x4 in)
 {
     return {{
-        (uint16_t)( CDSM__CLAMP(in.elem[0], 0.0f, 1.0f) + 0.5f),
-        (uint16_t)( CDSM__CLAMP(in.elem[1], 0.0f, 1.0f) + 0.5f),
-        (uint16_t)( CDSM__CLAMP(in.elem[2], 0.0f, 1.0f) + 0.5f),
-        (uint16_t)( CDSM__CLAMP(in.elem[3], 0.0f, 1.0f) + 0.5f),
+        (uint16_t)( CDSM__CLAMP(in.elem[0], 0.0f, 1.0f) + 0.5f ),
+        (uint16_t)( CDSM__CLAMP(in.elem[1], 0.0f, 1.0f) + 0.5f ),
+        (uint16_t)( CDSM__CLAMP(in.elem[2], 0.0f, 1.0f) + 0.5f ),
+        (uint16_t)( CDSM__CLAMP(in.elem[3], 0.0f, 1.0f) + 0.5f ),
     }};
 }
 static cdsm__s16x4 cdsm__convert_f32_to_s16(const cdsm__f32x4 in)
 {
     return {{
-        (int16_t)( CDSM__CLAMP(in.elem[0], 0.0f, 1.0f)
-            + (in.elem[0] >= 0) ? 0.5f : -0.5f),
-        (int16_t)( CDSM__CLAMP(in.elem[1], 0.0f, 1.0f)
-            + (in.elem[1] >= 0) ? 0.5f : -0.5f),
-        (int16_t)( CDSM__CLAMP(in.elem[2], 0.0f, 1.0f)
-            + (in.elem[2] >= 0) ? 0.5f : -0.5f),
-        (int16_t)( CDSM__CLAMP(in.elem[3], 0.0f, 1.0f)
-            + (in.elem[3] >= 0) ? 0.5f : -0.5f),
+        (int16_t)floorf( CDSM__CLAMP(in.elem[0], -1.0f, 1.0f)
+            + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
+        (int16_t)floorf( CDSM__CLAMP(in.elem[1], -1.0f, 1.0f)
+            + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
+        (int16_t)floorf( CDSM__CLAMP(in.elem[2], -1.0f, 1.0f)
+            + ((in.elem[2] >= 0) ? 0.5f : -0.5f) ),
+        (int16_t)floorf( CDSM__CLAMP(in.elem[3], -1.0f, 1.0f)
+            + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
     }};
 }
 static cdsm__u16x4 cdsm__convert_f32_to_f16(const cdsm__f32x4 in)
@@ -649,19 +649,19 @@ static cdsm__u16x4 cdsm__convert_f32_to_f16(const cdsm__f32x4 in)
 static cdsm__u32x4 cdsm__convert_f32_to_u32(const cdsm__f32x4 in)
 {
     return {{
-        (uint32_t)( CDSM__MAX(in.elem[0], 0.0f) + 0.5f),
-        (uint32_t)( CDSM__MAX(in.elem[1], 0.0f) + 0.5f),
-        (uint32_t)( CDSM__MAX(in.elem[2], 0.0f) + 0.5f),
-        (uint32_t)( CDSM__MAX(in.elem[3], 0.0f) + 0.5f),
+        (uint32_t)( CDSM__MAX(in.elem[0], 0.0f) + 0.5f ),
+        (uint32_t)( CDSM__MAX(in.elem[1], 0.0f) + 0.5f ),
+        (uint32_t)( CDSM__MAX(in.elem[2], 0.0f) + 0.5f ),
+        (uint32_t)( CDSM__MAX(in.elem[3], 0.0f) + 0.5f ),
     }};
 }
 static cdsm__s32x4 cdsm__convert_f32_to_s32(const cdsm__f32x4 in)
 {
     return {{
-        (int32_t)( in.elem[0] + (in.elem[0] >= 0) ? 0.5f : -0.5f),
-        (int32_t)( in.elem[1] + (in.elem[1] >= 0) ? 0.5f : -0.5f),
-        (int32_t)( in.elem[2] + (in.elem[2] >= 0) ? 0.5f : -0.5f),
-        (int32_t)( in.elem[3] + (in.elem[3] >= 0) ? 0.5f : -0.5f),
+        (int32_t)floorf( in.elem[0] + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
+        (int32_t)floorf( in.elem[1] + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
+        (int32_t)floorf( in.elem[2] + ((in.elem[2] >= 0) ? 0.5f : -0.5f) ),
+        (int32_t)floorf( in.elem[3] + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
     }};
 }
 
