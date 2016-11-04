@@ -16,7 +16,6 @@ project(vulkswagen)
 
 SET(headers
     cds_mesh.h
-    #cds_vulkan.h
     cds_vulkan.hpp
     image_file.h
     platform.h
@@ -26,8 +25,7 @@ SET(headers
 SET(sources
     image_file.c
     vk_texture.cpp
-    #vulkswagen.cpp
-    vkhpp_test.cpp
+    vulkswagen.cpp
     )
 
 SET(shaders
