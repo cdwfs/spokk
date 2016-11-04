@@ -11,7 +11,7 @@ layout (set = 0, binding = 1) uniform ObjectToWorld {
 };
 
 layout (push_constant) uniform PushConsts {
-    vec4 time;
+    vec4 time_and_res;
     vec4 eye;
     mat4 viewproj;
 } pushConsts;

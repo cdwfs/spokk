@@ -335,7 +335,7 @@ int main(int argc, char *argv[]) {
     // Create push constants.
     // TODO(cort): this should be a per-vframe uniform buffer.
     struct {
-        mathfu::vec4_packed time; // .x=seconds, .yzw=???
+        mathfu::vec4_packed time_and_res; // .x=seconds, .yz=dimensions, w=???
         mathfu::vec4_packed eye;  // .xyz=world-space eye position, .w=???
         mathfu::mat4 viewproj;
     } push_constants = {};
@@ -676,7 +676,7 @@ int main(int argc, char *argv[]) {
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
             pipeline_layout, 0, (uint32_t)dsets.size(), dsets.data(), 1,&uniform_buffer_vframe_offset);
-        push_constants.time = mathfu::vec4(seconds_elapsed, 0, 0, 0);
+        push_constants.time_and_res = mathfu::vec4(seconds_elapsed, kWindowWidthDefault, kWindowHeightDefault, 0);
         push_constants.eye = mathfu::vec4(
             0.0f,
             2.0f,
