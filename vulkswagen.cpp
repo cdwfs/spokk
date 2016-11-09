@@ -20,6 +20,8 @@
 
 #include "vk_texture.h"
 
+#include "camera.h"
+
 #define CDS_MESH_IMPLEMENTATION
 #include "cds_mesh.h"
 
@@ -70,6 +72,11 @@ namespace {
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
+
+    const float fovDegrees = 45.0f;
+    const float zNear = 0.01f;
+    const float zFar = 100.0f;
+    CameraPersp camera(kWindowWidthDefault, kWindowHeightDefault, fovDegrees, zNear, zFar);
 
     const std::string application_name = "Vulkswagen";
     const std::string engine_name = "Zombo";
@@ -616,13 +623,14 @@ int main(int argc, char *argv[]) {
         VULKAN_CHECK(vkMapMemory(context->device(), o2w_buffer_mem, (VkDeviceSize)uniform_buffer_vframe_offset,
             uniform_buffer_vframe_size, VkMemoryMapFlags(0), (void**)&mapped_o2w_buffer));
         const float seconds_elapsed = (float)( zomboTicksToSeconds(zomboClockTicks() - clock_start) );
+        const mathfu::vec3 swarm_center(0, 0, -2);
         for(int iMesh=0; iMesh<kMeshCount; ++iMesh) {
             mathfu::quat q = mathfu::quat::FromAngleAxis(seconds_elapsed + (float)iMesh, mathfu::vec3(0,1,0));
             mathfu::mat4 o2w = mathfu::mat4::Identity()
                 * mathfu::mat4::FromTranslationVector(mathfu::vec3(
-                    4.0f * cosf((1.0f+0.001f*iMesh) * seconds_elapsed + float(149*iMesh) + 0.0f) + 0.0f,
-                    2.5f * sinf(1.5f * seconds_elapsed + float(13*iMesh) + 5.0f) + 0.0f,
-                    3.0f * sinf(0.25f * seconds_elapsed + float(51*iMesh) + 2.0f) - 2.0f
+                    4.0f * cosf((1.0f+0.001f*iMesh) * seconds_elapsed + float(149*iMesh) + 0.0f) + swarm_center[0],
+                    2.5f * sinf(1.5f * seconds_elapsed + float(13*iMesh) + 5.0f) + swarm_center[1],
+                    3.0f * sinf(0.25f * seconds_elapsed + float(51*iMesh) + 2.0f) + swarm_center[2]
                     ))
                 * q.ToMatrix4()
                 //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
@@ -676,21 +684,18 @@ int main(int argc, char *argv[]) {
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
             pipeline_layout, 0, (uint32_t)dsets.size(), dsets.data(), 1,&uniform_buffer_vframe_offset);
-        push_constants.time_and_res = mathfu::vec4(seconds_elapsed, kWindowWidthDefault, kWindowHeightDefault, 0);
+        push_constants.time_and_res = mathfu::vec4(seconds_elapsed,
+            (float)kWindowWidthDefault, (float)kWindowHeightDefault, 0);
         push_constants.eye = mathfu::vec4(
             0.0f,
             2.0f,
             6.0f,
             0);
-        mathfu::mat4 w2v = mathfu::mat4::LookAt(
-            mathfu::vec3(0,0,0), // target
-            mathfu::vec4(push_constants.eye).xyz(),
-            mathfu::vec3(0,1,0), // up
-            1.0f); // right-handed
-        push_constants.viewproj = clip_fixup * mathfu::mat4::Perspective(
-            (float)M_PI_4,
-            (float)kWindowWidthDefault/(float)kWindowHeightDefault,
-            0.01f, 100.0f) * w2v;
+        camera.lookAt(mathfu::vec4(push_constants.eye).xyz(), mathfu::vec3(0,0,0), mathfu::vec3(0,1,0));
+        mathfu::mat4 w2v = camera.getViewMatrix();
+        const mathfu::mat4 proj = camera.getProjectionMatrix();
+        const mathfu::mat4 viewproj = clip_fixup * proj * w2v;
+        push_constants.viewproj = viewproj;
         vkCmdPushConstants(cb, pipeline_layout, push_constant_range.stageFlags,
             push_constant_range.offset, push_constant_range.size, &push_constants);
         VkViewport viewport = {};
