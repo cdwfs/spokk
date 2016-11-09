@@ -77,6 +77,10 @@ int main(int argc, char *argv[]) {
     const float zNear = 0.01f;
     const float zFar = 100.0f;
     CameraPersp camera(kWindowWidthDefault, kWindowHeightDefault, fovDegrees, zNear, zFar);
+    const mathfu::vec3 initial_camera_pos(-2, 0, 6);
+    const mathfu::vec3 initial_camera_target(0, 0, 0);
+    const mathfu::vec3 initial_camera_up(0,1,0);
+    camera.lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
 
     const std::string application_name = "Vulkswagen";
     const std::string engine_name = "Zombo";
@@ -686,12 +690,7 @@ int main(int argc, char *argv[]) {
             pipeline_layout, 0, (uint32_t)dsets.size(), dsets.data(), 1,&uniform_buffer_vframe_offset);
         push_constants.time_and_res = mathfu::vec4(seconds_elapsed,
             (float)kWindowWidthDefault, (float)kWindowHeightDefault, 0);
-        push_constants.eye = mathfu::vec4(
-            0.0f,
-            2.0f,
-            6.0f,
-            0);
-        camera.lookAt(mathfu::vec4(push_constants.eye).xyz(), mathfu::vec3(0,0,0), mathfu::vec3(0,1,0));
+        push_constants.eye = mathfu::vec4(camera.getEyePoint(), 1.0f);
         mathfu::mat4 w2v = camera.getViewMatrix();
         const mathfu::mat4 proj = camera.getProjectionMatrix();
         const mathfu::mat4 viewproj = clip_fixup * proj * w2v;
