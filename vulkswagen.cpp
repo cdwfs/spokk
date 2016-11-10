@@ -96,7 +96,11 @@ int main(int argc, char *argv[]) {
         return -1;
     }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow *window = glfwCreateWindow(kWindowWidthDefault, kWindowHeightDefault, application_name.c_str(), NULL, NULL);
+    auto window = std::shared_ptr<GLFWwindow>(
+        glfwCreateWindow(kWindowWidthDefault, kWindowHeightDefault, application_name.c_str(), NULL, NULL),
+        [](GLFWwindow *w){ glfwDestroyWindow(w); });
+    glfwPollEvents(); // dummy poll for first loop iteration
+
 
     VkApplicationInfo application_info = {};
     application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -145,7 +149,7 @@ int main(int argc, char *argv[]) {
 #endif
     };
     context_ci.pfn_get_vk_surface = my_get_vk_surface;
-    context_ci.get_vk_surface_userdata = window;
+    context_ci.get_vk_surface_userdata = window.get();
     context_ci.application_info = &application_info;
     context_ci.debug_report_callback = my_debug_report_callback;
     context_ci.debug_report_flags = 0
@@ -601,7 +605,7 @@ int main(int argc, char *argv[]) {
     std::array<double, TIMESTAMP_ID_RANGE_SIZE> timestamp_seconds_prev = {};
     uint32_t vframe_index = 0;
     uint32_t frame_index = 0;
-    while(!glfwWindowShouldClose(window)) {
+    while(!glfwWindowShouldClose(window.get())) {
         // Wait for the command buffer previously used to generate this swapchain image to be submitted.
         // TODO(cort): this does not guarantee memory accesses from this submission will be visible on the host;
         // there'd need to be a memory barrier for that.
@@ -812,6 +816,7 @@ int main(int argc, char *argv[]) {
     context->destroy_image(depth_image);
     context->destroy_command_pool(cpool);
 
+    window.reset();
     glfwTerminate();
     delete context;
     return 0;
