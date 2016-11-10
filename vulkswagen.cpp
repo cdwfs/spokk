@@ -35,6 +35,68 @@ namespace {
         fprintf( stderr, "GLFW Error %d: %s\n", error, description);
     }
 
+    class InputState {
+    public:
+        explicit InputState(const std::shared_ptr<GLFWwindow>& window)
+                : window_(window)
+                , current_{}
+                , prev_{} {
+        }
+        ~InputState() = default;
+
+        enum Digital {
+            DIGITAL_LPAD_UP    =  0,
+            DIGITAL_LPAD_LEFT  =  1,
+            DIGITAL_LPAD_RIGHT =  2,
+            DIGITAL_LPAD_DOWN  =  3,
+            DIGITAL_RPAD_UP    =  4,
+            DIGITAL_RPAD_LEFT  =  5,
+            DIGITAL_RPAD_RIGHT =  6,
+            DIGITAL_RPAD_DOWN  =  7,
+
+            DIGITAL_COUNT
+        };
+        enum Analog {
+            ANALOG_L_X     = 0,
+            ANALOG_L_Y     = 1,
+            ANALOG_R_X     = 2,
+            ANALOG_R_Y     = 3,
+            ANALOG_MOUSE_X = 4,
+            ANALOG_MOUSE_Y = 5,
+
+            ANALOG_COUNT
+        };
+        void Update();
+        bool IsPressed(Digital id) const  { return  current_.digital[id] && !prev_.digital[id]; }
+        bool IsReleased(Digital id) const { return !current_.digital[id] &&  prev_.digital[id]; }
+        bool GetDigital(Digital id) const { return  current_.digital[id]; }
+        float GetAnalog(Analog id) const  { return  current_.analog[id]; }
+
+    private:
+        struct {
+            std::array<bool, DIGITAL_COUNT> digital;
+            std::array<float, ANALOG_COUNT> analog;
+        } current_, prev_;
+        std::weak_ptr<GLFWwindow> window_;
+    };
+    void InputState::Update(void) {
+        std::shared_ptr<GLFWwindow> w = window_.lock();
+        assert(w != nullptr);
+        GLFWwindow *pw = w.get();
+
+        prev_ = current_;
+
+        current_.digital[DIGITAL_LPAD_UP] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_W));
+        current_.digital[DIGITAL_LPAD_LEFT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_A));
+        current_.digital[DIGITAL_LPAD_RIGHT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_D));
+        current_.digital[DIGITAL_LPAD_DOWN] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_S));
+
+        double mx = 0, my = 0;
+        glfwGetCursorPos(pw, &mx, &my);
+        current_.analog[ANALOG_MOUSE_X] = (float)mx;
+        current_.analog[ANALOG_MOUSE_Y] = (float)my;
+    }
+
     static VKAPI_ATTR VkBool32 VKAPI_CALL my_debug_report_callback(VkFlags msgFlags,
             VkDebugReportObjectTypeEXT /*objType*/, uint64_t /*srcObject*/, size_t /*location*/, int32_t msgCode,
             const char *pLayerPrefix, const char *pMsg, void * /*pUserData*/) {
@@ -81,6 +143,7 @@ int main(int argc, char *argv[]) {
     const mathfu::vec3 initial_camera_target(0, 0, 0);
     const mathfu::vec3 initial_camera_up(0,1,0);
     camera.lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
+    CameraDolly dolly(camera);
 
     const std::string application_name = "Vulkswagen";
     const std::string engine_name = "Zombo";
@@ -99,8 +162,11 @@ int main(int argc, char *argv[]) {
     auto window = std::shared_ptr<GLFWwindow>(
         glfwCreateWindow(kWindowWidthDefault, kWindowHeightDefault, application_name.c_str(), NULL, NULL),
         [](GLFWwindow *w){ glfwDestroyWindow(w); });
+    glfwSetInputMode(window.get(), GLFW_STICKY_KEYS, 1);
+    glfwSetInputMode(window.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwPollEvents(); // dummy poll for first loop iteration
 
+    InputState input_state(window);
 
     VkApplicationInfo application_info = {};
     application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -606,6 +672,28 @@ int main(int argc, char *argv[]) {
     uint32_t vframe_index = 0;
     uint32_t frame_index = 0;
     while(!glfwWindowShouldClose(window.get())) {
+        input_state.Update();
+        mathfu::vec3 impulse(0,0,0);
+        if (input_state.GetDigital(InputState::DIGITAL_LPAD_UP)) {
+            impulse += camera.getViewDirection() * 0.1f;
+        }
+        if (input_state.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
+            impulse -= cross(camera.getViewDirection(), camera.getWorldUp()) * 0.1f;
+        }
+        if (input_state.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
+            impulse -= camera.getViewDirection() * 0.1f;
+        }
+        if (input_state.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
+            impulse += cross(camera.getViewDirection(), camera.getWorldUp()) * 0.1f;
+        }
+
+        camera.setOrientation(mathfu::quat::FromEulerAngles(mathfu::vec3(
+            -0.001f * input_state.GetAnalog(InputState::ANALOG_MOUSE_Y),
+            -0.001f * input_state.GetAnalog(InputState::ANALOG_MOUSE_X),
+            0)));
+        dolly.Impulse(impulse);
+        dolly.Update(1.0f/60.0f);
+
         // Wait for the command buffer previously used to generate this swapchain image to be submitted.
         // TODO(cort): this does not guarantee memory accesses from this submission will be visible on the host;
         // there'd need to be a memory barrier for that.

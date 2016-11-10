@@ -6,6 +6,7 @@
 class Camera {
   public:
     virtual ~Camera() {}
+    Camera& operator=(const Camera &rhs) = delete;
 
     //! Returns the position in world-space from which the Camera is viewing
     mathfu::vec3		getEyePoint() const { return mEyePoint; }
@@ -269,6 +270,34 @@ class CameraStereo : public CameraPersp {
 
     float			mConvergence;
     float			mEyeSeparation;
+};
+
+class CameraDolly
+{
+public:
+    explicit CameraDolly(Camera &cam) :
+            camera_(cam),
+            velocity_(0,0,0),
+            damping_(0.98f) {
+    }
+    ~CameraDolly() = default;
+    CameraDolly& operator=(const CameraDolly&) = delete;
+
+    Camera& GetCamera() { return camera_; }
+    const Camera& GetCamera() const { return camera_; }
+    void Impulse(mathfu::vec3& dv) { velocity_ += dv; }
+    void Update(float dt) {
+        camera_.setEyePoint(camera_.getEyePoint() + velocity_ * dt);
+        velocity_ *= damping_;
+        if (velocity_.LengthSquared() < 0.001f) {
+            velocity_ = mathfu::vec3(0,0,0);
+        }
+    }
+
+private:
+    Camera& camera_;
+    mathfu::vec3 velocity_;
+    float damping_;
 };
 
 #endif //!defined(CAMERA_H)
