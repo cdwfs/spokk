@@ -52,7 +52,11 @@ namespace {
         fflush(stdout);
     #endif
         free(message);
-        return VK_FALSE; // false = don't bail out of an API call with validation failures.
+        if (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT) {
+            return VK_TRUE; // bail out now if an error occurred
+        } else {
+            return VK_FALSE; // otherwise, try to soldier on.
+        }
     }
 
     VkSurfaceKHR my_get_vk_surface(VkInstance instance, const VkAllocationCallbacks *allocation_callbacks, void *userdata) {
