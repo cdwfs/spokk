@@ -20,6 +20,8 @@
 
 #include "vk_texture.h"
 
+#include "camera.h"
+
 #define CDS_MESH_IMPLEMENTATION
 #include "cds_mesh.h"
 
@@ -31,6 +33,68 @@
 namespace {
     void my_glfw_error_callback(int error, const char *description) {
         fprintf( stderr, "GLFW Error %d: %s\n", error, description);
+    }
+
+    class InputState {
+    public:
+        explicit InputState(const std::shared_ptr<GLFWwindow>& window)
+                : window_(window)
+                , current_{}
+                , prev_{} {
+        }
+        ~InputState() = default;
+
+        enum Digital {
+            DIGITAL_LPAD_UP    =  0,
+            DIGITAL_LPAD_LEFT  =  1,
+            DIGITAL_LPAD_RIGHT =  2,
+            DIGITAL_LPAD_DOWN  =  3,
+            DIGITAL_RPAD_UP    =  4,
+            DIGITAL_RPAD_LEFT  =  5,
+            DIGITAL_RPAD_RIGHT =  6,
+            DIGITAL_RPAD_DOWN  =  7,
+
+            DIGITAL_COUNT
+        };
+        enum Analog {
+            ANALOG_L_X     = 0,
+            ANALOG_L_Y     = 1,
+            ANALOG_R_X     = 2,
+            ANALOG_R_Y     = 3,
+            ANALOG_MOUSE_X = 4,
+            ANALOG_MOUSE_Y = 5,
+
+            ANALOG_COUNT
+        };
+        void Update();
+        bool IsPressed(Digital id) const  { return  current_.digital[id] && !prev_.digital[id]; }
+        bool IsReleased(Digital id) const { return !current_.digital[id] &&  prev_.digital[id]; }
+        bool GetDigital(Digital id) const { return  current_.digital[id]; }
+        float GetAnalog(Analog id) const  { return  current_.analog[id]; }
+
+    private:
+        struct {
+            std::array<bool, DIGITAL_COUNT> digital;
+            std::array<float, ANALOG_COUNT> analog;
+        } current_, prev_;
+        std::weak_ptr<GLFWwindow> window_;
+    };
+    void InputState::Update(void) {
+        std::shared_ptr<GLFWwindow> w = window_.lock();
+        assert(w != nullptr);
+        GLFWwindow *pw = w.get();
+
+        prev_ = current_;
+
+        current_.digital[DIGITAL_LPAD_UP] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_W));
+        current_.digital[DIGITAL_LPAD_LEFT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_A));
+        current_.digital[DIGITAL_LPAD_RIGHT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_D));
+        current_.digital[DIGITAL_LPAD_DOWN] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_S));
+
+        double mx = 0, my = 0;
+        glfwGetCursorPos(pw, &mx, &my);
+        current_.analog[ANALOG_MOUSE_X] = (float)mx;
+        current_.analog[ANALOG_MOUSE_Y] = (float)my;
     }
 
     static VKAPI_ATTR VkBool32 VKAPI_CALL my_debug_report_callback(VkFlags msgFlags,
@@ -75,6 +139,16 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
+    const float fovDegrees = 45.0f;
+    const float zNear = 0.01f;
+    const float zFar = 100.0f;
+    CameraPersp camera(kWindowWidthDefault, kWindowHeightDefault, fovDegrees, zNear, zFar);
+    const mathfu::vec3 initial_camera_pos(-2, 0, 6);
+    const mathfu::vec3 initial_camera_target(0, 0, 0);
+    const mathfu::vec3 initial_camera_up(0,1,0);
+    camera.lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
+    CameraDolly dolly(camera);
+
     const std::string application_name = "Vulkswagen";
     const std::string engine_name = "Zombo";
 
@@ -89,7 +163,14 @@ int main(int argc, char *argv[]) {
         return -1;
     }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow *window = glfwCreateWindow(kWindowWidthDefault, kWindowHeightDefault, application_name.c_str(), NULL, NULL);
+    auto window = std::shared_ptr<GLFWwindow>(
+        glfwCreateWindow(kWindowWidthDefault, kWindowHeightDefault, application_name.c_str(), NULL, NULL),
+        [](GLFWwindow *w){ glfwDestroyWindow(w); });
+    glfwSetInputMode(window.get(), GLFW_STICKY_KEYS, 1);
+    glfwSetInputMode(window.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwPollEvents(); // dummy poll for first loop iteration
+
+    InputState input_state(window);
 
     VkApplicationInfo application_info = {};
     application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -138,7 +219,7 @@ int main(int argc, char *argv[]) {
 #endif
     };
     context_ci.pfn_get_vk_surface = my_get_vk_surface;
-    context_ci.get_vk_surface_userdata = window;
+    context_ci.get_vk_surface_userdata = window.get();
     context_ci.application_info = &application_info;
     context_ci.debug_report_callback = my_debug_report_callback;
     context_ci.debug_report_flags = 0
@@ -680,10 +761,37 @@ int main(int argc, char *argv[]) {
     }
 
     const uint64_t clock_start = zomboClockTicks();
+    uint64_t ticks_prev = clock_start;
     std::array<double, TIMESTAMP_ID_RANGE_SIZE> timestamp_seconds_prev = {};
     uint32_t vframe_index = 0;
     uint32_t frame_index = 0;
-    while(!glfwWindowShouldClose(window)) {
+    while(!glfwWindowShouldClose(window.get())) {
+        uint64_t ticks_now = zomboClockTicks();
+        const float dt = (float)zomboTicksToSeconds(ticks_now - ticks_prev);
+        ticks_prev = ticks_now;
+
+        input_state.Update();
+        mathfu::vec3 impulse(0,0,0);
+        if (input_state.GetDigital(InputState::DIGITAL_LPAD_UP)) {
+            impulse += camera.getViewDirection() * 0.1f;
+        }
+        if (input_state.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
+            impulse -= cross(camera.getViewDirection(), camera.getWorldUp()) * 0.1f;
+        }
+        if (input_state.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
+            impulse -= camera.getViewDirection() * 0.1f;
+        }
+        if (input_state.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
+            impulse += cross(camera.getViewDirection(), camera.getWorldUp()) * 0.1f;
+        }
+
+        camera.setOrientation(mathfu::quat::FromEulerAngles(mathfu::vec3(
+            -0.001f * input_state.GetAnalog(InputState::ANALOG_MOUSE_Y),
+            -0.001f * input_state.GetAnalog(InputState::ANALOG_MOUSE_X),
+            0)));
+        dolly.Impulse(impulse);
+        dolly.Update(dt);
+
         // Wait for the command buffer previously used to generate this swapchain image to be submitted.
         // TODO(cort): this does not guarantee memory accesses from this submission will be visible on the host;
         // there'd need to be a memory barrier for that.
@@ -709,13 +817,14 @@ int main(int argc, char *argv[]) {
         VULKAN_CHECK(vkMapMemory(context->device(), o2w_buffer_mem, (VkDeviceSize)uniform_buffer_vframe_offset,
             uniform_buffer_vframe_size, VkMemoryMapFlags(0), (void**)&mapped_o2w_buffer));
         const float seconds_elapsed = (float)( zomboTicksToSeconds(zomboClockTicks() - clock_start) );
+        const mathfu::vec3 swarm_center(0, 0, -2);
         for(int iMesh=0; iMesh<kMeshCount; ++iMesh) {
             mathfu::quat q = mathfu::quat::FromAngleAxis(seconds_elapsed + (float)iMesh, mathfu::vec3(0,1,0));
             mathfu::mat4 o2w = mathfu::mat4::Identity()
                 * mathfu::mat4::FromTranslationVector(mathfu::vec3(
-                    4.0f * cosf((1.0f+0.001f*iMesh) * 0.2f * seconds_elapsed + float(149*iMesh) + 0.0f) + 0.0f,
-                    2.5f * sinf(0.3f * seconds_elapsed + float(13*iMesh) + 5.0f) + 0.0f,
-                    3.0f * sinf(0.05f * seconds_elapsed + float(51*iMesh) + 2.0f) - 2.0f
+                    4.0f * cosf((1.0f+0.001f*iMesh) * 0.2f * seconds_elapsed + float(149*iMesh) + 0.0f) + swarm_center[0],
+                    2.5f * sinf(0.3f * seconds_elapsed + float(13*iMesh) + 5.0f) + swarm_center[1],
+                    3.0f * sinf(0.05f * seconds_elapsed + float(51*iMesh) + 2.0f) + swarm_center[2]
                     ))
                 * q.ToMatrix4()
                 //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
@@ -769,21 +878,13 @@ int main(int argc, char *argv[]) {
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
             pipeline_layout, 0, (uint32_t)dsets.size(), dsets.data(), 1,&uniform_buffer_vframe_offset);
-        push_constants.time_and_res = mathfu::vec4(seconds_elapsed, (float)kWindowWidthDefault, (float)kWindowHeightDefault, 0);
-        push_constants.eye = mathfu::vec4(
-            0.0f,
-            2.0f,
-            6.0f,
-            0);
-        mathfu::mat4 w2v = mathfu::mat4::LookAt(
-            mathfu::vec3(0,0,0), // target
-            mathfu::vec4(push_constants.eye).xyz(),
-            mathfu::vec3(0,1,0), // up
-            1.0f); // right-handed
-        push_constants.viewproj = clip_fixup * mathfu::mat4::Perspective(
-            (float)M_PI_4,
-            (float)kWindowWidthDefault/(float)kWindowHeightDefault,
-            0.01f, 100.0f) * w2v;
+        push_constants.time_and_res = mathfu::vec4(seconds_elapsed,
+            (float)kWindowWidthDefault, (float)kWindowHeightDefault, 0);
+        push_constants.eye = mathfu::vec4(camera.getEyePoint(), 1.0f);
+        mathfu::mat4 w2v = camera.getViewMatrix();
+        const mathfu::mat4 proj = camera.getProjectionMatrix();
+        const mathfu::mat4 viewproj = clip_fixup * proj * w2v;
+        push_constants.viewproj = viewproj;
         vkCmdPushConstants(cb, pipeline_layout, push_constant_range.stageFlags,
             push_constant_range.offset, push_constant_range.size, &push_constants);
         VkViewport viewport = {};
@@ -912,6 +1013,7 @@ int main(int argc, char *argv[]) {
     context->destroy_image(depth_image);
     context->destroy_command_pool(cpool);
 
+    window.reset();
     glfwTerminate();
     delete context;
     return 0;

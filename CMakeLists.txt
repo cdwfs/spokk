@@ -15,6 +15,7 @@ include_directories(glfw/include)
 project(vulkswagen)
 
 SET(headers
+    camera.h
     cds_mesh.h
     cds_vulkan.hpp
     image_file.h
@@ -23,6 +24,7 @@ SET(headers
     vk_texture.h
     )
 SET(sources
+    camera.cpp
     image_file.c
     vk_texture.cpp
     vulkswagen.cpp
