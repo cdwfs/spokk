@@ -160,12 +160,11 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK(vkAllocateCommandBuffers(context->device(), &cb_allocate_info, command_buffers.data()));
 
     // Create depth buffer
-    // TODO(cort): use actual swapchain extent instead of window dimensions
     VkImageCreateInfo depth_image_ci = {};
     depth_image_ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     depth_image_ci.imageType = VK_IMAGE_TYPE_2D;
     depth_image_ci.format = VK_FORMAT_UNDEFINED; // filled in below
-    depth_image_ci.extent = {kWindowWidthDefault, kWindowHeightDefault, 1};
+    depth_image_ci.extent = {kWindowWidthDefault, kWindowHeightDefault, 1}; // TODO(cort): use actual swapchain extent instead of window dimensions
     depth_image_ci.mipLevels = 1;
     depth_image_ci.arrayLayers = 1;
     depth_image_ci.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -197,6 +196,27 @@ int main(int argc, char *argv[]) {
     VULKAN_CHECK(context->allocate_and_bind_image_memory(depth_image,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &depth_image_mem, &depth_image_mem_offset));
     VkImageView depth_image_view = context->create_image_view(depth_image, depth_image_ci, "depth buffer image view");
+
+    // Create intermediate color buffer
+    VkImageCreateInfo rt_image_ci = {};
+    rt_image_ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    rt_image_ci.imageType = VK_IMAGE_TYPE_2D;
+    rt_image_ci.format = context->swapchain_format();
+    rt_image_ci.extent = {kWindowWidthDefault, kWindowHeightDefault, 1}; // TODO(cort): use actual swapchain extent instead of window dimensions
+    rt_image_ci.mipLevels = 1;
+    rt_image_ci.arrayLayers = 1;
+    rt_image_ci.samples = VK_SAMPLE_COUNT_1_BIT;
+    rt_image_ci.tiling = VK_IMAGE_TILING_OPTIMAL;
+    rt_image_ci.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+    rt_image_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    rt_image_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkImage rt_image = context->create_image(rt_image_ci, VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, "offscreen color buffer image");
+    VkDeviceMemory rt_image_mem = VK_NULL_HANDLE;
+    VkDeviceSize rt_image_mem_offset = 0;
+    VULKAN_CHECK(context->allocate_and_bind_image_memory(rt_image,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &rt_image_mem, &rt_image_mem_offset));
+    VkImageView rt_image_view = context->create_image_view(rt_image, rt_image_ci, "offscreen color buffer image view");
 
     // Generate a procedural mesh
     cdsm_metadata_t mesh_metadata = {};
@@ -345,15 +365,20 @@ int main(int argc, char *argv[]) {
     push_constant_range.size = sizeof(push_constants);
 
     // Create Vulkan descriptor layout & pipeline layout
-    std::array<VkDescriptorSetLayoutBinding, 2> dset_layout_bindings = {};
+    // Currently, we just use a monolithic descriptor set for everything.
+    std::array<VkDescriptorSetLayoutBinding, 3> dset_layout_bindings = {};
     dset_layout_bindings[0].binding = 0;
-    dset_layout_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    dset_layout_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     dset_layout_bindings[0].descriptorCount = 1;
-    dset_layout_bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    dset_layout_bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     dset_layout_bindings[1].binding = 1;
-    dset_layout_bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    dset_layout_bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     dset_layout_bindings[1].descriptorCount = 1;
-    dset_layout_bindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    dset_layout_bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    dset_layout_bindings[2].binding = 2;
+    dset_layout_bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    dset_layout_bindings[2].descriptorCount = 1;
+    dset_layout_bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     VkDescriptorSetLayoutCreateInfo dset_layout_ci = {};
     dset_layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     dset_layout_ci.bindingCount = (uint32_t)dset_layout_bindings.size();
@@ -366,10 +391,12 @@ int main(int argc, char *argv[]) {
     pipeline_layout_ci.pushConstantRangeCount = 1;
     pipeline_layout_ci.pPushConstantRanges = &push_constant_range;
     VkPipelineLayout pipeline_layout = context->create_pipeline_layout(pipeline_layout_ci, "pipeline layout");
-    
+
     // Load shaders
-    VkShaderModule vertex_shader = context->load_shader("tri.vert.spv");
+    VkShaderModule vertex_shader   = context->load_shader("tri.vert.spv");
     VkShaderModule fragment_shader = context->load_shader("tri.frag.spv");
+    VkShaderModule post_vertex_shader   = context->load_shader("fullscreen.vert.spv");
+    VkShaderModule post_fragment_shader = context->load_shader("subpass_post.frag.spv");
 
     // Load textures, create sampler and image view
     VkSamplerCreateInfo sampler_ci = {};
@@ -388,7 +415,7 @@ int main(int argc, char *argv[]) {
     sampler_ci.maxLod = FLT_MAX;
     sampler_ci.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
     sampler_ci.unnormalizedCoordinates = VK_FALSE;
-    VkSampler sampler= context->create_sampler(sampler_ci, "default sampler");
+    VkSampler sampler = context->create_sampler(sampler_ci, "default sampler");
 
     const std::string& texture_filename = "trevor/redf.ktx";
     VkImage texture_image = VK_NULL_HANDLE;
@@ -403,40 +430,61 @@ int main(int argc, char *argv[]) {
         texture_image_ci, "texture image view");
 
     // Create render pass
-    std::array<VkAttachmentDescription, 2> attachment_descs = {};
-    attachment_descs[0].format = context->swapchain_format();
-    attachment_descs[0].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachment_descs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachment_descs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    attachment_descs[1].format = depth_image_ci.format;
-    attachment_descs[1].samples = depth_image_ci.samples;
-    attachment_descs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachment_descs[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachment_descs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachment_descs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachment_descs[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachment_descs[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     enum {
         kColorAttachmentIndex = 0,
         kDepthAttachmentIndex = 1,
+        kOutputAttachmentIndex = 2,
         kAttachmentCount
     };
-    std::array<VkAttachmentReference, kAttachmentCount> attachment_refs = {};
-    attachment_refs[kColorAttachmentIndex].attachment = 0;
-    attachment_refs[kColorAttachmentIndex].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    attachment_refs[kDepthAttachmentIndex].attachment = kDepthAttachmentIndex;
-    attachment_refs[kDepthAttachmentIndex].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    VkSubpassDescription subpass_desc = {};
-    subpass_desc.flags = 0;
-    subpass_desc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass_desc.colorAttachmentCount = 1;
-    subpass_desc.pColorAttachments = &attachment_refs[kColorAttachmentIndex];
-    subpass_desc.pDepthStencilAttachment = &attachment_refs[kDepthAttachmentIndex];
-    std::array<VkSubpassDependency, 2> subpass_dependencies = {};
+    std::array<VkAttachmentDescription, 3> attachment_descs = {};
+    attachment_descs[kColorAttachmentIndex].format = rt_image_ci.format;
+    attachment_descs[kColorAttachmentIndex].samples = rt_image_ci.samples;
+    attachment_descs[kColorAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[kColorAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[kColorAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[kColorAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[kColorAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[kColorAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[kDepthAttachmentIndex].format = depth_image_ci.format;
+    attachment_descs[kDepthAttachmentIndex].samples = depth_image_ci.samples;
+    attachment_descs[kDepthAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[kDepthAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[kDepthAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[kDepthAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[kDepthAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[kDepthAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[kOutputAttachmentIndex].format = context->swapchain_format();
+    attachment_descs[kOutputAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[kOutputAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[kOutputAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment_descs[kOutputAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[kOutputAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[kOutputAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[kOutputAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    std::array< std::vector<VkAttachmentReference>, 2> subpass_attachment_refs = {{
+        {
+            {kColorAttachmentIndex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL},
+            {kDepthAttachmentIndex, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL},
+        },
+        {
+            {kColorAttachmentIndex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+            {kOutputAttachmentIndex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL},
+        }
+    }};
+    std::array<VkSubpassDescription, 2> subpass_descs = {};
+    subpass_descs[0].flags = 0;
+    subpass_descs[0].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass_descs[0].colorAttachmentCount = 1;
+    subpass_descs[0].pColorAttachments = &subpass_attachment_refs[0][0];
+    subpass_descs[0].pDepthStencilAttachment = &subpass_attachment_refs[0][1];
+    subpass_descs[1].flags = 0;
+    subpass_descs[1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass_descs[1].inputAttachmentCount = 1;
+    subpass_descs[1].pInputAttachments = &subpass_attachment_refs[1][0];
+    subpass_descs[1].colorAttachmentCount = 1;
+    subpass_descs[1].pColorAttachments = &subpass_attachment_refs[1][1];
+    subpass_descs[1].pDepthStencilAttachment = nullptr;
+    std::array<VkSubpassDependency, 3> subpass_dependencies = {};
     subpass_dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
     subpass_dependencies[0].dstSubpass = 0;
     subpass_dependencies[0].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
@@ -445,43 +493,51 @@ int main(int argc, char *argv[]) {
     subpass_dependencies[0].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
     subpass_dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     subpass_dependencies[1].srcSubpass = 0;
-    subpass_dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-    subpass_dependencies[1].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    subpass_dependencies[1].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    subpass_dependencies[1].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
-    subpass_dependencies[1].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[1].dstSubpass = 1;
+    subpass_dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    subpass_dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    subpass_dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    subpass_dependencies[1].dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
     subpass_dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    subpass_dependencies[2].srcSubpass = 1;
+    subpass_dependencies[2].dstSubpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependencies[2].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[2].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[2].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[2].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[2].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     VkRenderPassCreateInfo render_pass_ci = {};
     render_pass_ci.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     render_pass_ci.attachmentCount = (uint32_t)attachment_descs.size();
     render_pass_ci.pAttachments = attachment_descs.data();
-    render_pass_ci.subpassCount = 1;
-    render_pass_ci.pSubpasses = &subpass_desc;
+    render_pass_ci.subpassCount = (uint32_t)subpass_descs.size();
+    render_pass_ci.pSubpasses = subpass_descs.data();
     render_pass_ci.dependencyCount = (uint32_t)subpass_dependencies.size();
     render_pass_ci.pDependencies = subpass_dependencies.data();
     VkRenderPass render_pass = context->create_render_pass(render_pass_ci, "default render pass");
 
     // Create VkFramebuffers
     std::array<VkImageView, kAttachmentCount> attachment_views = {};
-    attachment_views[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below;
+    attachment_views[kColorAttachmentIndex] = rt_image_view;
     attachment_views[kDepthAttachmentIndex] = depth_image_view;
+    attachment_views[kOutputAttachmentIndex] = VK_NULL_HANDLE; // filled in below;
     // TODO(cort): use actual target extents instead of kWindow* constants
     VkFramebufferCreateInfo framebuffer_ci = {};
     framebuffer_ci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     framebuffer_ci.renderPass = render_pass;
     framebuffer_ci.attachmentCount = (uint32_t)attachment_views.size();
     framebuffer_ci.pAttachments = attachment_views.data();
-    framebuffer_ci.width = kWindowWidthDefault;
+    framebuffer_ci.width = kWindowWidthDefault; // TODO(cort): do all attachments need the same dimensions? Really?
     framebuffer_ci.height = kWindowHeightDefault;
     framebuffer_ci.layers = 1;
     std::vector<VkFramebuffer> framebuffers;
     framebuffers.reserve(context->swapchain_image_views().size());
     for(auto view : context->swapchain_image_views()) {
-        attachment_views[kColorAttachmentIndex] = view;
+        attachment_views[kOutputAttachmentIndex] = view;
         framebuffers.push_back(context->create_framebuffer(framebuffer_ci, "Default framebuffer"));
     }
 
-    // Create VkPipeline
+    // Create VkPipelines
     cdsvk::GraphicsPipelineSettingsVsPs graphics_pipeline_settings = {};
     graphics_pipeline_settings.vertex_buffer_layout = vertex_buffer_layout;
     graphics_pipeline_settings.dynamic_state_mask = 0
@@ -492,16 +548,39 @@ int main(int argc, char *argv[]) {
     graphics_pipeline_settings.pipeline_layout = pipeline_layout;
     graphics_pipeline_settings.render_pass = render_pass;
     graphics_pipeline_settings.subpass = 0;
-    graphics_pipeline_settings.subpass_color_attachment_count = subpass_desc.colorAttachmentCount;
+    graphics_pipeline_settings.subpass_color_attachment_count =
+        subpass_descs[graphics_pipeline_settings.subpass].colorAttachmentCount;
     graphics_pipeline_settings.vertex_shader = vertex_shader;
     graphics_pipeline_settings.fragment_shader = fragment_shader;
     cdsvk::GraphicsPipelineCreateInfo graphics_pipeline_ci(graphics_pipeline_settings);
-    // Fixup default values if necessary
+    // Fixup default values
     if (mesh_metadata.front_face == CDSM_FRONT_FACE_CW) {
         graphics_pipeline_ci.rasterization_state_ci.frontFace = VK_FRONT_FACE_CLOCKWISE;
     }
     VkPipeline graphics_pipeline = context->create_graphics_pipeline(graphics_pipeline_ci,
         "default graphics pipeline");
+
+    cdsvk::GraphicsPipelineSettingsVsPs post_pipeline_settings = {};
+    post_pipeline_settings.vertex_buffer_layout = vertex_buffer_layout;
+    post_pipeline_settings.dynamic_state_mask = 0
+        | (1<<VK_DYNAMIC_STATE_VIEWPORT)
+        | (1<<VK_DYNAMIC_STATE_SCISSOR)
+        ;
+    post_pipeline_settings.primitive_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    post_pipeline_settings.pipeline_layout = pipeline_layout;
+    post_pipeline_settings.render_pass = render_pass;
+    post_pipeline_settings.subpass = 1;
+    post_pipeline_settings.subpass_color_attachment_count =
+        subpass_descs[post_pipeline_settings.subpass].colorAttachmentCount;
+    post_pipeline_settings.vertex_shader = post_vertex_shader;
+    post_pipeline_settings.fragment_shader = post_fragment_shader;
+    cdsvk::GraphicsPipelineCreateInfo post_pipeline_ci(post_pipeline_settings);
+    // Fixup default values
+    post_pipeline_ci.vertex_input_state_ci.vertexAttributeDescriptionCount = 0;
+    post_pipeline_ci.vertex_input_state_ci.vertexBindingDescriptionCount = 0;
+    // TODO(cort): figure out proper way to specify attachment layouts across subpasses.
+    VkPipeline post_pipeline = context->create_graphics_pipeline(post_pipeline_ci,
+        "post-processing pipeline");
 
     // Create Vulkan descriptor pool and descriptor set.
     // TODO(cort): the current descriptors are constant; we'd need a set per-vframe if it was going to change
@@ -520,23 +599,33 @@ int main(int argc, char *argv[]) {
     image_infos[0].sampler = sampler;
     image_infos[0].imageView = texture_image_view;
     image_infos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    std::vector<VkDescriptorImageInfo> input_image_infos(1);
+    input_image_infos[0].sampler = VK_NULL_HANDLE;
+    input_image_infos[0].imageView = rt_image_view;
+    input_image_infos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     std::vector<VkDescriptorBufferInfo> buffer_infos(1);
     buffer_infos[0].buffer = o2w_buffer;
     buffer_infos[0].offset = 0;
     buffer_infos[0].range = VK_WHOLE_SIZE;
-    std::vector<VkWriteDescriptorSet> write_dsets(2);
+    std::vector<VkWriteDescriptorSet> write_dsets(3);
     write_dsets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write_dsets[0].dstSet = dsets[0];
     write_dsets[0].dstBinding = 0;
-    write_dsets[0].descriptorCount = (uint32_t)image_infos.size();
-    write_dsets[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    write_dsets[0].pImageInfo = image_infos.data();
+    write_dsets[0].descriptorCount = (uint32_t)buffer_infos.size();
+    write_dsets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    write_dsets[0].pBufferInfo = buffer_infos.data();
     write_dsets[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write_dsets[1].dstSet = dsets[0];
     write_dsets[1].dstBinding = 1;
-    write_dsets[1].descriptorCount = (uint32_t)buffer_infos.size();
-    write_dsets[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-    write_dsets[1].pBufferInfo = buffer_infos.data();
+    write_dsets[1].descriptorCount = (uint32_t)image_infos.size();
+    write_dsets[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    write_dsets[1].pImageInfo = image_infos.data();
+    write_dsets[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write_dsets[2].dstSet = dsets[0];
+    write_dsets[2].dstBinding = 2;
+    write_dsets[2].descriptorCount = (uint32_t)input_image_infos.size();
+    write_dsets[2].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    write_dsets[2].pImageInfo = input_image_infos.data();
     vkUpdateDescriptorSets(context->device(), (uint32_t)write_dsets.size(), write_dsets.data(), 0,nullptr);
 
     // Create the semaphores used to synchronize access to swapchain images
@@ -620,9 +709,9 @@ int main(int argc, char *argv[]) {
             mathfu::quat q = mathfu::quat::FromAngleAxis(seconds_elapsed + (float)iMesh, mathfu::vec3(0,1,0));
             mathfu::mat4 o2w = mathfu::mat4::Identity()
                 * mathfu::mat4::FromTranslationVector(mathfu::vec3(
-                    4.0f * cosf((1.0f+0.001f*iMesh) * seconds_elapsed + float(149*iMesh) + 0.0f) + 0.0f,
-                    2.5f * sinf(1.5f * seconds_elapsed + float(13*iMesh) + 5.0f) + 0.0f,
-                    3.0f * sinf(0.25f * seconds_elapsed + float(51*iMesh) + 2.0f) - 2.0f
+                    4.0f * cosf((1.0f+0.001f*iMesh) * 0.2f * seconds_elapsed + float(149*iMesh) + 0.0f) + 0.0f,
+                    2.5f * sinf(0.3f * seconds_elapsed + float(13*iMesh) + 5.0f) + 0.0f,
+                    3.0f * sinf(0.05f * seconds_elapsed + float(51*iMesh) + 2.0f) - 2.0f
                     ))
                 * q.ToMatrix4()
                 //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
@@ -656,8 +745,8 @@ int main(int argc, char *argv[]) {
         vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestamp_query_pool, TIMESTAMP_ID_BEGIN_FRAME);
 
         std::array<VkClearValue, kAttachmentCount> clear_values;
-        clear_values[0].color.float32[0] = 0.0f;
-        clear_values[0].color.float32[1] = 0.0f;
+        clear_values[0].color.float32[0] = 0.2f;
+        clear_values[0].color.float32[1] = 0.2f;
         clear_values[0].color.float32[2] = 0.3f;
         clear_values[0].color.float32[3] = 0.0f;
         clear_values[1].depthStencil.depth = 1.0f;
@@ -676,7 +765,7 @@ int main(int argc, char *argv[]) {
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
             pipeline_layout, 0, (uint32_t)dsets.size(), dsets.data(), 1,&uniform_buffer_vframe_offset);
-        push_constants.time_and_res = mathfu::vec4(seconds_elapsed, kWindowWidthDefault, kWindowHeightDefault, 0);
+        push_constants.time_and_res = mathfu::vec4(seconds_elapsed, (float)kWindowWidthDefault, (float)kWindowHeightDefault, 0);
         push_constants.eye = mathfu::vec4(
             0.0f,
             2.0f,
@@ -711,6 +800,11 @@ int main(int argc, char *argv[]) {
         vkCmdBindIndexBuffer(cb, index_buffer, index_buffer_offset, index_type);
         const uint32_t instance_count = kMeshCount;
         vkCmdDrawIndexed(cb, mesh_metadata.index_count, instance_count, 0,0,0);
+        // post-processing subpass
+        vkCmdNextSubpass(cb, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, post_pipeline);
+        vkCmdDraw(cb, 3, 1, 0, 0);
+        // End recording & submit
         vkCmdEndRenderPass(cb);
         vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool, TIMESTAMP_ID_END_FRAME);
         VULKAN_CHECK( vkEndCommandBuffer(cb) );
@@ -788,13 +882,19 @@ int main(int argc, char *argv[]) {
         context->destroy_framebuffer(framebuffer);
     }
     context->destroy_pipeline(graphics_pipeline);
+    context->destroy_pipeline(post_pipeline);
     context->destroy_pipeline_layout(pipeline_layout);
     context->destroy_descriptor_pool(dpool);
     context->destroy_descriptor_set_layout(dset_layout);
+    context->free_device_memory(rt_image_mem, rt_image_mem_offset);
+    context->destroy_image_view(rt_image_view);
+    context->destroy_image(rt_image);
     context->free_device_memory(texture_image_mem, texture_image_mem_offset);
     context->destroy_image_view(texture_image_view);
     context->destroy_image(texture_image);
     context->destroy_sampler(sampler);
+    context->destroy_shader(post_vertex_shader);
+    context->destroy_shader(post_fragment_shader);
     context->destroy_shader(vertex_shader);
     context->destroy_shader(fragment_shader);
     context->free_device_memory(o2w_buffer_mem, o2w_buffer_mem_offset);

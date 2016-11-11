@@ -31,6 +31,8 @@ SET(sources
 SET(shaders
     tri.vert
     tri.frag
+    fullscreen.vert
+    subpass_post.frag
     )
 
 FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)

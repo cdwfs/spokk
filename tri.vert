@@ -6,7 +6,7 @@ layout (location = 0) out vec2 texcoord;
 layout (location = 1) out vec3 norm;
 layout (location = 2) out vec3 fromEye;
 
-layout (set = 0, binding = 1) uniform ObjectToWorld {
+layout (set = 0, binding = 0) uniform ObjectToWorld {
     vec4 matrix_columns[4*1024];
 };
 
