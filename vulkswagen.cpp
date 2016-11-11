@@ -668,10 +668,15 @@ int main(int argc, char *argv[]) {
     }
 
     const uint64_t clock_start = zomboClockTicks();
+    uint64_t ticks_prev = clock_start;
     std::array<double, TIMESTAMP_ID_RANGE_SIZE> timestamp_seconds_prev = {};
     uint32_t vframe_index = 0;
     uint32_t frame_index = 0;
     while(!glfwWindowShouldClose(window.get())) {
+        uint64_t ticks_now = zomboClockTicks();
+        const float dt = (float)zomboTicksToSeconds(ticks_now - ticks_prev);
+        ticks_prev = ticks_now;
+
         input_state.Update();
         mathfu::vec3 impulse(0,0,0);
         if (input_state.GetDigital(InputState::DIGITAL_LPAD_UP)) {
@@ -692,7 +697,7 @@ int main(int argc, char *argv[]) {
             -0.001f * input_state.GetAnalog(InputState::ANALOG_MOUSE_X),
             0)));
         dolly.Impulse(impulse);
-        dolly.Update(1.0f/60.0f);
+        dolly.Update(dt);
 
         // Wait for the command buffer previously used to generate this swapchain image to be submitted.
         // TODO(cort): this does not guarantee memory accesses from this submission will be visible on the host;
