@@ -259,6 +259,7 @@ CameraPersp::CameraPersp()
 {
     lookAt( vec3( 28, 21, 28 ), vec3(), vec3( 0, 1, 0 ) );
     setPerspective( 35, 1.3333f, 0.1f, 1000 );
+    setLensShift(0,0);
 }
 
 CameraPersp::CameraPersp( int pixelWidth, int pixelHeight, float fovDegrees )
@@ -275,6 +276,7 @@ CameraPersp::CameraPersp( int pixelWidth, int pixelHeight, float fovDegrees )
 
     setPerspective( fovDegrees, aspect, nearDist, farDist );
     lookAt( vec3( eyeX, eyeY, dist ), vec3( eyeX, eyeY, 0.0f ) );
+    setLensShift(0,0);
 }
 
 CameraPersp::CameraPersp( int pixelWidth, int pixelHeight, float fovDegrees, float nearPlane, float farPlane )
@@ -291,6 +293,7 @@ CameraPersp::CameraPersp( int pixelWidth, int pixelHeight, float fovDegrees, flo
 
     setPerspective( fovDegrees, aspect, nearPlane, farPlane );
     lookAt( vec3( eyeX, eyeY, dist ), vec3( eyeX, eyeY, 0.0f ) );
+    setLensShift(0,0);
 }
 
 void CameraPersp::setPerspective( float verticalFovDegrees, float aspectRatio, float nearPlane, float farPlane )
