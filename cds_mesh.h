@@ -678,6 +678,8 @@ static void cdsm__convert_attribute(const void *in, cdsm_attribute_format_t in_f
     switch(in_format)
     {
     case CDSM_ATTRIBUTE_FORMAT_UNKNOWN:
+	case CDSM_ATTRIBUTE_FORMAT_MAX_ENUM:
+	case CDSM_ATTRIBUTE_FORMAT_RANGE_SIZE:
         break;
     case CDSM_ATTRIBUTE_FORMAT_R8_UNORM:
     case CDSM_ATTRIBUTE_FORMAT_R8G8_UNORM:
@@ -827,6 +829,8 @@ static void cdsm__convert_attribute(const void *in, cdsm_attribute_format_t in_f
     switch(out_format)
     {
     case CDSM_ATTRIBUTE_FORMAT_UNKNOWN:
+	case CDSM_ATTRIBUTE_FORMAT_MAX_ENUM:
+	case CDSM_ATTRIBUTE_FORMAT_RANGE_SIZE:
         break;
     case CDSM_ATTRIBUTE_FORMAT_R8_UNORM:
     case CDSM_ATTRIBUTE_FORMAT_R8G8_UNORM:
