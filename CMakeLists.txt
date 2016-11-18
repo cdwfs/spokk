@@ -9,8 +9,7 @@ option(GLFW_BUILD_TESTS "Build the GLFW test programs" OFF)
 option(GLFW_BUILD_DOCS "Build the GLFW documentation" OFF)
 option(GLFW_INSTALL "Generate installation target" OFF)
 option(USE_MSVC_RUNTIME_LIBRARY_DLL "Use MSVC runtime library DLL" OFF)
-add_subdirectory(glfw) # specify binary directory for out-of-tree glfw
-include_directories(glfw/include)
+add_subdirectory(third_party/glfw) # specify binary directory for out-of-tree glfw
 
 project(vulkswagen)
 
@@ -97,7 +96,7 @@ target_link_libraries(${exe_name} glfw ${GLFW_LIBRARIES} ${libs})
 set(mathfu_build_benchmarks OFF CACHE BOOL "")
 set(mathfu_build_tests OFF CACHE BOOL "")
 set(mathfu_enable_simd OFF CACHE BOOL "")
-add_subdirectory(mathfu mathfu)
+add_subdirectory(third_party/mathfu)
 mathfu_configure_flags(vulkswagen)
 
 ADD_CUSTOM_COMMAND(
