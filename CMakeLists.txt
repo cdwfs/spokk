@@ -5,6 +5,17 @@ project(spokk)
 # Remove MinSizeRel and RelWithDebInfo targets
 set(CMAKE_CONFIGURATION_TYPES Debug Release CACHE TYPE INTERNAL FORCE )
 
+# SPIRV-Cross
+add_subdirectory(third_party/SPIRV-Cross)
+set(SPIRV_CROSS_TARGETS
+	spirv-cross-core
+	spirv-cross-glsl
+	spirv-cross-cpp
+	spirv-cross-msl
+	spirv-cross
+	)
+set_target_properties(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
+
 # GLFW
 option(GLFW_BUILD_EXAMPLES "Build the GLFW example programs" OFF)
 option(GLFW_BUILD_TESTS "Build the GLFW test programs" OFF)
@@ -87,7 +98,7 @@ SET(SPOKK_SOURCES
 SET(SPOKK_LIB_NAME spokk)
 cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKK_HEADERS}" "${SPOKK_SOURCES}")
 ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC ${SPOKK_SOURCES} ${SPOKK_HEADERS})
-TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} ${libs})
+TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} spirv-cross-cpp ${libs})
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC ".")
 
 # cubeswarm sample
@@ -113,7 +124,7 @@ ENDFOREACH(SHADER_FILE)
 set(CUBESWARM_EXE_NAME cubeswarm)
 cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${CUBESWARM_HEADERS}" "${CUBESWARM_SOURCES}")
 add_executable(${CUBESWARM_EXE_NAME} ${CUBESWARM_SOURCES} ${CUBESWARM_SHADERS} ${CUBESWARM_HEADERS})
-target_link_libraries(${CUBESWARM_EXE_NAME} glfw ${GLFW_LIBRARIES} ${libs} ${SPOKK_LIB_NAME})
+target_link_libraries(${CUBESWARM_EXE_NAME} glfw ${GLFW_LIBRARIES} ${libs} spirv-cross-cpp ${SPOKK_LIB_NAME})
 mathfu_configure_flags(${CUBESWARM_EXE_NAME})
 
 # Copy assets directory into build dir.
