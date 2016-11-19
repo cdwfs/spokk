@@ -15,6 +15,13 @@ set(SPIRV_CROSS_TARGETS
 	spirv-cross
 	)
 set_target_properties(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
+# Skip executable targets; we only care about the library anyway.
+FOREACH(SHADER_TARGET IN LISTS SPIRV_CROSS_TARGETS)
+    get_target_property(TARGET_TYPE ${SHADER_TARGET} TYPE)
+	IF(${TARGET_TYPE} STREQUAL EXECUTABLE)
+		set_target_properties(${SHADER_TARGET} PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD TRUE)
+	ENDIF()
+ENDFOREACH()
 
 # GLFW
 option(GLFW_BUILD_EXAMPLES "Build the GLFW example programs" OFF)
