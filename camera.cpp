@@ -1,7 +1,9 @@
 #include "camera.h"
 
+#ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
 #include <math.h>
+#endif
 
 #include <algorithm>
 
@@ -286,7 +288,7 @@ CameraPersp::CameraPersp( int pixelWidth, int pixelHeight, float fovDegrees, flo
 
     float eyeX          = pixelWidth / 2.0f;
     float eyeY          = pixelHeight / 2.0f;
-    halfFov         = 3.14159f * fovDegrees / 360.0f;
+    halfFov             = 3.14159f * fovDegrees / 360.0f;
     theTan              = tanf( halfFov );
     float dist          = eyeY / theTan;
     aspect              = pixelWidth / (float)pixelHeight;
@@ -298,10 +300,10 @@ CameraPersp::CameraPersp( int pixelWidth, int pixelHeight, float fovDegrees, flo
 
 void CameraPersp::setPerspective( float verticalFovDegrees, float aspectRatio, float nearPlane, float farPlane )
 {
-    mFov			= verticalFovDegrees;
-    mAspectRatio	= aspectRatio;
-    mNearClip		= nearPlane;
-    mFarClip		= farPlane;
+    mFov         = verticalFovDegrees;
+    mAspectRatio = aspectRatio;
+    mNearClip    = nearPlane;
+    mFarClip     = farPlane;
 
     mProjectionCached = false;
 }
