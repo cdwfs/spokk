@@ -808,11 +808,16 @@ static int LoadImageFromAstc(ImageFile *out_image, const char *image_path)
 {
     FILE *astc_file = fopen(image_path, "rb");
     if (!astc_file)
-        return -3;  // Couldn't open file for reading
+        return -2;  // Couldn't open file for reading
     fseek(astc_file, 0, SEEK_END);
     size_t astc_file_size = ftell(astc_file);
     fseek(astc_file, 0, SEEK_SET);
     uint8_t *astc_bytes = (uint8_t*)malloc(astc_file_size);
+    if (!astc_bytes)
+    {
+      fclose(astc_file);
+      return -3;
+    }
     size_t read_size = fread(astc_bytes, astc_file_size, 1, astc_file);
     fclose(astc_file);
     if (read_size != 1)
