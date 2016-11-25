@@ -4,7 +4,9 @@ using namespace cdsvk;
 #include <assert.h>
 
 VkResult cdsvk::get_supported_instance_layers(const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
-    std::vector<VkLayerProperties>* out_supported_layers) {
+    std::vector<VkLayerProperties>* out_supported_layers, std::vector<const char*>* out_supported_layer_names) {
+  out_supported_layers->clear();
+  out_supported_layer_names->clear();
   uint32_t all_instance_layer_count = 0;
   std::vector<VkLayerProperties> all_instance_layers;
   VkResult result = VK_INCOMPLETE;
@@ -20,7 +22,6 @@ VkResult cdsvk::get_supported_instance_layers(const std::vector<const char*>& re
       return VK_ERROR_INITIALIZATION_FAILED; // We use the high bit to mark duplicates; it had better not be set up front!
     }
   }
-  out_supported_layers->clear();
   out_supported_layers->reserve(all_instance_layers.size());
   // Check optional layers first, removing duplicates (some loaders don't like duplicates).
   for(const auto &layer_name : optional_names) {
@@ -53,16 +54,19 @@ VkResult cdsvk::get_supported_instance_layers(const std::vector<const char*>& re
       return VK_ERROR_LAYER_NOT_PRESENT;
     }
   }
-  // Restore high bits of spec versions
+  out_supported_layer_names->reserve(out_supported_layers->size());
   for(auto& layer : *out_supported_layers) {
     layer.specVersion ^= (1<<31);
+    out_supported_layer_names->push_back(layer.layerName);
   }
   return VK_SUCCESS;
 }
 
 VkResult cdsvk::get_supported_instance_extensions(const std::vector<VkLayerProperties>& enabled_instance_layers,
-    std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
-    std::vector<VkExtensionProperties>* out_supported_extensions) {
+    const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
+    std::vector<VkExtensionProperties>* out_supported_extensions, std::vector<const char*>* out_supported_extension_names) {
+  out_supported_extensions->clear();
+  out_supported_extension_names->clear();
   // Build list of unique instance extensions across all enabled instance layers
   std::vector<VkExtensionProperties> all_instance_extensions;
   for(int32_t iLayer = -1; iLayer < (int32_t)enabled_instance_layers.size(); ++iLayer) {
@@ -98,7 +102,6 @@ VkResult cdsvk::get_supported_instance_extensions(const std::vector<VkLayerPrope
     }
   }
 
-  out_supported_extensions->clear();
   out_supported_extensions->reserve(all_instance_extensions.size());
   // Check optional extensions first, removing duplicates (some loaders don't like duplicates).
   for(const auto &extension_name : optional_names) {
@@ -131,9 +134,11 @@ VkResult cdsvk::get_supported_instance_extensions(const std::vector<VkLayerPrope
       return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
   }
-  // Restore high bits of spec versions
+
+  out_supported_extension_names->reserve(out_supported_extensions->size());
   for(auto& extension : *out_supported_extensions) {
     extension.specVersion ^= (1<<31);
+    out_supported_extension_names->push_back(extension.extensionName);
   }
   return VK_SUCCESS;
 }
@@ -196,8 +201,9 @@ VkResult cdsvk::find_physical_device(const std::vector<QueueFamilyRequirements>&
 }
 
 VkResult cdsvk::get_supported_device_extensions(VkPhysicalDevice physical_device, const std::vector<VkLayerProperties>& enabled_instance_layers,
-    std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
-    std::vector<VkExtensionProperties>* out_supported_extensions) {
+    const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
+    std::vector<VkExtensionProperties>* out_supported_extensions, std::vector<const char*>* out_supported_extension_names) {
+  out_supported_extensions->clear();
   std::vector<VkExtensionProperties> all_device_extensions;
   // Build list of unique device extensions across all enabled instance layers
   for(int32_t iLayer = -1; iLayer < (int32_t)enabled_instance_layers.size(); ++iLayer) {
@@ -234,7 +240,6 @@ VkResult cdsvk::get_supported_device_extensions(VkPhysicalDevice physical_device
   }
 
   // Check optional extensions first, removing duplicates (some loaders don't like duplicates).
-  out_supported_extensions->clear();
   out_supported_extensions->reserve(all_device_extensions.size());
   for(const auto &extension_name : optional_names) {
     for(auto& extension : all_device_extensions) {
@@ -266,9 +271,11 @@ VkResult cdsvk::get_supported_device_extensions(VkPhysicalDevice physical_device
       return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
   }
-  // Restore high bits of spec versions
+
+  out_supported_extension_names->reserve(out_supported_extensions->size());
   for(auto& extension : *out_supported_extensions) {
     extension.specVersion ^= (1<<31);
+    out_supported_extension_names->push_back(extension.extensionName);
   }
   return VK_SUCCESS;
 }
