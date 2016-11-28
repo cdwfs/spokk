@@ -24,6 +24,7 @@ namespace {
         }
     }
 
+    // TODO(cort): this table probably belongs in image_file.c
     struct ImageFormatAttributes {
         int32_t texel_block_bytes;
         int32_t texel_block_width;
