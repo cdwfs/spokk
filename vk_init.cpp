@@ -26,8 +26,8 @@ VkResult cdsvk::get_supported_instance_layers(const std::vector<const char*>& re
   // Check optional layers first, removing duplicates (some loaders don't like duplicates).
   for(const auto &layer_name : optional_names) {
     for(auto& layer : all_instance_layers) {
-      if (layer_name == layer.layerName) {
-        if ( (layer.specVersion & (1<<31)) != 0) {
+      if (strcmp(layer_name, layer.layerName) == 0) {
+        if ( (layer.specVersion & (1<<31)) == 0) {
           out_supported_layers->push_back(layer);
           layer.specVersion |= (1<<31);
         }
@@ -40,8 +40,8 @@ VkResult cdsvk::get_supported_instance_layers(const std::vector<const char*>& re
   for(const auto &layer_name : required_names) {
     bool found = false;
     for(auto& layer : all_instance_layers) {
-      if (layer_name == layer.layerName) {
-        if ( (layer.specVersion & (1<<31)) != 0) {
+      if (strcmp(layer_name, layer.layerName) == 0) {
+        if ( (layer.specVersion & (1<<31)) == 0) {
           out_supported_layers->push_back(layer);
           layer.specVersion |= (1<<31);
         }
@@ -106,8 +106,8 @@ VkResult cdsvk::get_supported_instance_extensions(const std::vector<VkLayerPrope
   // Check optional extensions first, removing duplicates (some loaders don't like duplicates).
   for(const auto &extension_name : optional_names) {
     for(auto& extension : all_instance_extensions) {
-      if (extension_name == extension.extensionName) {
-        if ( (extension.specVersion & (1<<31)) != 0) {
+      if (strcmp(extension_name, extension.extensionName) == 0) {
+        if ( (extension.specVersion & (1<<31)) == 0) {
           out_supported_extensions->push_back(extension);
           extension.specVersion |= (1<<31);
         }
@@ -120,8 +120,8 @@ VkResult cdsvk::get_supported_instance_extensions(const std::vector<VkLayerPrope
   for(const auto &extension_name : required_names) {
     bool found = false;
     for(auto& extension : all_instance_extensions) {
-      if (extension_name == extension.extensionName) {
-        if ( (extension.specVersion & (1<<31)) != 0) {
+      if (strcmp(extension_name, extension.extensionName) == 0) {
+        if ( (extension.specVersion & (1<<31)) == 0) {
           out_supported_extensions->push_back(extension);
           extension.specVersion |= (1<<31);
         }
@@ -243,8 +243,8 @@ VkResult cdsvk::get_supported_device_extensions(VkPhysicalDevice physical_device
   out_supported_extensions->reserve(all_device_extensions.size());
   for(const auto &extension_name : optional_names) {
     for(auto& extension : all_device_extensions) {
-      if (extension_name == extension.extensionName) {
-        if ( (extension.specVersion & (1<<31)) != 0) {
+      if (strcmp(extension_name, extension.extensionName) == 0) {
+        if ( (extension.specVersion & (1<<31)) == 0) {
           out_supported_extensions->push_back(extension);
           extension.specVersion |= (1<<31);
         }
@@ -257,8 +257,8 @@ VkResult cdsvk::get_supported_device_extensions(VkPhysicalDevice physical_device
   for(const auto &extension_name : required_names) {
     bool found = false;
     for(auto& extension : all_device_extensions) {
-      if (extension_name == extension.extensionName) {
-        if ( (extension.specVersion & (1<<31)) != 0) {
+      if (strcmp(extension_name, extension.extensionName) == 0) {
+        if ( (extension.specVersion & (1<<31)) == 0) {
           out_supported_extensions->push_back(extension);
           extension.specVersion |= (1<<31);
         }
