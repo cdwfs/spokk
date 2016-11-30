@@ -30,7 +30,7 @@ SET(sources
     vk_application.cpp
     vk_init.cpp
     vk_texture.cpp
-    vulkswagen.cpp
+    testapp.cpp#vulkswagen.cpp
     )
 
 SET(shaders
@@ -92,7 +92,7 @@ MACRO (cmp_IDE_SOURCE_PROPERTIES SOURCE_PATH HEADERS SOURCES)
     source_group(${source_group_path} FILES ${HEADERS} ${SOURCES})
 ENDMACRO (cmp_IDE_SOURCE_PROPERTIES NAME HEADERS SOURCES INSTALL_FILES)
 
-set(exe_name vulkswagen)
+set(exe_name testapp)#vulkswagen)
 cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${headers}" "${sources}")
 add_executable(${exe_name} ${sources} ${shaders} ${headers})
 target_link_libraries(${exe_name} glfw ${GLFW_LIBRARIES} ${libs})
@@ -101,7 +101,7 @@ set(mathfu_build_benchmarks OFF CACHE BOOL "")
 set(mathfu_build_tests OFF CACHE BOOL "")
 set(mathfu_enable_simd OFF CACHE BOOL "")
 add_subdirectory(third_party/mathfu)
-mathfu_configure_flags(vulkswagen)
+mathfu_configure_flags(${exe_name})
 
 ADD_CUSTOM_COMMAND(
     TARGET ${exe_name} POST_BUILD
