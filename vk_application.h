@@ -58,6 +58,8 @@ struct DeviceQueueContext {
   VkQueueFlags queueFlags;
   uint32_t timestampValidBits;
   VkExtent3D minImageTransferGranularity;
+  // For graphics queues that support presentation, this is the surface the queue can present to.
+  VkSurfaceKHR present_surface;
 };
 
 //
@@ -136,12 +138,20 @@ private:
 //
 class Application {
 public:
+  struct QueueFamilyRequest {
+    VkQueueFlags flags;  // Mask of features which must be supported by this queue family.
+    bool support_present;  // If flags & VK_QUEUE_GRAPHICS_BIT, support_present=true means the queue must support presentation to the application's VkSurfaceKHR.
+    uint32_t queue_count;
+    float priority;
+  };
+
   struct CreateInfo {
     std::string app_name = "Spokk Application";
     uint32_t window_width = 1920, window_height = 1080;
     bool enable_fullscreen = false;
     bool enable_validation = true;
     bool enable_vsync = true;
+    std::vector<QueueFamilyRequest> queue_family_requests;
   };
 
   explicit Application(const CreateInfo &ci);
@@ -180,6 +190,9 @@ protected:
   std::shared_ptr<GLFWwindow> window_ = nullptr;
 
 private:
+  VkResult find_physical_device(const std::vector<QueueFamilyRequest>& qf_reqs, VkInstance instance,
+    VkSurfaceKHR present_surface, VkPhysicalDevice *out_physical_device, std::vector<uint32_t>* out_queue_families);
+
   bool init_successful = false;
 
 };

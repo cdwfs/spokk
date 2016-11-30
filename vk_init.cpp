@@ -143,63 +143,6 @@ VkResult cdsvk::get_supported_instance_extensions(const std::vector<VkLayerPrope
   return VK_SUCCESS;
 }
 
-VkResult cdsvk::find_physical_device(const std::vector<QueueFamilyRequirements>& qf_reqs, VkInstance instance,
-    VkPhysicalDevice *out_physical_device, std::vector<uint32_t>* out_queue_families) {
-  *out_physical_device = VK_NULL_HANDLE;
-  uint32_t physical_device_count = 0;
-  std::vector<VkPhysicalDevice> all_physical_devices;
-  VkResult result = VK_INCOMPLETE;
-  do {
-    result = vkEnumeratePhysicalDevices(instance, &physical_device_count, nullptr);
-    if (result == VK_SUCCESS && physical_device_count > 0) {
-      all_physical_devices.resize(physical_device_count);
-      result = vkEnumeratePhysicalDevices(instance, &physical_device_count, all_physical_devices.data());
-    }
-  } while (result == VK_INCOMPLETE);
-  out_queue_families->clear();
-  out_queue_families->resize(qf_reqs.size(), VK_QUEUE_FAMILY_IGNORED);
-  for(auto physical_device : all_physical_devices) {
-    uint32_t queue_family_count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
-    std::vector<VkQueueFamilyProperties> all_queue_family_properties(queue_family_count);
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, all_queue_family_properties.data());
-    bool pd_meets_requirements = true;
-    for(uint32_t iReq=0; iReq < qf_reqs.size(); ++iReq) {
-      auto &reqs = qf_reqs[iReq];
-      bool found_qf = false;
-      for(uint32_t iQF=0; (size_t)iQF < all_queue_family_properties.size(); ++iQF) {
-        if (all_queue_family_properties[iQF].queueCount < reqs.minimum_queue_count) {
-          continue;  // insufficient queue count
-        } else if ((all_queue_family_properties[iQF].queueFlags & reqs.flags) != reqs.flags) {
-          continue;  // family doesn't support all required operations
-        }
-        VkBool32 supports_present = VK_FALSE;
-        if (reqs.present_surface != VK_NULL_HANDLE) {
-          result = vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, iQF, reqs.present_surface, &supports_present);
-          if (result != VK_SUCCESS) {
-            return result;
-          } else if (!supports_present) {
-            continue;  // Queue family can not present to the provided surface
-          }
-        }
-        // This family meets all requirements. Hooray!
-        (*out_queue_families)[iReq] = iQF;
-        found_qf = true;
-        break;
-      }
-      if (!found_qf) {
-        pd_meets_requirements = false;
-        continue;
-      }
-    }
-    if (pd_meets_requirements) {
-      *out_physical_device = physical_device;
-      return VK_SUCCESS;
-    }
-  }
-  return VK_ERROR_INITIALIZATION_FAILED;
-}
-
 VkResult cdsvk::get_supported_device_extensions(VkPhysicalDevice physical_device, const std::vector<VkLayerProperties>& enabled_instance_layers,
     const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
     std::vector<VkExtensionProperties>* out_supported_extensions, std::vector<const char*>* out_supported_extension_names) {

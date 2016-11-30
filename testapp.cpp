@@ -30,7 +30,11 @@ int main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;
 
+  std::vector<Application::QueueFamilyRequest> queue_requests = {
+    {(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT), true, 1, 0.0f}
+  };
   Application::CreateInfo app_ci = {};
+  app_ci.queue_family_requests = queue_requests;
 
   TestApplication app(app_ci);
   int run_error = app.run();
