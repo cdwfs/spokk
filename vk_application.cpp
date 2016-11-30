@@ -64,11 +64,6 @@ using namespace cdsvk;
 #define CDSVK__CLAMP(x, xmin, xmax) ( ((x)<(xmin)) ? (xmin) : ( ((x)>(xmax)) ? (xmax) : (x) ) )
 
 namespace {
-// Effective Modern C++, Item 21: make_unique() is C++14 only, but easy to implement in C++11.
-template <typename T, typename... Ts>
-std::unique_ptr<T> my_make_unique(Ts&&... params) {
-  return std::unique_ptr<T>(new T(std::forward<Ts>(params)...));
-}
 
 void my_glfw_error_callback(int error, const char *description) {
   fprintf( stderr, "GLFW Error %d: %s\n", error, description);
@@ -104,6 +99,199 @@ const uint32_t kWindowWidthDefault = 1280;
 const uint32_t kWindowHeightDefault = 720;
 const uint32_t kVframeCount = 2;
 }  // namespace
+
+
+//
+// DeviceContext
+//
+
+DeviceContext::DeviceContext(VkDevice device, VkPhysicalDevice physical_device,
+      const DeviceQueueContext *queue_contexts, uint32_t queue_context_count,
+      const VkAllocationCallbacks *host_allocator, const DeviceAllocationCallbacks *device_allocator) :
+    physical_device_(physical_device),
+    device_(device),
+    host_allocator_(host_allocator),
+    device_allocator_(device_allocator) {
+  vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
+  queue_contexts_.insert(queue_contexts_.begin(), queue_contexts+0, queue_contexts+queue_context_count);
+}
+DeviceContext::~DeviceContext() {
+}
+
+const DeviceQueueContext* DeviceContext::find_device_queue(VkQueueFlags queue_flags) const {
+  // Search for an exact match first
+  for(auto& queue : queue_contexts_) {
+    if (queue.queueFlags == queue_flags) {
+      return &queue;
+    }
+  }
+  // Next pass looks for anything with the right flags set
+  for(auto& queue : queue_contexts_) {
+    if ((queue.queueFlags & queue_flags) == queue_flags) {
+      return &queue;
+    }
+  }
+  // No match for you!
+  return nullptr;
+}
+
+uint32_t DeviceContext::find_memory_type_index(const VkMemoryRequirements &memory_reqs,
+    VkMemoryPropertyFlags memory_properties_mask) const {
+  for(uint32_t iMemType=0; iMemType<VK_MAX_MEMORY_TYPES; ++iMemType) {
+    if ((memory_reqs.memoryTypeBits & (1<<iMemType)) != 0
+      && (memory_properties_.memoryTypes[iMemType].propertyFlags & memory_properties_mask) == memory_properties_mask) {
+      return iMemType;
+    }
+  }
+  return VK_MAX_MEMORY_TYPES; // invalid index
+}
+
+VkResult DeviceContext::device_alloc(const VkMemoryRequirements &mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
+    DeviceAllocationScope scope, VkDeviceMemory *out_mem, VkDeviceSize *out_offset) const {
+  VkMemoryAllocateInfo alloc_info = {};
+  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  alloc_info.allocationSize = mem_reqs.size;
+  alloc_info.memoryTypeIndex = find_memory_type_index(mem_reqs, memory_properties_mask);
+  return device_alloc(alloc_info, scope, out_mem, out_offset);
+}
+VkResult DeviceContext::device_alloc(const VkMemoryAllocateInfo& alloc_info,
+    DeviceAllocationScope scope, VkDeviceMemory *out_mem, VkDeviceSize *out_offset) const {
+  if (device_allocator_ != nullptr) {
+    return device_allocator_->pfnAllocation(out_mem, out_offset, device_allocator_->pUserData, &alloc_info, scope);
+  } else {
+    *out_offset = 0;
+    return vkAllocateMemory(device_, &alloc_info, host_allocator_, out_mem);
+  }
+}
+VkResult DeviceContext::device_alloc_and_bind_to_image(VkImage image, VkMemoryPropertyFlags memory_properties_mask,
+    DeviceAllocationScope scope, VkDeviceMemory *out_mem, VkDeviceSize *out_offset) const {
+  VkMemoryRequirements mem_reqs = {};
+  vkGetImageMemoryRequirements(device_, image, &mem_reqs);
+  VkResult result = device_alloc(mem_reqs, memory_properties_mask, scope, out_mem, out_offset);
+  if (result == VK_SUCCESS) {
+    result = vkBindImageMemory(device_, image, *out_mem, *out_offset);
+  }
+  return result;
+}
+VkResult DeviceContext::device_alloc_and_bind_to_buffer(VkBuffer buffer, VkMemoryPropertyFlags memory_properties_mask,
+    DeviceAllocationScope scope, VkDeviceMemory *out_mem, VkDeviceSize *out_offset) const {
+  VkMemoryRequirements mem_reqs = {};
+  vkGetBufferMemoryRequirements(device_, buffer, &mem_reqs);
+  VkResult result = device_alloc(mem_reqs, memory_properties_mask, scope, out_mem, out_offset);
+  if (result == VK_SUCCESS) {
+    result = vkBindBufferMemory(device_, buffer, *out_mem, *out_offset);
+  }
+  return result;
+}
+
+void DeviceContext::device_free(VkDeviceMemory mem, VkDeviceSize offset) const {
+  if (device_allocator_ != nullptr) {
+    return device_allocator_->pfnFree(host_allocator_->pUserData, mem, offset);
+  } else {
+    vkFreeMemory(device_, mem, host_allocator_);
+  }
+}
+
+void *DeviceContext::host_alloc(size_t size, size_t alignment, VkSystemAllocationScope scope) const {
+  if (host_allocator_) {
+    return host_allocator_->pfnAllocation(host_allocator_->pUserData,
+      size, alignment, scope);
+  } else {
+#if defined(_MSC_VER)
+    return _mm_malloc(size, alignment);
+#else
+    return malloc(size); // TODO(cort): ignores alignment :(
+#endif
+  }
+}
+void DeviceContext::host_free(void *ptr) const {
+  if (host_allocator_) {
+    return host_allocator_->pfnFree(host_allocator_->pUserData, ptr);
+  } else {
+#if defined(_MSC_VER)
+    return _mm_free(ptr);
+#else
+    return free(ptr);
+#endif
+  }
+}
+
+
+//
+// OneShotCommandPool
+//
+OneShotCommandPool::OneShotCommandPool(VkDevice device, VkQueue queue, uint32_t queue_family,
+      const VkAllocationCallbacks *allocator) :
+    device_(device),
+    queue_(queue),
+    queue_family_(queue_family),
+    allocator_(allocator) {
+  VkCommandPoolCreateInfo cpool_ci = {};
+  cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+  cpool_ci.queueFamilyIndex = queue_family_;
+  VkResult result = vkCreateCommandPool(device_, &cpool_ci, allocator, &pool_);
+  assert(result == VK_SUCCESS);
+}
+OneShotCommandPool::~OneShotCommandPool() {
+  if (pool_ != VK_NULL_HANDLE) {
+    vkDestroyCommandPool(device_, pool_, allocator_);
+    pool_ = VK_NULL_HANDLE;
+  }
+}
+
+VkCommandBuffer OneShotCommandPool::allocate_and_begin(void) const {
+  VkCommandBuffer cb = VK_NULL_HANDLE;
+  {
+    std::lock_guard<std::mutex> lock(pool_mutex_);
+    VkCommandBufferAllocateInfo cb_allocate_info = {};
+    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cb_allocate_info.commandPool = pool_;
+    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cb_allocate_info.commandBufferCount = 1;
+    if (VK_SUCCESS != vkAllocateCommandBuffers(device_, &cb_allocate_info, &cb)) {
+      return VK_NULL_HANDLE;
+    }
+  }
+  VkCommandBufferBeginInfo cb_begin_info = {};
+  cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  VkResult result = vkBeginCommandBuffer(cb, &cb_begin_info);
+  if (VK_SUCCESS != result) {
+    vkFreeCommandBuffers(device_, pool_, 1, &cb);
+    return VK_NULL_HANDLE;
+  }
+  return cb;
+}
+
+VkResult OneShotCommandPool::end_submit_and_free(VkCommandBuffer *cb) const {
+  VkResult result = vkEndCommandBuffer(*cb);
+  if (result == VK_SUCCESS) {
+    VkFenceCreateInfo fence_ci = {};
+    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    VkFence fence = VK_NULL_HANDLE;
+    result = vkCreateFence(device_, &fence_ci, allocator_, &fence);
+    if (result == VK_SUCCESS) {
+      VkSubmitInfo submit_info = {};
+      submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+      submit_info.commandBufferCount = 1;
+      submit_info.pCommandBuffers = cb;
+      result = vkQueueSubmit(queue_, 1, &submit_info, fence);
+      if (result == VK_SUCCESS) {
+        result = vkWaitForFences(device_, 1, &fence, VK_TRUE, UINT64_MAX);
+      }
+    }
+    vkDestroyFence(device_, fence, allocator_);
+  }
+  {
+    std::lock_guard<std::mutex> lock(pool_mutex_);
+    vkFreeCommandBuffers(device_, pool_, 1, cb);
+  }
+  *cb = VK_NULL_HANDLE;
+  return result;
+}
+
+
 
 Application::Application(const CreateInfo &ci) {
   // Initialize GLFW
@@ -193,13 +381,20 @@ Application::Application(const CreateInfo &ci) {
   uint32_t total_queue_count = 0;
   for(uint32_t iQF=0; iQF<(uint32_t)queue_family_indices.size(); ++iQF) {
     uint32_t queue_count = queue_family_reqs[iQF].minimum_queue_count;
-    const std::vector<float> queue_priorities(queue_count, 0.0f);
+    total_queue_count += queue_count;
+  }
+  std::vector<float> queue_priorities;
+  queue_priorities.reserve(total_queue_count);
+  const float default_priority = 0.0f; // TODO(cort): store this per-DeviceQueueRequirement
+  for(uint32_t iQF=0; iQF<(uint32_t)queue_family_indices.size(); ++iQF) {
+    uint32_t queue_count = queue_family_reqs[iQF].minimum_queue_count;
     device_queue_cis.push_back({
       VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, nullptr, 0,
       queue_family_indices[iQF], queue_count, queue_priorities.data()
     });
-    total_queue_count += queue_count;
+    queue_priorities.insert(queue_priorities.end(), queue_count, default_priority);
   };
+  assert(queue_priorities.size() == total_queue_count);
 
   const std::vector<const char*> required_device_extension_names = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -247,6 +442,7 @@ Application::Application(const CreateInfo &ci) {
       queue_contexts_.push_back(qc);
     }
   }
+  assert(queue_contexts_.size() == total_queue_count);
 
   // Create VkSwapchain
   if (surface_ != VK_NULL_HANDLE) {

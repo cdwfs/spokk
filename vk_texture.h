@@ -2,21 +2,14 @@
 #define VK_TEXTURE_H
 
 #include "vk_application.h"
+#include <memory>
 #include <string>
 
 namespace cdsvk {
 
 class TextureLoader {
 public:
-  struct CreateInfo {
-    VkPhysicalDevice physical_device;
-    VkDevice device;
-    uint32_t transfer_queue_family;
-    VkQueue transfer_queue;
-    const VkAllocationCallbacks *allocator;
-  };
-
-  explicit TextureLoader(const TextureLoader::CreateInfo& ci);
+  explicit TextureLoader(const DeviceContext* device_context);
   ~TextureLoader();
 
   int load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
@@ -33,12 +26,9 @@ private:
     VkImageLayout input_layout, VkAccessFlags input_access_flags,
     VkImageLayout final_layout, VkAccessFlags final_access_flags) const;
 
-  OneShotCommandPool one_shot_cpool_;
-
-  // Cached Vulkan handles; do not delete!
-  VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;  // only needed for validation; could maybe skip it.
-  VkDevice device_ = VK_NULL_HANDLE;
-  const VkAllocationCallbacks *allocator_;
+  const DeviceContext* device_context_; // TODO(cort): shared_ptr?
+  std::unique_ptr<OneShotCommandPool> one_shot_cpool_;
+  VkQueue transfer_queue_;
   uint32_t transfer_queue_family_;
 };
 
