@@ -15,6 +15,18 @@
 
 namespace cdsvk {
 
+// How many frames can be in flight simultaneously? The higher the count, the more independent copies
+// of various resources (anything changing per-frame) must be created and maintained in memory.
+// 1 = CPU and GPU run synchronously, each idling while the other works. Safe, but slow.
+// 2 = GPU renders from N while CPU builds commands for frame N+1. Usually a safe choice.
+//     If the CPU finishes early, it will block until the GPU is finished.
+// 3 = GPU renders from N, while CPU builds commands for frame N+1. This mode is best when using the
+//     MAILBOX present mode; it prevents the CPU from ever blocking on the GPU. If the CPU finishes
+//     early, it can queue it for presentation and get started on frame N+2; if it finishes *that*
+//     before the GPU finishes frame N, then frame N+1 is discarded and frame N+2 is queued for
+//     presentation instead.
+const uint32_t VFRAME_COUNT = 2;
+
 // Effective Modern C++, Item 21: make_unique() is C++14 only, but easy to implement in C++11.
 template <typename T, typename... Ts>
 std::unique_ptr<T> my_make_unique(Ts&&... params) {
@@ -67,6 +79,9 @@ struct DeviceQueueContext {
 //
 class DeviceContext {
 public:
+  DeviceContext() : device_(VK_NULL_HANDLE), physical_device_(VK_NULL_HANDLE),
+      host_allocator_(nullptr), device_allocator_(nullptr), queue_contexts_{} {
+  }
   DeviceContext(VkDevice device, VkPhysicalDevice physical_device, const DeviceQueueContext *queue_contexts, uint32_t queue_context_count,
       const VkAllocationCallbacks *host_allocator = nullptr, const DeviceAllocationCallbacks *device_allocator = nullptr);
   ~DeviceContext();
@@ -228,6 +243,12 @@ protected:
   VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
     
   std::shared_ptr<GLFWwindow> window_ = nullptr;
+
+  // handles refer to this application's device_, queue_contexts_, etc.
+  DeviceContext device_context_;
+
+  uint32_t frame_index_;  // Frame number since launch
+  uint32_t vframe_index_;  // current vframe index; cycles from 0 to VFRAME_COUNT.
 
 private:
   VkResult find_physical_device(const std::vector<QueueFamilyRequest>& qf_reqs, VkInstance instance,

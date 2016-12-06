@@ -59,7 +59,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL my_debug_report_callback(VkFlags msgFlags,
 
 const uint32_t kWindowWidthDefault = 1280;
 const uint32_t kWindowHeightDefault = 720;
-const uint32_t kVframeCount = 2;
 }  // namespace
 
 
@@ -416,6 +415,9 @@ Application::Application(const CreateInfo &ci) {
   }
   assert(queue_contexts_.size() == total_queue_count);
 
+  device_context_ = DeviceContext(device_, physical_device_, queue_contexts_.data(),
+    (uint32_t)queue_contexts_.size(), allocation_callbacks_, nullptr);
+
   // Create VkSwapchain
   if (surface_ != VK_NULL_HANDLE) {
     VkSurfaceCapabilitiesKHR surface_caps = {};
@@ -579,7 +581,8 @@ int Application::run() {
 
   const uint64_t clock_start = zomboClockTicks();
   uint64_t ticks_prev = clock_start;
-  uint32_t frame_index = 0;
+  frame_index_ = 0;
+  vframe_index_ = 0;
   while(!glfwWindowShouldClose(window_.get())) {
     uint64_t ticks_now = zomboClockTicks();
     const double dt = (float)zomboTicksToSeconds(ticks_now - ticks_prev);
@@ -589,7 +592,11 @@ int Application::run() {
     render();
 
     glfwPollEvents();
-    frame_index += 1;
+    frame_index_ += 1;
+    vframe_index_ += 1;
+    if (vframe_index_ == VFRAME_COUNT) {
+      vframe_index_ = 0;
+    }
   }
   return 0;
 }
