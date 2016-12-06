@@ -3,6 +3,27 @@ using namespace cdsvk;
 
 #include <assert.h>
 
+namespace {
+
+VkImageAspectFlags vk_format_to_image_aspect_flags(VkFormat format) {
+  switch(format) {
+  case VK_FORMAT_D16_UNORM:
+  case VK_FORMAT_D32_SFLOAT:
+  case VK_FORMAT_X8_D24_UNORM_PACK32:
+    return VK_IMAGE_ASPECT_DEPTH_BIT;
+  case VK_FORMAT_D16_UNORM_S8_UINT:
+  case VK_FORMAT_D24_UNORM_S8_UINT:
+  case VK_FORMAT_D32_SFLOAT_S8_UINT:
+    return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+  case VK_FORMAT_UNDEFINED:
+    return static_cast<VkImageAspectFlagBits>(0);
+  default:
+    return VK_IMAGE_ASPECT_COLOR_BIT;
+  }
+}
+
+}  // namespace
+
 VkResult cdsvk::get_supported_instance_layers(const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
     std::vector<VkLayerProperties>* out_supported_layers, std::vector<const char*>* out_supported_layer_names) {
   out_supported_layers->clear();
@@ -221,4 +242,34 @@ VkResult cdsvk::get_supported_device_extensions(VkPhysicalDevice physical_device
     out_supported_extension_names->push_back(extension.extensionName);
   }
   return VK_SUCCESS;
+}
+
+void cdsvk::view_ci_from_image(VkImageViewCreateInfo *out_view_ci, VkImage image, const VkImageCreateInfo &image_ci) {
+  VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D;
+  if (image_ci.imageType == VK_IMAGE_TYPE_1D) {
+    view_type = (image_ci.arrayLayers == 1) ? VK_IMAGE_VIEW_TYPE_1D : VK_IMAGE_VIEW_TYPE_1D_ARRAY;
+  } else if (image_ci.imageType == VK_IMAGE_TYPE_2D) {
+    if (image_ci.flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) {
+      assert((image_ci.arrayLayers) % 6 == 0);
+      view_type = (image_ci.arrayLayers == 6) ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
+    } else {
+      view_type = (image_ci.arrayLayers == 1) ? VK_IMAGE_VIEW_TYPE_2D : VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+    }
+  } else if (image_ci.imageType == VK_IMAGE_TYPE_3D) {
+    view_type = VK_IMAGE_VIEW_TYPE_3D;
+  }
+  *out_view_ci = {};
+  out_view_ci->sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+  out_view_ci->image = image;
+  out_view_ci->viewType = view_type;
+  out_view_ci->format = image_ci.format;
+  out_view_ci->components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+  out_view_ci->components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+  out_view_ci->components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+  out_view_ci->components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+  out_view_ci->subresourceRange.aspectMask = vk_format_to_image_aspect_flags(image_ci.format);
+  out_view_ci->subresourceRange.baseMipLevel = 0;
+  out_view_ci->subresourceRange.levelCount = image_ci.mipLevels;
+  out_view_ci->subresourceRange.baseArrayLayer = 0;
+  out_view_ci->subresourceRange.layerCount = image_ci.arrayLayers;
 }

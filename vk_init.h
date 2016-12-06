@@ -18,4 +18,7 @@ VkResult get_supported_device_extensions(VkPhysicalDevice physical_device, const
   const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
   std::vector<VkExtensionProperties>* out_supported_extensions, std::vector<const char*>* out_supported_extension_names);
 
+void view_ci_from_image(VkImageViewCreateInfo *out_view_ci, VkImage image, const VkImageCreateInfo &image_ci);
+
+
 }  // namespace cdsvk
