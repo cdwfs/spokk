@@ -76,7 +76,7 @@ public:
   const VkAllocationCallbacks* host_allocator() const { return host_allocator_; }
   const DeviceAllocationCallbacks *device_allocator() const { return device_allocator_; }
 
-  const DeviceQueueContext* find_device_queue(VkQueueFlags queue_flags) const;
+  const DeviceQueueContext* find_queue_context(VkQueueFlags queue_flags, VkSurfaceKHR present_surface = VK_NULL_HANDLE) const;
 
   uint32_t find_memory_type_index(const VkMemoryRequirements &memory_reqs,
     VkMemoryPropertyFlags memory_properties_mask) const;

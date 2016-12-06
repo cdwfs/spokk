@@ -80,16 +80,29 @@ DeviceContext::DeviceContext(VkDevice device, VkPhysicalDevice physical_device,
 DeviceContext::~DeviceContext() {
 }
 
-const DeviceQueueContext* DeviceContext::find_device_queue(VkQueueFlags queue_flags) const {
+const DeviceQueueContext* DeviceContext::find_queue_context(VkQueueFlags queue_flags,
+    VkSurfaceKHR present_surface) const {
   // Search for an exact match first
   for(auto& queue : queue_contexts_) {
     if (queue.queueFlags == queue_flags) {
+      // Make sure presentation requirement is met, if necessary.
+      if ((queue_flags | VK_QUEUE_GRAPHICS_BIT) != 0 && present_surface != VK_NULL_HANDLE) {
+        if (queue.present_surface != present_surface) {
+          continue;
+        }
+      }
       return &queue;
     }
   }
   // Next pass looks for anything with the right flags set
   for(auto& queue : queue_contexts_) {
     if ((queue.queueFlags & queue_flags) == queue_flags) {
+      // Make sure presentation requirement is met, if necessary.
+      if ((queue_flags | VK_QUEUE_GRAPHICS_BIT) != 0 && present_surface != VK_NULL_HANDLE) {
+        if (queue.present_surface != present_surface) {
+          continue;
+        }
+      }
       return &queue;
     }
   }
@@ -382,16 +395,18 @@ Application::Application(const CreateInfo &ci) {
   std::vector<VkQueueFamilyProperties> all_queue_family_properties(total_queue_family_count);
   vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &total_queue_family_count, all_queue_family_properties.data());
   queue_contexts_.reserve(total_queue_count);
-  for(uint32_t iQCI=0; iQCI<(uint32_t)device_queue_cis.size(); ++iQCI) {
-    const auto& qci = device_queue_cis[iQCI];
-    const auto& qfp = all_queue_family_properties[qci.queueFamilyIndex];
+  for(uint32_t iQFR=0; iQFR<(uint32_t)ci.queue_family_requests.size(); ++iQFR) {
+    const QueueFamilyRequest &qfr = ci.queue_family_requests[iQFR];
+    const VkDeviceQueueCreateInfo& qci = device_queue_cis[iQFR];
+    const VkQueueFamilyProperties& qfp = all_queue_family_properties[qci.queueFamilyIndex];
     DeviceQueueContext qc = {
       VK_NULL_HANDLE,
       qci.queueFamilyIndex,
       0.0f,
       qfp.queueFlags,
       qfp.timestampValidBits,
-      qfp.minImageTransferGranularity
+      qfp.minImageTransferGranularity,
+      (qfr.support_present && ((qfp.queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0)) ? surface_ : VK_NULL_HANDLE,
     };
     for(uint32_t iQ=0; iQ<total_queue_count; ++iQ) {
       vkGetDeviceQueue(device_, qci.queueFamilyIndex, iQ, &qc.queue);

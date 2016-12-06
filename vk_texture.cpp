@@ -148,7 +148,7 @@ namespace {
 
 TextureLoader::TextureLoader(const DeviceContext* device_context) :
     device_context_(device_context_) {
-  const DeviceQueueContext* transfer_queue_context = device_context->find_device_queue(VK_QUEUE_TRANSFER_BIT);
+  const DeviceQueueContext* transfer_queue_context = device_context->find_queue_context(VK_QUEUE_TRANSFER_BIT);
   assert(transfer_queue_context != nullptr);
   transfer_queue_ = transfer_queue_context->queue;
   transfer_queue_family_ = transfer_queue_context->queue_family;
