@@ -147,24 +147,24 @@ extern "C"
 // ZOMBO_RETVAL_CHECK(expected, expr): if the result of evaluating expr does not equal expected, assert.
 #if   defined(ZOMBO_COMPILER_MSVC)
 #   define ZOMBO_RETVAL_CHECK(expected, expr) do { \
-            int err = (int)(expr); \
-            if (err != (expected)) { \
-                printf("%s(%d): error in %s() -- %s returned %d\n", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
+            int zombo_retval_err = (int)(expr); \
+            if (zombo_retval_err != (expected)) { \
+                printf("%s(%d): error in %s() -- %s returned %d\n", __FILE__, __LINE__, __FUNCTION__, #expr, zombo_retval_err); \
                 ZOMBO_DEBUGBREAK(); \
             } \
-            assert(err == (expected)); \
+            assert(zombo_retval_err == (expected)); \
             __pragma(warning(push)) \
             __pragma(warning(disable:4127)) \
         } while(0) \
         __pragma(warning(pop))
 #elif defined(ZOMBO_COMPILER_GNU) || defined(ZOMBO_COMPILER_CLANG)
 #   define ZOMBO_RETVAL_CHECK(expected, expr) do { \
-            int err = (int)(expr); \
-            if (err != (expected)) { \
-                printf("%s(%d): error in %s() -- %s returned %d\n", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
+            int zombo_retval_err = (int)(expr); \
+            if (zombo_retval_err != (expected)) { \
+                printf("%s(%d): error in %s() -- %s returned %d\n", __FILE__, __LINE__, __FUNCTION__, #expr, zombo_retval_err); \
                 ZOMBO_DEBUGBREAK(); \
             } \
-            assert(err == (expected)); \
+            assert(zombo_retval_err == (expected)); \
         } while(0)
 #else
 #   error Unsupported compiler
