@@ -420,12 +420,12 @@ Application::Application(const CreateInfo &ci) {
   if (surface_ != VK_NULL_HANDLE) {
     VkSurfaceCapabilitiesKHR surface_caps = {};
     CDSVK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_, surface_, &surface_caps));
-    VkExtent2D swapchain_extent = surface_caps.currentExtent;
-    if ((int32_t)swapchain_extent.width == -1) {
-      assert( (int32_t)swapchain_extent.height == -1 );
-      swapchain_extent.width =
+    swapchain_extent_ = surface_caps.currentExtent;
+    if ((int32_t)swapchain_extent_.width == -1) {
+      assert( (int32_t)swapchain_extent_.height == -1 );
+      swapchain_extent_.width =
         CDSVK__CLAMP(ci.window_width, surface_caps.minImageExtent.width, surface_caps.maxImageExtent.width);
-      swapchain_extent.height =
+      swapchain_extent_.height =
         CDSVK__CLAMP(ci.window_height, surface_caps.minImageExtent.height, surface_caps.maxImageExtent.height);
     }
 
@@ -496,8 +496,8 @@ Application::Application(const CreateInfo &ci) {
     swapchain_ci.minImageCount = desired_swapchain_image_count;
     swapchain_ci.imageFormat = swapchain_surface_format_.format;
     swapchain_ci.imageColorSpace = swapchain_surface_format_.colorSpace;
-    swapchain_ci.imageExtent.width = swapchain_extent.width;
-    swapchain_ci.imageExtent.height = swapchain_extent.height;
+    swapchain_ci.imageExtent.width = swapchain_extent_.width;
+    swapchain_ci.imageExtent.height = swapchain_extent_.height;
     swapchain_ci.imageArrayLayers = 1;
     swapchain_ci.imageUsage = swapchain_image_usage;
     swapchain_ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;

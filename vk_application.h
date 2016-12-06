@@ -222,6 +222,7 @@ protected:
   std::vector<DeviceQueueContext> queue_contexts_;
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
   VkSurfaceFormatKHR swapchain_surface_format_ = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
+  VkExtent2D swapchain_extent_;
   std::vector<VkImage> swapchain_images_ = {};
   std::vector<VkImageView> swapchain_image_views_ = {};
   VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
