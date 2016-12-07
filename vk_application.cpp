@@ -16,6 +16,7 @@
 #include "vk_application.h"
 #include "vk_debug.h"
 #include "vk_init.h"
+#include "vk_texture.h"
 using namespace cdsvk;
 
 #include "platform.h"
@@ -265,6 +266,29 @@ VkResult OneShotCommandPool::end_submit_and_free(VkCommandBuffer *cb) const {
   return result;
 }
 
+
+void Image::create(const DeviceContext& device_context, const VkImageCreateInfo image_ci) {
+  CDSVK_CHECK(vkCreateImage(device_context.device(), &image_ci, device_context.host_allocator(), &handle));
+  CDSVK_CHECK(device_context.device_alloc_and_bind_to_image(handle, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    DEVICE_ALLOCATION_SCOPE_DEVICE, &memory, &memory_offset));
+  VkImageViewCreateInfo view_ci = cdsvk::view_ci_from_image(handle, image_ci);
+  CDSVK_CHECK(vkCreateImageView(device_context.device(), &view_ci, device_context.host_allocator(), &view));
+}
+void Image::load(const DeviceContext& device_context, const TextureLoader& loader, const std::string& filename,
+    VkBool32 generate_mipmaps, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
+  VkImageCreateInfo image_ci;
+  int load_error = loader.load_vkimage_from_file(&handle, &image_ci, &memory, &memory_offset,
+    filename, generate_mipmaps, final_layout, final_access_flags);
+  if (!load_error) {
+    VkImageViewCreateInfo view_ci = cdsvk::view_ci_from_image(handle, image_ci);
+    CDSVK_CHECK(vkCreateImageView(device_context.device(), &view_ci, device_context.host_allocator(), &view));
+  }
+}
+void Image::destroy(const DeviceContext& device_context) {
+  device_context.device_free(memory, memory_offset);
+  vkDestroyImageView(device_context.device(), view, device_context.host_allocator());
+  vkDestroyImage(device_context.device(), handle, device_context.host_allocator());
+}
 
 
 Application::Application(const CreateInfo &ci) {

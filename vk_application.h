@@ -148,6 +148,20 @@ private:
   const VkAllocationCallbacks *allocator_ = nullptr;
 };
 
+class TextureLoader;
+struct Image {
+  void create(const DeviceContext& device_context, const VkImageCreateInfo image_ci);
+  void load(const DeviceContext& device_context, const TextureLoader& loader,
+    const std::string& filename, VkBool32 generate_mipmaps = VK_TRUE,
+    VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    VkAccessFlags final_access_flags = VK_ACCESS_SHADER_READ_BIT);
+  void destroy(const DeviceContext& device_context);
+  VkImage handle;
+  VkImageView view;
+  VkDeviceMemory memory;
+  VkDeviceSize memory_offset;
+};
+
 struct SubpassAttachments {
   std::vector<VkAttachmentReference> input_refs;
   std::vector<VkAttachmentReference> color_refs;
