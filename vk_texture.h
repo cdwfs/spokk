@@ -1,15 +1,18 @@
 #if !defined(VK_TEXTURE_H)
 #define VK_TEXTURE_H
 
-#include "vk_application.h"
+#include <vulkan/vulkan.h>
+
 #include <memory>
 #include <string>
 
 namespace cdsvk {
 
+class DeviceContext;
+
 class TextureLoader {
 public:
-  explicit TextureLoader(const DeviceContext* device_context);
+  explicit TextureLoader(const DeviceContext& device_context);
   ~TextureLoader();
 
   int load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
@@ -26,7 +29,7 @@ private:
     VkImageLayout input_layout, VkAccessFlags input_access_flags,
     VkImageLayout final_layout, VkAccessFlags final_access_flags) const;
 
-  const DeviceContext* device_context_; // TODO(cort): shared_ptr?
+  const DeviceContext& device_context_;
   std::unique_ptr<OneShotCommandPool> one_shot_cpool_;
   VkQueue transfer_queue_;
   uint32_t transfer_queue_family_;

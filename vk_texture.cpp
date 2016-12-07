@@ -1,3 +1,4 @@
+#include "vk_application.h"  // for DeviceContext
 #include "vk_debug.h"
 #include "vk_texture.h"
 using namespace cdsvk;
@@ -146,14 +147,14 @@ namespace {
 
 }  // namespace
 
-TextureLoader::TextureLoader(const DeviceContext* device_context) :
-    device_context_(device_context_) {
-  const DeviceQueueContext* transfer_queue_context = device_context->find_queue_context(VK_QUEUE_TRANSFER_BIT);
+TextureLoader::TextureLoader(const DeviceContext& device_context) :
+    device_context_(device_context) {
+  const DeviceQueueContext* transfer_queue_context = device_context.find_queue_context(VK_QUEUE_TRANSFER_BIT);
   assert(transfer_queue_context != nullptr);
   transfer_queue_ = transfer_queue_context->queue;
   transfer_queue_family_ = transfer_queue_context->queue_family;
-  one_shot_cpool_ = my_make_unique<OneShotCommandPool>(device_context->device(),
-    transfer_queue_, transfer_queue_family_, device_context_->host_allocator());
+  one_shot_cpool_ = my_make_unique<OneShotCommandPool>(device_context.device(),
+    transfer_queue_, transfer_queue_family_, device_context.host_allocator());
 }
 TextureLoader::~TextureLoader() {
 }
@@ -178,7 +179,7 @@ int TextureLoader::load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo 
     if (generate_mipmaps)
     {
         VkFormatProperties format_properties;
-        vkGetPhysicalDeviceFormatProperties(device_context_->physical_device(), out_image_ci->format, &format_properties);
+        vkGetPhysicalDeviceFormatProperties(device_context_.physical_device(), out_image_ci->format, &format_properties);
         const VkFormatFeatureFlags blit_mask = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
         const VkFormatFeatureFlags feature_flags = (out_image_ci->tiling == VK_IMAGE_TILING_LINEAR)
             ? format_properties.linearTilingFeatures : format_properties.optimalTilingFeatures;
@@ -215,14 +216,14 @@ int TextureLoader::load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo 
         }
     }
     VkBuffer staging_buffer = VK_NULL_HANDLE;
-    CDSVK_CHECK(vkCreateBuffer(device_context_->device(), &staging_buffer_ci, device_context_->host_allocator(), &staging_buffer));
+    CDSVK_CHECK(vkCreateBuffer(device_context_.device(), &staging_buffer_ci, device_context_.host_allocator(), &staging_buffer));
     VkDeviceMemory staging_buffer_mem = VK_NULL_HANDLE;
     VkDeviceSize staging_buffer_mem_offset = 0;
-    CDSVK_CHECK(device_context_->device_alloc_and_bind_to_buffer(staging_buffer,
+    CDSVK_CHECK(device_context_.device_alloc_and_bind_to_buffer(staging_buffer,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         DEVICE_ALLOCATION_SCOPE_DEVICE, &staging_buffer_mem, &staging_buffer_mem_offset));
     uint8_t *staging_buffer_data = NULL;
-    CDSVK_CHECK(vkMapMemory(device_context_->device(), staging_buffer_mem, staging_buffer_mem_offset, staging_buffer_ci.size,
+    CDSVK_CHECK(vkMapMemory(device_context_.device(), staging_buffer_mem, staging_buffer_mem_offset, staging_buffer_ci.size,
         (VkMemoryMapFlags)0, (void**)&staging_buffer_data));
 
     // Populate staging buffer, and build a list of regions to copy into the final image.
@@ -259,11 +260,11 @@ int TextureLoader::load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo 
             staging_offset += subresource_size;
         }
     }
-    vkUnmapMemory(device_context_->device(), staging_buffer_mem);
+    vkUnmapMemory(device_context_.device(), staging_buffer_mem);
 
     // Create final image
-    CDSVK_CHECK(vkCreateImage(device_context_->device(), out_image_ci, device_context_->host_allocator(), out_image));
-    CDSVK_CHECK(device_context_->device_alloc_and_bind_to_image(*out_image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    CDSVK_CHECK(vkCreateImage(device_context_.device(), out_image_ci, device_context_.host_allocator(), out_image));
+    CDSVK_CHECK(device_context_.device_alloc_and_bind_to_image(*out_image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DEVICE_ALLOCATION_SCOPE_DEVICE, out_mem, out_mem_offset));
 
     // Build command buffer 
@@ -310,8 +311,8 @@ int TextureLoader::load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo 
         (void)record_error;
     }
     one_shot_cpool_->end_submit_and_free(&cb);
-    vkDestroyBuffer(device_context_->device(), staging_buffer, device_context_->host_allocator());
-    device_context_->device_free(staging_buffer_mem, staging_buffer_mem_offset);
+    vkDestroyBuffer(device_context_.device(), staging_buffer, device_context_.host_allocator());
+    device_context_.device_free(staging_buffer_mem, staging_buffer_mem_offset);
     ImageFileDestroy(&image_file);
     return 0;
 }
@@ -323,7 +324,7 @@ int TextureLoader::generate_vkimage_mipmaps(VkImage image, const VkImageCreateIn
     return 0;  // nothing to do
   }
   VkFormatProperties format_properties = {};
-  vkGetPhysicalDeviceFormatProperties(device_context_->physical_device(), image_ci.format, &format_properties);
+  vkGetPhysicalDeviceFormatProperties(device_context_.physical_device(), image_ci.format, &format_properties);
   const VkFormatFeatureFlags blit_mask = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
   const VkFormatFeatureFlags feature_flags = (image_ci.tiling == VK_IMAGE_TILING_LINEAR)
     ? format_properties.linearTilingFeatures : format_properties.optimalTilingFeatures;
@@ -345,7 +346,7 @@ int TextureLoader::record_mipmap_generation(VkCommandBuffer cb, VkImage image, c
   assert(image_ci.mipLevels > 1); // higher-level code should be checking for this already
 
   VkFormatProperties format_properties = {};
-  vkGetPhysicalDeviceFormatProperties(device_context_->physical_device(), image_ci.format, &format_properties);
+  vkGetPhysicalDeviceFormatProperties(device_context_.physical_device(), image_ci.format, &format_properties);
   const VkFormatFeatureFlags blit_mask = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
   const VkFormatFeatureFlags feature_flags = (image_ci.tiling == VK_IMAGE_TILING_LINEAR)
     ? format_properties.linearTilingFeatures : format_properties.optimalTilingFeatures;
