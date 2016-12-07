@@ -244,7 +244,7 @@ VkResult cdsvk::get_supported_device_extensions(VkPhysicalDevice physical_device
   return VK_SUCCESS;
 }
 
-void cdsvk::view_ci_from_image(VkImageViewCreateInfo *out_view_ci, VkImage image, const VkImageCreateInfo &image_ci) {
+VkImageViewCreateInfo cdsvk::view_ci_from_image(VkImage image, const VkImageCreateInfo &image_ci) {
   VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D;
   if (image_ci.imageType == VK_IMAGE_TYPE_1D) {
     view_type = (image_ci.arrayLayers == 1) ? VK_IMAGE_VIEW_TYPE_1D : VK_IMAGE_VIEW_TYPE_1D_ARRAY;
@@ -258,20 +258,21 @@ void cdsvk::view_ci_from_image(VkImageViewCreateInfo *out_view_ci, VkImage image
   } else if (image_ci.imageType == VK_IMAGE_TYPE_3D) {
     view_type = VK_IMAGE_VIEW_TYPE_3D;
   }
-  *out_view_ci = {};
-  out_view_ci->sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-  out_view_ci->image = image;
-  out_view_ci->viewType = view_type;
-  out_view_ci->format = image_ci.format;
-  out_view_ci->components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-  out_view_ci->components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-  out_view_ci->components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-  out_view_ci->components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-  out_view_ci->subresourceRange.aspectMask = vk_format_to_image_aspect_flags(image_ci.format);
-  out_view_ci->subresourceRange.baseMipLevel = 0;
-  out_view_ci->subresourceRange.levelCount = image_ci.mipLevels;
-  out_view_ci->subresourceRange.baseArrayLayer = 0;
-  out_view_ci->subresourceRange.layerCount = image_ci.arrayLayers;
+  VkImageViewCreateInfo view_ci = {};
+  view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+  view_ci.image = image;
+  view_ci.viewType = view_type;
+  view_ci.format = image_ci.format;
+  view_ci.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+  view_ci.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+  view_ci.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+  view_ci.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+  view_ci.subresourceRange.aspectMask = vk_format_to_image_aspect_flags(image_ci.format);
+  view_ci.subresourceRange.baseMipLevel = 0;
+  view_ci.subresourceRange.levelCount = image_ci.mipLevels;
+  view_ci.subresourceRange.baseArrayLayer = 0;
+  view_ci.subresourceRange.layerCount = image_ci.arrayLayers;
+  return view_ci;
 }
 
 VkSamplerCreateInfo cdsvk::get_sampler_ci(VkFilter min_mag_filter, VkSamplerMipmapMode mipmap_mode, VkSamplerAddressMode address_mode) {
