@@ -273,3 +273,23 @@ void cdsvk::view_ci_from_image(VkImageViewCreateInfo *out_view_ci, VkImage image
   out_view_ci->subresourceRange.baseArrayLayer = 0;
   out_view_ci->subresourceRange.layerCount = image_ci.arrayLayers;
 }
+
+VkSamplerCreateInfo cdsvk::get_sampler_ci(VkFilter min_mag_filter, VkSamplerMipmapMode mipmap_mode, VkSamplerAddressMode address_mode) {
+  VkSamplerCreateInfo ci = {};
+  ci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+  ci.magFilter = min_mag_filter;
+  ci.minFilter = min_mag_filter;
+  ci.mipmapMode = mipmap_mode;
+  ci.addressModeU = address_mode;
+  ci.addressModeV = address_mode;
+  ci.addressModeW = address_mode;
+  ci.mipLodBias = 0.0f;
+  ci.anisotropyEnable = (min_mag_filter != VK_FILTER_NEAREST) ? VK_TRUE : VK_FALSE;
+  ci.maxAnisotropy = ci.anisotropyEnable ? 16 : 1;
+  ci.compareOp = VK_COMPARE_OP_NEVER;
+  ci.minLod = 0.0f;
+  ci.maxLod = FLT_MAX;
+  ci.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+  ci.unnormalizedCoordinates = VK_FALSE;
+  return ci;
+}

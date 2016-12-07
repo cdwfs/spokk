@@ -20,5 +20,6 @@ VkResult get_supported_device_extensions(VkPhysicalDevice physical_device, const
 
 void view_ci_from_image(VkImageViewCreateInfo *out_view_ci, VkImage image, const VkImageCreateInfo &image_ci);
 
+VkSamplerCreateInfo get_sampler_ci(VkFilter min_mag_filter, VkSamplerMipmapMode mipmap_mode, VkSamplerAddressMode address_mode);
 
 }  // namespace cdsvk
