@@ -131,7 +131,7 @@ ENDFOREACH(SHADER_FILE)
 set(CUBESWARM_EXE_NAME cubeswarm)
 cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${CUBESWARM_HEADERS}" "${CUBESWARM_SOURCES}")
 add_executable(${CUBESWARM_EXE_NAME} ${CUBESWARM_SOURCES} ${CUBESWARM_SHADERS} ${CUBESWARM_HEADERS})
-target_link_libraries(${CUBESWARM_EXE_NAME} glfw ${GLFW_LIBRARIES} ${libs} spirv-cross-cpp ${SPOKK_LIB_NAME})
+target_link_libraries(${CUBESWARM_EXE_NAME} ${SPOKK_LIB_NAME})
 mathfu_configure_flags(${CUBESWARM_EXE_NAME})
 
 # Copy assets directory into build dir.
