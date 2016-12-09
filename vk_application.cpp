@@ -175,7 +175,9 @@ Application::Application(const CreateInfo &ci) {
       ;
     debug_report_callback_ci.pfnCallback = my_debug_report_callback;
     debug_report_callback_ci.pUserData = nullptr;
-    CDSVK__CHECK(vkCreateDebugReportCallbackEXT(instance_, &debug_report_callback_ci, allocation_callbacks_, &debug_report_callback_));
+    auto create_debug_report_func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_,
+      "vkCreateDebugReportCallbackEXT");
+    CDSVK__CHECK(create_debug_report_func(instance_, &debug_report_callback_ci, allocation_callbacks_, &debug_report_callback_));
     assert(debug_report_callback_ != VK_NULL_HANDLE);
   }
 
@@ -360,7 +362,22 @@ Application::~Application() {
       vkDestroyImageView(device_, view, allocation_callbacks_);
       view = VK_NULL_HANDLE;
     }
+    vkDestroySwapchainKHR(device_, swapchain_, allocation_callbacks_);
   }
+  window_.reset();
+  glfwTerminate();
+  vkDestroyDevice(device_, allocation_callbacks_);
+  device_ = VK_NULL_HANDLE;
+  if (debug_report_callback_ != VK_NULL_HANDLE) {
+    auto destroy_debug_report_func = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_, "vkDestroyDebugReportCallbackEXT");
+    destroy_debug_report_func(instance_, debug_report_callback_, allocation_callbacks_);
+  }
+  if (surface_ != VK_NULL_HANDLE) {
+    vkDestroySurfaceKHR(instance_, surface_, allocation_callbacks_);
+    surface_ = VK_NULL_HANDLE;
+  }
+  vkDestroyInstance(instance_, allocation_callbacks_);
+  instance_ = VK_NULL_HANDLE;
 }
 
 int Application::run() {
