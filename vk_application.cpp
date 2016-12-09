@@ -62,6 +62,55 @@ const uint32_t kWindowWidthDefault = 1280;
 const uint32_t kWindowHeightDefault = 720;
 }  // namespace
 
+//
+// DeviceMemoryBlock
+//
+VkResult DeviceMemoryBlock::allocate(const DeviceContext& device_context, const VkMemoryAllocateInfo &alloc_info) {
+  assert(handle_ == VK_NULL_HANDLE);
+  VkResult result = vkAllocateMemory(device_context.device(), &alloc_info, device_context.host_allocator(), &handle_);
+  if (result == VK_SUCCESS) {
+    info_ = alloc_info;
+    VkMemoryPropertyFlags properties = device_context.memory_type_properties(alloc_info.memoryTypeIndex);
+    if (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+      result = vkMapMemory(device_context.device(), handle_, 0, VK_WHOLE_SIZE, 0, &mapped_);
+    } else {
+      mapped_ = nullptr;
+    }
+  }
+  return result;
+}
+void DeviceMemoryBlock::free(const DeviceContext& device_context) {
+  if (handle_ != VK_NULL_HANDLE) {
+    vkFreeMemory(device_context.device(), handle_, device_context.host_allocator());
+    handle_ = VK_NULL_HANDLE;
+    mapped_ = nullptr;
+  }
+}
+
+//
+// DeviceMemoryAllocation
+//
+void DeviceMemoryAllocation::invalidate(VkDevice device) const {
+  if (mapped()) {
+    VkMappedMemoryRange range = {};
+    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+    range.memory = block->handle();
+    range.offset = offset;
+    range.size = size;
+    vkInvalidateMappedMemoryRanges(device, 1, &range);
+  }
+}
+void DeviceMemoryAllocation::flush(VkDevice device) const {
+  if (mapped()) {
+    VkMappedMemoryRange range = {};
+    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+    range.memory = block->handle();
+    range.offset = offset;
+    range.size = size;
+    vkFlushMappedMemoryRanges(device, 1, &range);
+  }
+}
+
 
 //
 // DeviceContext
@@ -120,51 +169,73 @@ uint32_t DeviceContext::find_memory_type_index(const VkMemoryRequirements &memor
   }
   return VK_MAX_MEMORY_TYPES; // invalid index
 }
-
-VkResult DeviceContext::device_alloc(const VkMemoryRequirements &mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
-    DeviceAllocationScope scope, VkDeviceMemory *out_mem, VkDeviceSize *out_offset) const {
-  VkMemoryAllocateInfo alloc_info = {};
-  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  alloc_info.allocationSize = mem_reqs.size;
-  alloc_info.memoryTypeIndex = find_memory_type_index(mem_reqs, memory_properties_mask);
-  return device_alloc(alloc_info, scope, out_mem, out_offset);
+VkMemoryPropertyFlags DeviceContext::memory_type_properties(uint32_t memory_type_index) const {
+  if (memory_type_index >= memory_properties_.memoryTypeCount) {
+    return (VkMemoryPropertyFlags)0;
+  }
+  return memory_properties_.memoryTypes[memory_type_index].propertyFlags;
 }
-VkResult DeviceContext::device_alloc(const VkMemoryAllocateInfo& alloc_info,
-    DeviceAllocationScope scope, VkDeviceMemory *out_mem, VkDeviceSize *out_offset) const {
+
+DeviceMemoryAllocation DeviceContext::device_alloc(const VkMemoryRequirements &mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
+    DeviceAllocationScope scope) const {
   if (device_allocator_ != nullptr) {
-    return device_allocator_->pfnAllocation(out_mem, out_offset, device_allocator_->pUserData, &alloc_info, scope);
+    return device_allocator_->pfnAllocation(device_allocator_->pUserData, *this, mem_reqs, memory_properties_mask, scope);
   } else {
-    *out_offset = 0;
-    return vkAllocateMemory(device_, &alloc_info, host_allocator_, out_mem);
+    DeviceMemoryAllocation allocation = {};
+    VkMemoryAllocateInfo alloc_info = {};
+    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    alloc_info.allocationSize = mem_reqs.size;
+    alloc_info.memoryTypeIndex = find_memory_type_index(mem_reqs, memory_properties_mask);
+    DeviceMemoryBlock *block = new DeviceMemoryBlock;
+    VkResult result = block->allocate(*this, alloc_info);
+    if (result == VK_SUCCESS) {
+      allocation.block = block;
+      allocation.offset = 0;
+      allocation.size = alloc_info.allocationSize;
+    } else {
+      delete block;
+    }
+    return allocation;
   }
 }
-VkResult DeviceContext::device_alloc_and_bind_to_image(VkImage image, VkMemoryPropertyFlags memory_properties_mask,
-    DeviceAllocationScope scope, VkDeviceMemory *out_mem, VkDeviceSize *out_offset) const {
+void DeviceContext::device_free(DeviceMemoryAllocation allocation) const {
+  if (allocation.block != nullptr) {
+    if (device_allocator_ != nullptr) {
+      return device_allocator_->pfnFree(device_allocator_->pUserData, *this, allocation);
+    } else {
+      assert(allocation.offset == 0);
+      assert(allocation.size == allocation.block->info().allocationSize);
+      allocation.block->free(*this);
+    }
+  }
+}
+DeviceMemoryAllocation DeviceContext::device_alloc_and_bind_to_image(VkImage image, VkMemoryPropertyFlags memory_properties_mask,
+    DeviceAllocationScope scope) const {
   VkMemoryRequirements mem_reqs = {};
   vkGetImageMemoryRequirements(device_, image, &mem_reqs);
-  VkResult result = device_alloc(mem_reqs, memory_properties_mask, scope, out_mem, out_offset);
-  if (result == VK_SUCCESS) {
-    result = vkBindImageMemory(device_, image, *out_mem, *out_offset);
+  DeviceMemoryAllocation allocation = device_alloc(mem_reqs, memory_properties_mask, scope);
+  if (allocation.block != nullptr) {
+    VkResult result = vkBindImageMemory(device_, image, allocation.block->handle(), allocation.offset);
+    if (result != VK_SUCCESS) {
+      device_free(allocation);
+      allocation.block = nullptr;
+    }
   }
-  return result;
+  return allocation;
 }
-VkResult DeviceContext::device_alloc_and_bind_to_buffer(VkBuffer buffer, VkMemoryPropertyFlags memory_properties_mask,
-    DeviceAllocationScope scope, VkDeviceMemory *out_mem, VkDeviceSize *out_offset) const {
+DeviceMemoryAllocation DeviceContext::device_alloc_and_bind_to_buffer(VkBuffer buffer, VkMemoryPropertyFlags memory_properties_mask,
+    DeviceAllocationScope scope) const {
   VkMemoryRequirements mem_reqs = {};
   vkGetBufferMemoryRequirements(device_, buffer, &mem_reqs);
-  VkResult result = device_alloc(mem_reqs, memory_properties_mask, scope, out_mem, out_offset);
-  if (result == VK_SUCCESS) {
-    result = vkBindBufferMemory(device_, buffer, *out_mem, *out_offset);
+  DeviceMemoryAllocation allocation = device_alloc(mem_reqs, memory_properties_mask, scope);
+  if (allocation.block != nullptr) {
+    VkResult result = vkBindBufferMemory(device_, buffer, allocation.block->handle(), allocation.offset);
+    if (result != VK_SUCCESS) {
+      device_free(allocation);
+      allocation.block = nullptr;
+    }
   }
-  return result;
-}
-
-void DeviceContext::device_free(VkDeviceMemory mem, VkDeviceSize offset) const {
-  if (device_allocator_ != nullptr) {
-    return device_allocator_->pfnFree(host_allocator_->pUserData, mem, offset);
-  } else {
-    vkFreeMemory(device_, mem, host_allocator_);
-  }
+  return allocation;
 }
 
 void *DeviceContext::host_alloc(size_t size, size_t alignment, VkSystemAllocationScope scope) const {
@@ -267,27 +338,42 @@ VkResult OneShotCommandPool::end_submit_and_free(VkCommandBuffer *cb) const {
 }
 
 
-void Image::create(const DeviceContext& device_context, const VkImageCreateInfo image_ci) {
-  CDSVK_CHECK(vkCreateImage(device_context.device(), &image_ci, device_context.host_allocator(), &handle));
-  CDSVK_CHECK(device_context.device_alloc_and_bind_to_image(handle, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-    DEVICE_ALLOCATION_SCOPE_DEVICE, &memory, &memory_offset));
-  VkImageViewCreateInfo view_ci = cdsvk::view_ci_from_image(handle, image_ci);
-  CDSVK_CHECK(vkCreateImageView(device_context.device(), &view_ci, device_context.host_allocator(), &view));
-}
-void Image::load(const DeviceContext& device_context, const TextureLoader& loader, const std::string& filename,
-    VkBool32 generate_mipmaps, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
-  VkImageCreateInfo image_ci;
-  int load_error = loader.load_vkimage_from_file(&handle, &image_ci, &memory, &memory_offset,
-    filename, generate_mipmaps, final_layout, final_access_flags);
-  if (!load_error) {
-    VkImageViewCreateInfo view_ci = cdsvk::view_ci_from_image(handle, image_ci);
-    CDSVK_CHECK(vkCreateImageView(device_context.device(), &view_ci, device_context.host_allocator(), &view));
+
+VkResult Image::create(const DeviceContext& device_context, const VkImageCreateInfo image_ci,
+    VkMemoryPropertyFlags memory_properties, DeviceAllocationScope allocation_scope) {
+  VkResult result = vkCreateImage(device_context.device(), &image_ci, device_context.host_allocator(), &handle);
+  if (result == VK_SUCCESS) {
+    memory = device_context.device_alloc_and_bind_to_image(handle, memory_properties, allocation_scope);
+    if (memory.block == nullptr) {
+      vkDestroyImage(device_context.device(), handle, device_context.host_allocator());
+      handle = VK_NULL_HANDLE;
+      result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    } else {
+      VkImageViewCreateInfo view_ci = cdsvk::view_ci_from_image(handle, image_ci);
+      result = vkCreateImageView(device_context.device(), &view_ci, device_context.host_allocator(), &view);
+    }
   }
+  return result;
+}
+VkResult Image::create_and_load(const DeviceContext& device_context, const TextureLoader& loader, const std::string& filename,
+    VkBool32 generate_mipmaps, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
+  VkImageCreateInfo image_ci = {};
+  int load_error = loader.load_vkimage_from_file(&handle, &image_ci, &memory,
+    filename, generate_mipmaps, final_layout, final_access_flags);
+  if (load_error) {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+  VkImageViewCreateInfo view_ci = cdsvk::view_ci_from_image(handle, image_ci);
+  VkResult result = vkCreateImageView(device_context.device(), &view_ci, device_context.host_allocator(), &view);
+  return result;
 }
 void Image::destroy(const DeviceContext& device_context) {
-  device_context.device_free(memory, memory_offset);
+  device_context.device_free(memory);
+  memory.block = nullptr;
   vkDestroyImageView(device_context.device(), view, device_context.host_allocator());
+  view = VK_NULL_HANDLE;
   vkDestroyImage(device_context.device(), handle, device_context.host_allocator());
+  handle = VK_NULL_HANDLE;
 }
 
 

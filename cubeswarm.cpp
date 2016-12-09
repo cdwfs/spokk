@@ -56,11 +56,9 @@ public:
       }
     }
     assert(depth_image_ci.format != VK_FORMAT_UNDEFINED);
-    CDSVK_CHECK(vkCreateImage(device_, &depth_image_ci, allocation_callbacks_, &depth_image_));
-    CDSVK_CHECK(device_context_.device_alloc_and_bind_to_image(depth_image_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-      DEVICE_ALLOCATION_SCOPE_DEVICE, &depth_image_mem_, &depth_image_mem_offset_));
-    VkImageViewCreateInfo depth_image_view_ci = cdsvk::view_ci_from_image(depth_image_, depth_image_ci);
-    CDSVK_CHECK(vkCreateImageView(device_, &depth_image_view_ci, allocation_callbacks_, &depth_image_view_));
+    depth_image_ = {};
+    CDSVK_CHECK(depth_image_.create(device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      DEVICE_ALLOCATION_SCOPE_DEVICE));
 
 #if 0
     // Create intermediate color buffer
@@ -140,7 +138,7 @@ public:
     // Create VkFramebuffers
     std::array<VkImageView, kAttachmentCount> attachment_views = {};
     attachment_views[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below
-    attachment_views[kDepthAttachmentIndex] = depth_image_view_;
+    attachment_views[kDepthAttachmentIndex] = depth_image_.view;
     VkFramebufferCreateInfo framebuffer_ci = {};
     framebuffer_ci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     framebuffer_ci.renderPass = render_pass_.handle;
@@ -159,7 +157,7 @@ public:
     VkSamplerCreateInfo sampler_ci = get_sampler_ci(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     CDSVK_CHECK(vkCreateSampler(device_, &sampler_ci, allocation_callbacks_, &sampler_));
     texture_loader_ = my_make_unique<TextureLoader>(device_context_);
-    albedo_tex_.load(device_context_, *texture_loader_.get(), "trevor/redf.ktx");
+    albedo_tex_.create_and_load(device_context_, *texture_loader_.get(), "trevor/redf.ktx");
 
     // Create the semaphores used to synchronize access to swapchain images
     VkSemaphoreCreateInfo semaphore_ci = {};
@@ -195,9 +193,7 @@ public:
       }
       vkDestroyRenderPass(device_, render_pass_.handle, allocation_callbacks_);
 
-      vkFreeMemory(device_, depth_image_mem_, allocation_callbacks_);
-      vkDestroyImageView(device_, depth_image_view_, allocation_callbacks_);
-      vkDestroyImage(device_, depth_image_, allocation_callbacks_); 
+      depth_image_.destroy(device_context_);
 
       vkDestroyCommandPool(device_, cpool_, allocation_callbacks_);
     }
@@ -297,10 +293,7 @@ private:
   VkSemaphore swapchain_image_ready_sem_, rendering_complete_sem_;
   std::array<VkFence, VFRAME_COUNT> submission_complete_fences_;
 
-  VkImage depth_image_;
-  VkImageView depth_image_view_;
-  VkDeviceMemory depth_image_mem_;
-  VkDeviceSize depth_image_mem_offset_;
+  Image depth_image_;
 
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;

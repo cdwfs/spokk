@@ -36,22 +36,58 @@ std::unique_ptr<T> my_make_unique(Ts&&... params) {
 //
 // Device memory allocation
 //
+class DeviceContext;
+class DeviceMemoryBlock {
+public:
+  DeviceMemoryBlock() : handle_(VK_NULL_HANDLE), info_{}, mapped_(nullptr) {}
+  ~DeviceMemoryBlock() {
+    assert(handle_ == VK_NULL_HANDLE);  // call free() before deleting!
+  }
+  VkResult allocate(const DeviceContext& device_context, const VkMemoryAllocateInfo &alloc_info);
+  void free(const DeviceContext& device_context);
+
+  VkDeviceMemory handle() const { return handle_; }
+  const VkMemoryAllocateInfo& info() const { return info_; }
+  void* mapped() const { return mapped_; }
+private:
+  VkDeviceMemory handle_;
+  VkMemoryAllocateInfo info_;
+  void *mapped_;  // NULL if allocation is not mapped.
+};
+
+struct DeviceMemoryAllocation {
+  DeviceMemoryAllocation() : block(nullptr), offset(0), size(0) {}
+  void *mapped() const {
+    if (block == nullptr || block->mapped() == nullptr) {
+      return nullptr;
+    }
+    return (void*)( uintptr_t(block->mapped()) + offset );
+  }
+  // TODO(cort): cache a VkDevice with the memory block?
+  void invalidate(VkDevice device) const;
+  void flush(VkDevice device) const;
+  DeviceMemoryBlock *block;  // May or may not be exclusively owned; depends on the device allocator.
+                             // May be NULL for invalid allocations.
+  VkDeviceSize offset;
+  VkDeviceSize size;
+};
+
 enum DeviceAllocationScope {
   DEVICE_ALLOCATION_SCOPE_FRAME  = 1,
   DEVICE_ALLOCATION_SCOPE_DEVICE = 2,
 };
 
-typedef VkResult (VKAPI_PTR *PFN_deviceAllocationFunction)(
-  VkDeviceMemory*                             out_memory,
-  VkDeviceSize*                               out_offset,
+typedef DeviceMemoryAllocation (VKAPI_PTR *PFN_deviceAllocationFunction)(
   void*                                       pUserData,
-  const VkMemoryAllocateInfo*                 alloc_info,
+  const DeviceContext&                        device_context,
+  const VkMemoryRequirements&                 memory_reqs,
+  VkMemoryPropertyFlags                       memory_property_flags,
   DeviceAllocationScope                       allocationScope);
 
 typedef void (VKAPI_PTR *PFN_deviceFreeFunction)(
   void*                                       pUserData,
-  VkDeviceMemory                              mem,
-  VkDeviceSize                                offset);
+  const DeviceContext&                        device_context,
+  DeviceMemoryAllocation&                     allocation);
 
 typedef struct DeviceAllocationCallbacks {
   void*                                   pUserData;
@@ -95,17 +131,16 @@ public:
 
   uint32_t find_memory_type_index(const VkMemoryRequirements &memory_reqs,
     VkMemoryPropertyFlags memory_properties_mask) const;
+  VkMemoryPropertyFlags memory_type_properties(uint32_t memory_type_index) const;
 
-  VkResult device_alloc(const VkMemoryRequirements &mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
-    DeviceAllocationScope scope, VkDeviceMemory *out_mem, VkDeviceSize *out_offset) const;
-  VkResult device_alloc(const VkMemoryAllocateInfo& alloc_info,
-    DeviceAllocationScope scope, VkDeviceMemory *out_mem, VkDeviceSize *out_offset) const;
+  DeviceMemoryAllocation device_alloc(const VkMemoryRequirements &mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
+    DeviceAllocationScope scope) const;
+  void device_free(DeviceMemoryAllocation allocation) const;
   // Additional shortcuts for the most common device memory allocations
-  VkResult device_alloc_and_bind_to_image(VkImage image, VkMemoryPropertyFlags memory_properties_mask,
-    DeviceAllocationScope scope, VkDeviceMemory *out_mem, VkDeviceSize *out_offset) const;
-  VkResult device_alloc_and_bind_to_buffer(VkBuffer buffer, VkMemoryPropertyFlags memory_properties_mask,
-    DeviceAllocationScope scope, VkDeviceMemory *out_mem, VkDeviceSize *out_offset) const;
-  void device_free(VkDeviceMemory mem, VkDeviceSize offset) const;
+  DeviceMemoryAllocation device_alloc_and_bind_to_image(VkImage image, VkMemoryPropertyFlags memory_properties_mask,
+    DeviceAllocationScope scope) const;
+  DeviceMemoryAllocation device_alloc_and_bind_to_buffer(VkBuffer buffer, VkMemoryPropertyFlags memory_properties_mask,
+    DeviceAllocationScope scope) const;
 
   void *host_alloc(size_t size, size_t alignment, VkSystemAllocationScope scope) const;
   void host_free(void *ptr) const;
@@ -150,16 +185,18 @@ private:
 
 class TextureLoader;
 struct Image {
-  void create(const DeviceContext& device_context, const VkImageCreateInfo image_ci);
-  void load(const DeviceContext& device_context, const TextureLoader& loader,
+  Image() : handle(VK_NULL_HANDLE), view(VK_NULL_HANDLE), memory{} {}
+  VkResult create(const DeviceContext& device_context, const VkImageCreateInfo image_ci,
+    VkMemoryPropertyFlags memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    DeviceAllocationScope allocation_scope = DEVICE_ALLOCATION_SCOPE_DEVICE);
+  VkResult create_and_load(const DeviceContext& device_context, const TextureLoader& loader,
     const std::string& filename, VkBool32 generate_mipmaps = VK_TRUE,
     VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     VkAccessFlags final_access_flags = VK_ACCESS_SHADER_READ_BIT);
   void destroy(const DeviceContext& device_context);
   VkImage handle;
   VkImageView view;
-  VkDeviceMemory memory;
-  VkDeviceSize memory_offset;
+  DeviceMemoryAllocation memory;
 };
 
 struct SubpassAttachments {
