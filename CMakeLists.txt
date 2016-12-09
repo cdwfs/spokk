@@ -94,7 +94,6 @@ TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC ".")
 SET(CUBESWARM_HEADERS
     camera.h
     cds_mesh.h
-    cds_vulkan.hpp
     )
 SET(CUBESWARM_SOURCES
     camera.cpp
