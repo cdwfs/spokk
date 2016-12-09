@@ -7,6 +7,7 @@
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.h>
 
+#include <array>
 #include <cassert>
 #include <memory>
 #include <string>
@@ -14,6 +15,61 @@
 #include <mutex>
 
 namespace cdsvk {
+
+class InputState {
+public:
+  InputState()
+      : window_{}
+      , current_{}
+      , prev_{} {
+
+  }
+  explicit InputState(const std::shared_ptr<GLFWwindow>& window)
+      : window_(window)
+      , current_{}
+      , prev_{} {
+  }
+  ~InputState() = default;
+
+  void set_window(const std::shared_ptr<GLFWwindow>& window) {
+    window_ = window;
+  }
+
+  enum Digital {
+    DIGITAL_LPAD_UP    =  0,
+    DIGITAL_LPAD_LEFT  =  1,
+    DIGITAL_LPAD_RIGHT =  2,
+    DIGITAL_LPAD_DOWN  =  3,
+    DIGITAL_RPAD_UP    =  4,
+    DIGITAL_RPAD_LEFT  =  5,
+    DIGITAL_RPAD_RIGHT =  6,
+    DIGITAL_RPAD_DOWN  =  7,
+
+    DIGITAL_COUNT
+  };
+  enum Analog {
+    ANALOG_L_X     = 0,
+    ANALOG_L_Y     = 1,
+    ANALOG_R_X     = 2,
+    ANALOG_R_Y     = 3,
+    ANALOG_MOUSE_X = 4,
+    ANALOG_MOUSE_Y = 5,
+
+    ANALOG_COUNT
+  };
+  void Update();
+  bool IsPressed(Digital id) const  { return  current_.digital[id] && !prev_.digital[id]; }
+  bool IsReleased(Digital id) const { return !current_.digital[id] &&  prev_.digital[id]; }
+  bool GetDigital(Digital id) const { return  current_.digital[id]; }
+  float GetAnalog(Analog id) const  { return  current_.analog[id]; }
+
+private:
+  struct {
+    std::array<bool, DIGITAL_COUNT> digital;
+    std::array<float, ANALOG_COUNT> analog;
+  } current_, prev_;
+  std::weak_ptr<GLFWwindow> window_;
+};
 
 // How many frames can be in flight simultaneously? The higher the count, the more independent copies
 // of various resources (anything changing per-frame) must be created and maintained in memory.
@@ -309,6 +365,8 @@ protected:
   VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
     
   std::shared_ptr<GLFWwindow> window_ = nullptr;
+
+  InputState input_state_;
 
   // handles refer to this application's device_, queue_contexts_, etc.
   DeviceContext device_context_;

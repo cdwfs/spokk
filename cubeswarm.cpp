@@ -202,9 +202,10 @@ public:
   CubeSwarmApp(const CubeSwarmApp&) = delete;
   const CubeSwarmApp& operator=(const CubeSwarmApp&) = delete;
 
-  virtual void update(double /*dt*/) override {
-
+  virtual void update(double dt) override {
+    Application::update(dt);
   }
+
   virtual void render() override {
     // Wait for the command buffer previously used to generate this swapchain image to be submitted.
     // TODO(cort): this does not guarantee memory accesses from this submission will be visible on the host;

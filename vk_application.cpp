@@ -63,6 +63,27 @@ const uint32_t kWindowHeightDefault = 720;
 }  // namespace
 
 //
+// InputState
+//
+void InputState::Update(void) {
+  std::shared_ptr<GLFWwindow> w = window_.lock();
+  assert(w != nullptr);
+  GLFWwindow *pw = w.get();
+
+  prev_ = current_;
+
+  current_.digital[DIGITAL_LPAD_UP] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_W));
+  current_.digital[DIGITAL_LPAD_LEFT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_A));
+  current_.digital[DIGITAL_LPAD_RIGHT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_D));
+  current_.digital[DIGITAL_LPAD_DOWN] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_S));
+
+  double mx = 0, my = 0;
+  glfwGetCursorPos(pw, &mx, &my);
+  current_.analog[ANALOG_MOUSE_X] = (float)mx;
+  current_.analog[ANALOG_MOUSE_Y] = (float)my;
+}
+
+//
 // DeviceMemoryBlock
 //
 VkResult DeviceMemoryBlock::allocate(const DeviceContext& device_context, const VkMemoryAllocateInfo &alloc_info) {
@@ -460,6 +481,8 @@ Application::Application(const CreateInfo &ci) {
   glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
   glfwPollEvents(); // dummy poll for first loop iteration
 
+  input_state_.set_window(window_);
+
   // Initialize Vulkan
   std::vector<const char*> required_instance_layer_names = {};
   if (ci.enable_validation) {
@@ -776,6 +799,7 @@ int Application::run() {
 }
 
 void Application::update(double /*dt*/) {
+  input_state_.Update();
 }
 void Application::render() {
 }
