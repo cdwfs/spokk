@@ -7,9 +7,9 @@ using namespace cdsvk;
 #include <array>
 #include <cstdio>
 
-class TestApplication : public cdsvk::Application {
+class CubeSwarmApp : public cdsvk::Application {
 public:
-  explicit TestApplication(Application::CreateInfo &ci) :
+  explicit CubeSwarmApp(Application::CreateInfo &ci) :
       Application(ci) {
     // Retrieve queue handles
     graphics_and_present_queue_ = device_context_.find_queue_context(VK_QUEUE_GRAPHICS_BIT, surface_)->queue;
@@ -176,7 +176,7 @@ public:
       CDSVK_CHECK(vkCreateFence(device_, &fence_ci, allocation_callbacks_, &fence));
     }
   }
-  virtual ~TestApplication() {
+  virtual ~CubeSwarmApp() {
     if (device_) {
       vkDeviceWaitIdle(device_);
 
@@ -203,8 +203,8 @@ public:
     }
   }
 
-  TestApplication(const TestApplication&) = delete;
-  const TestApplication& operator=(const TestApplication&) = delete;
+  CubeSwarmApp(const CubeSwarmApp&) = delete;
+  const CubeSwarmApp& operator=(const CubeSwarmApp&) = delete;
 
   virtual void update(double /*dt*/) override {
 
@@ -320,7 +320,7 @@ int main(int argc, char *argv[]) {
   Application::CreateInfo app_ci = {};
   app_ci.queue_family_requests = queue_requests;
 
-  TestApplication app(app_ci);
+  CubeSwarmApp app(app_ci);
   int run_error = app.run();
 
   return run_error;
