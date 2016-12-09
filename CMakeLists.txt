@@ -1,46 +1,25 @@
 cmake_minimum_required(VERSION 2.8)
 
+project(spokk)
+
 # Remove MinSizeRel and RelWithDebInfo targets
 set(CMAKE_CONFIGURATION_TYPES Debug Release CACHE TYPE INTERNAL FORCE )
 
-# Build GLFW from source & link appropriate library
+# GLFW
 option(GLFW_BUILD_EXAMPLES "Build the GLFW example programs" OFF)
 option(GLFW_BUILD_TESTS "Build the GLFW test programs" OFF)
 option(GLFW_BUILD_DOCS "Build the GLFW documentation" OFF)
 option(GLFW_INSTALL "Generate installation target" OFF)
 option(USE_MSVC_RUNTIME_LIBRARY_DLL "Use MSVC runtime library DLL" OFF)
-add_subdirectory(third_party/glfw) # specify binary directory for out-of-tree glfw
+add_subdirectory(third_party/glfw)
 
-project(vulkswagen)
+# Mathfu
+set(mathfu_build_benchmarks OFF CACHE BOOL "")
+set(mathfu_build_tests OFF CACHE BOOL "")
+set(mathfu_enable_simd OFF CACHE BOOL "")
+add_subdirectory(third_party/mathfu)
 
-SET(headers
-    camera.h
-    cds_mesh.h
-    cds_vulkan.hpp
-    image_file.h
-    platform.h
-    stb_image.h
-    vk_application.h
-    vk_debug.h
-    vk_init.h
-    vk_texture.h
-    )
-SET(sources
-    camera.cpp
-    image_file.c
-    vk_application.cpp
-    vk_init.cpp
-    vk_texture.cpp
-    testapp.cpp#vulkswagen.cpp
-    )
-
-SET(shaders
-    tri.vert
-    tri.frag
-    fullscreen.vert
-    subpass_post.frag
-    )
-
+# Offline shader compilation from GLSL to SPIR-V
 FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)
     ADD_CUSTOM_COMMAND(
         OUTPUT ${SPV_FILE}
@@ -50,14 +29,10 @@ FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)
         COMMENT "Compiling ${SOURCE_FILE} -> ${SPV_FILE}"
         )
 ENDFUNCTION(SHADER_BUILD_RULE SHADER_FILE SPV_FILE)
-FOREACH(SHADER_FILE IN LISTS shaders)
-    SHADER_BUILD_RULE(${SHADER_FILE} ${CMAKE_BINARY_DIR}/${SHADER_FILE}.spv)
-ENDFOREACH(SHADER_FILE)
-SOURCE_GROUP(shaders FILES ${shaders})
 
+# Global build settings
 include_directories(${VULKAN_INCLUDE_DIR})
 #link_directories(${VULKAN_SDK}/lib)
-
 IF(MSVC)
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GS- /GR- /W4 /wd4996 /D _UNICODE /D UNICODE" CACHE TYPE STRING FORCE)
@@ -93,22 +68,62 @@ MACRO (cmp_IDE_SOURCE_PROPERTIES SOURCE_PATH HEADERS SOURCES)
     source_group(${source_group_path} FILES ${HEADERS} ${SOURCES})
 ENDMACRO (cmp_IDE_SOURCE_PROPERTIES NAME HEADERS SOURCES INSTALL_FILES)
 
-set(exe_name testapp)#vulkswagen)
-cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${headers}" "${sources}")
-add_executable(${exe_name} ${sources} ${shaders} ${headers})
-target_link_libraries(${exe_name} glfw ${GLFW_LIBRARIES} ${libs})
+# libspokk
+SET(SPOKK_HEADERS
+    image_file.h
+    platform.h
+    stb_image.h
+    vk_application.h
+    vk_debug.h
+    vk_init.h
+    vk_texture.h
+    )
+SET(SPOKK_SOURCES
+    image_file.c
+    vk_application.cpp
+    vk_init.cpp
+    vk_texture.cpp
+    )
+SET(SPOKK_LIB_NAME spokk)
+cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKK_HEADERS}" "${SPOKK_SOURCES}")
+ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC ${SPOKK_SOURCES} ${SPOKK_HEADERS})
+TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} ${libs})
+TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC ".")
 
-set(mathfu_build_benchmarks OFF CACHE BOOL "")
-set(mathfu_build_tests OFF CACHE BOOL "")
-set(mathfu_enable_simd OFF CACHE BOOL "")
-add_subdirectory(third_party/mathfu)
-mathfu_configure_flags(${exe_name})
+# cubeswarm sample
+SET(CUBESWARM_HEADERS
+    camera.h
+    cds_mesh.h
+    cds_vulkan.hpp
+    )
+SET(CUBESWARM_SOURCES
+    camera.cpp
+    cubeswarm.cpp
+    )
+SET(CUBESWARM_SHADERS
+    tri.vert
+    tri.frag
+    fullscreen.vert
+    subpass_post.frag
+    )
+SOURCE_GROUP(shaders FILES ${CUBESWARM_SHADERS})
+FOREACH(SHADER_FILE IN LISTS CUBESWARM_SHADERS)
+    SHADER_BUILD_RULE(${SHADER_FILE} ${CMAKE_BINARY_DIR}/${SHADER_FILE}.spv)
+ENDFOREACH(SHADER_FILE)
 
+set(CUBESWARM_EXE_NAME cubeswarm)
+cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${CUBESWARM_HEADERS}" "${CUBESWARM_SOURCES}")
+add_executable(${CUBESWARM_EXE_NAME} ${CUBESWARM_SOURCES} ${CUBESWARM_SHADERS} ${CUBESWARM_HEADERS})
+target_link_libraries(${CUBESWARM_EXE_NAME} glfw ${GLFW_LIBRARIES} ${libs} ${SPOKK_LIB_NAME})
+mathfu_configure_flags(${CUBESWARM_EXE_NAME})
+
+# Copy assets directory into build dir.
+# TODO(cort): Which target should this be attached to? Or do we leave it where it is and load things
+#             from one level up?
 ADD_CUSTOM_COMMAND(
-    TARGET ${exe_name} POST_BUILD
+    TARGET ${CUBESWARM_EXE_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/trevor
         ${CMAKE_BINARY_DIR}/trevor
     COMMENT "Copying assets to build directory"
     )
-

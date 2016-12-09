@@ -1,6 +1,7 @@
 #include "vk_application.h"
 #include "vk_debug.h"
 #include "vk_init.h"
+#include "vk_texture.h"
 using namespace cdsvk;
 
 #include <array>
@@ -58,8 +59,7 @@ public:
     CDSVK_CHECK(vkCreateImage(device_, &depth_image_ci, allocation_callbacks_, &depth_image_));
     CDSVK_CHECK(device_context_.device_alloc_and_bind_to_image(depth_image_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DEVICE_ALLOCATION_SCOPE_DEVICE, &depth_image_mem_, &depth_image_mem_offset_));
-    VkImageViewCreateInfo depth_image_view_ci = {};
-    cdsvk::view_ci_from_image(&depth_image_view_ci, depth_image_, depth_image_ci);
+    VkImageViewCreateInfo depth_image_view_ci = cdsvk::view_ci_from_image(depth_image_, depth_image_ci);
     CDSVK_CHECK(vkCreateImageView(device_, &depth_image_view_ci, allocation_callbacks_, &depth_image_view_));
 
 #if 0
@@ -141,7 +141,6 @@ public:
     std::array<VkImageView, kAttachmentCount> attachment_views = {};
     attachment_views[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below
     attachment_views[kDepthAttachmentIndex] = depth_image_view_;
-
     VkFramebufferCreateInfo framebuffer_ci = {};
     framebuffer_ci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     framebuffer_ci.renderPass = render_pass_.handle;
@@ -155,6 +154,12 @@ public:
       attachment_views[kColorAttachmentIndex] = swapchain_image_views_[i];
       CDSVK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, allocation_callbacks_, &framebuffers_[i]));
     }
+
+    // Load textures and samplers
+    VkSamplerCreateInfo sampler_ci = get_sampler_ci(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    CDSVK_CHECK(vkCreateSampler(device_, &sampler_ci, allocation_callbacks_, &sampler_));
+    texture_loader_ = my_make_unique<TextureLoader>(device_context_);
+    albedo_tex_.load(device_context_, *texture_loader_.get(), "trevor/redf.ktx");
 
     // Create the semaphores used to synchronize access to swapchain images
     VkSemaphoreCreateInfo semaphore_ci = {};
@@ -180,6 +185,10 @@ public:
       }
       vkDestroySemaphore(device_, swapchain_image_ready_sem_, allocation_callbacks_);
       vkDestroySemaphore(device_, rendering_complete_sem_, allocation_callbacks_);
+
+      vkDestroySampler(device_, sampler_, allocation_callbacks_);
+      albedo_tex_.destroy(device_context_);
+      texture_loader_.reset();
 
       for(const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, allocation_callbacks_);
@@ -295,6 +304,10 @@ private:
 
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
+
+  std::unique_ptr<TextureLoader> texture_loader_;
+  Image albedo_tex_;
+  VkSampler sampler_;
 };
 
 int main(int argc, char *argv[]) {
