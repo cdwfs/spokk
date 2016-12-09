@@ -21,6 +21,7 @@ SET(headers
     platform.h
     stb_image.h
     vk_application.h
+    vk_debug.h
     vk_init.h
     vk_texture.h
     )

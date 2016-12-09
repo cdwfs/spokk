@@ -1,6 +1,8 @@
-#include "image_file.h"
+#include "vk_debug.h"
 #include "vk_texture.h"
 using namespace cdsvk;
+
+#include "image_file.h"
 
 #include <array>
 #include <assert.h>
@@ -8,22 +10,22 @@ using namespace cdsvk;
 #include <string.h>
 
 namespace {
-    VkImageAspectFlags vk_format_to_image_aspect(VkFormat format) {
-        switch(format) {
-        case VK_FORMAT_D16_UNORM:
-        case VK_FORMAT_D32_SFLOAT:
-        case VK_FORMAT_X8_D24_UNORM_PACK32:
-            return VK_IMAGE_ASPECT_DEPTH_BIT;
-        case VK_FORMAT_D16_UNORM_S8_UINT:
-        case VK_FORMAT_D24_UNORM_S8_UINT:
-        case VK_FORMAT_D32_SFLOAT_S8_UINT:
-            return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-        case VK_FORMAT_UNDEFINED:
-            return static_cast<VkImageAspectFlagBits>(0);
-        default:
-            return VK_IMAGE_ASPECT_COLOR_BIT;
-        }
+  VkImageAspectFlags vk_format_to_image_aspect(VkFormat format) {
+    switch(format) {
+    case VK_FORMAT_D16_UNORM:
+    case VK_FORMAT_D32_SFLOAT:
+    case VK_FORMAT_X8_D24_UNORM_PACK32:
+      return VK_IMAGE_ASPECT_DEPTH_BIT;
+    case VK_FORMAT_D16_UNORM_S8_UINT:
+    case VK_FORMAT_D24_UNORM_S8_UINT:
+    case VK_FORMAT_D32_SFLOAT_S8_UINT:
+      return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    case VK_FORMAT_UNDEFINED:
+      return static_cast<VkImageAspectFlagBits>(0);
+    default:
+      return VK_IMAGE_ASPECT_COLOR_BIT;
     }
+  }
 
     // TODO(cort): this table probably belongs in image_file.c
     struct ImageFormatAttributes {
@@ -161,7 +163,6 @@ int TextureLoader::load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo 
         VkDeviceMemory *out_mem, VkDeviceSize *out_mem_offset,
         const std::string &filename, VkBool32 generate_mipmaps,
         VkImageLayout final_layout, VkAccessFlags final_access_flags) const {
-    VkResult result = VK_SUCCESS;
     int err = 0;
 
     // Load image file
@@ -214,15 +215,15 @@ int TextureLoader::load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo 
         }
     }
     VkBuffer staging_buffer = VK_NULL_HANDLE;
-    result = vkCreateBuffer(device_context_->device(), &staging_buffer_ci, device_context_->host_allocator(), &staging_buffer);
+    CDSVK_CHECK(vkCreateBuffer(device_context_->device(), &staging_buffer_ci, device_context_->host_allocator(), &staging_buffer));
     VkDeviceMemory staging_buffer_mem = VK_NULL_HANDLE;
     VkDeviceSize staging_buffer_mem_offset = 0;
-    result = device_context_->device_alloc_and_bind_to_buffer(staging_buffer,
+    CDSVK_CHECK(device_context_->device_alloc_and_bind_to_buffer(staging_buffer,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        DEVICE_ALLOCATION_SCOPE_DEVICE, &staging_buffer_mem, &staging_buffer_mem_offset);
+        DEVICE_ALLOCATION_SCOPE_DEVICE, &staging_buffer_mem, &staging_buffer_mem_offset));
     uint8_t *staging_buffer_data = NULL;
-    result = vkMapMemory(device_context_->device(), staging_buffer_mem, staging_buffer_mem_offset, staging_buffer_ci.size,
-        (VkMemoryMapFlags)0, (void**)&staging_buffer_data);
+    CDSVK_CHECK(vkMapMemory(device_context_->device(), staging_buffer_mem, staging_buffer_mem_offset, staging_buffer_ci.size,
+        (VkMemoryMapFlags)0, (void**)&staging_buffer_data));
 
     // Populate staging buffer, and build a list of regions to copy into the final image.
     std::vector<VkBufferImageCopy> copy_regions(mips_to_load);
@@ -261,9 +262,9 @@ int TextureLoader::load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo 
     vkUnmapMemory(device_context_->device(), staging_buffer_mem);
 
     // Create final image
-    result = vkCreateImage(device_context_->device(), out_image_ci, device_context_->host_allocator(), out_image);
-    device_context_->device_alloc_and_bind_to_image(*out_image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-      DEVICE_ALLOCATION_SCOPE_DEVICE, out_mem, out_mem_offset);
+    CDSVK_CHECK(vkCreateImage(device_context_->device(), out_image_ci, device_context_->host_allocator(), out_image));
+    CDSVK_CHECK(device_context_->device_alloc_and_bind_to_image(*out_image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      DEVICE_ALLOCATION_SCOPE_DEVICE, out_mem, out_mem_offset));
 
     // Build command buffer 
     VkCommandBuffer cb = one_shot_cpool_->allocate_and_begin();

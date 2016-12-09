@@ -14,6 +14,7 @@
 #endif
 
 #include "vk_application.h"
+#include "vk_debug.h"
 #include "vk_init.h"
 using namespace cdsvk;
 
@@ -21,45 +22,6 @@ using namespace cdsvk;
 
 #include <cassert>
 #include <cstdio>
-
-// TODO(cort): proper return-value test
-#if defined(_MSC_VER)
-# define CDSVK__RETVAL_CHECK(expected, expr) \
-  do {  \
-    int err = (int)(expr);                             \
-    if (err != (expected)) {                                            \
-      printf("%s(%d): error in %s() -- %s returned %d", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
-      __debugbreak();                                                   \
-    }                                                                   \
-    assert(err == (expected));                                          \
-    __pragma(warning(push))                                             \
-    __pragma(warning(disable:4127))                                 \
-    } while(0)                                                      \
-  __pragma(warning(pop))
-#elif #elif defined(unix) || defined(__unix__) || defined(__unix)
-# define CDSVK__RETVAL_CHECK(expected, expr) \
-  do {  \
-    int err = (int)(expr);                                                   \
-    if (err != (expected)) {                                            \
-      printf("%s(%d): error in %s() -- %s returned %d", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
-      /*__asm__("int $3"); */                 \
-    }                                                                   \
-    assert(err == (expected));                                          \
-  } while(0)
-#elif defined(__ANDROID__)
-# define CDSVK__RETVAL_CHECK(expected, expr) \
-  do {  \
-    int err = (int)(expr);                                                   \
-    if (err != (expected)) {                                            \
-      printf("%s(%d): error in %s() -- %s returned %d", __FILE__, __LINE__, __FUNCTION__, #expr, err); \
-      /*__asm__("int $3"); */                 \
-    }                                                                   \
-    assert(err == (expected));                                          \
-  } while(0)
-#else
-# error Unsupported platform
-#endif
-#define CDSVK__CHECK(expr) CDSVK__RETVAL_CHECK(VK_SUCCESS, expr)
 
 #define CDSVK__CLAMP(x, xmin, xmax) ( ((x)<(xmin)) ? (xmin) : ( ((x)>(xmax)) ? (xmax) : (x) ) )
 
@@ -319,7 +281,7 @@ Application::Application(const CreateInfo &ci) {
   }
   std::vector<const char*> optional_instance_layer_names = {};
   std::vector<const char*> enabled_instance_layer_names;
-  CDSVK__CHECK(cdsvk::get_supported_instance_layers(
+  CDSVK_CHECK(cdsvk::get_supported_instance_layers(
     required_instance_layer_names, optional_instance_layer_names,
     &instance_layers_, &enabled_instance_layer_names));
 
@@ -332,7 +294,7 @@ Application::Application(const CreateInfo &ci) {
     optional_instance_extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
   }
   std::vector<const char*> enabled_instance_extension_names;
-  CDSVK__CHECK(cdsvk::get_supported_instance_extensions(instance_layers_,
+  CDSVK_CHECK(cdsvk::get_supported_instance_extensions(instance_layers_,
     required_instance_extension_names, optional_instance_extension_names,
     &instance_extensions_, &enabled_instance_extension_names));
 
@@ -350,7 +312,7 @@ Application::Application(const CreateInfo &ci) {
   instance_ci.ppEnabledLayerNames     = enabled_instance_layer_names.data();
   instance_ci.enabledExtensionCount   = (uint32_t)enabled_instance_extension_names.size();
   instance_ci.ppEnabledExtensionNames = enabled_instance_extension_names.data();
-  CDSVK__CHECK(vkCreateInstance(&instance_ci, allocation_callbacks_, &instance_));
+  CDSVK_CHECK(vkCreateInstance(&instance_ci, allocation_callbacks_, &instance_));
 
   if (is_instance_extension_enabled(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
     VkDebugReportCallbackCreateInfoEXT debug_report_callback_ci = {};
@@ -365,14 +327,14 @@ Application::Application(const CreateInfo &ci) {
     debug_report_callback_ci.pUserData = nullptr;
     auto create_debug_report_func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_,
       "vkCreateDebugReportCallbackEXT");
-    CDSVK__CHECK(create_debug_report_func(instance_, &debug_report_callback_ci, allocation_callbacks_, &debug_report_callback_));
+    CDSVK_CHECK(create_debug_report_func(instance_, &debug_report_callback_ci, allocation_callbacks_, &debug_report_callback_));
     assert(debug_report_callback_ != VK_NULL_HANDLE);
   }
 
-  CDSVK__CHECK( glfwCreateWindowSurface(instance_, window_.get(), allocation_callbacks_, &surface_) );
+  CDSVK_CHECK( glfwCreateWindowSurface(instance_, window_.get(), allocation_callbacks_, &surface_) );
 
   std::vector<uint32_t> queue_family_indices;
-  CDSVK__CHECK(find_physical_device(ci.queue_family_requests, instance_, surface_, &physical_device_, &queue_family_indices));
+  CDSVK_CHECK(find_physical_device(ci.queue_family_requests, instance_, surface_, &physical_device_, &queue_family_indices));
   std::vector<VkDeviceQueueCreateInfo> device_queue_cis = {};
   uint32_t total_queue_count = 0;
   for(uint32_t iQF=0; iQF<(uint32_t)ci.queue_family_requests.size(); ++iQF) {
@@ -400,7 +362,7 @@ Application::Application(const CreateInfo &ci) {
 #endif
   };
   std::vector<const char*> enabled_device_extension_names;
-  CDSVK__CHECK(cdsvk::get_supported_device_extensions(physical_device_, instance_layers_,
+  CDSVK_CHECK(cdsvk::get_supported_device_extensions(physical_device_, instance_layers_,
     required_device_extension_names, optional_device_extension_names,
     &device_extensions_, &enabled_device_extension_names));
 
@@ -413,7 +375,7 @@ Application::Application(const CreateInfo &ci) {
   device_ci.enabledExtensionCount = (uint32_t)enabled_device_extension_names.size();
   device_ci.ppEnabledExtensionNames = enabled_device_extension_names.data();
   device_ci.pEnabledFeatures = &physical_device_features_;
-  CDSVK__CHECK(vkCreateDevice(physical_device_, &device_ci, allocation_callbacks_, &device_));
+  CDSVK_CHECK(vkCreateDevice(physical_device_, &device_ci, allocation_callbacks_, &device_));
 
   uint32_t total_queue_family_count = 0;
   vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &total_queue_family_count, nullptr);
@@ -442,7 +404,7 @@ Application::Application(const CreateInfo &ci) {
   // Create VkSwapchain
   if (surface_ != VK_NULL_HANDLE) {
     VkSurfaceCapabilitiesKHR surface_caps = {};
-    CDSVK__CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_, surface_, &surface_caps));
+    CDSVK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_, surface_, &surface_caps));
     VkExtent2D swapchain_extent = surface_caps.currentExtent;
     if ((int32_t)swapchain_extent.width == -1) {
       assert( (int32_t)swapchain_extent.height == -1 );
@@ -529,7 +491,7 @@ Application::Application(const CreateInfo &ci) {
     swapchain_ci.presentMode = present_mode;
     swapchain_ci.clipped = VK_TRUE;
     swapchain_ci.oldSwapchain = old_swapchain;
-    CDSVK__CHECK(vkCreateSwapchainKHR(device_, &swapchain_ci, allocation_callbacks_, &swapchain_));
+    CDSVK_CHECK(vkCreateSwapchainKHR(device_, &swapchain_ci, allocation_callbacks_, &swapchain_));
     if (old_swapchain != VK_NULL_HANDLE) {
       assert(0); // TODO(cort): handle this at some point
     }
@@ -562,7 +524,7 @@ Application::Application(const CreateInfo &ci) {
     for(auto image : swapchain_images_) {
       image_view_ci.image = image;
       VkImageView view = VK_NULL_HANDLE;
-      CDSVK__CHECK(vkCreateImageView(device_, &image_view_ci, allocation_callbacks_, &view));
+      CDSVK_CHECK(vkCreateImageView(device_, &image_view_ci, allocation_callbacks_, &view));
       swapchain_image_views_.push_back(view);
     }
   }
