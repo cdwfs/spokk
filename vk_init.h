@@ -27,6 +27,7 @@ struct QueueFamilyRequirements {
   VkQueueFlags flags;  // Mask of features which must be supported by this queue family.
   VkSurfaceKHR present_surface;  // If flags & VK_QUEUE_COMPUTE_BIT, this is the surface the queue must be able to present to. Otherwise, it is ignored.
   uint32_t minimum_queue_count;
+  // TODO(cort): priority?
 };
 VkResult find_physical_device(const std::vector<QueueFamilyRequirements>& qf_reqs, VkInstance instance,
   VkPhysicalDevice *out_physical_device, std::vector<uint32_t>* out_queue_families);

@@ -190,6 +190,7 @@ Application::Application(const CreateInfo &ci) {
   std::vector<uint32_t> queue_family_indices;
   CDSVK__CHECK(cdsvk::find_physical_device(queue_family_reqs, instance_, &physical_device_, &queue_family_indices));
   std::vector<VkDeviceQueueCreateInfo> device_queue_cis = {};
+  uint32_t total_queue_count = 0;
   for(uint32_t iQF=0; iQF<(uint32_t)queue_family_indices.size(); ++iQF) {
     uint32_t queue_count = queue_family_reqs[iQF].minimum_queue_count;
     const std::vector<float> queue_priorities(queue_count, 0.0f);
@@ -197,6 +198,7 @@ Application::Application(const CreateInfo &ci) {
       VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, nullptr, 0,
       queue_family_indices[iQF], queue_count, queue_priorities.data()
     });
+    total_queue_count += queue_count;
   };
 
   const std::vector<const char*> required_device_extension_names = {
@@ -222,6 +224,29 @@ Application::Application(const CreateInfo &ci) {
   device_ci.ppEnabledExtensionNames = enabled_device_extension_names.data();
   device_ci.pEnabledFeatures = &physical_device_features_;
   CDSVK__CHECK(vkCreateDevice(physical_device_, &device_ci, allocation_callbacks_, &device_));
+
+  uint32_t total_queue_family_count = 0;
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &total_queue_family_count, nullptr);
+  std::vector<VkQueueFamilyProperties> all_queue_family_properties(total_queue_family_count);
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &total_queue_family_count, all_queue_family_properties.data());
+  queue_contexts_.reserve(total_queue_count);
+  for(uint32_t iQCI=0; iQCI<(uint32_t)device_queue_cis.size(); ++iQCI) {
+    const auto& qci = device_queue_cis[iQCI];
+    const auto& qfp = all_queue_family_properties[qci.queueFamilyIndex];
+    DeviceQueueContext qc = {
+      VK_NULL_HANDLE,
+      qci.queueFamilyIndex,
+      0.0f,
+      qfp.queueFlags,
+      qfp.timestampValidBits,
+      qfp.minImageTransferGranularity
+    };
+    for(uint32_t iQ=0; iQ<total_queue_count; ++iQ) {
+      vkGetDeviceQueue(device_, qci.queueFamilyIndex, iQ, &qc.queue);
+      qc.priority = qci.pQueuePriorities[iQ];
+      queue_contexts_.push_back(qc);
+    }
+  }
 
   // Create VkSwapchain
   if (surface_ != VK_NULL_HANDLE) {
