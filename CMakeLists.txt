@@ -20,11 +20,13 @@ SET(headers
     image_file.h
     platform.h
     stb_image.h
+    vk_init.h
     vk_texture.h
     )
 SET(sources
     camera.cpp
     image_file.c
+    vk_init.cpp
     vk_texture.cpp
     vulkswagen.cpp
     )
