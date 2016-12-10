@@ -108,7 +108,7 @@ public:
     render_pass_.attachment_descs[kDepthAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     render_pass_.subpass_attachments.resize(1);
     render_pass_.subpass_attachments[0].color_refs.push_back({kColorAttachmentIndex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
-    render_pass_.subpass_attachments[0].depth_stencil_ref = {kDepthAttachmentIndex, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+    render_pass_.subpass_attachments[0].depth_stencil_refs.push_back({kDepthAttachmentIndex, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL});
     render_pass_.subpass_dependencies.resize(2);
     render_pass_.subpass_dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
     render_pass_.subpass_dependencies[0].dstSubpass = 0;

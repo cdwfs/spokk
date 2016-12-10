@@ -324,7 +324,7 @@ struct SubpassAttachments {
   std::vector<VkAttachmentReference> input_refs;
   std::vector<VkAttachmentReference> color_refs;
   std::vector<VkAttachmentReference> resolve_refs;
-  VkAttachmentReference depth_stencil_ref;
+  std::vector<VkAttachmentReference> depth_stencil_refs;  // max length of 1
   std::vector<uint32_t> preserve_indices;
 };
 
@@ -334,29 +334,8 @@ struct RenderPass {
   std::vector<VkSubpassDescription> subpass_descs;
   std::vector<SubpassAttachments> subpass_attachments;
   std::vector<VkSubpassDependency> subpass_dependencies;
-  void update_subpass_descriptions(VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS, VkSubpassDescriptionFlags flags = 0) {
-    subpass_descs.resize(subpass_attachments.size());
-    for(const auto& dep : subpass_dependencies) {
-      // This is probably unnecessary; a mismatch would be caught by the validation layers at creation time.
-      (void)dep;
-      assert(dep.srcSubpass == VK_SUBPASS_EXTERNAL || dep.srcSubpass < subpass_descs.size());
-      assert(dep.dstSubpass == VK_SUBPASS_EXTERNAL || dep.dstSubpass < subpass_descs.size());
-    }
-    for(size_t i=0; i<subpass_attachments.size(); ++i) {
-      subpass_descs[i].flags = flags;
-      subpass_descs[i].pipelineBindPoint = bind_point;
-      subpass_descs[i].inputAttachmentCount = (uint32_t)subpass_attachments[i].input_refs.size();
-      subpass_descs[i].pInputAttachments = subpass_attachments[i].input_refs.data();
-      subpass_descs[i].colorAttachmentCount = (uint32_t)subpass_attachments[i].color_refs.size();
-      subpass_descs[i].pColorAttachments = subpass_attachments[i].color_refs.data();
-      assert(subpass_attachments[i].resolve_refs.empty() ||
-        subpass_attachments[i].resolve_refs.size() == subpass_attachments[i].color_refs.size());
-      subpass_descs[i].pResolveAttachments = subpass_attachments[i].resolve_refs.data();
-      subpass_descs[i].pDepthStencilAttachment = &subpass_attachments[i].depth_stencil_ref;
-      subpass_descs[i].preserveAttachmentCount = (uint32_t)subpass_attachments[i].preserve_indices.size();
-      subpass_descs[i].pPreserveAttachments = subpass_attachments[i].preserve_indices.data();
-    }
-  }
+  void update_subpass_descriptions(VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS,
+    VkSubpassDescriptionFlags flags = 0);
 };
 
 //
