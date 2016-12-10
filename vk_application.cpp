@@ -21,6 +21,8 @@ using namespace cdsvk;
 
 #include "platform.h"
 
+#include <spirv_glsl.hpp>
+
 #include <cassert>
 #include <cstdio>
 
@@ -358,6 +360,9 @@ VkResult OneShotCommandPool::end_submit_and_free(VkCommandBuffer *cb) const {
   return result;
 }
 
+//
+// Buffer
+//
 VkResult Buffer::create(const DeviceContext& device_context, const VkBufferCreateInfo buffer_ci,
     VkMemoryPropertyFlags memory_properties, DeviceAllocationScope allocation_scope) {
   VkResult result = vkCreateBuffer(device_context.device(), &buffer_ci, device_context.host_allocator(), &handle);
@@ -423,7 +428,9 @@ void Buffer::destroy(const DeviceContext& device_context) {
   handle = VK_NULL_HANDLE;
 }
 
-
+//
+// Image
+//
 VkResult Image::create(const DeviceContext& device_context, const VkImageCreateInfo image_ci,
     VkMemoryPropertyFlags memory_properties, DeviceAllocationScope allocation_scope) {
   VkResult result = vkCreateImage(device_context.device(), &image_ci, device_context.host_allocator(), &handle);
@@ -461,7 +468,315 @@ void Image::destroy(const DeviceContext& device_context) {
   handle = VK_NULL_HANDLE;
 }
 
+// Helper for SPIRV-Cross shader resource parsing
+static void add_shader_resource_to_dset_layouts(std::vector<DescriptorSetLayoutInfo>& dset_layout_infos,
+    const spirv_cross::CompilerGLSL& glsl, const spirv_cross::Resource& resource,
+    VkDescriptorType desc_type, VkShaderStageFlagBits stage) {
+  uint32_t dset_index     = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
+  uint32_t binding_index = glsl.get_decoration(resource.id, spv::DecorationBinding);
+  auto resource_type = glsl.get_type(resource.type_id);
+  uint32_t array_size = 1;
+  for(auto arr_size : resource_type.array) {
+    array_size *= arr_size;
+  }
+  // Add new dset(s) if necessary
+  if (dset_index >= dset_layout_infos.size()) {
+    dset_layout_infos.resize(dset_index + 1);
+  }
+  DescriptorSetLayoutInfo& layout_info = dset_layout_infos[dset_index];
+  // Is this binding already in use?
+  bool found_binding = false;
+  for(uint32_t iBinding=0; iBinding<layout_info.bindings.size(); ++iBinding) {
+    auto& binding = layout_info.bindings[iBinding];
+    if (binding.binding == binding_index) {
+      assert(binding.descriptorType == desc_type);  // same binding appears twice with different types
+      assert(binding.descriptorCount == array_size);  // same binding appears twice with different array sizes
+      binding.stageFlags |= stage;
+      auto& binding_info = layout_info.binding_infos[iBinding];
+      binding_info.stage_names.push_back(std::make_tuple(stage, glsl.get_name(resource.id)));
+      found_binding = true;
+      break;
+    }
+  }
+  if (!found_binding) {
+    VkDescriptorSetLayoutBinding new_binding = {};
+    new_binding.binding = binding_index;
+    new_binding.descriptorType = desc_type;
+    new_binding.descriptorCount = array_size;
+    new_binding.stageFlags = stage;
+    new_binding.pImmutableSamplers = nullptr;
+    layout_info.bindings.push_back(new_binding);
+    DescriptorSetLayoutBindingInfo new_binding_info = {};
+    new_binding_info.stage_names.push_back(std::make_tuple(stage, glsl.get_name(resource.id)));
+    layout_info.binding_infos.push_back(new_binding_info);
+  }
+}
 
+static void parse_shader_resources(std::vector<DescriptorSetLayoutInfo>& dset_layout_infos,
+    VkPushConstantRange& push_constant_range, const spirv_cross::CompilerGLSL& glsl, VkShaderStageFlagBits stage) {
+  spirv_cross::ShaderResources resources = glsl.get_shader_resources();
+  // handle shader resources
+  for (auto &resource : resources.uniform_buffers) {
+    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, stage);
+  }
+  for (auto &resource : resources.storage_buffers) {
+    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, stage);
+  }
+  for (auto &resource : resources.storage_images) {
+    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, stage);
+  }
+  for (auto &resource : resources.sampled_images) {
+    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, stage);
+  }
+  for (auto &resource : resources.separate_images) {
+    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, stage);
+  }
+  for (auto &resource : resources.separate_samplers) {
+    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_SAMPLER, stage);
+  }
+  for (auto &resource : resources.subpass_inputs) {
+    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, stage);
+  }
+  // Handle push constants. Each shader is only allowed to have one push constant block.
+  push_constant_range = {};
+  push_constant_range.stageFlags = stage;
+  for (auto &resource : resources.push_constant_buffers) {
+    size_t min_offset = UINT32_MAX, max_offset = 0;
+    auto ranges = glsl.get_active_buffer_ranges(resource.id);
+    if (!ranges.empty()) {
+      for(const auto& range : ranges) {
+        if (range.offset < min_offset)
+          min_offset = range.offset;
+        if (range.offset + range.range > max_offset)
+          max_offset = range.offset + range.range;
+      }
+      push_constant_range.offset = (uint32_t)min_offset;
+      push_constant_range.size = (uint32_t)(max_offset - min_offset);
+    }
+  }
+#if 0
+  // Handle stage inputs/outputs
+  for (auto &resource : resources.stage_inputs) {
+    uint32_t set = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
+    uint32_t binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
+    uint32_t loc = glsl.get_decoration(resource.id, spv::DecorationLocation);
+    printf("set = %4u, binding = %4u, loc = %4u: stage input '%s'\n", set, binding, loc, resource.name.c_str());
+  }
+  for (auto &resource : resources.stage_outputs) {
+    uint32_t set = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
+    uint32_t binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
+    uint32_t loc = glsl.get_decoration(resource.id, spv::DecorationLocation);
+    printf("set = %4u, binding = %4u, loc = %4u: stage output '%s'\n", set, binding, loc, resource.name.c_str());
+  }
+  // ???
+  for (auto &resource : resources.atomic_counters)
+  {
+    unsigned set = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
+    unsigned binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
+    printf("set = %4u, binding = %4u: atomic counter '%s'\n", set, binding, resource.name.c_str());
+  }
+#endif
+}
+
+//
+// Shader
+//
+VkResult Shader::create_and_load(const DeviceContext& device_context, const std::string& filename) {
+  FILE *spv_file = fopen(filename.c_str(), "rb");
+  if (!spv_file) {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+  fseek(spv_file, 0, SEEK_END);
+  long spv_file_size = ftell(spv_file);
+  fseek(spv_file, 0, SEEK_SET);
+  VkResult result = create_and_load_from_file(device_context, spv_file, spv_file_size);
+  fclose(spv_file);
+  return result;
+}
+VkResult Shader::create_and_load_from_file(const DeviceContext& device_context, FILE *fp, int len) {
+  assert((len % sizeof(uint32_t)) == 0);
+  spirv.resize(len/sizeof(uint32_t));
+  size_t bytes_read = fread(spirv.data(), 1, len, fp);
+  if ( (int)bytes_read != len) {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+
+  spirv_cross::CompilerGLSL glsl(spirv);  // NOTE: throws an exception if you hand it malformed/invalid SPIRV.
+  stage = VkShaderStageFlagBits(0);
+  spv::ExecutionModel execution_model = glsl.get_execution_model();
+  if        (execution_model == spv::ExecutionModelVertex) {
+    stage = VK_SHADER_STAGE_VERTEX_BIT;
+  } else if (execution_model == spv::ExecutionModelTessellationControl) {
+    stage = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+  } else if (execution_model == spv::ExecutionModelTessellationEvaluation) {
+    stage = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+  } else if (execution_model == spv::ExecutionModelGeometry) {
+    stage = VK_SHADER_STAGE_GEOMETRY_BIT;
+  } else if (execution_model == spv::ExecutionModelFragment) {
+    stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+  } else if (execution_model == spv::ExecutionModelGLCompute) {
+    stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  }
+  assert(stage != 0);
+
+  parse_shader_resources(dset_layout_infos, push_constant_range, glsl, stage);
+
+  VkShaderModuleCreateInfo shader_ci = {};
+  shader_ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_ci.codeSize = len;  // note: in bytes
+  shader_ci.pCode = spirv.data();
+  VkResult result = vkCreateShaderModule(device_context.device(), &shader_ci, device_context.host_allocator(), &handle);
+  return result;
+}
+void Shader::destroy(const DeviceContext& device_context) {
+  if (handle) {
+    vkDestroyShaderModule(device_context.device(), handle, device_context.host_allocator());
+    handle = VK_NULL_HANDLE;
+  }
+  unload_spirv();
+  stage = (VkShaderStageFlagBits)0;
+}
+
+//
+// ShaderPipeline
+//
+VkResult ShaderPipeline::create(const DeviceContext& device_context,
+    const std::vector<ShaderPipelineEntry>& shader_entries) {
+  // Determine active shader stages
+  active_stages = 0;
+  for(const auto& shader_entry : shader_entries) {
+    if (shader_entry.shader == nullptr) {
+      return VK_ERROR_INITIALIZATION_FAILED;  // NULL shader
+    }
+    if (active_stages & shader_entry.shader->stage) {
+      return VK_ERROR_INITIALIZATION_FAILED;  // Duplicate shader stage
+    }
+    active_stages |= shader_entry.shader->stage;
+  }
+  constexpr std::array<VkShaderStageFlags, 4> valid_stage_combos = {{
+      VK_SHADER_STAGE_VERTEX_BIT,
+      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT,
+      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+      // TODO(cort): tessellation? Or, hey, not.
+    }};
+  bool stages_are_valid = false;
+  for(auto combo : valid_stage_combos) {
+    if (active_stages == combo) {
+      stages_are_valid = true;
+      break;
+    }
+  }
+  if (!stages_are_valid) {
+    active_stages = 0;
+    return VK_ERROR_INITIALIZATION_FAILED;  // Invalid combination of shader stages
+  }
+
+  // Merge shader resources from all active stages
+  dset_layout_infos.clear();
+  push_constant_ranges.clear();
+  for(const auto& shader_entry : shader_entries) {
+    // Grow descriptor set layout array if needed
+    if (shader_entry.shader->dset_layout_infos.size() > dset_layout_infos.size()) {
+      dset_layout_infos.resize(shader_entry.shader->dset_layout_infos.size());
+    }
+    // Add the push constants
+    if (shader_entry.shader->push_constant_range.size > 0) {
+      push_constant_ranges.push_back(shader_entry.shader->push_constant_range);
+    }
+    // Merge descriptor set layouts
+    for(size_t iDS = 0; iDS < shader_entry.shader->dset_layout_infos.size(); ++iDS) {
+      const DescriptorSetLayoutInfo& src_dset_layout_info = shader_entry.shader->dset_layout_infos[iDS];
+      assert(src_dset_layout_info.bindings.size() == src_dset_layout_info.binding_infos.size());
+      DescriptorSetLayoutInfo& dst_dset_layout_info = dset_layout_infos[iDS];
+      for(size_t iSB = 0; iSB < src_dset_layout_info.bindings.size(); ++iSB) {
+        const auto& src_binding = src_dset_layout_info.bindings[iSB];
+        const auto& src_binding_info = src_dset_layout_info.binding_infos[iSB];
+        assert(src_binding_info.stage_names.size() == 1);  // src bindings should only know about one stage
+        bool found_binding = false;
+        for(size_t iDB = 0; iDB < dst_dset_layout_info.bindings.size(); ++iDB) {
+          auto& dst_binding = dst_dset_layout_info.bindings[iDB];
+          auto& dst_binding_info = dst_dset_layout_info.binding_infos[iDB];
+          if (src_binding.binding == dst_binding.binding) {
+            // TODO(cort): these asserts may not be valid; it may be possible for types/counts to differ in compatible
+            // ways.
+            assert(src_binding.descriptorType == dst_binding.descriptorType);  // same binding used with different types in two stages
+            assert(src_binding.descriptorCount == dst_binding.descriptorCount);  // same binding used with different array sizes in two stages
+            // Found a match!
+            assert(0 == (dst_binding.stageFlags & shader_entry.shader->stage));  // Of course we haven't processed this stage yet, right?
+            dst_binding.stageFlags |= shader_entry.shader->stage;
+            dst_binding_info.stage_names.push_back(src_binding_info.stage_names[0]);
+            found_binding = true;
+            break;
+          }
+        }
+        if (!found_binding) {
+          DescriptorSetLayoutBindingInfo new_binding_info = {};
+          new_binding_info.stage_names.push_back(src_binding_info.stage_names[0]);
+          dst_dset_layout_info.bindings.push_back(src_binding);
+          dst_dset_layout_info.binding_infos.push_back(new_binding_info);
+        }
+      }
+    }
+  }
+
+  // Create VkPipelineShaderStageCreateInfo for each stage
+  shader_stage_cis.resize(shader_entries.size());
+  entry_point_names.resize(shader_entries.size());
+  for(size_t i=0; i<shader_entries.size(); ++i) {
+    entry_point_names[i] = (shader_entries[i].entry_point != nullptr)
+      ? std::string(shader_entries[i].entry_point)
+      : "main";
+    shader_stage_cis[i] = {};
+    shader_stage_cis[i].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shader_stage_cis[i].stage = shader_entries[i].shader->stage;
+    shader_stage_cis[i].module = shader_entries[i].shader->handle;
+    shader_stage_cis[i].pName = entry_point_names[i].data();
+    shader_stage_cis[i].pSpecializationInfo = nullptr;  // TODO(cort): fill in at VkPipeline creation time
+  }
+
+  // Create the descriptor set layouts, now that their contents are known
+  dset_layouts.reserve(dset_layout_infos.size());
+  for(auto &contents : dset_layout_infos) {
+    assert(contents.bindings.size() == contents.binding_infos.size());
+    VkDescriptorSetLayoutCreateInfo dset_layout_ci = {};
+    dset_layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    dset_layout_ci.bindingCount = (uint32_t)contents.bindings.size();
+    dset_layout_ci.pBindings = contents.bindings.data();
+    VkDescriptorSetLayout dset_layout = VK_NULL_HANDLE;
+    VkResult result = vkCreateDescriptorSetLayout(device_context.device(),
+      &dset_layout_ci, device_context.host_allocator(), &dset_layout);
+    if (result != VK_SUCCESS) {
+      return result;
+    }
+    dset_layouts.push_back(dset_layout);
+  }
+  // Create the pipeline layout
+  VkPipelineLayoutCreateInfo pipeline_layout_ci = {};
+  pipeline_layout_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+  pipeline_layout_ci.setLayoutCount = (uint32_t)dset_layouts.size();
+  pipeline_layout_ci.pSetLayouts = dset_layouts.data();
+  pipeline_layout_ci.pushConstantRangeCount = (uint32_t)push_constant_ranges.size();
+  pipeline_layout_ci.pPushConstantRanges = push_constant_ranges.data();
+  return vkCreatePipelineLayout(device_context.device(), &pipeline_layout_ci,
+    device_context.host_allocator(), &pipeline_layout);
+}
+void ShaderPipeline::destroy(const DeviceContext& device_context) {
+  for(auto dset_layout : dset_layouts) {
+    vkDestroyDescriptorSetLayout(device_context.device(), dset_layout, device_context.host_allocator());
+  }
+  dset_layouts.clear();
+  dset_layout_infos.clear();
+  push_constant_ranges.clear();
+  shader_stage_cis.clear();
+  entry_point_names.clear();
+  vkDestroyPipelineLayout(device_context.device(), pipeline_layout, device_context.host_allocator());
+  pipeline_layout = VK_NULL_HANDLE;
+}
+
+//
+// Application
+//
 Application::Application(const CreateInfo &ci) {
   // Initialize GLFW
   glfwSetErrorCallback(my_glfw_error_callback);

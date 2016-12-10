@@ -153,6 +153,14 @@ public:
       CDSVK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, allocation_callbacks_, &framebuffers_[i]));
     }
 
+    // Load shaders
+    CDSVK_CHECK(fullscreen_tri_vs_.create_and_load(device_context_, "fullscreen.vert.spv"));
+    CDSVK_CHECK(post_filmgrain_fs_.create_and_load(device_context_, "subpass_post.frag.spv"));
+    CDSVK_CHECK(post_shader_pipeline_.create(device_context_, {
+      {&fullscreen_tri_vs_, "main"},
+      {&post_filmgrain_fs_, "main"},
+    }));
+
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci = get_sampler_ci(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     CDSVK_CHECK(vkCreateSampler(device_, &sampler_ci, allocation_callbacks_, &sampler_));
@@ -177,6 +185,10 @@ public:
   virtual ~CubeSwarmApp() {
     if (device_) {
       vkDeviceWaitIdle(device_);
+
+      post_shader_pipeline_.destroy(device_context_);
+      fullscreen_tri_vs_.destroy(device_context_);
+      post_filmgrain_fs_.destroy(device_context_);
 
       for(auto &fence : submission_complete_fences_) {
         vkDestroyFence(device_, fence, allocation_callbacks_);
@@ -302,6 +314,9 @@ private:
   std::unique_ptr<TextureLoader> texture_loader_;
   Image albedo_tex_;
   VkSampler sampler_;
+  Shader fullscreen_tri_vs_, post_filmgrain_fs_;
+  ShaderPipeline post_shader_pipeline_;
+
 };
 
 int main(int argc, char *argv[]) {

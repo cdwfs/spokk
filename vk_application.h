@@ -270,6 +270,56 @@ struct Image {
   DeviceMemoryAllocation memory;
 };
 
+struct DescriptorSetLayoutBindingInfo {
+  // The name of each binding in a given shader stage. Purely for debugging.
+  std::vector< std::tuple<VkShaderStageFlagBits, const std::string> > stage_names;
+};
+struct DescriptorSetLayoutInfo {
+  std::vector<VkDescriptorSetLayoutBinding> bindings;
+  std::vector<DescriptorSetLayoutBindingInfo> binding_infos;
+};
+
+struct Shader {
+  Shader() : handle(VK_NULL_HANDLE), spirv{}, stage((VkShaderStageFlagBits)0), dset_layout_infos{}, push_constant_range{} {}
+  VkResult create_and_load(const DeviceContext& device_context, const std::string& filename);
+  VkResult create_and_load_from_file(const DeviceContext& device_context, FILE *fp, int len);
+  void unload_spirv(void) {
+    spirv.clear();
+  }
+  void destroy(const DeviceContext& device_context);
+
+  VkShaderModule handle;
+  std::vector<uint32_t> spirv;
+  VkShaderStageFlagBits stage;
+  // Resources used by this shader:
+  std::vector<DescriptorSetLayoutInfo> dset_layout_infos;
+  VkPushConstantRange push_constant_range;  // range.size = 0 means this stage doesn't use push constants.
+};
+
+struct ShaderPipelineEntry {
+  const Shader *shader;
+  const char *entry_point;  // if NULL, entry point is assumed to be "main"
+};
+
+struct ShaderPipeline {
+  ShaderPipeline() : dset_layout_infos{}, push_constant_ranges{}, shader_stage_cis{}, entry_point_names{},
+      pipeline_layout(VK_NULL_HANDLE), dset_layouts{}, active_stages(0) {
+  }
+  VkResult create(const DeviceContext& device_context, const std::vector<ShaderPipelineEntry>& shader_entries);
+  void destroy(const DeviceContext& device_context);
+
+  std::vector<DescriptorSetLayoutInfo> dset_layout_infos; // one per dset
+  std::vector<VkPushConstantRange> push_constant_ranges;  // one per active stage that uses push constants.
+
+  std::vector<VkPipelineShaderStageCreateInfo> shader_stage_cis;  // one per active stage. used to create graphics pipelines
+  std::vector<std::string> entry_point_names;  // one per active stage.
+
+  VkPipelineLayout pipeline_layout;
+  std::vector<VkDescriptorSetLayout> dset_layouts;  // one per dset
+
+  VkShaderStageFlags active_stages;
+};
+
 struct SubpassAttachments {
   std::vector<VkAttachmentReference> input_refs;
   std::vector<VkAttachmentReference> color_refs;
