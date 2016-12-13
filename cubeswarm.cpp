@@ -124,7 +124,7 @@ public:
     render_pass_.subpass_dependencies[1].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
     render_pass_.subpass_dependencies[1].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
     render_pass_.subpass_dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-    render_pass_.update_subpass_descriptions();
+    render_pass_.finalize_subpasses();
     VkRenderPassCreateInfo render_pass_ci = {};
     render_pass_ci.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     render_pass_ci.attachmentCount = (uint32_t)render_pass_.attachment_descs.size();

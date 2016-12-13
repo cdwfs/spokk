@@ -778,7 +778,7 @@ void ShaderPipeline::destroy(const DeviceContext& device_context) {
 //
 // RenderPass
 //
-void RenderPass::update_subpass_descriptions(VkPipelineBindPoint bind_point, VkSubpassDescriptionFlags flags) {
+void RenderPass::finalize_subpasses(VkPipelineBindPoint bind_point, VkSubpassDescriptionFlags flags) {
   subpass_descs.resize(subpass_attachments.size());
   for(const auto& dep : subpass_dependencies) {
     // This is probably unnecessary; a mismatch would be caught by the validation layers at creation time.
@@ -786,6 +786,7 @@ void RenderPass::update_subpass_descriptions(VkPipelineBindPoint bind_point, VkS
     assert(dep.srcSubpass == VK_SUBPASS_EXTERNAL || dep.srcSubpass < subpass_descs.size());
     assert(dep.dstSubpass == VK_SUBPASS_EXTERNAL || dep.dstSubpass < subpass_descs.size());
   }
+  subpass_multisample_state_cis.resize(subpass_attachments.size());
   for(size_t i=0; i<subpass_attachments.size(); ++i) {
     subpass_descs[i].flags = flags;
     subpass_descs[i].pipelineBindPoint = bind_point;
@@ -801,6 +802,25 @@ void RenderPass::update_subpass_descriptions(VkPipelineBindPoint bind_point, VkS
       ? nullptr : &subpass_attachments[i].depth_stencil_refs[0];
     subpass_descs[i].preserveAttachmentCount = (uint32_t)subpass_attachments[i].preserve_indices.size();
     subpass_descs[i].pPreserveAttachments = subpass_attachments[i].preserve_indices.data();
+    // All color and depth/stencil attachments used in a subpass must have the same sample count,
+    // as specified by the graphics pipeline.
+    subpass_multisample_state_cis[i].sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    if (subpass_descs[i].pDepthStencilAttachment) {
+      subpass_multisample_state_cis[i].rasterizationSamples =
+        attachment_descs[subpass_descs[i].pDepthStencilAttachment->attachment].samples;
+    } else if (subpass_descs[i].colorAttachmentCount > 0) {
+      subpass_multisample_state_cis[i].rasterizationSamples =
+        attachment_descs[subpass_descs[i].pColorAttachments[0].attachment].samples;
+    } else {
+      // zero-attachment subpass. /shrug
+      subpass_multisample_state_cis[i].rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    }
+    // Reasonable defaults for the rest of these
+    subpass_multisample_state_cis[i].sampleShadingEnable = VK_FALSE;
+    subpass_multisample_state_cis[i].minSampleShading = 1.0f;
+    subpass_multisample_state_cis[i].pSampleMask = nullptr;
+    subpass_multisample_state_cis[i].alphaToCoverageEnable = VK_FALSE;
+    subpass_multisample_state_cis[i].alphaToOneEnable = VK_FALSE;
   }
 }
 

@@ -333,11 +333,13 @@ struct SubpassAttachments {
 struct RenderPass {
   VkRenderPass handle;
   std::vector<VkAttachmentDescription> attachment_descs;
-  std::vector<VkSubpassDescription> subpass_descs;
   std::vector<SubpassAttachments> subpass_attachments;
   std::vector<VkSubpassDependency> subpass_dependencies;
-  void update_subpass_descriptions(VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS,
+  // Call this after populating the previous vectors.
+  void finalize_subpasses(VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS,
     VkSubpassDescriptionFlags flags = 0);
+  std::vector<VkSubpassDescription> subpass_descs;
+  std::vector<VkPipelineMultisampleStateCreateInfo> subpass_multisample_state_cis;
 };
 
 //
