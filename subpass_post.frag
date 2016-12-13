@@ -5,8 +5,6 @@ in vec4 gl_FragCoord;
 
 layout (push_constant) uniform PushConsts {
     vec4 time_and_res;
-    vec4 eye;
-    mat4 viewproj;
 } pushConsts;
 
 vec4 film_grain() {
@@ -15,7 +13,7 @@ vec4 film_grain() {
     float iGlobalTime = pushConsts.time_and_res.x;
     float strength = 16.0;
 
-    vec2 uv = gl_FragCoord.xy / vec2(1280,720);
+    vec2 uv = gl_FragCoord.xy / pushConsts.time_and_res.yz;
     float x = (uv.x + 4.0 ) * (uv.y + 4.0 ) * (iGlobalTime * 10.0);
 	vec4 grain = vec4(mod((mod(x, 13.0) + 1.0) * (mod(x, 123.0) + 1.0), 0.01)-0.005) * strength;
 
