@@ -826,6 +826,208 @@ void RenderPass::finalize_subpasses(VkPipelineBindPoint bind_point, VkSubpassDes
   }
 }
 
+//
+// DescriptorPool
+//
+DescriptorPool::DescriptorPool() : handle(VK_NULL_HANDLE), ci{}, pool_sizes{} {
+  ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+  ci.flags = 0;  // overriden in finalize()
+  ci.poolSizeCount = (uint32_t)pool_sizes.size();
+  ci.pPoolSizes = pool_sizes.data();
+  for(size_t i = 0; i < VK_DESCRIPTOR_TYPE_RANGE_SIZE; ++i) {
+    pool_sizes[i].type = (VkDescriptorType)i;
+    pool_sizes[i].descriptorCount = 0;
+  }
+}
+void DescriptorPool::add(uint32_t layout_count, const VkDescriptorSetLayoutCreateInfo* dset_layout_cis, const uint32_t* dsets_per_layout) {
+  for(uint32_t iLayout = 0; iLayout < layout_count; ++iLayout) {
+    const VkDescriptorSetLayoutCreateInfo &layout = dset_layout_cis[iLayout];
+    uint32_t dset_count = (dsets_per_layout != nullptr) ? dsets_per_layout[iLayout] : 1;
+    add(layout, dset_count);
+  }
+}
+void DescriptorPool::add(const VkDescriptorSetLayoutCreateInfo& dset_layout, uint32_t dset_count) {
+  for(uint32_t iBinding = 0; iBinding < dset_layout.bindingCount; ++iBinding) {
+    const VkDescriptorSetLayoutBinding &binding = dset_layout.pBindings[iBinding];
+    pool_sizes[binding.descriptorType].descriptorCount += binding.descriptorCount * dset_count;
+  }
+  ci.maxSets += dset_count;
+}
+VkResult DescriptorPool::finalize(const DeviceContext& device_context, VkDescriptorPoolCreateFlags flags) {
+  ci.flags = flags;
+  VkResult result = vkCreateDescriptorPool(device_context.device(), &ci, device_context.host_allocator(), &handle);
+  return result;
+}
+void DescriptorPool::destroy(const DeviceContext& device_context) {
+  if (handle != VK_NULL_HANDLE) {
+    vkDestroyDescriptorPool(device_context.device(), handle, device_context.host_allocator());
+    handle = VK_NULL_HANDLE;
+  }
+}
+VkResult DescriptorPool::allocate_sets(const DeviceContext& device_context, uint32_t dset_count,
+    const VkDescriptorSetLayout *dset_layouts, VkDescriptorSet *out_dsets) const {
+  VkDescriptorSetAllocateInfo alloc_info = {};
+  alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  alloc_info.descriptorPool = handle;
+  alloc_info.descriptorSetCount = dset_count;
+  alloc_info.pSetLayouts = dset_layouts;
+  VkResult result = vkAllocateDescriptorSets(device_context.device(), &alloc_info, out_dsets);
+  return result;
+}
+VkDescriptorSet DescriptorPool::allocate_set(const DeviceContext& device_context,
+    VkDescriptorSetLayout dset_layout) const {
+  VkDescriptorSet dset = VK_NULL_HANDLE;
+  allocate_sets(device_context, 1, &dset_layout, &dset);
+  return dset;
+}
+void DescriptorPool::free_sets(DeviceContext& device_context, uint32_t set_count, const VkDescriptorSet* sets) const {
+  if (ci.flags & VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT) {
+    vkFreeDescriptorSets(device_context.device(), handle, set_count, sets);
+  }
+}
+void DescriptorPool::free_set(DeviceContext& device_context, VkDescriptorSet set) const {
+  if (ci.flags & VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT) {
+    vkFreeDescriptorSets(device_context.device(), handle, 1, &set);
+  }
+}
+
+//
+// DescriptorSetWriter
+//
+DescriptorSetWriter::DescriptorSetWriter(const VkDescriptorSetLayoutCreateInfo &layout_ci) :
+    image_infos{}, buffer_infos{}, texel_buffer_views{}, binding_writes{layout_ci.bindingCount} {
+  // First time through, we're building a total count of each class of descriptor.
+  uint32_t image_count = 0, buffer_count = 0, texel_buffer_count = 0;
+  for(uint32_t iBinding = 0; iBinding < layout_ci.bindingCount; ++iBinding) {
+    const VkDescriptorSetLayoutBinding &binding = layout_ci.pBindings[iBinding];
+    if (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER) {
+      texel_buffer_count += binding.descriptorCount;
+    } else if (binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
+      buffer_count += binding.descriptorCount;
+    } else if (binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
+      image_count += binding.descriptorCount;
+    }
+  }
+  image_infos.resize(image_count);
+  buffer_infos.resize(buffer_count);
+  texel_buffer_views.resize(texel_buffer_count);
+
+  // Now we can populate the Writes, and point each Write to the appropriate info(s).
+  uint32_t next_image_info = 0, next_buffer_info = 0, next_texel_buffer_view = 0;
+  for(uint32_t iBinding = 0; iBinding < layout_ci.bindingCount; ++iBinding) {
+    const VkDescriptorSetLayoutBinding &binding = layout_ci.pBindings[iBinding];
+    VkWriteDescriptorSet& write = binding_writes[iBinding];
+    write = {};
+    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.dstSet = VK_NULL_HANDLE;  // filled in just-in-time when writing
+    write.dstBinding = binding.binding;
+    write.dstArrayElement = 0;
+    write.descriptorCount = binding.descriptorCount;
+    write.descriptorType = binding.descriptorType;
+    if (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER) {
+      write.pTexelBufferView = &texel_buffer_views[next_texel_buffer_view];
+      next_texel_buffer_view += binding.descriptorCount;
+    } else if (binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
+      write.pBufferInfo = &buffer_infos[next_buffer_info];
+      next_buffer_info += binding.descriptorCount;
+    } else if (binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
+      write.pImageInfo = &image_infos[next_image_info];
+      next_image_info += write.descriptorCount;
+    }
+  }
+  assert(next_texel_buffer_view == texel_buffer_views.size());
+  assert(next_buffer_info == buffer_infos.size());
+  assert(next_image_info == image_infos.size());
+}
+void DescriptorSetWriter::bind_image(VkImageView view, VkImageLayout layout, VkSampler sampler, uint32_t binding, uint32_t array_element) {
+  // TODO(cort): make this search more efficient!
+  VkWriteDescriptorSet *write = nullptr;
+  for(size_t iWrite=0; iWrite<binding_writes.size(); ++iWrite) {
+    if (binding_writes[iWrite].dstBinding == binding) {
+      write = &binding_writes[iWrite];
+      break;
+    }
+  }
+  assert(write != nullptr);
+  assert(array_element < write->descriptorCount);
+  assert(write->pImageInfo != nullptr); // is this binding really an image-type descriptor?
+  auto *pImageInfo = const_cast<VkDescriptorImageInfo*>(write->pImageInfo);
+  pImageInfo->imageView = view;
+  pImageInfo->imageLayout = layout;
+  pImageInfo->sampler = sampler;
+}
+void DescriptorSetWriter::bind_buffer(VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range, uint32_t binding, uint32_t array_element) {
+  // TODO(cort): make this search more efficient!
+  VkWriteDescriptorSet *write = nullptr;
+  for(size_t iWrite=0; iWrite<binding_writes.size(); ++iWrite) {
+    if (binding_writes[iWrite].dstBinding == binding) {
+      write = &binding_writes[iWrite];
+      break;
+    }
+  }
+  assert(write != nullptr);
+  assert(array_element < write->descriptorCount);
+  assert(write->pBufferInfo != nullptr); // is this binding really a buffer-type descriptor?
+  auto *pBufferInfo = const_cast<VkDescriptorBufferInfo*>(write->pBufferInfo);
+  pBufferInfo->buffer = buffer;
+  pBufferInfo->offset = offset;
+  pBufferInfo->range = range;
+}
+void DescriptorSetWriter::bind_texel_buffer(VkBufferView view, uint32_t binding, uint32_t array_element) {
+  // TODO(cort): make this search more efficient!
+  VkWriteDescriptorSet *write = nullptr;
+  for(size_t iWrite=0; iWrite<binding_writes.size(); ++iWrite) {
+    if (binding_writes[iWrite].dstBinding == binding) {
+      write = &binding_writes[iWrite];
+      break;
+    }
+  }
+  assert(write != nullptr);
+  assert(array_element < write->descriptorCount);
+  assert(write->pTexelBufferView != nullptr); // is this binding really a texel buffer descriptor?
+  auto *pTexelBufferView = const_cast<VkBufferView*>(write->pTexelBufferView);
+  *pTexelBufferView = view;
+}
+void DescriptorSetWriter::write_all_to_dset(const DeviceContext& device_context, VkDescriptorSet dset) {
+  for(auto& write : binding_writes) {
+    write.dstSet = dset;
+  }
+  vkUpdateDescriptorSets(device_context.device(),
+    (uint32_t)binding_writes.size(), binding_writes.data(), 0, nullptr);
+}
+void DescriptorSetWriter::write_one_to_dset(const DeviceContext& device_context, VkDescriptorSet dset,
+    uint32_t binding, uint32_t array_element) {
+  assert(binding < binding_writes.size());
+  VkWriteDescriptorSet writeCopy = binding_writes[binding];
+  assert(array_element < writeCopy.dstArrayElement);
+  writeCopy.dstSet = dset;
+  writeCopy.dstArrayElement = array_element;
+  if (writeCopy.pImageInfo != nullptr) {
+    writeCopy.pImageInfo += array_element;
+  } else if (writeCopy.pBufferInfo != nullptr) {
+    writeCopy.pBufferInfo += array_element;
+  } else if (writeCopy.pTexelBufferView != nullptr) {
+    writeCopy.pTexelBufferView += array_element;
+  }
+  vkUpdateDescriptorSets(device_context.device(), 1, &writeCopy, 0, nullptr);
+}
+
 
 //
 // Application

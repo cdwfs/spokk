@@ -343,6 +343,47 @@ struct RenderPass {
   std::vector<VkPipelineMultisampleStateCreateInfo> subpass_multisample_state_cis;
 };
 
+struct DescriptorPool {
+  DescriptorPool();
+
+  // Adds a number of instances of each type of dset in the array. This would be pretty easy to call on a ShaderPipeline.
+  // if dsets_per_layout is nullptr, assume one of each layout.
+  void add(uint32_t layout_count, const VkDescriptorSetLayoutCreateInfo* dset_layout_cis, const uint32_t* dsets_per_layout = nullptr);
+  // Shortcut to add a single dset layout
+  void add(const VkDescriptorSetLayoutCreateInfo& dset_layout, uint32_t dset_count = 1);
+
+  VkResult finalize(const DeviceContext& device_context, VkDescriptorPoolCreateFlags flags = 0);
+  void destroy(const DeviceContext& device_context);
+
+  VkResult allocate_sets(const DeviceContext& device_context, uint32_t dset_count, const VkDescriptorSetLayout *dset_layouts, VkDescriptorSet *out_dsets) const;
+  VkDescriptorSet allocate_set(const DeviceContext& device_context, VkDescriptorSetLayout dset_layout) const;
+  // Only if VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT is set at creation time
+  void free_sets(DeviceContext& device_context, uint32_t set_count, const VkDescriptorSet* sets) const;
+  void free_set(DeviceContext& device_context, VkDescriptorSet set) const;
+
+  VkDescriptorPool handle;
+  VkDescriptorPoolCreateInfo ci;
+  std::array<VkDescriptorPoolSize, VK_DESCRIPTOR_TYPE_RANGE_SIZE> pool_sizes;
+};
+
+struct DescriptorSetWriter {
+  explicit DescriptorSetWriter(const VkDescriptorSetLayoutCreateInfo &layout_ci);
+
+  void bind_image(VkImageView view, VkImageLayout layout, VkSampler sampler, uint32_t binding, uint32_t array_element = 0);
+  void bind_buffer(VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range, uint32_t binding, uint32_t array_element = 0);
+  void bind_texel_buffer(VkBufferView view, uint32_t binding, uint32_t array_element = 0);
+
+  void write_all_to_dset(const DeviceContext& device_context, VkDescriptorSet dset);
+  void write_one_to_dset(const DeviceContext& device_context, VkDescriptorSet dset, uint32_t binding, uint32_t array_element = 0);
+
+  // Walk through the layout and build the following lists:
+  std::vector<VkDescriptorImageInfo> image_infos;
+  std::vector<VkDescriptorBufferInfo> buffer_infos;
+  std::vector<VkBufferView> texel_buffer_views;
+  std::vector<VkWriteDescriptorSet> binding_writes; // one per binding. Sparse dsets are valid, but discouraged.
+};
+
+
 //
 // Application base class
 //
