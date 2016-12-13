@@ -304,12 +304,13 @@ struct ShaderPipelineEntry {
 };
 
 struct ShaderPipeline {
-  ShaderPipeline() : dset_layout_infos{}, push_constant_ranges{}, shader_stage_cis{}, entry_point_names{},
-      pipeline_layout(VK_NULL_HANDLE), dset_layouts{}, active_stages(0) {
+  ShaderPipeline() : dset_layout_cis{}, dset_layout_infos{}, push_constant_ranges{}, shader_stage_cis{},
+      entry_point_names{}, pipeline_layout(VK_NULL_HANDLE), dset_layouts{}, active_stages(0) {
   }
   VkResult create(const DeviceContext& device_context, const std::vector<ShaderPipelineEntry>& shader_entries);
   void destroy(const DeviceContext& device_context);
 
+  std::vector<VkDescriptorSetLayoutCreateInfo> dset_layout_cis; // one per dset
   std::vector<DescriptorSetLayoutInfo> dset_layout_infos; // one per dset
   std::vector<VkPushConstantRange> push_constant_ranges;  // one per active stage that uses push constants.
 

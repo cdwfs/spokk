@@ -737,20 +737,21 @@ VkResult ShaderPipeline::create(const DeviceContext& device_context,
   }
 
   // Create the descriptor set layouts, now that their contents are known
-  dset_layouts.reserve(dset_layout_infos.size());
-  for(auto &contents : dset_layout_infos) {
-    assert(contents.bindings.size() == contents.binding_infos.size());
-    VkDescriptorSetLayoutCreateInfo dset_layout_ci = {};
-    dset_layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    dset_layout_ci.bindingCount = (uint32_t)contents.bindings.size();
-    dset_layout_ci.pBindings = contents.bindings.data();
-    VkDescriptorSetLayout dset_layout = VK_NULL_HANDLE;
+  dset_layout_cis.resize(dset_layout_infos.size());
+  dset_layouts.resize(dset_layout_infos.size());
+  for(uint32_t iLayout = 0; iLayout < dset_layouts.size(); ++iLayout) {
+    VkDescriptorSetLayoutCreateInfo& layout_ci = dset_layout_cis[iLayout];
+    const DescriptorSetLayoutInfo& layout_info = dset_layout_infos[iLayout];
+    assert(layout_info.bindings.size() == layout_info.binding_infos.size());
+    layout_ci = {};
+    layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layout_ci.bindingCount = (uint32_t)layout_info.bindings.size();
+    layout_ci.pBindings = layout_info.bindings.data();
     VkResult result = vkCreateDescriptorSetLayout(device_context.device(),
-      &dset_layout_ci, device_context.host_allocator(), &dset_layout);
+      &layout_ci, device_context.host_allocator(), &dset_layouts[iLayout]);
     if (result != VK_SUCCESS) {
       return result;
     }
-    dset_layouts.push_back(dset_layout);
   }
   // Create the pipeline layout
   VkPipelineLayoutCreateInfo pipeline_layout_ci = {};
@@ -767,6 +768,7 @@ void ShaderPipeline::destroy(const DeviceContext& device_context) {
     vkDestroyDescriptorSetLayout(device_context.device(), dset_layout, device_context.host_allocator());
   }
   dset_layouts.clear();
+  dset_layout_cis.clear();
   dset_layout_infos.clear();
   push_constant_ranges.clear();
   shader_stage_cis.clear();
