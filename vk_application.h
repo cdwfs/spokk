@@ -171,15 +171,16 @@ struct DeviceQueueContext {
 //
 class DeviceContext {
 public:
-  DeviceContext() : device_(VK_NULL_HANDLE), physical_device_(VK_NULL_HANDLE),
+  DeviceContext() : device_(VK_NULL_HANDLE), physical_device_(VK_NULL_HANDLE), pipeline_cache_(VK_NULL_HANDLE),
       host_allocator_(nullptr), device_allocator_(nullptr), queue_contexts_{} {
   }
-  DeviceContext(VkDevice device, VkPhysicalDevice physical_device, const DeviceQueueContext *queue_contexts, uint32_t queue_context_count,
+  DeviceContext(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache, const DeviceQueueContext *queue_contexts, uint32_t queue_context_count,
       const VkAllocationCallbacks *host_allocator = nullptr, const DeviceAllocationCallbacks *device_allocator = nullptr);
   ~DeviceContext();
 
   VkDevice device() const { return device_; }
   VkPhysicalDevice physical_device() const { return physical_device_; }
+  VkPipelineCache pipeline_cache() const { return pipeline_cache_; }
   const VkAllocationCallbacks* host_allocator() const { return host_allocator_; }
   const DeviceAllocationCallbacks *device_allocator() const { return device_allocator_; }
 
@@ -205,6 +206,7 @@ private:
   // cached Vulkan handles; do not destroy!
   VkPhysicalDevice physical_device_;
   VkDevice device_;
+  VkPipelineCache pipeline_cache_;
   const VkAllocationCallbacks* host_allocator_;
   const DeviceAllocationCallbacks *device_allocator_;
 

@@ -139,11 +139,12 @@ void DeviceMemoryAllocation::flush(VkDevice device) const {
 // DeviceContext
 //
 
-DeviceContext::DeviceContext(VkDevice device, VkPhysicalDevice physical_device,
+DeviceContext::DeviceContext(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache,
       const DeviceQueueContext *queue_contexts, uint32_t queue_context_count,
       const VkAllocationCallbacks *host_allocator, const DeviceAllocationCallbacks *device_allocator) :
     physical_device_(physical_device),
     device_(device),
+    pipeline_cache_(pipeline_cache),
     host_allocator_(host_allocator),
     device_allocator_(device_allocator) {
   vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
@@ -957,7 +958,11 @@ Application::Application(const CreateInfo &ci) {
   }
   assert(queue_contexts_.size() == total_queue_count);
 
-  device_context_ = DeviceContext(device_, physical_device_, queue_contexts_.data(),
+  VkPipelineCacheCreateInfo pipeline_cache_ci = {};
+  pipeline_cache_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+  CDSVK_CHECK(vkCreatePipelineCache(device_, &pipeline_cache_ci, allocation_callbacks_, &pipeline_cache_));
+
+  device_context_ = DeviceContext(device_, physical_device_, pipeline_cache_, queue_contexts_.data(),
     (uint32_t)queue_contexts_.size(), allocation_callbacks_, nullptr);
 
   // Create VkSwapchain
@@ -1093,6 +1098,8 @@ Application::Application(const CreateInfo &ci) {
 Application::~Application() {
   if (device_) {
     vkDeviceWaitIdle(device_);
+
+    vkDestroyPipelineCache(device_, pipeline_cache_, allocation_callbacks_);
 
     for(auto& view : swapchain_image_views_) {
       vkDestroyImageView(device_, view, allocation_callbacks_);
