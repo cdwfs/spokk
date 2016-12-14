@@ -2,7 +2,7 @@
 #if defined(_MSC_VER)
 # define VK_USE_PLATFORM_WIN32_KHR 1
 # define PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_WIN32_SURFACE_EXTENSION_NAME
-#elif #elif defined(unix) || defined(__unix__) || defined(__unix)
+#elif defined(unix) || defined(__unix__) || defined(__unix)
 # define VK_USE_PLATFORM_XCB_KHR 1
 # define PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_XCB_SURFACE_EXTENSION_NAME
 #elif defined(__ANDROID__)
