@@ -272,6 +272,16 @@ struct Image {
   DeviceMemoryAllocation memory;
 };
 
+struct MeshFormat {
+  std::vector<VkVertexInputBindingDescription> vertex_buffer_bindings;
+  std::vector<VkVertexInputAttributeDescription> vertex_attributes;
+  static const MeshFormat* get_empty(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart = VK_FALSE);
+  // Call me after filling in attributes and bindings.
+  void finalize_format(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart = VK_FALSE);
+  VkPipelineVertexInputStateCreateInfo vertex_input_state_ci;  // used for graphics pipeline creation
+  VkPipelineInputAssemblyStateCreateInfo input_assembly_state_ci;  // used for graphics pipeline creation
+};
+
 struct DescriptorSetLayoutBindingInfo {
   // The name of each binding in a given shader stage. Purely for debugging.
   std::vector< std::tuple<VkShaderStageFlagBits, const std::string> > stage_names;
