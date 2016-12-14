@@ -4,6 +4,9 @@
 #include "vk_texture.h"
 using namespace cdsvk;
 
+#include <mathfu/vector.h>
+#include <mathfu/glsl_mappings.h>
+
 #include <array>
 #include <cstdio>
 
@@ -11,6 +14,8 @@ class CubeSwarmApp : public cdsvk::Application {
 public:
   explicit CubeSwarmApp(Application::CreateInfo &ci) :
       Application(ci) {
+    seconds_elapsed_ = 0;
+
     // Retrieve queue handles
     const DeviceQueueContext *queue_context = device_context_.find_queue_context(VK_QUEUE_GRAPHICS_BIT, surface_);
     graphics_and_present_queue_ = queue_context->queue;
@@ -61,44 +66,37 @@ public:
     CDSVK_CHECK(depth_image_.create(device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DEVICE_ALLOCATION_SCOPE_DEVICE));
 
-#if 0
     // Create intermediate color buffer
-    VkImageCreateInfo rt_image_ci = {};
-    rt_image_ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    rt_image_ci.imageType = VK_IMAGE_TYPE_2D;
-    rt_image_ci.format = context->swapchain_format();
-    rt_image_ci.extent = {kWindowWidthDefault, kWindowHeightDefault, 1}; // TODO(cort): use actual swapchain extent instead of window dimensions
-    rt_image_ci.mipLevels = 1;
-    rt_image_ci.arrayLayers = 1;
-    rt_image_ci.samples = VK_SAMPLE_COUNT_1_BIT;
-    rt_image_ci.tiling = VK_IMAGE_TILING_OPTIMAL;
-    rt_image_ci.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
-    rt_image_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    rt_image_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    VkImage rt_image = context->create_image(rt_image_ci, VK_IMAGE_LAYOUT_UNDEFINED,
-      VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, "offscreen color buffer image");
-    VkDeviceMemory rt_image_mem = VK_NULL_HANDLE;
-    VkDeviceSize rt_image_mem_offset = 0;
-    VULKAN_CHECK(context->allocate_and_bind_image_memory(rt_image,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &rt_image_mem, &rt_image_mem_offset));
-    VkImageView rt_image_view = context->create_image_view(rt_image, rt_image_ci, "offscreen color buffer image view");
-#endif
+    VkImageCreateInfo offscreen_image_ci = {};
+    offscreen_image_ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    offscreen_image_ci.imageType = VK_IMAGE_TYPE_2D;
+    offscreen_image_ci.format = swapchain_surface_format_.format;
+    offscreen_image_ci.extent = {swapchain_extent_.width, swapchain_extent_.height, 1};
+    offscreen_image_ci.mipLevels = 1;
+    offscreen_image_ci.arrayLayers = 1;
+    offscreen_image_ci.samples = VK_SAMPLE_COUNT_1_BIT;
+    offscreen_image_ci.tiling = VK_IMAGE_TILING_OPTIMAL;
+    offscreen_image_ci.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+    offscreen_image_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    offscreen_image_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    offscreen_image_.create(device_context_, offscreen_image_ci);
 
     // Create render pass
     enum {
-      kColorAttachmentIndex = 0,
+      kOffscreenAttachmentIndex = 0,
       kDepthAttachmentIndex = 1,
+      kColorAttachmentIndex = 2,
       kAttachmentCount
     };
     render_pass_.attachment_descs.resize(kAttachmentCount);
-    render_pass_.attachment_descs[kColorAttachmentIndex].format = swapchain_surface_format_.format;
-    render_pass_.attachment_descs[kColorAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
-    render_pass_.attachment_descs[kColorAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    render_pass_.attachment_descs[kColorAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    render_pass_.attachment_descs[kColorAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    render_pass_.attachment_descs[kColorAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    render_pass_.attachment_descs[kColorAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    render_pass_.attachment_descs[kColorAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    render_pass_.attachment_descs[kOffscreenAttachmentIndex].format = offscreen_image_ci.format;
+    render_pass_.attachment_descs[kOffscreenAttachmentIndex].samples = offscreen_image_ci.samples;
+    render_pass_.attachment_descs[kOffscreenAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    render_pass_.attachment_descs[kOffscreenAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    render_pass_.attachment_descs[kOffscreenAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    render_pass_.attachment_descs[kOffscreenAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    render_pass_.attachment_descs[kOffscreenAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    render_pass_.attachment_descs[kOffscreenAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     render_pass_.attachment_descs[kDepthAttachmentIndex].format = depth_image_ci.format;
     render_pass_.attachment_descs[kDepthAttachmentIndex].samples = depth_image_ci.samples;
     render_pass_.attachment_descs[kDepthAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -107,10 +105,20 @@ public:
     render_pass_.attachment_descs[kDepthAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     render_pass_.attachment_descs[kDepthAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     render_pass_.attachment_descs[kDepthAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    render_pass_.subpass_attachments.resize(1);
-    render_pass_.subpass_attachments[0].color_refs.push_back({kColorAttachmentIndex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+    render_pass_.attachment_descs[kColorAttachmentIndex].format = swapchain_surface_format_.format;
+    render_pass_.attachment_descs[kColorAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
+    render_pass_.attachment_descs[kColorAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    render_pass_.attachment_descs[kColorAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    render_pass_.attachment_descs[kColorAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    render_pass_.attachment_descs[kColorAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    render_pass_.attachment_descs[kColorAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    render_pass_.attachment_descs[kColorAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    render_pass_.subpass_attachments.resize(2);
+    render_pass_.subpass_attachments[0].color_refs.push_back({kOffscreenAttachmentIndex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
     render_pass_.subpass_attachments[0].depth_stencil_refs.push_back({kDepthAttachmentIndex, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL});
-    render_pass_.subpass_dependencies.resize(2);
+    render_pass_.subpass_attachments[1].input_refs.push_back({kOffscreenAttachmentIndex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
+    render_pass_.subpass_attachments[1].color_refs.push_back({kColorAttachmentIndex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+    render_pass_.subpass_dependencies.resize(3);
     render_pass_.subpass_dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
     render_pass_.subpass_dependencies[0].dstSubpass = 0;
     render_pass_.subpass_dependencies[0].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
@@ -119,12 +127,19 @@ public:
     render_pass_.subpass_dependencies[0].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
     render_pass_.subpass_dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     render_pass_.subpass_dependencies[1].srcSubpass = 0;
-    render_pass_.subpass_dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-    render_pass_.subpass_dependencies[1].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    render_pass_.subpass_dependencies[1].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    render_pass_.subpass_dependencies[1].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
-    render_pass_.subpass_dependencies[1].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    render_pass_.subpass_dependencies[1].dstSubpass = 1;
+    render_pass_.subpass_dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    render_pass_.subpass_dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    render_pass_.subpass_dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    render_pass_.subpass_dependencies[1].dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
     render_pass_.subpass_dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    render_pass_.subpass_dependencies[2].srcSubpass = 1;
+    render_pass_.subpass_dependencies[2].dstSubpass = VK_SUBPASS_EXTERNAL;
+    render_pass_.subpass_dependencies[2].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    render_pass_.subpass_dependencies[2].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    render_pass_.subpass_dependencies[2].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    render_pass_.subpass_dependencies[2].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    render_pass_.subpass_dependencies[2].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     render_pass_.finalize_subpasses();
     VkRenderPassCreateInfo render_pass_ci = {};
     render_pass_ci.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -138,8 +153,9 @@ public:
 
     // Create VkFramebuffers
     std::array<VkImageView, kAttachmentCount> attachment_views = {};
-    attachment_views[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below
+    attachment_views[kOffscreenAttachmentIndex] = offscreen_image_.view;
     attachment_views[kDepthAttachmentIndex] = depth_image_.view;
+    attachment_views[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below
     VkFramebufferCreateInfo framebuffer_ci = {};
     framebuffer_ci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     framebuffer_ci.renderPass = render_pass_.handle;
@@ -161,6 +177,25 @@ public:
       {&fullscreen_tri_vs_, "main"},
       {&post_filmgrain_fs_, "main"},
     }));
+
+    fullscreen_pipeline_.create(device_context_,
+      MeshFormat::get_empty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+      &post_shader_pipeline_, &render_pass_, 1);
+    viewport_.width  = (float)swapchain_extent_.width;
+    viewport_.height = (float)swapchain_extent_.height;
+    viewport_.minDepth = 0.0f;
+    viewport_.maxDepth = 1.0f;
+    scissor_rect_.extent.width  = swapchain_extent_.width;
+    scissor_rect_.extent.height = swapchain_extent_.height;
+    scissor_rect_.offset.x = 0;
+    scissor_rect_.offset.y = 0;
+
+    dpool_.add((uint32_t)post_shader_pipeline_.dset_layout_cis.size(), post_shader_pipeline_.dset_layout_cis.data());
+    CDSVK_CHECK(dpool_.finalize(device_context_));
+    dset_film_grain_ = dpool_.allocate_set(device_context_, post_shader_pipeline_.dset_layouts[0]);
+    DescriptorSetWriter dset_writer(post_shader_pipeline_.dset_layout_cis[0]);
+    dset_writer.bind_image(offscreen_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, 2, 0);
+    dset_writer.write_all_to_dset(device_context_, dset_film_grain_);
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci = get_sampler_ci(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
@@ -187,6 +222,10 @@ public:
     if (device_) {
       vkDeviceWaitIdle(device_);
 
+      dpool_.destroy(device_context_);
+
+      fullscreen_pipeline_.destroy(device_context_);
+
       post_shader_pipeline_.destroy(device_context_);
       fullscreen_tri_vs_.destroy(device_context_);
       post_filmgrain_fs_.destroy(device_context_);
@@ -206,6 +245,7 @@ public:
       }
       vkDestroyRenderPass(device_, render_pass_.handle, allocation_callbacks_);
 
+      offscreen_image_.destroy(device_context_);
       depth_image_.destroy(device_context_);
 
       vkDestroyCommandPool(device_, cpool_, allocation_callbacks_);
@@ -217,6 +257,7 @@ public:
 
   virtual void update(double dt) override {
     Application::update(dt);
+    seconds_elapsed_ += dt;
   }
 
   virtual void render() override {
@@ -265,9 +306,29 @@ public:
     render_pass_begin_info.renderArea.extent = swapchain_extent_;
     render_pass_begin_info.clearValueCount = (uint32_t)clear_values.size();
     render_pass_begin_info.pClearValues = clear_values.data();
-    vkCmdBeginRenderPass(cb, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
+    vkCmdBeginRenderPass(cb, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    // subpass 0 is just to clear the offscreen color buffer
+    vkCmdNextSubpass(cb, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdSetViewport(cb, 0,1, &viewport_);
+    vkCmdSetScissor(cb, 0,1, &scissor_rect_);
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, fullscreen_pipeline_.handle);
+    // TODO(cort): leaving these unbound did not trigger a validation warning...
+    vkCmdBindDescriptorSets (cb, VK_PIPELINE_BIND_POINT_GRAPHICS, post_shader_pipeline_.pipeline_layout,
+      0, 1, &dset_film_grain_, 0,nullptr);
+    // Create push constants.
+    // TODO(cort): this should be a per-vframe uniform buffer.
+    struct {
+      mathfu::vec4_packed time_and_res; // .x=seconds, .yz=dimensions, w=???
+    } push_constants = {};
+    push_constants.time_and_res = mathfu::vec4((float)seconds_elapsed_,
+      viewport_.width, viewport_.height, 0);
+    vkCmdPushConstants(cb, post_shader_pipeline_.pipeline_layout,
+      VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(mathfu::vec4), &push_constants);
+
+    vkCmdDraw(cb, 3, 1,0,0);
     vkCmdEndRenderPass(cb);
+
     CDSVK_CHECK( vkEndCommandBuffer(cb) );
     const VkPipelineStageFlags submit_wait_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
     VkSubmitInfo submit_info = {};
@@ -299,6 +360,8 @@ public:
   }
 
 private:
+  double seconds_elapsed_;
+
   VkQueue graphics_and_present_queue_;
 
   VkCommandPool cpool_;
@@ -308,6 +371,7 @@ private:
   std::array<VkFence, VFRAME_COUNT> submission_complete_fences_;
 
   Image depth_image_;
+  Image offscreen_image_;
 
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
@@ -315,9 +379,16 @@ private:
   std::unique_ptr<TextureLoader> texture_loader_;
   Image albedo_tex_;
   VkSampler sampler_;
+
   Shader fullscreen_tri_vs_, post_filmgrain_fs_;
   ShaderPipeline post_shader_pipeline_;
 
+  GraphicsPipeline fullscreen_pipeline_;
+  VkViewport viewport_;
+  VkRect2D scissor_rect_;
+
+  DescriptorPool dpool_;
+  VkDescriptorSet dset_film_grain_;
 };
 
 int main(int argc, char *argv[]) {
