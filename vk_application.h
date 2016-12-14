@@ -343,6 +343,17 @@ struct RenderPass {
   std::vector<VkPipelineMultisampleStateCreateInfo> subpass_multisample_state_cis;
 };
 
+struct ComputePipeline {
+  ComputePipeline();
+  VkResult create(const DeviceContext& device_context, const ShaderPipeline *shader_pipeline, bool defer_pipeline_creation = false);
+  void destroy(const DeviceContext& device_context);
+  VkPipeline handle;
+
+  const ShaderPipeline *shader_pipeline;
+
+  VkComputePipelineCreateInfo ci;
+};
+
 struct DescriptorPool {
   DescriptorPool();
 

@@ -656,7 +656,8 @@ VkResult ShaderPipeline::create(const DeviceContext& device_context,
     }
     active_stages |= shader_entry.shader->stage;
   }
-  constexpr std::array<VkShaderStageFlags, 4> valid_stage_combos = {{
+  constexpr std::array<VkShaderStageFlags, 5> valid_stage_combos = {{
+      VK_SHADER_STAGE_COMPUTE_BIT,
       VK_SHADER_STAGE_VERTEX_BIT,
       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT,
@@ -829,6 +830,39 @@ void RenderPass::finalize_subpasses(VkPipelineBindPoint bind_point, VkSubpassDes
 }
 
 //
+// ComputePipeline
+//
+ComputePipeline::ComputePipeline() : handle(VK_NULL_HANDLE), shader_pipeline(nullptr), ci{} {
+}
+VkResult ComputePipeline::create(const DeviceContext& device_context, const ShaderPipeline *shader_pipeline_in,
+    bool defer_pipeline_creation) {
+  this->shader_pipeline = shader_pipeline_in;
+  assert(shader_pipeline->shader_stage_cis.size() == 1);
+  assert(shader_pipeline->shader_stage_cis[0].stage == VK_SHADER_STAGE_COMPUTE_BIT);
+
+  ci = {};
+  ci.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  ci.flags = 0;  // TODO(cort): pass these in?
+  ci.stage = shader_pipeline->shader_stage_cis[0];
+  ci.layout = shader_pipeline->pipeline_layout;
+  ci.basePipelineHandle = VK_NULL_HANDLE;
+  ci.basePipelineIndex = 0;
+
+  VkResult result = VK_SUCCESS;
+  if (!defer_pipeline_creation) {
+    result = vkCreateComputePipelines(device_context.device(), device_context.pipeline_cache(),
+      1, &ci, device_context.host_allocator(), &handle);
+  }
+  return result;
+}
+void ComputePipeline::destroy(const DeviceContext& device_context) {
+  if (handle != VK_NULL_HANDLE) {
+    vkDestroyPipeline(device_context.device(), handle, device_context.host_allocator());
+    handle = VK_NULL_HANDLE;
+  }
+  shader_pipeline = nullptr;
+}
+
 // DescriptorPool
 //
 DescriptorPool::DescriptorPool() : handle(VK_NULL_HANDLE), ci{}, pool_sizes{} {
