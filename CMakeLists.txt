@@ -108,14 +108,30 @@ ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC ${SPOKK_SOURCES} ${SPOKK_HEADERS})
 TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} spirv-cross-cpp ${libs})
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC ".")
 
-# cubeswarm sample
-SET(CUBESWARM_HEADERS
-    camera.h
-    cds_mesh.h
-    )
+FUNCTION (SPOKK_APP APP_NAME APP_SOURCES_LIST APP_HEADERS_LIST APP_SHADERS_LIST)
+    # TODO(cort): ...really?
+    SET(APP_HEADERS ${${APP_HEADERS_LIST}})
+    SET(APP_SOURCES ${${APP_SOURCES_LIST}})
+    SET(APP_SHADERS ${${APP_SHADERS_LIST}})
+    SOURCE_GROUP(shaders FILES ${APP_SHADERS})
+    FOREACH(SHADER_FILE IN LISTS APP_SHADERS)
+        SHADER_BUILD_RULE(${SHADER_FILE} ${CMAKE_BINARY_DIR}/${SHADER_FILE}.spv)
+    ENDFOREACH(SHADER_FILE)
+
+    cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${APP_HEADERS}" "${APP_SOURCES}")
+    add_executable(${APP_NAME} ${APP_SOURCES} ${APP_SHADERS} ${APP_HEADERS})
+    target_link_libraries(${APP_NAME} ${SPOKK_LIB_NAME})
+    mathfu_configure_flags(${APP_NAME})
+ENDFUNCTION(SPOKK_APP APP_NAME APP_SOURCES APP_HEADERS APP_SHADERS)
+
+# spokk-cubeswarm sample
 SET(CUBESWARM_SOURCES
     camera.cpp
     cubeswarm.cpp
+    )
+SET(CUBESWARM_HEADERS
+    camera.h
+    cds_mesh.h
     )
 SET(CUBESWARM_SHADERS
     tri.vert
@@ -123,22 +139,14 @@ SET(CUBESWARM_SHADERS
     fullscreen.vert
     subpass_post.frag
     )
-SOURCE_GROUP(shaders FILES ${CUBESWARM_SHADERS})
-FOREACH(SHADER_FILE IN LISTS CUBESWARM_SHADERS)
-    SHADER_BUILD_RULE(${SHADER_FILE} ${CMAKE_BINARY_DIR}/${SHADER_FILE}.spv)
-ENDFOREACH(SHADER_FILE)
+SPOKK_APP(spokk-cubeswarm CUBESWARM_SOURCES CUBESWARM_HEADERS CUBESWARM_SHADERS)
 
-set(CUBESWARM_EXE_NAME cubeswarm)
-cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${CUBESWARM_HEADERS}" "${CUBESWARM_SOURCES}")
-add_executable(${CUBESWARM_EXE_NAME} ${CUBESWARM_SOURCES} ${CUBESWARM_SHADERS} ${CUBESWARM_HEADERS})
-target_link_libraries(${CUBESWARM_EXE_NAME} ${SPOKK_LIB_NAME})
-mathfu_configure_flags(${CUBESWARM_EXE_NAME})
 
 # Copy assets directory into build dir.
-# TODO(cort): Which target should this be attached to? Or do we leave it where it is and load things
-#             from one level up?
+# TODO(cort): Which target should this be attached to? Or hey, what if every sample knows what assets
+#             it uses, and copies them in?
 ADD_CUSTOM_COMMAND(
-    TARGET ${CUBESWARM_EXE_NAME} POST_BUILD
+    TARGET spokk-cubeswarm POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/trevor
         ${CMAKE_BINARY_DIR}/trevor
