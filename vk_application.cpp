@@ -1356,13 +1356,19 @@ int Application::run() {
   uint64_t ticks_prev = clock_start;
   frame_index_ = 0;
   vframe_index_ = 0;
-  while(!glfwWindowShouldClose(window_.get())) {
+  while(!force_exit_ && !glfwWindowShouldClose(window_.get())) {
     uint64_t ticks_now = zomboClockTicks();
     const double dt = (float)zomboTicksToSeconds(ticks_now - ticks_prev);
     ticks_prev = ticks_now;
 
     update(dt);
+    if (force_exit_) {
+      break;
+    }
     render();
+    if (force_exit_) {
+      break;
+    }
 
     glfwPollEvents();
     frame_index_ += 1;
