@@ -12,13 +12,14 @@ public:
   explicit CubeSwarmApp(Application::CreateInfo &ci) :
       Application(ci) {
     // Retrieve queue handles
-    graphics_and_present_queue_ = device_context_.find_queue_context(VK_QUEUE_GRAPHICS_BIT, surface_)->queue;
+    const DeviceQueueContext *queue_context = device_context_.find_queue_context(VK_QUEUE_GRAPHICS_BIT, surface_);
+    graphics_and_present_queue_ = queue_context->queue;
 
     // Allocate command buffers
     VkCommandPoolCreateInfo cpool_ci = {};
     cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    cpool_ci.queueFamilyIndex = device_context_.find_queue_context(VK_QUEUE_GRAPHICS_BIT)->queue_family;
+    cpool_ci.queueFamilyIndex = queue_context->queue_family;
     CDSVK_CHECK(vkCreateCommandPool(device_, &cpool_ci, allocation_callbacks_, &cpool_));
     VkCommandBufferAllocateInfo cb_allocate_info = {};
     cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
