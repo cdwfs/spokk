@@ -120,8 +120,8 @@ struct DeviceMemoryAllocation {
     return (void*)( uintptr_t(block->mapped()) + offset );
   }
   // TODO(cort): cache a VkDevice with the memory block?
-  void invalidate(VkDevice device) const;
-  void flush(VkDevice device) const;
+  void invalidate(VkDevice device) const;  // invalidate host caches, to make sure GPU writes are visible on the host.
+  void flush(VkDevice device) const;  // flush host caches, to make sure host writes are visible by the GPU.
   DeviceMemoryBlock *block;  // May or may not be exclusively owned; depends on the device allocator.
                              // May be NULL for invalid allocations.
   VkDeviceSize offset;
