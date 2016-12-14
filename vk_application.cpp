@@ -210,14 +210,16 @@ DeviceMemoryAllocation DeviceContext::device_alloc(const VkMemoryRequirements &m
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     alloc_info.allocationSize = mem_reqs.size;
     alloc_info.memoryTypeIndex = find_memory_type_index(mem_reqs, memory_properties_mask);
-    DeviceMemoryBlock *block = new DeviceMemoryBlock;
-    VkResult result = block->allocate(*this, alloc_info);
-    if (result == VK_SUCCESS) {
-      allocation.block = block;
-      allocation.offset = 0;
-      allocation.size = alloc_info.allocationSize;
-    } else {
-      delete block;
+    if (alloc_info.memoryTypeIndex != VK_MAX_MEMORY_TYPES) {
+      DeviceMemoryBlock *block = new DeviceMemoryBlock;
+      VkResult result = block->allocate(*this, alloc_info);
+      if (result == VK_SUCCESS) {
+        allocation.block = block;
+        allocation.offset = 0;
+        allocation.size = alloc_info.allocationSize;
+      } else {
+        delete block;
+      }
     }
     return allocation;
   }
