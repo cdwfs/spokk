@@ -1069,25 +1069,27 @@ void DescriptorSetWriter::write_one_to_dset(const DeviceContext& device_context,
 // Application
 //
 Application::Application(const CreateInfo &ci) {
-  // Initialize GLFW
-  glfwSetErrorCallback(my_glfw_error_callback);
-  if( !glfwInit() ) {
-    fprintf( stderr, "Failed to initialize GLFW\n" );
-    return;
-  }
-  if (!glfwVulkanSupported()) {
-    fprintf(stderr, "Vulkan is not available :(\n");
-    return;
-  }
-  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-  window_ = std::shared_ptr<GLFWwindow>(
-    glfwCreateWindow(kWindowWidthDefault, kWindowHeightDefault, ci.app_name.c_str(), NULL, NULL),
-    [](GLFWwindow *w){ glfwDestroyWindow(w); });
-  glfwSetInputMode(window_.get(), GLFW_STICKY_KEYS, 1);
-  glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-  glfwPollEvents(); // dummy poll for first loop iteration
+  if (ci.enable_graphics) {
+    // Initialize GLFW
+    glfwSetErrorCallback(my_glfw_error_callback);
+    if( !glfwInit() ) {
+      fprintf( stderr, "Failed to initialize GLFW\n" );
+      return;
+    }
+    if (!glfwVulkanSupported()) {
+      fprintf(stderr, "Vulkan is not available :(\n");
+      return;
+    }
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    window_ = std::shared_ptr<GLFWwindow>(
+      glfwCreateWindow(kWindowWidthDefault, kWindowHeightDefault, ci.app_name.c_str(), NULL, NULL),
+      [](GLFWwindow *w){ glfwDestroyWindow(w); });
+    glfwSetInputMode(window_.get(), GLFW_STICKY_KEYS, 1);
+    glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwPollEvents(); // dummy poll for first loop iteration
 
-  input_state_.set_window(window_);
+    input_state_.set_window(window_);
+  }
 
   // Initialize Vulkan
   std::vector<const char*> required_instance_layer_names = {};
@@ -1101,9 +1103,11 @@ Application::Application(const CreateInfo &ci) {
     &instance_layers_, &enabled_instance_layer_names));
 
   std::vector<const char*> required_instance_extension_names = {
-    VK_KHR_SURFACE_EXTENSION_NAME,
-    PLATFORM_SURFACE_EXTENSION_NAME,
   };
+  if (ci.enable_graphics) {
+    required_instance_extension_names.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+    required_instance_extension_names.push_back(PLATFORM_SURFACE_EXTENSION_NAME);
+  }
   std::vector<const char*> optional_instance_extension_names = {};
   if (ci.enable_validation) {
     optional_instance_extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
@@ -1132,7 +1136,7 @@ Application::Application(const CreateInfo &ci) {
   if (is_instance_extension_enabled(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
     VkDebugReportCallbackCreateInfoEXT debug_report_callback_ci = {};
     debug_report_callback_ci.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
-    debug_report_callback_ci.flags = 0
+    debug_report_callback_ci.flags = 0  // TODO(cort): pass these in!
       | VK_DEBUG_REPORT_ERROR_BIT_EXT
       | VK_DEBUG_REPORT_WARNING_BIT_EXT
       | VK_DEBUG_REPORT_INFORMATION_BIT_EXT
@@ -1146,7 +1150,9 @@ Application::Application(const CreateInfo &ci) {
     assert(debug_report_callback_ != VK_NULL_HANDLE);
   }
 
-  CDSVK_CHECK( glfwCreateWindowSurface(instance_, window_.get(), allocation_callbacks_, &surface_) );
+  if (ci.enable_graphics) {
+    CDSVK_CHECK( glfwCreateWindowSurface(instance_, window_.get(), allocation_callbacks_, &surface_) );
+  }
 
   std::vector<uint32_t> queue_family_indices;
   CDSVK_CHECK(find_physical_device(ci.queue_family_requests, instance_, surface_, &physical_device_, &queue_family_indices));
@@ -1168,9 +1174,11 @@ Application::Application(const CreateInfo &ci) {
   };
   assert(queue_priorities.size() == total_queue_count);
 
-  const std::vector<const char*> required_device_extension_names = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+  std::vector<const char*> required_device_extension_names = {
   };
+  if (ci.enable_graphics) {
+    required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+  }
   const std::vector<const char*> optional_device_extension_names = {
 #if !defined(NDEBUG) && defined(VK_EXT_debug_marker)
     VK_EXT_DEBUG_MARKER_EXTENSION_NAME, // will only be enabled if a layer supports it (currently, only RenderDoc's implicit layer)
@@ -1226,7 +1234,7 @@ Application::Application(const CreateInfo &ci) {
     (uint32_t)queue_contexts_.size(), allocation_callbacks_, nullptr);
 
   // Create VkSwapchain
-  if (surface_ != VK_NULL_HANDLE) {
+  if (ci.enable_graphics && surface_ != VK_NULL_HANDLE) {
     VkSurfaceCapabilitiesKHR surface_caps = {};
     CDSVK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_, surface_, &surface_caps));
     swapchain_extent_ = surface_caps.currentExtent;
@@ -1365,10 +1373,15 @@ Application::~Application() {
       vkDestroyImageView(device_, view, allocation_callbacks_);
       view = VK_NULL_HANDLE;
     }
-    vkDestroySwapchainKHR(device_, swapchain_, allocation_callbacks_);
+    if (swapchain_ != VK_NULL_HANDLE) {
+      vkDestroySwapchainKHR(device_, swapchain_, allocation_callbacks_);
+      swapchain_ = VK_NULL_HANDLE;
+    }
   }
-  window_.reset();
-  glfwTerminate();
+  if (surface_ != VK_NULL_HANDLE) {
+    window_.reset();
+    glfwTerminate();
+  }
   vkDestroyDevice(device_, allocation_callbacks_);
   device_ = VK_NULL_HANDLE;
   if (debug_report_callback_ != VK_NULL_HANDLE) {

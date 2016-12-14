@@ -1,0 +1,15 @@
+#version 450 core
+#pragma shader_stage(compute)
+layout(std140, binding=0) buffer InBuffer {
+	ivec4 inValues[];
+};
+layout(std140, binding=1) buffer OutBuffer {
+	ivec4 outValues[];
+};
+layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+void main() {
+	uint gid = gl_GlobalInvocationID.x;
+	if (gid < uint(outValues.length())) {
+		outValues[gid] = inValues[gid] * 2;
+	}
+}

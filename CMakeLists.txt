@@ -141,6 +141,12 @@ SET(CUBESWARM_SHADERS
     )
 SPOKK_APP(spokk-cubeswarm CUBESWARM_SOURCES CUBESWARM_HEADERS CUBESWARM_SHADERS)
 
+# spokk-compute
+SET(COMPUTE_SOURCES compute.cpp)
+SET(COMPUTE_HEADERS)
+SET(COMPUTE_SHADERS double_ints.comp)
+SPOKK_APP(spokk-compute COMPUTE_SOURCES COMPUTE_HEADERS COMPUTE_SHADERS)
+
 
 # Copy assets directory into build dir.
 # TODO(cort): Which target should this be attached to? Or hey, what if every sample knows what assets
