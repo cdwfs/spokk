@@ -398,7 +398,7 @@ VkResult Buffer::load(const DeviceContext& device_context, const void *src_data,
     std::unique_ptr<OneShotCommandPool> one_shot_cpool = my_make_unique<OneShotCommandPool>(device_context.device(),
       transfer_queue, transfer_queue_family, device_context.host_allocator());
     VkCommandBuffer cb = one_shot_cpool->allocate_and_begin();
-    if (data_size < 65536) {
+    if (data_size <= 65536) {
       vkCmdUpdateBuffer(cb, handle, dst_offset, data_size, reinterpret_cast<const uint8_t*>(src_data) + src_offset);
     } else {
       assert(0); // TODO(cort): staging buffer? Multiple vkCmdUpdateBuffers? Ignore for now, buffers are small.
