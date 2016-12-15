@@ -10,7 +10,7 @@
  *   cc -Wall -std=c89 -g -x c -DCDS_MESH_TEST -o test_cds_mesh.exe cds_mesh.h -lm
  *
  * For a unit test on Visual C++:
- *   "%VS120COMNTOOLS%\..\..\VC\vcvarsall.bat"
+ *   "%VS140COMNTOOLS%\..\..\VC\vcvarsall.bat"
  *   cl -W4 -nologo -TC -DCDS_MESH_TEST /Fetest_cds_mesh.exe cds_mesh.h
  * Debug-mode:
  *   cl -W4 -Od -Z7 -FC -MTd -nologo -TC -DCDS_MESH_TEST /Fetest_cds_mesh.exe cds_mesh.h
@@ -1562,8 +1562,8 @@ struct {\n\
     for(cdsm_s32 iVert=0; iVert<metadata->vertex_count; ++iVert)
     {
         cdsm__default_vertex_t temp_vertex = {};
-        cdsm_convert_vertex_buffer( (uint8_t*)vertices + iVert, &metadata->vertex_layout,
-            &temp_vertex, &cdsm__default_vertex_layout, 1);
+        cdsm_convert_vertex_buffer( (uint8_t*)vertices + iVert*metadata->vertex_layout.stride,
+            &metadata->vertex_layout, &temp_vertex, &cdsm__default_vertex_layout, 1);
 
         fprintf(f, "\t{\t{%.9ff, %.9ff, %.9ff},\n\t\t{%.9ff, %.9ff, %.9ff},\n\t\t{%.9ff, %.9ff} },\n",
             temp_vertex.position[0], temp_vertex.position[1], temp_vertex.position[2],
