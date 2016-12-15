@@ -508,7 +508,7 @@ const MeshFormat* MeshFormat::get_empty(VkPrimitiveTopology topology, VkBool32 e
   return &g_empty_mesh_formats[index];
 }
 
-void MeshFormat::finalize_format(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart) {
+void MeshFormat::finalize(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart) {
   vertex_input_state_ci = {};
   vertex_input_state_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
   vertex_input_state_ci.vertexBindingDescriptionCount = (uint32_t)vertex_buffer_bindings.size();
@@ -516,7 +516,7 @@ void MeshFormat::finalize_format(VkPrimitiveTopology topology, VkBool32 enable_p
   vertex_input_state_ci.vertexAttributeDescriptionCount = (uint32_t)vertex_attributes.size();
   vertex_input_state_ci.pVertexAttributeDescriptions = vertex_attributes.data();
   input_assembly_state_ci = {};
-  input_assembly_state_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+  input_assembly_state_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
   input_assembly_state_ci.topology = topology;
   input_assembly_state_ci.primitiveRestartEnable = enable_primitive_restart;
 }

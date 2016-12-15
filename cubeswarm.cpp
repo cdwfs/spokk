@@ -314,17 +314,18 @@ public:
     vkCmdSetScissor(cb, 0,1, &scissor_rect_);
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, fullscreen_pipeline_.handle);
     // TODO(cort): leaving these unbound did not trigger a validation warning...
-    vkCmdBindDescriptorSets (cb, VK_PIPELINE_BIND_POINT_GRAPHICS, post_shader_pipeline_.pipeline_layout,
+    vkCmdBindDescriptorSets (cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      fullscreen_pipeline_.shader_pipeline->pipeline_layout,
       0, 1, &dset_film_grain_, 0,nullptr);
     // Create push constants.
     // TODO(cort): this should be a per-vframe uniform buffer.
     struct {
       mathfu::vec4_packed time_and_res; // .x=seconds, .yz=dimensions, w=???
-    } push_constants = {};
-    push_constants.time_and_res = mathfu::vec4((float)seconds_elapsed_,
+    } post_push_constants = {};
+    post_push_constants.time_and_res = mathfu::vec4((float)seconds_elapsed_,
       viewport_.width, viewport_.height, 0);
     vkCmdPushConstants(cb, post_shader_pipeline_.pipeline_layout,
-      VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(mathfu::vec4), &push_constants);
+      VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(mathfu::vec4), &post_push_constants);
 
     vkCmdDraw(cb, 3, 1,0,0);
     vkCmdEndRenderPass(cb);

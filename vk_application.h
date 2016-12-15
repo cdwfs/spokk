@@ -277,7 +277,7 @@ struct MeshFormat {
   std::vector<VkVertexInputAttributeDescription> vertex_attributes;
   static const MeshFormat* get_empty(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart = VK_FALSE);
   // Call me after filling in attributes and bindings.
-  void finalize_format(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart = VK_FALSE);
+  void finalize(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart = VK_FALSE);
   VkPipelineVertexInputStateCreateInfo vertex_input_state_ci;  // used for graphics pipeline creation
   VkPipelineInputAssemblyStateCreateInfo input_assembly_state_ci;  // used for graphics pipeline creation
 };
