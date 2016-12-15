@@ -95,12 +95,14 @@ SET(SPOKK_HEADERS
     vk_debug.h
     vk_init.h
     vk_texture.h
+    vk_vertex.h
     )
 SET(SPOKK_SOURCES
     image_file.c
     vk_application.cpp
     vk_init.cpp
     vk_texture.cpp
+    vk_vertex.cpp
     )
 SET(SPOKK_LIB_NAME spokk)
 cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKK_HEADERS}" "${SPOKK_SOURCES}")
@@ -131,7 +133,6 @@ SET(CUBESWARM_SOURCES
     )
 SET(CUBESWARM_HEADERS
     camera.h
-    cds_mesh.h
     )
 SET(CUBESWARM_SHADERS
     tri.vert
