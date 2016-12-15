@@ -38,7 +38,7 @@ public:
     depth_image_ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     depth_image_ci.imageType = VK_IMAGE_TYPE_2D;
     depth_image_ci.format = VK_FORMAT_UNDEFINED; // filled in below
-    depth_image_ci.extent = {ci.window_width, ci.window_height, 1}; // TODO(cort): use actual swapchain extent instead of window dimensions
+    depth_image_ci.extent = {swapchain_extent_.width, swapchain_extent_.height, 1};
     depth_image_ci.mipLevels = 1;
     depth_image_ci.arrayLayers = 1;
     depth_image_ci.samples = VK_SAMPLE_COUNT_1_BIT;

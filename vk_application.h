@@ -445,7 +445,7 @@ public:
 
   struct CreateInfo {
     std::string app_name = "Spokk Application";
-    uint32_t window_width = 1920, window_height = 1080;
+    uint32_t window_width = 1280, window_height = 720;
     bool enable_graphics = true;  // TODO(cort): implement me! Skip window creation, swapchain, etc.
     bool enable_fullscreen = false;
     bool enable_validation = true;
