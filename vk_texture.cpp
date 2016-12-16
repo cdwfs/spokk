@@ -33,7 +33,7 @@ namespace {
       int32_t texel_block_bytes;
       int32_t texel_block_width;
       int32_t texel_block_height;
-      ImageFileDataFormat image_format;
+      ImageFileDataFormat image_format;  // primary key; g_format_attributes[img_fmt].image_format == img_fmt
       VkFormat vk_format;
     };
     const std::array<ImageFormatAttributes, IMAGE_FILE_DATA_FORMAT_COUNT> g_format_attributes = {{
