@@ -181,6 +181,8 @@ public:
     fullscreen_pipeline_.create(device_context_,
       MeshFormat::get_empty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
       &post_shader_pipeline_, &render_pass_, 1);
+    viewport_.x = 0;
+    viewport_.y = 0;
     viewport_.width  = (float)swapchain_extent_.width;
     viewport_.height = (float)swapchain_extent_.height;
     viewport_.minDepth = 0.0f;
