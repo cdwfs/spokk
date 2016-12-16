@@ -4,17 +4,30 @@
 #include "vk_texture.h"
 using namespace cdsvk;
 
+#include "camera.h"
+
 #include <mathfu/vector.h>
 #include <mathfu/glsl_mappings.h>
 
 #include <array>
 #include <cstdio>
+#include <memory>
 
 class CubeSwarmApp : public cdsvk::Application {
 public:
   explicit CubeSwarmApp(Application::CreateInfo &ci) :
       Application(ci) {
     seconds_elapsed_ = 0;
+
+    const float fovDegrees = 45.0f;
+    const float zNear = 0.01f;
+    const float zFar = 100.0f;
+    camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, fovDegrees, zNear, zFar);
+    const mathfu::vec3 initial_camera_pos(-1, 0, 6);
+    const mathfu::vec3 initial_camera_target(0, 0, 0);
+    const mathfu::vec3 initial_camera_up(0,1,0);
+    camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
+    dolly_ = my_make_unique<CameraDolly>(*camera_);
 
     // Retrieve queue handles
     const DeviceQueueContext *queue_context = device_context_.find_queue_context(VK_QUEUE_GRAPHICS_BIT, surface_);
@@ -259,6 +272,28 @@ public:
   virtual void update(double dt) override {
     Application::update(dt);
     seconds_elapsed_ += dt;
+
+    // Update camera
+    mathfu::vec3 impulse(0,0,0);
+    if (input_state_.GetDigital(InputState::DIGITAL_LPAD_UP)) {
+      impulse += camera_->getViewDirection() * 0.1f;
+    }
+    if (input_state_.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
+      impulse -= cross(camera_->getViewDirection(), camera_->getWorldUp()) * 0.1f;
+    }
+    if (input_state_.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
+      impulse -= camera_->getViewDirection() * 0.1f;
+    }
+    if (input_state_.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
+      impulse += cross(camera_->getViewDirection(), camera_->getWorldUp()) * 0.1f;
+    }
+
+    camera_->setOrientation(mathfu::quat::FromEulerAngles(mathfu::vec3(
+      -0.001f * input_state_.GetAnalog(InputState::ANALOG_MOUSE_Y),
+      -0.001f * input_state_.GetAnalog(InputState::ANALOG_MOUSE_X),
+      0)));
+    dolly_->Impulse(impulse);
+    dolly_->Update((float)dt);
   }
 
   virtual void render() override {
@@ -395,6 +430,9 @@ private:
 
   DescriptorPool dpool_;
   VkDescriptorSet dset_film_grain_;
+
+  std::unique_ptr<CameraPersp> camera_;
+  std::unique_ptr<CameraDolly> dolly_;
 };
 
 int main(int argc, char *argv[]) {
