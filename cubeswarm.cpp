@@ -291,7 +291,11 @@ public:
     cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     CDSVK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info) );
 
-    std::vector<VkClearValue> clear_values(render_pass_.attachment_descs.size());
+    // TODO(cort): spurious validation warning for unused clear value? Is that
+    // actually bad? What if attachments 0 and 2 must be cleared but not 1?
+    // Easy enough to work around in this case, just hard-code the array size.
+    //std::vector<VkClearValue> clear_values(render_pass_.attachment_descs.size());
+    std::vector<VkClearValue> clear_values(2);
     clear_values[0].color.float32[0] = 0.2f;
     clear_values[0].color.float32[1] = 0.2f;
     clear_values[0].color.float32[2] = 0.3f;
