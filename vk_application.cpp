@@ -147,6 +147,7 @@ DeviceContext::DeviceContext(VkDevice device, VkPhysicalDevice physical_device, 
     pipeline_cache_(pipeline_cache),
     host_allocator_(host_allocator),
     device_allocator_(device_allocator) {
+  vkGetPhysicalDeviceProperties(physical_device_, &device_properties_);
   vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
   queue_contexts_.insert(queue_contexts_.begin(), queue_contexts+0, queue_contexts+queue_context_count);
 }

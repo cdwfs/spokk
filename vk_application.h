@@ -172,7 +172,8 @@ struct DeviceQueueContext {
 class DeviceContext {
 public:
   DeviceContext() : device_(VK_NULL_HANDLE), physical_device_(VK_NULL_HANDLE), pipeline_cache_(VK_NULL_HANDLE),
-      host_allocator_(nullptr), device_allocator_(nullptr), queue_contexts_{} {
+      host_allocator_(nullptr), device_allocator_(nullptr), device_properties_{},
+      memory_properties_{}, queue_contexts_{} {
   }
   DeviceContext(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache, const DeviceQueueContext *queue_contexts, uint32_t queue_context_count,
       const VkAllocationCallbacks *host_allocator = nullptr, const DeviceAllocationCallbacks *device_allocator = nullptr);
@@ -183,6 +184,8 @@ public:
   VkPipelineCache pipeline_cache() const { return pipeline_cache_; }
   const VkAllocationCallbacks* host_allocator() const { return host_allocator_; }
   const DeviceAllocationCallbacks *device_allocator() const { return device_allocator_; }
+
+  const VkPhysicalDeviceProperties& device_properties() const { return device_properties_; }
 
   const DeviceQueueContext* find_queue_context(VkQueueFlags queue_flags, VkSurfaceKHR present_surface = VK_NULL_HANDLE) const;
 
@@ -210,6 +213,7 @@ private:
   const VkAllocationCallbacks* host_allocator_;
   const DeviceAllocationCallbacks *device_allocator_;
 
+  VkPhysicalDeviceProperties device_properties_;
   VkPhysicalDeviceMemoryProperties memory_properties_;
   std::vector<DeviceQueueContext> queue_contexts_;
 };
