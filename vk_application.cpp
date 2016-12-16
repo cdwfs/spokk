@@ -43,6 +43,10 @@ VKAPI_ATTR VkBool32 VKAPI_CALL my_debug_report_callback(VkFlags msgFlags,
     sprintf(message, "ERROR: [%s] Code %d : %s", pLayerPrefix, msgCode, pMsg);
   } else if (msgFlags & VK_DEBUG_REPORT_WARNING_BIT_EXT) {
     sprintf(message, "WARNING: [%s] Code %d : %s", pLayerPrefix, msgCode, pMsg);
+  } else if (msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT) {
+    sprintf(message, "INFO: [%s] Code %d : %s", pLayerPrefix, msgCode, pMsg);
+  } else if (msgFlags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) {
+    sprintf(message, "PERFORMANCE WARNING: [%s] Code %d : %s", pLayerPrefix, msgCode, pMsg);
   } else {
     return VK_FALSE;
   }
@@ -1292,8 +1296,8 @@ Application::Application(const CreateInfo &ci) {
     debug_report_callback_ci.flags = 0  // TODO(cort): pass these in!
       | VK_DEBUG_REPORT_ERROR_BIT_EXT
       | VK_DEBUG_REPORT_WARNING_BIT_EXT
-      | VK_DEBUG_REPORT_INFORMATION_BIT_EXT
-      | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT
+      // | VK_DEBUG_REPORT_INFORMATION_BIT_EXT
+      // | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT
       ;
     debug_report_callback_ci.pfnCallback = my_debug_report_callback;
     debug_report_callback_ci.pUserData = nullptr;
