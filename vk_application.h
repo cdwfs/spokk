@@ -288,7 +288,7 @@ struct MeshFormat {
 
 struct DescriptorSetLayoutBindingInfo {
   // The name of each binding in a given shader stage. Purely for debugging.
-  std::vector< std::tuple<VkShaderStageFlagBits, const std::string> > stage_names;
+  std::vector< std::tuple<VkShaderStageFlagBits, std::string> > stage_names;
 };
 struct DescriptorSetLayoutInfo {
   std::vector<VkDescriptorSetLayoutBinding> bindings;
@@ -312,16 +312,14 @@ struct Shader {
   VkPushConstantRange push_constant_range;  // range.size = 0 means this stage doesn't use push constants.
 };
 
-struct ShaderPipelineEntry {
-  const Shader *shader;
-  const char *entry_point;  // if NULL, entry point is assumed to be "main"
-};
-
 struct ShaderPipeline {
   ShaderPipeline() : dset_layout_cis{}, dset_layout_infos{}, push_constant_ranges{}, shader_stage_cis{},
       entry_point_names{}, pipeline_layout(VK_NULL_HANDLE), dset_layouts{}, active_stages(0) {
   }
-  VkResult create(const DeviceContext& device_context, const std::vector<ShaderPipelineEntry>& shader_entries);
+  VkResult add_shader(const Shader *shader, const char *entry_point = "main");
+  static VkResult force_compatible_layouts_and_finalize(const DeviceContext& device_context,
+    const std::vector<ShaderPipeline*> pipelines);
+  VkResult finalize(const DeviceContext& device_context);
   void destroy(const DeviceContext& device_context);
 
   std::vector<VkDescriptorSetLayoutCreateInfo> dset_layout_cis; // one per dset

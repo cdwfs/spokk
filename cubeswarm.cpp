@@ -170,17 +170,16 @@ public:
       CDSVK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, allocation_callbacks_, &framebuffers_[i]));
     }
 
-    // Load shaders
+    // Load shader pipelines
     CDSVK_CHECK(fullscreen_tri_vs_.create_and_load(device_context_, "fullscreen.vert.spv"));
     CDSVK_CHECK(post_filmgrain_fs_.create_and_load(device_context_, "subpass_post.frag.spv"));
-    CDSVK_CHECK(post_shader_pipeline_.create(device_context_, {
-      {&fullscreen_tri_vs_, "main"},
-      {&post_filmgrain_fs_, "main"},
-    }));
+    CDSVK_CHECK(post_shader_pipeline_.add_shader(&fullscreen_tri_vs_));
+    CDSVK_CHECK(post_shader_pipeline_.add_shader(&post_filmgrain_fs_));
+    CDSVK_CHECK(post_shader_pipeline_.finalize(device_context_));
 
-    fullscreen_pipeline_.create(device_context_,
+    CDSVK_CHECK(fullscreen_pipeline_.create(device_context_,
       MeshFormat::get_empty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-      &post_shader_pipeline_, &render_pass_, 1);
+      &post_shader_pipeline_, &render_pass_, 1));
     viewport_.x = 0;
     viewport_.y = 0;
     viewport_.width  = (float)swapchain_extent_.width;

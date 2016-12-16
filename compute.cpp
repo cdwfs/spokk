@@ -51,9 +51,8 @@ public:
 
     // Load shaders
     CDSVK_CHECK(double_ints_cs_.create_and_load(device_context_, "double_ints.comp.spv"));
-    CDSVK_CHECK(compute_shader_pipeline_.create(device_context_, {
-      {&double_ints_cs_, "main"},
-    }));
+    CDSVK_CHECK(compute_shader_pipeline_.add_shader(&double_ints_cs_, "main"));
+    CDSVK_CHECK(compute_shader_pipeline_.finalize(device_context_));
 
     compute_pipeline_.create(device_context_, &compute_shader_pipeline_);
 
