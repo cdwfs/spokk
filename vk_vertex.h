@@ -2,8 +2,8 @@
 
 #include <vulkan/vulkan.h>
 
-#include <array>
 #include <cstdint>
+#include <vector>
 
 namespace cdsvk {
 
@@ -14,11 +14,10 @@ struct VertexAttributeInfo
   VkFormat format;
 };
 
-constexpr uint32_t MAX_VERTEX_ATTRIBUTE_COUNT = 16;
 struct VertexLayout
 {
   uint32_t stride;
-  std::array<VertexAttributeInfo, MAX_VERTEX_ATTRIBUTE_COUNT> attributes;
+  std::vector<VertexAttributeInfo> attributes;
 };
 
 int convert_vertex_buffer(const void *src_vertices, const VertexLayout& src_layout,

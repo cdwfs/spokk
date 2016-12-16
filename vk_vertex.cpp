@@ -1,6 +1,7 @@
 #include "vk_vertex.h"
 using namespace cdsvk;
 
+#include <array>
 #include <assert.h>
 #include <math.h>
 
@@ -11,7 +12,7 @@ namespace {
   }
   template<typename T>
   T my_max(T x, T y) {
-    return (x > y) ? y : x;
+    return (x > y) ? x : y;
   }
 
   struct AttributeFormatInfo
