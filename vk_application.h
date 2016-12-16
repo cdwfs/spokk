@@ -286,6 +286,15 @@ struct MeshFormat {
   VkPipelineInputAssemblyStateCreateInfo input_assembly_state_ci;  // used for graphics pipeline creation
 };
 
+// TODO(cort): better abstraction. create/destroy functions?
+struct Mesh {
+  std::vector<Buffer> vertex_buffers;
+  const MeshFormat* mesh_format;
+  Buffer index_buffer;
+  VkIndexType index_type;
+  uint32_t index_count;
+};
+
 struct DescriptorSetLayoutBindingInfo {
   // The name of each binding in a given shader stage. Purely for debugging.
   std::vector< std::tuple<VkShaderStageFlagBits, std::string> > stage_names;

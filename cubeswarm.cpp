@@ -2,6 +2,7 @@
 #include "vk_debug.h"
 #include "vk_init.h"
 #include "vk_texture.h"
+#include "vk_vertex.h"
 using namespace cdsvk;
 
 #include "camera.h"
@@ -12,6 +13,53 @@ using namespace cdsvk;
 #include <array>
 #include <cstdio>
 #include <memory>
+
+namespace {
+constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
+
+/* Primitive type is TRIANGLE_LIST */
+static const int mesh_vertex_count = 24;
+static const int mesh_index_count = 36;
+static const struct {
+  float position[3];
+  float normal[3];
+  float texcoord[2];
+} mesh_vertices[24] = {
+  { {0.2f, -0.2f, 0.2f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f} },
+  { {0.2f, -0.2f, -0.2f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f} },
+  { {0.2f, 0.2f, 0.2f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f} },
+  { {0.2f, 0.2f, -0.2f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f} },
+  { {-0.2f, -0.2f, -0.2f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f} },
+  { {-0.2f, -0.2f, 0.2f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f} },
+  { {-0.2f, 0.2f, -0.2f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f} },
+  { {-0.2f, 0.2f, 0.2f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f} },
+  { {-0.2f, 0.2f, 0.2f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f} },
+  { {0.2f, 0.2f, 0.2f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f} },
+  { {-0.2f, 0.2f, -0.2f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f} },
+  { {0.2f, 0.2f, -0.2f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f} },
+  { {-0.2f, -0.2f, -0.2f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f} },
+  { {0.2f, -0.2f, -0.2f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f} },
+  { {-0.2f, -0.2f, 0.2f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f} },
+  { {0.2f, -0.2f, 0.2f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f} },
+  { {-0.2f, -0.2f, 0.2f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f} },
+  { {0.2f, -0.2f, 0.2f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f} },
+  { {-0.2f, 0.2f, 0.2f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f} },
+  { {0.2f, 0.2f, 0.2f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f} },
+  { {0.2f, -0.2f, -0.2f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f} },
+  { {-0.2f, -0.2f, -0.2f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f} },
+  { {0.2f, 0.2f, -0.2f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f} },
+  { {-0.2f, 0.2f, -0.2f}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f} },
+};
+static const uint32_t mesh_indices[36] = {
+  0,  1,  2,    2,  1,  3,
+  4,  5,  6,    6,  5,  7,
+  8,  9, 10,   10,  9, 11,
+  12, 13, 14,   14, 13, 15,
+  16, 17, 18,   18, 17, 19,
+  20, 21, 22,   22, 21, 23,
+};
+
+}  // namespace
 
 class CubeSwarmApp : public cdsvk::Application {
 public:
@@ -183,16 +231,106 @@ public:
       CDSVK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, allocation_callbacks_, &framebuffers_[i]));
     }
 
+    // Load textures and samplers
+    VkSamplerCreateInfo sampler_ci = get_sampler_ci(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    CDSVK_CHECK(vkCreateSampler(device_, &sampler_ci, allocation_callbacks_, &sampler_));
+    texture_loader_ = my_make_unique<TextureLoader>(device_context_);
+    albedo_tex_.create_and_load(device_context_, *texture_loader_.get(), "trevor/redf.ktx");
+
     // Load shader pipelines
+    CDSVK_CHECK(mesh_vs_.create_and_load(device_context_, "tri.vert.spv"));
+    CDSVK_CHECK(mesh_fs_.create_and_load(device_context_, "tri.frag.spv"));
+    // TODO(cort): find a better way to override specific buffers as dynamic in shader pipelines.
+    // For now it's safe to just poke the new type into the Shader's layout info, before ShaderPipeline creation.
+    mesh_vs_.dset_layout_infos[0].bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    CDSVK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_vs_));
+    CDSVK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_fs_));
+
     CDSVK_CHECK(fullscreen_tri_vs_.create_and_load(device_context_, "fullscreen.vert.spv"));
     CDSVK_CHECK(post_filmgrain_fs_.create_and_load(device_context_, "subpass_post.frag.spv"));
     CDSVK_CHECK(post_shader_pipeline_.add_shader(&fullscreen_tri_vs_));
     CDSVK_CHECK(post_shader_pipeline_.add_shader(&post_filmgrain_fs_));
-    CDSVK_CHECK(post_shader_pipeline_.finalize(device_context_));
+
+    CDSVK_CHECK(ShaderPipeline::force_compatible_layouts_and_finalize(device_context_,
+      {&mesh_shader_pipeline_, &post_shader_pipeline_}));
+
+    // Populate Mesh object
+    mesh_.index_type = (sizeof(mesh_indices[0]) == sizeof(uint32_t)) ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
+    mesh_.index_count = mesh_index_count;
+
+    VkBufferCreateInfo index_buffer_ci = {};
+    index_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    index_buffer_ci.size = mesh_index_count * sizeof(mesh_indices[0]);
+    index_buffer_ci.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    CDSVK_CHECK(mesh_.index_buffer.create(device_context_, index_buffer_ci));
+    CDSVK_CHECK(mesh_.index_buffer.load(device_context_, mesh_indices, index_buffer_ci.size));
+
+    // TODO(cort): automate this somehow; too much hard-coding going on here.
+    VertexLayout vertex_layout;
+    vertex_layout.stride = (3+3+2) * sizeof(float);
+    vertex_layout.attributes ={
+      {0,  0, VK_FORMAT_R32G32B32_SFLOAT},
+      {1, 12, VK_FORMAT_R32G32B32_SFLOAT},
+      {2, 24, VK_FORMAT_R32G32_SFLOAT},
+    };
+    mesh_format_.vertex_buffer_bindings.resize(1);
+    mesh_format_.vertex_buffer_bindings[0].binding = 0;
+    mesh_format_.vertex_buffer_bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    mesh_format_.vertex_buffer_bindings[0].stride = vertex_layout.stride;
+    mesh_format_.vertex_attributes.resize(vertex_layout.attributes.size());
+    mesh_format_.vertex_attributes[0].binding = 0;
+    mesh_format_.vertex_attributes[0].location = 0;
+    mesh_format_.vertex_attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    mesh_format_.vertex_attributes[0].offset = vertex_layout.attributes[0].offset;
+    mesh_format_.vertex_attributes[1].binding = 0;
+    mesh_format_.vertex_attributes[1].location = 1;
+    mesh_format_.vertex_attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    mesh_format_.vertex_attributes[1].offset = vertex_layout.attributes[1].offset;
+    mesh_format_.vertex_attributes[2].binding = 0;
+    mesh_format_.vertex_attributes[2].location = 2;
+    mesh_format_.vertex_attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
+    mesh_format_.vertex_attributes[2].offset = vertex_layout.attributes[2].offset;
+    mesh_format_.finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    mesh_.mesh_format = &mesh_format_;
+
+    VkBufferCreateInfo vertex_buffer_ci = {};
+    vertex_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    vertex_buffer_ci.size = mesh_vertex_count * vertex_layout.stride;
+    vertex_buffer_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    mesh_.vertex_buffers.resize(1);
+    CDSVK_CHECK(mesh_.vertex_buffers[0].create(device_context_, vertex_buffer_ci));
+    CDSVK_CHECK(mesh_.vertex_buffers[0].load(device_context_, mesh_vertices, vertex_buffer_ci.size));
+
+    // Create buffer of per-mesh object-to-world matrices.
+    // TODO(cort): It may be worth creating an abstraction for N-buffered resources.
+    const VkDeviceSize uniform_buffer_vframe_size = MESH_INSTANCE_COUNT * sizeof(mathfu::mat4);
+    VkBufferCreateInfo o2w_buffer_ci = {};
+    o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    o2w_buffer_ci.size = uniform_buffer_vframe_size * VFRAME_COUNT;
+    o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    CDSVK_CHECK(mesh_uniforms_.create(device_context_, o2w_buffer_ci));
+
+    CDSVK_CHECK(mesh_pipeline_.create(device_context_, mesh_.mesh_format, &mesh_shader_pipeline_, &render_pass_, 0));
 
     CDSVK_CHECK(fullscreen_pipeline_.create(device_context_,
       MeshFormat::get_empty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
       &post_shader_pipeline_, &render_pass_, 1));
+    // because the pipelines use a compatible layout, we can just add room for one full layout.
+    dpool_.add((uint32_t)mesh_shader_pipeline_.dset_layout_cis.size(), mesh_shader_pipeline_.dset_layout_cis.data());
+
+    // TODO(cort): hmm, how to deal with multiple shader pipelines having overlapping (but compatible)
+    // dset layouts and push constant ranges? For now, just keep them separated.
+    CDSVK_CHECK(dpool_.finalize(device_context_));
+    dset_ = dpool_.allocate_set(device_context_, mesh_shader_pipeline_.dset_layouts[0]);
+    DescriptorSetWriter dset_writer(mesh_shader_pipeline_.dset_layout_cis[0]);
+    dset_writer.bind_buffer(mesh_uniforms_.handle, 0, VK_WHOLE_SIZE, 0);
+    dset_writer.bind_image(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 1);
+    dset_writer.bind_image(offscreen_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, 2, 0);
+    dset_writer.write_all_to_dset(device_context_, dset_);
+
     viewport_.x = 0;
     viewport_.y = 0;
     viewport_.width  = (float)swapchain_extent_.width;
@@ -203,19 +341,6 @@ public:
     scissor_rect_.extent.height = swapchain_extent_.height;
     scissor_rect_.offset.x = 0;
     scissor_rect_.offset.y = 0;
-
-    dpool_.add((uint32_t)post_shader_pipeline_.dset_layout_cis.size(), post_shader_pipeline_.dset_layout_cis.data());
-    CDSVK_CHECK(dpool_.finalize(device_context_));
-    dset_film_grain_ = dpool_.allocate_set(device_context_, post_shader_pipeline_.dset_layouts[0]);
-    DescriptorSetWriter dset_writer(post_shader_pipeline_.dset_layout_cis[0]);
-    dset_writer.bind_image(offscreen_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, 2, 0);
-    dset_writer.write_all_to_dset(device_context_, dset_film_grain_);
-
-    // Load textures and samplers
-    VkSamplerCreateInfo sampler_ci = get_sampler_ci(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
-    CDSVK_CHECK(vkCreateSampler(device_, &sampler_ci, allocation_callbacks_, &sampler_));
-    texture_loader_ = my_make_unique<TextureLoader>(device_context_);
-    albedo_tex_.create_and_load(device_context_, *texture_loader_.get(), "trevor/redf.ktx");
 
     // Create the semaphores used to synchronize access to swapchain images
     VkSemaphoreCreateInfo semaphore_ci = {};
@@ -238,7 +363,18 @@ public:
 
       dpool_.destroy(device_context_);
 
+      mesh_uniforms_.destroy(device_context_);
+
+      // TODO(cort): automate!
+      mesh_.index_buffer.destroy(device_context_);
+      mesh_.vertex_buffers[0].destroy(device_context_);
+
       fullscreen_pipeline_.destroy(device_context_);
+
+      mesh_vs_.destroy(device_context_);
+      mesh_fs_.destroy(device_context_);
+      mesh_shader_pipeline_.destroy(device_context_);
+      mesh_pipeline_.destroy(device_context_);
 
       post_shader_pipeline_.destroy(device_context_);
       fullscreen_tri_vs_.destroy(device_context_);
@@ -294,6 +430,28 @@ public:
       0)));
     dolly_->Impulse(impulse);
     dolly_->Update((float)dt);
+
+    // Update object-to-world matrices.
+    const float secs = (float)seconds_elapsed_;
+    std::array<mathfu::mat4, MESH_INSTANCE_COUNT*4> o2w_matrices;
+    const mathfu::vec3 swarm_center(0, 0, -2);
+    for(int iMesh=0; iMesh<MESH_INSTANCE_COUNT; ++iMesh) {
+      mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(0,1,0));
+      mathfu::mat4 o2w = mathfu::mat4::Identity()
+        * mathfu::mat4::FromTranslationVector(mathfu::vec3(
+          4.0f * cosf((1.0f+0.001f*iMesh) * 0.2f * secs + float(149*iMesh) + 0.0f) + swarm_center[0],
+          2.5f * sinf(0.3f * secs + float(13*iMesh) + 5.0f) + swarm_center[1],
+          3.0f * sinf(0.05f * secs + float(51*iMesh) + 2.0f) + swarm_center[2]
+        ))
+        * q.ToMatrix4()
+        //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
+        ;
+      o2w_matrices[iMesh] = o2w;
+    }
+    // TODO(cort): lean this up when I figure out a good abstraction for N-buffered resources.
+    // Specifically, dynamic uniform buffers are currently an issue.
+    mesh_uniforms_.load(device_context_, o2w_matrices.data(), MESH_INSTANCE_COUNT * sizeof(mathfu::mat4),
+      0, MESH_INSTANCE_COUNT * sizeof(mathfu::mat4) * vframe_index_);
   }
 
   virtual void render() override {
@@ -348,25 +506,50 @@ public:
     render_pass_begin_info.pClearValues = clear_values.data();
 
     vkCmdBeginRenderPass(cb, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-    // subpass 0 is just to clear the offscreen color buffer
-    vkCmdNextSubpass(cb, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
     vkCmdSetViewport(cb, 0,1, &viewport_);
     vkCmdSetScissor(cb, 0,1, &scissor_rect_);
-    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, fullscreen_pipeline_.handle);
+    uint32_t dynamic_uniform_offset = MESH_INSTANCE_COUNT * sizeof(mathfu::mat4) * vframe_index_;
     // TODO(cort): leaving these unbound did not trigger a validation warning...
-    vkCmdBindDescriptorSets (cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      fullscreen_pipeline_.shader_pipeline->pipeline_layout,
-      0, 1, &dset_film_grain_, 0,nullptr);
-    // Create push constants.
-    // TODO(cort): this should be a per-vframe uniform buffer.
+    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      mesh_pipeline_.shader_pipeline->pipeline_layout,
+      0, 1, &dset_, 1, &dynamic_uniform_offset);
     struct {
-      mathfu::vec4_packed time_and_res; // .x=seconds, .yz=dimensions, w=???
-    } post_push_constants = {};
-    post_push_constants.time_and_res = mathfu::vec4((float)seconds_elapsed_,
+      mathfu::vec4_packed time_and_res;
+      mathfu::vec4_packed eye;
+      mathfu::mat4 viewproj;
+    } push_constants = {};
+    push_constants.time_and_res = mathfu::vec4((float)seconds_elapsed_,
       viewport_.width, viewport_.height, 0);
-    vkCmdPushConstants(cb, post_shader_pipeline_.pipeline_layout,
-      VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(mathfu::vec4), &post_push_constants);
+    push_constants.eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
+    mathfu::mat4 w2v = camera_->getViewMatrix();
+    const mathfu::mat4 proj = camera_->getProjectionMatrix();
+    const mathfu::mat4 clip_fixup(
+      +1.0f, +0.0f, +0.0f, +0.0f,
+      +0.0f, -1.0f, +0.0f, +0.0f,
+      +0.0f, +0.0f, +0.5f, +0.5f,
+      +0.0f, +0.0f, +0.0f, +1.0f);
+    const mathfu::mat4 viewproj = clip_fixup * proj * w2v;
+    push_constants.viewproj = viewproj;
+    vkCmdPushConstants(cb, mesh_pipeline_.shader_pipeline->pipeline_layout,
+      mesh_pipeline_.shader_pipeline->push_constant_ranges[0].stageFlags,
+      mesh_pipeline_.shader_pipeline->push_constant_ranges[0].offset,
+      mesh_pipeline_.shader_pipeline->push_constant_ranges[0].size,
+      &push_constants);
+    const VkDeviceSize vertex_buffer_offsets[1] = {};
+    vkCmdBindVertexBuffers(cb, 0,1, &mesh_.vertex_buffers[0].handle, vertex_buffer_offsets);
+    const VkDeviceSize index_buffer_offset = 0;
+    vkCmdBindIndexBuffer(cb, mesh_.index_buffer.handle, index_buffer_offset, mesh_.index_type);
+    vkCmdDrawIndexed(cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0,0,0);
 
+    vkCmdNextSubpass(cb, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, fullscreen_pipeline_.handle);
+    vkCmdSetViewport(cb, 0,1, &viewport_);
+    vkCmdSetScissor(cb, 0,1, &scissor_rect_);
+    //VkBuffer no_buffer = VK_NULL_HANDLE;
+    //VkDeviceSize no_offset = 0;
+    //vkCmdBindVertexBuffers(cb, 0, 1, &no_buffer, &no_offset);
+    // TODO: performance warning for having unused vertex buffers bound here, but how do I unbind them?
     vkCmdDraw(cb, 3, 1,0,0);
     vkCmdEndRenderPass(cb);
 
@@ -421,15 +604,23 @@ private:
   Image albedo_tex_;
   VkSampler sampler_;
 
+  Shader mesh_vs_, mesh_fs_;
+  ShaderPipeline mesh_shader_pipeline_;
+  GraphicsPipeline mesh_pipeline_;
+
   Shader fullscreen_tri_vs_, post_filmgrain_fs_;
   ShaderPipeline post_shader_pipeline_;
-
   GraphicsPipeline fullscreen_pipeline_;
+
   VkViewport viewport_;
   VkRect2D scissor_rect_;
 
   DescriptorPool dpool_;
-  VkDescriptorSet dset_film_grain_;
+  VkDescriptorSet dset_;
+
+  MeshFormat mesh_format_;
+  Mesh mesh_;
+  Buffer mesh_uniforms_;
 
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDolly> dolly_;
