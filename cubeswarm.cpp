@@ -6,6 +6,7 @@
 using namespace cdsvk;
 
 #include "camera.h"
+#include "cube_mesh.h"
 
 #include <mathfu/vector.h>
 #include <mathfu/glsl_mappings.h>
@@ -16,49 +17,6 @@ using namespace cdsvk;
 
 namespace {
 constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
-
-/* Primitive type is TRIANGLE_LIST */
-static const int mesh_vertex_count = 24;
-static const int mesh_index_count = 36;
-static const struct {
-  float position[3];
-  float normal[3];
-  float texcoord[2];
-} mesh_vertices[24] = {
-  { {0.2f, -0.2f, 0.2f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f} },
-  { {0.2f, -0.2f, -0.2f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f} },
-  { {0.2f, 0.2f, 0.2f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f} },
-  { {0.2f, 0.2f, -0.2f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f} },
-  { {-0.2f, -0.2f, -0.2f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f} },
-  { {-0.2f, -0.2f, 0.2f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f} },
-  { {-0.2f, 0.2f, -0.2f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f} },
-  { {-0.2f, 0.2f, 0.2f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f} },
-  { {-0.2f, 0.2f, 0.2f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f} },
-  { {0.2f, 0.2f, 0.2f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f} },
-  { {-0.2f, 0.2f, -0.2f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f} },
-  { {0.2f, 0.2f, -0.2f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f} },
-  { {-0.2f, -0.2f, -0.2f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f} },
-  { {0.2f, -0.2f, -0.2f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f} },
-  { {-0.2f, -0.2f, 0.2f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f} },
-  { {0.2f, -0.2f, 0.2f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f} },
-  { {-0.2f, -0.2f, 0.2f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f} },
-  { {0.2f, -0.2f, 0.2f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f} },
-  { {-0.2f, 0.2f, 0.2f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f} },
-  { {0.2f, 0.2f, 0.2f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f} },
-  { {0.2f, -0.2f, -0.2f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f} },
-  { {-0.2f, -0.2f, -0.2f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f} },
-  { {0.2f, 0.2f, -0.2f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f} },
-  { {-0.2f, 0.2f, -0.2f}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f} },
-};
-static const uint32_t mesh_indices[36] = {
-  0,  1,  2,    2,  1,  3,
-  4,  5,  6,    6,  5,  7,
-  8,  9, 10,   10,  9, 11,
-  12, 13, 14,   14, 13, 15,
-  16, 17, 18,   18, 17, 19,
-  20, 21, 22,   22, 21, 23,
-};
-
 }  // namespace
 
 class CubeSwarmApp : public cdsvk::Application {
@@ -255,16 +213,16 @@ public:
       {&mesh_shader_pipeline_, &post_shader_pipeline_}));
 
     // Populate Mesh object
-    mesh_.index_type = (sizeof(mesh_indices[0]) == sizeof(uint32_t)) ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
-    mesh_.index_count = mesh_index_count;
+    mesh_.index_type = (sizeof(cube_indices[0]) == sizeof(uint32_t)) ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
+    mesh_.index_count = cube_index_count;
 
     VkBufferCreateInfo index_buffer_ci = {};
     index_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    index_buffer_ci.size = mesh_index_count * sizeof(mesh_indices[0]);
+    index_buffer_ci.size = cube_index_count * sizeof(cube_indices[0]);
     index_buffer_ci.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     CDSVK_CHECK(mesh_.index_buffer.create(device_context_, index_buffer_ci));
-    CDSVK_CHECK(mesh_.index_buffer.load(device_context_, mesh_indices, index_buffer_ci.size));
+    CDSVK_CHECK(mesh_.index_buffer.load(device_context_, cube_indices, index_buffer_ci.size));
 
     // Describe the mesh format.
     mesh_format_.vertex_buffer_bindings = {
@@ -280,7 +238,7 @@ public:
 
     VkBufferCreateInfo vertex_buffer_ci = {};
     vertex_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    vertex_buffer_ci.size = mesh_vertex_count * mesh_format_.vertex_buffer_bindings[0].stride;
+    vertex_buffer_ci.size = cube_vertex_count * mesh_format_.vertex_buffer_bindings[0].stride;
     vertex_buffer_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     mesh_.vertex_buffers.resize(1);
@@ -294,8 +252,8 @@ public:
     };
     const VertexLayout final_vertex_layout(mesh_format_, 0);
     std::vector<uint8_t> final_mesh_vertices(vertex_buffer_ci.size);
-    int convert_error = convert_vertex_buffer(mesh_vertices, src_vertex_layout,
-      final_mesh_vertices.data(), final_vertex_layout, mesh_vertex_count);
+    int convert_error = convert_vertex_buffer(cube_vertices, src_vertex_layout,
+      final_mesh_vertices.data(), final_vertex_layout, cube_vertex_count);
     assert(convert_error == 0);
     (void)convert_error;
     CDSVK_CHECK(mesh_.vertex_buffers[0].load(device_context_, final_mesh_vertices.data(), vertex_buffer_ci.size));
