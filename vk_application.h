@@ -457,10 +457,16 @@ public:
   struct CreateInfo {
     std::string app_name = "Spokk Application";
     uint32_t window_width = 1280, window_height = 720;
-    bool enable_graphics = true;  // TODO(cort): implement me! Skip window creation, swapchain, etc.
+    bool enable_graphics = true;
     bool enable_fullscreen = false;
     bool enable_validation = true;
     bool enable_vsync = true;
+    VkDebugReportFlagsEXT debug_report_flags = 
+#ifdef NDEBUG
+      0;
+#else
+      VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+#endif
     std::vector<QueueFamilyRequest> queue_family_requests;
   };
 

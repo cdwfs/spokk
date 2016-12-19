@@ -1414,12 +1414,7 @@ Application::Application(const CreateInfo &ci) {
   if (is_instance_extension_enabled(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
     VkDebugReportCallbackCreateInfoEXT debug_report_callback_ci = {};
     debug_report_callback_ci.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
-    debug_report_callback_ci.flags = 0  // TODO(cort): pass these in!
-      | VK_DEBUG_REPORT_ERROR_BIT_EXT
-      | VK_DEBUG_REPORT_WARNING_BIT_EXT
-      // | VK_DEBUG_REPORT_INFORMATION_BIT_EXT
-      // | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT
-      ;
+    debug_report_callback_ci.flags = ci.debug_report_flags;
     debug_report_callback_ci.pfnCallback = my_debug_report_callback;
     debug_report_callback_ci.pUserData = nullptr;
     auto create_debug_report_func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_,
