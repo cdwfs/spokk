@@ -266,42 +266,39 @@ public:
     CDSVK_CHECK(mesh_.index_buffer.create(device_context_, index_buffer_ci));
     CDSVK_CHECK(mesh_.index_buffer.load(device_context_, mesh_indices, index_buffer_ci.size));
 
-    // TODO(cort): automate this somehow; too much hard-coding going on here.
-    VertexLayout vertex_layout;
-    vertex_layout.stride = (3+3+2) * sizeof(float);
-    vertex_layout.attributes ={
-      {0,  0, VK_FORMAT_R32G32B32_SFLOAT},
-      {1, 12, VK_FORMAT_R32G32B32_SFLOAT},
-      {2, 24, VK_FORMAT_R32G32_SFLOAT},
+    // Describe the mesh format.
+    mesh_format_.vertex_buffer_bindings = {
+      {0, 3+3+4, VK_VERTEX_INPUT_RATE_VERTEX},
     };
-    mesh_format_.vertex_buffer_bindings.resize(1);
-    mesh_format_.vertex_buffer_bindings[0].binding = 0;
-    mesh_format_.vertex_buffer_bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    mesh_format_.vertex_buffer_bindings[0].stride = vertex_layout.stride;
-    mesh_format_.vertex_attributes.resize(vertex_layout.attributes.size());
-    mesh_format_.vertex_attributes[0].binding = 0;
-    mesh_format_.vertex_attributes[0].location = 0;
-    mesh_format_.vertex_attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    mesh_format_.vertex_attributes[0].offset = vertex_layout.attributes[0].offset;
-    mesh_format_.vertex_attributes[1].binding = 0;
-    mesh_format_.vertex_attributes[1].location = 1;
-    mesh_format_.vertex_attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    mesh_format_.vertex_attributes[1].offset = vertex_layout.attributes[1].offset;
-    mesh_format_.vertex_attributes[2].binding = 0;
-    mesh_format_.vertex_attributes[2].location = 2;
-    mesh_format_.vertex_attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
-    mesh_format_.vertex_attributes[2].offset = vertex_layout.attributes[2].offset;
+    mesh_format_.vertex_attributes = {
+      {0, 0, VK_FORMAT_R8G8B8_SNORM, 0},
+      {1, 0, VK_FORMAT_R8G8B8_SNORM, 3},
+      {2, 0, VK_FORMAT_R16G16_SFLOAT, 6},
+    };
     mesh_format_.finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     mesh_.mesh_format = &mesh_format_;
 
     VkBufferCreateInfo vertex_buffer_ci = {};
     vertex_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    vertex_buffer_ci.size = mesh_vertex_count * vertex_layout.stride;
+    vertex_buffer_ci.size = mesh_vertex_count * mesh_format_.vertex_buffer_bindings[0].stride;
     vertex_buffer_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     mesh_.vertex_buffers.resize(1);
     CDSVK_CHECK(mesh_.vertex_buffers[0].create(device_context_, vertex_buffer_ci));
-    CDSVK_CHECK(mesh_.vertex_buffers[0].load(device_context_, mesh_vertices, vertex_buffer_ci.size));
+    // Convert the vertex data from its original uncompressed format to its final format.
+    // In a real application, this conversion would happen at asset build time.
+    const VertexLayout src_vertex_layout = {
+      {0, VK_FORMAT_R32G32B32_SFLOAT, 0},
+      {1, VK_FORMAT_R32G32B32_SFLOAT, 12},
+      {2, VK_FORMAT_R32G32_SFLOAT, 24},
+    };
+    const VertexLayout final_vertex_layout(mesh_format_, 0);
+    std::vector<uint8_t> final_mesh_vertices(vertex_buffer_ci.size);
+    int convert_error = convert_vertex_buffer(mesh_vertices, src_vertex_layout,
+      final_mesh_vertices.data(), final_vertex_layout, mesh_vertex_count);
+    assert(convert_error == 0);
+    (void)convert_error;
+    CDSVK_CHECK(mesh_.vertex_buffers[0].load(device_context_, final_mesh_vertices.data(), vertex_buffer_ci.size));
 
     // Create buffer of per-mesh object-to-world matrices.
     // TODO(cort): It may be worth creating an abstraction for N-buffered resources.

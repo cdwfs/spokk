@@ -88,11 +88,12 @@ namespace {
         low = mid;
       }
     }
+    // Not found! Return the UNDEFINED entry.
     assert(format_info_lut[0].format == VK_FORMAT_UNDEFINED);
     return format_info_lut[0];
   }
   bool is_valid_attribute_format(VkFormat format) {
-    return get_attribute_format_info(format).format == VK_FORMAT_UNDEFINED;
+    return get_attribute_format_info(format).format != VK_FORMAT_UNDEFINED;
   }
 
   typedef struct u8x4 {
@@ -687,6 +688,34 @@ namespace {
     }
   }
 }  // namespace
+
+VertexLayout::VertexLayout(std::initializer_list<AttributeInfo> attr_infos) : stride(0), attributes(attr_infos) {
+  if (attributes.size() > 0) {
+    AttributeInfo last_attr = attributes[0];
+    for(const auto& attr : attributes) {
+      if (attr.offset > last_attr.offset) {
+        last_attr = attr;
+      }
+    }
+    AttributeFormatInfo format_info = get_attribute_format_info(last_attr.format);
+    if (format_info.format == last_attr.format) {
+      stride = last_attr.offset + format_info.size;
+    }
+  }
+}
+VertexLayout::VertexLayout(const MeshFormat& mesh_format, uint32_t binding) : stride(0) {
+  for(const auto& binding_desc : mesh_format.vertex_buffer_bindings) {
+    if (binding_desc.binding == binding) {
+      stride = binding_desc.stride;
+      break;
+    }
+  }
+  for(const auto& attr_desc : mesh_format.vertex_attributes) {
+    if (attr_desc.binding == binding) {
+      attributes.push_back({attr_desc.location, attr_desc.format, attr_desc.offset});
+    }
+  }
+}
 
 int cdsvk::convert_vertex_buffer(const void *src_vertices, const VertexLayout& src_layout,
     void *dst_vertices, const VertexLayout &dst_layout, size_t vertex_count) {
