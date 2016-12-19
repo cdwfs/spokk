@@ -288,7 +288,7 @@ VkSamplerCreateInfo cdsvk::get_sampler_ci(VkFilter min_mag_filter, VkSamplerMipm
   ci.addressModeW = address_mode;
   ci.mipLodBias = 0.0f;
   ci.anisotropyEnable = (min_mag_filter != VK_FILTER_NEAREST) ? VK_TRUE : VK_FALSE;
-  ci.maxAnisotropy = ci.anisotropyEnable ? 16 : 1;
+  ci.maxAnisotropy = ci.anisotropyEnable ? 16.0f : 1.0f;
   ci.compareOp = VK_COMPARE_OP_NEVER;
   ci.minLod = 0.0f;
   ci.maxLod = FLT_MAX;
