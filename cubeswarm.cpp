@@ -546,10 +546,6 @@ public:
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, fullscreen_pipeline_.handle);
     vkCmdSetViewport(cb, 0,1, &viewport_);
     vkCmdSetScissor(cb, 0,1, &scissor_rect_);
-    //VkBuffer no_buffer = VK_NULL_HANDLE;
-    //VkDeviceSize no_offset = 0;
-    //vkCmdBindVertexBuffers(cb, 0, 1, &no_buffer, &no_offset);
-    // TODO: performance warning for having unused vertex buffers bound here, but how do I unbind them?
     vkCmdDraw(cb, 3, 1,0,0);
     vkCmdEndRenderPass(cb);
 
