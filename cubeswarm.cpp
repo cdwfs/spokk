@@ -52,140 +52,32 @@ public:
     cb_allocate_info.commandBufferCount = (uint32_t)command_buffers_.size();
     CDSVK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, command_buffers_.data()));
 
+    // Create render pass
+    render_pass_.init_from_preset(RenderPass::Preset::COLOR_DEPTH_POST, swapchain_surface_format_.format);
+    CDSVK_CHECK(render_pass_.finalize_and_create(device_context_));
+
     // Create depth buffer
-    VkImageCreateInfo depth_image_ci = {};
-    depth_image_ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    depth_image_ci.imageType = VK_IMAGE_TYPE_2D;
-    depth_image_ci.format = VK_FORMAT_UNDEFINED; // filled in below
-    depth_image_ci.extent = {swapchain_extent_.width, swapchain_extent_.height, 1};
-    depth_image_ci.mipLevels = 1;
-    depth_image_ci.arrayLayers = 1;
-    depth_image_ci.samples = VK_SAMPLE_COUNT_1_BIT;
-    depth_image_ci.tiling = VK_IMAGE_TILING_OPTIMAL;
-    depth_image_ci.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    depth_image_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    depth_image_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    const VkFormat depth_format_candidates[] = {
-      VK_FORMAT_D32_SFLOAT_S8_UINT,
-      VK_FORMAT_D24_UNORM_S8_UINT,
-      VK_FORMAT_D16_UNORM_S8_UINT,
-    };
-    for(auto format : depth_format_candidates)
-    {
-      VkFormatProperties format_properties = {};
-      vkGetPhysicalDeviceFormatProperties(physical_device_, format, &format_properties);
-      if ((format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
-      {
-        depth_image_ci.format = format;
-        break;
-      }
-    }
-    assert(depth_image_ci.format != VK_FORMAT_UNDEFINED);
+    VkImageCreateInfo depth_image_ci = render_pass_.get_attachment_image_ci(1, swapchain_extent_);
     depth_image_ = {};
     CDSVK_CHECK(depth_image_.create(device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DEVICE_ALLOCATION_SCOPE_DEVICE));
 
     // Create intermediate color buffer
-    VkImageCreateInfo offscreen_image_ci = {};
-    offscreen_image_ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    offscreen_image_ci.imageType = VK_IMAGE_TYPE_2D;
-    offscreen_image_ci.format = swapchain_surface_format_.format;
-    offscreen_image_ci.extent = {swapchain_extent_.width, swapchain_extent_.height, 1};
-    offscreen_image_ci.mipLevels = 1;
-    offscreen_image_ci.arrayLayers = 1;
-    offscreen_image_ci.samples = VK_SAMPLE_COUNT_1_BIT;
-    offscreen_image_ci.tiling = VK_IMAGE_TILING_OPTIMAL;
-    offscreen_image_ci.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
-    offscreen_image_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    offscreen_image_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    offscreen_image_.create(device_context_, offscreen_image_ci);
-
-    // Create render pass
-    enum {
-      kOffscreenAttachmentIndex = 0,
-      kDepthAttachmentIndex = 1,
-      kColorAttachmentIndex = 2,
-      kAttachmentCount
-    };
-    render_pass_.attachment_descs.resize(kAttachmentCount);
-    render_pass_.attachment_descs[kOffscreenAttachmentIndex].format = offscreen_image_ci.format;
-    render_pass_.attachment_descs[kOffscreenAttachmentIndex].samples = offscreen_image_ci.samples;
-    render_pass_.attachment_descs[kOffscreenAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    render_pass_.attachment_descs[kOffscreenAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    render_pass_.attachment_descs[kOffscreenAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    render_pass_.attachment_descs[kOffscreenAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    render_pass_.attachment_descs[kOffscreenAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    render_pass_.attachment_descs[kOffscreenAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    render_pass_.attachment_descs[kDepthAttachmentIndex].format = depth_image_ci.format;
-    render_pass_.attachment_descs[kDepthAttachmentIndex].samples = depth_image_ci.samples;
-    render_pass_.attachment_descs[kDepthAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    render_pass_.attachment_descs[kDepthAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    render_pass_.attachment_descs[kDepthAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    render_pass_.attachment_descs[kDepthAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    render_pass_.attachment_descs[kDepthAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    render_pass_.attachment_descs[kDepthAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    render_pass_.attachment_descs[kColorAttachmentIndex].format = swapchain_surface_format_.format;
-    render_pass_.attachment_descs[kColorAttachmentIndex].samples = VK_SAMPLE_COUNT_1_BIT;
-    render_pass_.attachment_descs[kColorAttachmentIndex].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    render_pass_.attachment_descs[kColorAttachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    render_pass_.attachment_descs[kColorAttachmentIndex].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    render_pass_.attachment_descs[kColorAttachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    render_pass_.attachment_descs[kColorAttachmentIndex].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    render_pass_.attachment_descs[kColorAttachmentIndex].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    render_pass_.subpass_attachments.resize(2);
-    render_pass_.subpass_attachments[0].color_refs.push_back({kOffscreenAttachmentIndex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
-    render_pass_.subpass_attachments[0].depth_stencil_refs.push_back({kDepthAttachmentIndex, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL});
-    render_pass_.subpass_attachments[1].input_refs.push_back({kOffscreenAttachmentIndex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
-    render_pass_.subpass_attachments[1].color_refs.push_back({kColorAttachmentIndex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
-    render_pass_.subpass_dependencies.resize(3);
-    render_pass_.subpass_dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-    render_pass_.subpass_dependencies[0].dstSubpass = 0;
-    render_pass_.subpass_dependencies[0].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    render_pass_.subpass_dependencies[0].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    render_pass_.subpass_dependencies[0].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
-    render_pass_.subpass_dependencies[0].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
-    render_pass_.subpass_dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-    render_pass_.subpass_dependencies[1].srcSubpass = 0;
-    render_pass_.subpass_dependencies[1].dstSubpass = 1;
-    render_pass_.subpass_dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    render_pass_.subpass_dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    render_pass_.subpass_dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    render_pass_.subpass_dependencies[1].dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-    render_pass_.subpass_dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-    render_pass_.subpass_dependencies[2].srcSubpass = 1;
-    render_pass_.subpass_dependencies[2].dstSubpass = VK_SUBPASS_EXTERNAL;
-    render_pass_.subpass_dependencies[2].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    render_pass_.subpass_dependencies[2].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    render_pass_.subpass_dependencies[2].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
-    render_pass_.subpass_dependencies[2].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
-    render_pass_.subpass_dependencies[2].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-    render_pass_.finalize_subpasses();
-    VkRenderPassCreateInfo render_pass_ci = {};
-    render_pass_ci.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    render_pass_ci.attachmentCount = (uint32_t)render_pass_.attachment_descs.size();
-    render_pass_ci.pAttachments = render_pass_.attachment_descs.data();
-    render_pass_ci.subpassCount = (uint32_t)render_pass_.subpass_descs.size();
-    render_pass_ci.pSubpasses = render_pass_.subpass_descs.data();;
-    render_pass_ci.dependencyCount = (uint32_t)render_pass_.subpass_dependencies.size();
-    render_pass_ci.pDependencies = render_pass_.subpass_dependencies.data();
-    CDSVK_CHECK(vkCreateRenderPass(device_, &render_pass_ci, allocation_callbacks_, &render_pass_.handle));
+    VkImageCreateInfo offscreen_image_ci = render_pass_.get_attachment_image_ci(0, swapchain_extent_);
+    CDSVK_CHECK(offscreen_image_.create(device_context_, offscreen_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      DEVICE_ALLOCATION_SCOPE_DEVICE));
 
     // Create VkFramebuffers
-    std::array<VkImageView, kAttachmentCount> attachment_views = {};
-    attachment_views[kOffscreenAttachmentIndex] = offscreen_image_.view;
-    attachment_views[kDepthAttachmentIndex] = depth_image_.view;
-    attachment_views[kColorAttachmentIndex] = VK_NULL_HANDLE; // filled in below
-    VkFramebufferCreateInfo framebuffer_ci = {};
-    framebuffer_ci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    framebuffer_ci.renderPass = render_pass_.handle;
-    framebuffer_ci.attachmentCount = (uint32_t)attachment_views.size();
+    std::vector<VkImageView> attachment_views = {
+      offscreen_image_.view,
+      depth_image_.view,
+      VK_NULL_HANDLE, // filled in below
+    };
+    VkFramebufferCreateInfo framebuffer_ci = render_pass_.get_framebuffer_ci(swapchain_extent_);
     framebuffer_ci.pAttachments = attachment_views.data();
-    framebuffer_ci.width = swapchain_extent_.width;
-    framebuffer_ci.height = swapchain_extent_.height;
-    framebuffer_ci.layers = 1;
     framebuffers_.resize(swapchain_image_views_.size());
     for(size_t i=0; i<swapchain_image_views_.size(); ++i) {
-      attachment_views[kColorAttachmentIndex] = swapchain_image_views_[i];
+      attachment_views[2] = swapchain_image_views_[i];
       CDSVK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, allocation_callbacks_, &framebuffers_[i]));
     }
 
@@ -348,7 +240,7 @@ public:
       for(const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, allocation_callbacks_);
       }
-      vkDestroyRenderPass(device_, render_pass_.handle, allocation_callbacks_);
+      render_pass_.destroy(device_context_);
 
       offscreen_image_.destroy(device_context_);
       depth_image_.destroy(device_context_);

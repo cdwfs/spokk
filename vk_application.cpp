@@ -39,6 +39,22 @@ T my_max(T x, T y) {
   return (x > y) ? x : y;
 }
 
+VkImageAspectFlags vk_format_to_image_aspect(VkFormat format) {
+  switch(format) {
+  case VK_FORMAT_D16_UNORM:
+  case VK_FORMAT_D32_SFLOAT:
+  case VK_FORMAT_X8_D24_UNORM_PACK32:
+    return VK_IMAGE_ASPECT_DEPTH_BIT;
+  case VK_FORMAT_D16_UNORM_S8_UINT:
+  case VK_FORMAT_D24_UNORM_S8_UINT:
+  case VK_FORMAT_D32_SFLOAT_S8_UINT:
+    return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+  case VK_FORMAT_UNDEFINED:
+    return static_cast<VkImageAspectFlagBits>(0);
+  default:
+    return VK_IMAGE_ASPECT_COLOR_BIT;
+  }
+}
 
 void my_glfw_error_callback(int error, const char *description) {
   fprintf( stderr, "GLFW Error %d: %s\n", error, description);
@@ -960,7 +976,172 @@ void ShaderPipeline::destroy(const DeviceContext& device_context) {
 //
 // RenderPass
 //
-void RenderPass::finalize_subpasses(VkPipelineBindPoint bind_point, VkSubpassDescriptionFlags flags) {
+void RenderPass::init_from_preset(Preset preset, VkFormat output_color_format) {
+  if (preset == Preset::COLOR) {
+    attachment_descs.resize(1);
+    attachment_descs[0].format = output_color_format;
+    attachment_descs[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment_descs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    subpass_attachments.resize(1);
+    subpass_attachments[0].color_refs.push_back({0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+    subpass_dependencies.resize(2);
+    subpass_dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependencies[0].dstSubpass = 0;
+    subpass_dependencies[0].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[0].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[0].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[0].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    subpass_dependencies[1].srcSubpass = 0;
+    subpass_dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependencies[1].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[1].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[1].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[1].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+  } else if (preset == Preset::COLOR_DEPTH) {
+    attachment_descs.resize(2);
+    attachment_descs[0].format = output_color_format;
+    attachment_descs[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment_descs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    attachment_descs[1].format = VK_FORMAT_D24_UNORM_S8_UINT;
+    attachment_descs[1].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[1].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    subpass_attachments.resize(1);
+    subpass_attachments[0].color_refs.push_back({0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+    subpass_attachments[0].depth_stencil_refs.push_back({1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL});
+    subpass_dependencies.resize(2);
+    subpass_dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependencies[0].dstSubpass = 0;
+    subpass_dependencies[0].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[0].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[0].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[0].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    subpass_dependencies[1].srcSubpass = 0;
+    subpass_dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependencies[1].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[1].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[1].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[1].dstAccessMask = 
+    subpass_dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+  } else if (preset == Preset::COLOR_POST) {
+    attachment_descs.resize(2);
+    attachment_descs[0].format = VK_FORMAT_R8G8B8A8_SRGB;
+    attachment_descs[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[1].format = output_color_format;
+    attachment_descs[1].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[1].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment_descs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[1].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    subpass_attachments.resize(2);
+    subpass_attachments[0].color_refs.push_back({0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+    subpass_attachments[1].input_refs.push_back({0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
+    subpass_attachments[1].color_refs.push_back({2, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+    subpass_dependencies.resize(3);
+    subpass_dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependencies[0].dstSubpass = 0;
+    subpass_dependencies[0].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[0].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[0].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[0].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    subpass_dependencies[1].srcSubpass = 0;
+    subpass_dependencies[1].dstSubpass = 1;
+    subpass_dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    subpass_dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    subpass_dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    subpass_dependencies[1].dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+    subpass_dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    subpass_dependencies[2].srcSubpass = 1;
+    subpass_dependencies[2].dstSubpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependencies[2].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[2].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[2].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[2].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[2].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+  } else if (preset == Preset::COLOR_DEPTH_POST) {
+    attachment_descs.resize(3);
+    attachment_descs[0].format = VK_FORMAT_R8G8B8A8_SRGB;
+    attachment_descs[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[1].format = VK_FORMAT_D24_UNORM_S8_UINT;
+    attachment_descs[1].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[1].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[2].format = output_color_format;
+    attachment_descs[2].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[2].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment_descs[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[2].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[2].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    subpass_attachments.resize(2);
+    subpass_attachments[0].color_refs.push_back({0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+    subpass_attachments[0].depth_stencil_refs.push_back({1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL});
+    subpass_attachments[1].input_refs.push_back({0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
+    subpass_attachments[1].color_refs.push_back({2, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+    subpass_dependencies.resize(3);
+    subpass_dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependencies[0].dstSubpass = 0;
+    subpass_dependencies[0].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[0].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[0].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[0].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    subpass_dependencies[1].srcSubpass = 0;
+    subpass_dependencies[1].dstSubpass = 1;
+    subpass_dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    subpass_dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    subpass_dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    subpass_dependencies[1].dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+    subpass_dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    subpass_dependencies[2].srcSubpass = 1;
+    subpass_dependencies[2].dstSubpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependencies[2].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[2].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    subpass_dependencies[2].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[2].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    subpass_dependencies[2].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+  }
+}
+
+VkResult RenderPass::finalize_and_create(const DeviceContext& device_context,
+    VkPipelineBindPoint bind_point, VkSubpassDescriptionFlags flags) {
   subpass_descs.resize(subpass_attachments.size());
   for(const auto& dep : subpass_dependencies) {
     // This is probably unnecessary; a mismatch would be caught by the validation layers at creation time.
@@ -1004,6 +1185,94 @@ void RenderPass::finalize_subpasses(VkPipelineBindPoint bind_point, VkSubpassDes
     subpass_multisample_state_cis[i].alphaToCoverageEnable = VK_FALSE;
     subpass_multisample_state_cis[i].alphaToOneEnable = VK_FALSE;
   }
+  VkRenderPassCreateInfo render_pass_ci = {};
+  render_pass_ci.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+  render_pass_ci.attachmentCount = (uint32_t)attachment_descs.size();
+  render_pass_ci.pAttachments = attachment_descs.data();
+  render_pass_ci.subpassCount = (uint32_t)subpass_descs.size();
+  render_pass_ci.pSubpasses = subpass_descs.data();;
+  render_pass_ci.dependencyCount = (uint32_t)subpass_dependencies.size();
+  render_pass_ci.pDependencies = subpass_dependencies.data();
+  return vkCreateRenderPass(device_context.device(), &render_pass_ci, device_context.host_allocator(), &handle);
+}
+
+VkImageCreateInfo RenderPass::get_attachment_image_ci(uint32_t attachment_index, const VkExtent2D& render_area) const {
+  VkImageCreateInfo ci = {};
+  if (handle != VK_NULL_HANDLE && attachment_index < (uint32_t)attachment_descs.size()) {
+    ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    ci.imageType = VK_IMAGE_TYPE_2D;
+    ci.format = attachment_descs[attachment_index].format;
+    ci.extent.width = render_area.width;
+    ci.extent.height = render_area.height;
+    ci.extent.depth = 1;
+    ci.mipLevels = 1;
+    ci.arrayLayers = 1;
+    ci.samples = attachment_descs[attachment_index].samples;
+    ci.tiling = VK_IMAGE_TILING_OPTIMAL;
+    ci.usage = 0;
+    for(const auto& subpass : subpass_attachments) {
+      for(const auto& color_ref : subpass.color_refs) {
+        if (color_ref.attachment == attachment_index) {
+          ci.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        }
+      }
+      for(const auto& input_ref : subpass.input_refs) {
+        if (input_ref.attachment == attachment_index) {
+          ci.usage |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+        }
+      }
+      for(const auto& depth_ref : subpass.depth_stencil_refs) {
+        if (depth_ref.attachment == attachment_index) {
+          ci.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        }
+      }
+    }
+    // TODO(cort): do resolve images need a special usage flag (TRANSFER_DST)?
+    if (attachment_descs[attachment_index].loadOp != VK_ATTACHMENT_LOAD_OP_LOAD &&
+        attachment_descs[attachment_index].storeOp != VK_ATTACHMENT_STORE_OP_STORE &&
+        attachment_descs[attachment_index].stencilLoadOp != VK_ATTACHMENT_LOAD_OP_LOAD &&
+        attachment_descs[attachment_index].stencilStoreOp != VK_ATTACHMENT_STORE_OP_STORE) {
+      ci.usage |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+    }
+    ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    ci.initialLayout = attachment_descs[attachment_index].initialLayout;
+  }
+  return ci;
+}
+VkImageViewCreateInfo RenderPass::get_attachment_image_view_ci(uint32_t attachment_index, VkImage image) const {
+  VkImageViewCreateInfo ci = {};
+  if (handle != VK_NULL_HANDLE && attachment_index < (uint32_t)attachment_descs.size()) {
+    ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    ci.image = image;
+    ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    ci.format = attachment_descs[attachment_index].format;
+    ci.components = {
+      VK_COMPONENT_SWIZZLE_IDENTITY,
+      VK_COMPONENT_SWIZZLE_IDENTITY,
+      VK_COMPONENT_SWIZZLE_IDENTITY,
+      VK_COMPONENT_SWIZZLE_IDENTITY
+    };
+    ci.subresourceRange.aspectMask = vk_format_to_image_aspect(ci.format);
+  }
+  return ci;
+}
+VkFramebufferCreateInfo RenderPass::get_framebuffer_ci(const VkExtent2D& render_area) const {
+  VkFramebufferCreateInfo ci = {};
+  if (handle != VK_NULL_HANDLE) {
+    ci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    ci.renderPass = handle;
+    ci.attachmentCount = (uint32_t)attachment_descs.size();
+    ci.pAttachments = nullptr;  // Must be filled in by caller
+    ci.width = render_area.width;
+    ci.height = render_area.height;
+    ci.layers = 1;
+  }
+  return ci;
+}
+
+void RenderPass::destroy(const DeviceContext& device_context) {
+  vkDestroyRenderPass(device_context.device(), handle, device_context.host_allocator());
+  handle = VK_NULL_HANDLE;
 }
 
 //
