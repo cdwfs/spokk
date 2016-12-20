@@ -366,22 +366,23 @@ public:
 
     // Update camera
     mathfu::vec3 impulse(0,0,0);
+    const float MOVE_SPEED = 0.5f, TURN_SPEED = 0.001f;
     if (input_state_.GetDigital(InputState::DIGITAL_LPAD_UP)) {
-      impulse += camera_->getViewDirection() * 0.1f;
+      impulse += camera_->getViewDirection() * MOVE_SPEED;
     }
     if (input_state_.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
-      impulse -= cross(camera_->getViewDirection(), camera_->getWorldUp()) * 0.1f;
+      impulse -= cross(camera_->getViewDirection(), camera_->getWorldUp()) * MOVE_SPEED;
     }
     if (input_state_.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
-      impulse -= camera_->getViewDirection() * 0.1f;
+      impulse -= camera_->getViewDirection() * MOVE_SPEED;
     }
     if (input_state_.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
-      impulse += cross(camera_->getViewDirection(), camera_->getWorldUp()) * 0.1f;
+      impulse += cross(camera_->getViewDirection(), camera_->getWorldUp()) * MOVE_SPEED;
     }
 
     camera_->setOrientation(mathfu::quat::FromEulerAngles(mathfu::vec3(
-      -0.001f * input_state_.GetAnalog(InputState::ANALOG_MOUSE_Y),
-      -0.001f * input_state_.GetAnalog(InputState::ANALOG_MOUSE_X),
+      -TURN_SPEED * input_state_.GetAnalog(InputState::ANALOG_MOUSE_Y),
+      -TURN_SPEED * input_state_.GetAnalog(InputState::ANALOG_MOUSE_X),
       0)));
     dolly_->Impulse(impulse);
     dolly_->Update((float)dt);
@@ -394,12 +395,12 @@ public:
       mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(0,1,0));
       mathfu::mat4 o2w = mathfu::mat4::Identity()
         * mathfu::mat4::FromTranslationVector(mathfu::vec3(
-          4.0f * cosf((1.0f+0.001f*iMesh) * 0.2f * secs + float(149*iMesh) + 0.0f) + swarm_center[0],
-          2.5f * sinf(0.3f * secs + float(13*iMesh) + 5.0f) + swarm_center[1],
-          3.0f * sinf(0.05f * secs + float(51*iMesh) + 2.0f) + swarm_center[2]
+          40.0f * cosf((1.0f+0.001f*iMesh) * 0.2f * secs + float(149*iMesh) + 0.0f) + swarm_center[0],
+          20.5f * sinf(0.3f * secs + float(13*iMesh) + 5.0f) + swarm_center[1],
+          30.0f * sinf(0.05f * secs + float(51*iMesh) + 2.0f) + swarm_center[2]
         ))
         * q.ToMatrix4()
-        * mathfu::mat4::FromScaleVector( mathfu::vec3(0.2f, 0.2f, 0.2f) )
+        * mathfu::mat4::FromScaleVector( mathfu::vec3(1.0f, 1.0f, 1.0f) )
         ;
       o2w_matrices[iMesh] = o2w;
     }
