@@ -399,7 +399,7 @@ public:
           3.0f * sinf(0.05f * secs + float(51*iMesh) + 2.0f) + swarm_center[2]
         ))
         * q.ToMatrix4()
-        //* mathfu::mat4::FromScaleVector( mathfu::vec3(0.1f, 0.1f, 0.1f) )
+        * mathfu::mat4::FromScaleVector( mathfu::vec3(0.2f, 0.2f, 0.2f) )
         ;
       o2w_matrices[iMesh] = o2w;
     }
