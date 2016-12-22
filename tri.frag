@@ -6,12 +6,6 @@ layout (location = 2) in vec3 fromEye;
 layout (location = 0) out vec4 out_fragColor;
 in vec4 gl_FragCoord;
 
-layout (push_constant) uniform PushConsts {
-    vec4 time_and_res;
-    vec4 eye;
-    mat4 viewproj;
-} pushConsts;
-
 void main() {
     //out_fragColor = texture(tex, reflect(normalize(fromEye), normalize(norm)));
     vec4 head_light = dot(normalize(-fromEye), normalize(norm)) * vec4(1,1,1,1);

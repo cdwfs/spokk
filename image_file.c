@@ -327,7 +327,7 @@ typedef struct DdsHeader10
     uint32_t unused;
 } DdsHeader10;
 
-static uint32_t DdsMakeCode4(char c0, char c1, char c2, char c3) // TODO(cort): constexpr
+static uint32_t DdsMakeCode4(char c0, char c1, char c2, char c3)
 {
     return
         ((uint32_t)(uint8_t)(c0) <<  0) |
@@ -336,7 +336,7 @@ static uint32_t DdsMakeCode4(char c0, char c1, char c2, char c3) // TODO(cort): 
         ((uint32_t)(uint8_t)(c3) << 24);
 }
 
-static int DdsContainsCompressedTexture(ImageFileDataFormat format) // TODO(cort): constexpr
+static int DdsContainsCompressedTexture(ImageFileDataFormat format)
 {
     switch(format)
     {
@@ -515,7 +515,7 @@ static ImageFileDataFormat DdsParsePixelFormat(const DdsPixelFormat pf)
     return IMAGE_FILE_DATA_FORMAT_UNKNOWN;
 }
 
-static ImageFileDataFormat DdsParseDxFormat(DxFormat dx_format) // TODO(cort): constexpr
+static ImageFileDataFormat DdsParseDxFormat(DxFormat dx_format)
 {
     switch(dx_format)
     {

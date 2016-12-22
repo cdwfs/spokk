@@ -117,12 +117,12 @@ namespace cdsvk {
                allocation_callbacks_(allocation_callbacks) {
         }
         virtual VkResult allocate(const VkMemoryAllocateInfo &alloc_info, VkDeviceSize alignment,
-               VkDeviceMemory *out_mem, VkDeviceSize *out_offset) {
+               VkDeviceMemory *out_mem, VkDeviceSize *out_offset) override {
             (void)alignment;
             *out_offset = 0;
             return vkAllocateMemory(device_, &alloc_info, allocation_callbacks_, out_mem);
         }
-        virtual void free(VkDeviceMemory mem, VkDeviceSize offset) {
+        virtual void free(VkDeviceMemory mem, VkDeviceSize offset) override {
             (void)offset;
             vkFreeMemory(device_, mem, allocation_callbacks_);
         }

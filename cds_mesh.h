@@ -10,7 +10,7 @@
  *   cc -Wall -std=c89 -g -x c -DCDS_MESH_TEST -o test_cds_mesh.exe cds_mesh.h -lm
  *
  * For a unit test on Visual C++:
- *   "%VS120COMNTOOLS%\..\..\VC\vcvarsall.bat"
+ *   "%VS140COMNTOOLS%\..\..\VC\vcvarsall.bat"
  *   cl -W4 -nologo -TC -DCDS_MESH_TEST /Fetest_cds_mesh.exe cds_mesh.h
  * Debug-mode:
  *   cl -W4 -Od -Z7 -FC -MTd -nologo -TC -DCDS_MESH_TEST /Fetest_cds_mesh.exe cds_mesh.h
@@ -204,12 +204,6 @@ extern "C"
         cdsm_index_t *out_indices, size_t *out_indices_size,
         const cdsm_cylinder_recipe_t *recipe);
 
-
-    /* Export functions */
-    CDSM_DEF
-    cdsm_error_t cdsm_export_to_header(const char *filename, const char *prefix,
-        cdsm_metadata_t const *metadata, void const *vertices, cdsm_index_t const *indices);
-
 #ifdef __cplusplus
 }
 #endif
@@ -257,6 +251,11 @@ static const cdsm_vertex_layout_t cdsm__default_vertex_layout = {
         {2, 24, CDSM_ATTRIBUTE_FORMAT_R32G32_FLOAT},
     }
 };
+
+/* Export functions */
+CDSM_DEF
+cdsm_error_t cdsm_export_to_header(const char *filename, const char *prefix,
+    cdsm_metadata_t const *metadata, cdsm__default_vertex_t const *vertices, cdsm_index_t const *indices);
 
 /*************************** Vertex buffer conversion *********************************/
 
@@ -1566,8 +1565,8 @@ struct {\n\
     for(cdsm_s32 iVert=0; iVert<metadata->vertex_count; ++iVert)
     {
         cdsm__default_vertex_t temp_vertex = {};
-        cdsm_convert_vertex_buffer( (uint8_t*)vertices + iVert, &metadata->vertex_layout,
-            &temp_vertex, &cdsm__default_vertex_layout, 1);
+        cdsm_convert_vertex_buffer( (uint8_t*)vertices + iVert*metadata->vertex_layout.stride,
+            &metadata->vertex_layout, &temp_vertex, &cdsm__default_vertex_layout, 1);
 
         fprintf(f, "\t{\t{%.9ff, %.9ff, %.9ff},\n\t\t{%.9ff, %.9ff, %.9ff},\n\t\t{%.9ff, %.9ff} },\n",
             temp_vertex.position[0], temp_vertex.position[1], temp_vertex.position[2],
@@ -1658,7 +1657,7 @@ int main(int argc, char *argv[])
         MESH_TYPE_CYLINDER = 2,
     } meshType = MESH_TYPE_SPHERE;
     cdsm_cube_recipe_t cube_recipe;
-    cube_recipe.vertex_layout = vertex_layout;
+    cube_recipe.vertex_layout = cdsm__default_vertex_layout;
     cube_recipe.min_extent.x = -0.5f;
     cube_recipe.min_extent.y = -0.5f;
     cube_recipe.min_extent.z = -0.5f;
@@ -1708,7 +1707,7 @@ int main(int argc, char *argv[])
     assert(result == 0);
 
     result = cdsm_export_to_header("test_cds_mesh_output.h", "mesh_",
-        &metadata, vertices, indices);
+            &metadata, (cdsm__default_vertex_t*)vertices, indices);
     assert(result == 0);
 
     free(vertices);
