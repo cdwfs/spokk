@@ -13,15 +13,8 @@ set(SPIRV_CROSS_TARGETS
 	spirv-cross-cpp
 	spirv-cross-msl
 	spirv-cross
-	)
+)
 set_target_properties(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
-# Skip executable targets; we only care about the library anyway.
-FOREACH(SHADER_TARGET IN LISTS SPIRV_CROSS_TARGETS)
-    get_target_property(TARGET_TYPE ${SHADER_TARGET} TYPE)
-	IF(${TARGET_TYPE} STREQUAL EXECUTABLE)
-		set_target_properties(${SHADER_TARGET} PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD TRUE)
-	ENDIF()
-ENDFOREACH()
 
 # GLFW
 option(GLFW_BUILD_EXAMPLES "Build the GLFW example programs" OFF)
@@ -37,6 +30,62 @@ set(mathfu_build_tests OFF CACHE BOOL "")
 set(mathfu_enable_simd OFF CACHE BOOL "")
 add_subdirectory(third_party/mathfu)
 
+# shaderc
+OPTION(SPOKK_ENABLE_SHADERC "Use shaderc for runtime shader compilation" ON)
+SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
+SET(SHADERC_THIRD_PARTY_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party" CACHE PATH "Root location of shaderc third-party projets" FORCE)
+option(SHADERC_SKIP_TESTS "Skip building tests" ON)
+IF(${SPOKK_ENABLE_SHADERC})
+    add_subdirectory(third_party/shaderc)
+    # shaderc pulls in a gajillion targets. Let's organize them a bit.
+    set(GLSLANG_TARGETS
+        glslang
+        glslang-default-resource-limits
+        glslangValidator
+        HLSL
+        OGLCompiler
+        OSDependent
+        SPIRV
+        spirv-remap
+        SPVRemapper
+    )
+    SET(SPIRV_TOOLS_TARGETS
+        spirv-as
+        spirv-cfg
+        spirv-dis
+        spirv-opt
+        SPIRV-Tools
+        spirv-tools-build-version
+        spirv-tools-cpp-example
+        SPIRV-Tools-opt
+        spirv-val
+    )
+    set(SHADERC_TARGETS
+        add-copyright
+        build-version
+        check-copyright
+        glslc
+        glslc_exe
+        shaderc
+        shaderc_combined_genfile
+        shaderc_util
+        shaderc-online-compile
+        testdata
+    )
+    set_target_properties(${GLSLANG_TARGETS} PROPERTIES FOLDER "shaderc/glslang")
+    set_target_properties(${SPIRV_TOOLS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-tools")
+    set_target_properties(${SHADERC_TARGETS} PROPERTIES FOLDER "shaderc")
+    add_definitions(-DSPOKK_ENABLE_SHADERC)
+ENDIF()
+
+# Skip executable targets; we only care about the library anyway.
+FOREACH(SHADER_TARGET IN LISTS SPIRV_CROSS_TARGETS GLSLANG_TARGETS SPIRV_TOOLS_TARGETS SHADERC_TARGETS)
+    get_target_property(TARGET_TYPE ${SHADER_TARGET} TYPE)
+    IF(${TARGET_TYPE} STREQUAL EXECUTABLE)
+        set_target_properties(${SHADER_TARGET} PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD TRUE)
+    ENDIF()
+ENDFOREACH()
+
 # Offline shader compilation from GLSL to SPIR-V
 FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)
     ADD_CUSTOM_COMMAND(
@@ -45,7 +94,7 @@ FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)
         MAIN_DEPENDENCY ${SOURCE_FILE}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "Compiling ${SOURCE_FILE} -> ${SPV_FILE}"
-        )
+    )
 ENDFUNCTION(SHADER_BUILD_RULE SHADER_FILE SPV_FILE)
 
 # Global build settings
@@ -96,18 +145,21 @@ SET(SPOKK_HEADERS
     vk_init.h
     vk_texture.h
     vk_vertex.h
-    )
+)
 SET(SPOKK_SOURCES
     image_file.c
     vk_application.cpp
     vk_init.cpp
     vk_texture.cpp
     vk_vertex.cpp
-    )
+)
 SET(SPOKK_LIB_NAME spokk)
 cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKK_HEADERS}" "${SPOKK_SOURCES}")
 ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC ${SPOKK_SOURCES} ${SPOKK_HEADERS})
 TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} spirv-cross-cpp ${libs})
+IF(${SPOKK_ENABLE_SHADERC})
+    TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} shaderc)
+ENDIF()
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC ".")
 
 FUNCTION (SPOKK_APP APP_NAME APP_SOURCES_LIST APP_HEADERS_LIST APP_SHADERS_LIST)
@@ -130,16 +182,16 @@ ENDFUNCTION(SPOKK_APP APP_NAME APP_SOURCES APP_HEADERS APP_SHADERS)
 SET(CUBESWARM_SOURCES
     camera.cpp
     cubeswarm.cpp
-    )
+)
 SET(CUBESWARM_HEADERS
     camera.h
-    )
+)
 SET(CUBESWARM_SHADERS
     tri.vert
     tri.frag
     fullscreen.vert
     subpass_post.frag
-    )
+)
 SPOKK_APP(spokk-cubeswarm CUBESWARM_SOURCES CUBESWARM_HEADERS CUBESWARM_SHADERS)
 
 # spokk-compute
@@ -158,4 +210,4 @@ ADD_CUSTOM_COMMAND(
         ${CMAKE_SOURCE_DIR}/trevor
         ${CMAKE_BINARY_DIR}/trevor
     COMMENT "Copying assets to build directory"
-    )
+)

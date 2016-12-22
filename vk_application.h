@@ -14,6 +14,10 @@
 #include <vector>
 #include <mutex>
 
+#if defined(SPOKK_ENABLE_SHADERC)
+#include <shaderc/shaderc.hpp>
+#endif  // defined(SPOKK_ENABLE_SHADERC)
+
 namespace cdsvk {
 
 class InputState {
@@ -304,11 +308,44 @@ struct DescriptorSetLayoutInfo {
   std::vector<DescriptorSetLayoutBindingInfo> binding_infos;
 };
 
+#if defined(SPOKK_ENABLE_SHADERC)
+class ShaderCompiler {
+public:
+  ShaderCompiler();
+  ~ShaderCompiler();
+
+  shaderc::SpvCompilationResult compile_glsl_string(const char *glsl_source,
+    const std::string& logging_name, const std::string& entry_point = "main",
+    VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
+    const shaderc::CompileOptions& options = shaderc::CompileOptions()) const;
+  shaderc::SpvCompilationResult compile_glsl_fp(FILE *fp, int len_bytes,
+    const std::string& logging_name, const std::string& entry_point = "main",
+    VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
+    const shaderc::CompileOptions& options = shaderc::CompileOptions()) const;
+  shaderc::SpvCompilationResult compile_glsl_file(const std::string& filename,
+    const std::string& entry_point = "main",
+    VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
+    const shaderc::CompileOptions& = shaderc::CompileOptions()) const;
+
+protected:
+  shaderc::Compiler compiler_;
+};
+#endif
+
 struct Shader {
   Shader() : handle(VK_NULL_HANDLE), spirv{}, stage((VkShaderStageFlagBits)0), dset_layout_infos{}, push_constant_range{} {}
   VkResult create_and_load_spv_file(const DeviceContext& device_context, const std::string& filename);
   VkResult create_and_load_spv_fp(const DeviceContext& device_context, FILE *fp, int len_bytes);
   VkResult create_and_load_spv_mem(const DeviceContext& device_context, const void *buffer, int len_bytes);
+#if defined(SPOKK_ENABLE_SHADERC)
+  VkResult create_and_load_compile_result(const DeviceContext& device_context, const shaderc::SpvCompilationResult& result) {
+    if (result.GetCompilationStatus() != shaderc_compilation_status_success) {
+      return VK_ERROR_INITIALIZATION_FAILED;
+    }
+    return create_and_load_spv_mem(device_context, result.cbegin(),
+      static_cast<int>( (result.cend() - result.cbegin()) * sizeof(uint32_t) ));
+  }
+#endif  // defined(SPOKK_ENABLE_SHADERC)
   void unload_spirv(void) {
     spirv.clear();
   }
