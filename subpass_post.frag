@@ -1,4 +1,5 @@
 #version 450
+#pragma shader_stage(fragment)
 layout (input_attachment_index = 0, set = 0, binding = 2) uniform subpassInput subpass_in;
 layout (location = 0) out vec4 out_fragColor;
 in vec4 gl_FragCoord;
