@@ -88,16 +88,16 @@ public:
     albedo_tex_.create_and_load(device_context_, *texture_loader_.get(), "trevor/redf.ktx");
 
     // Load shader pipelines
-    CDSVK_CHECK(mesh_vs_.create_and_load(device_context_, "tri.vert.spv"));
-    CDSVK_CHECK(mesh_fs_.create_and_load(device_context_, "tri.frag.spv"));
+    CDSVK_CHECK(mesh_vs_.create_and_load_spv_file(device_context_, "tri.vert.spv"));
+    CDSVK_CHECK(mesh_fs_.create_and_load_spv_file(device_context_, "tri.frag.spv"));
     // TODO(cort): find a better way to override specific buffers as dynamic in shader pipelines.
     // For now it's safe to just poke the new type into the Shader's layout info, before ShaderPipeline creation.
     mesh_vs_.dset_layout_infos[0].bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     CDSVK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_vs_));
     CDSVK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_fs_));
 
-    CDSVK_CHECK(fullscreen_tri_vs_.create_and_load(device_context_, "fullscreen.vert.spv"));
-    CDSVK_CHECK(post_filmgrain_fs_.create_and_load(device_context_, "subpass_post.frag.spv"));
+    CDSVK_CHECK(fullscreen_tri_vs_.create_and_load_spv_file(device_context_, "fullscreen.vert.spv"));
+    CDSVK_CHECK(post_filmgrain_fs_.create_and_load_spv_file(device_context_, "subpass_post.frag.spv"));
     CDSVK_CHECK(post_shader_pipeline_.add_shader(&fullscreen_tri_vs_));
     CDSVK_CHECK(post_shader_pipeline_.add_shader(&post_filmgrain_fs_));
 

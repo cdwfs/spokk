@@ -50,7 +50,7 @@ public:
     CDSVK_CHECK(out_buffer_.create(device_context_, buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     // Load shaders
-    CDSVK_CHECK(double_ints_cs_.create_and_load(device_context_, "double_ints.comp.spv"));
+    CDSVK_CHECK(double_ints_cs_.create_and_load_spv_file(device_context_, "double_ints.comp.spv"));
     CDSVK_CHECK(compute_shader_pipeline_.add_shader(&double_ints_cs_, "main"));
     CDSVK_CHECK(compute_shader_pipeline_.finalize(device_context_));
 

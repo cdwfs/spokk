@@ -306,8 +306,9 @@ struct DescriptorSetLayoutInfo {
 
 struct Shader {
   Shader() : handle(VK_NULL_HANDLE), spirv{}, stage((VkShaderStageFlagBits)0), dset_layout_infos{}, push_constant_range{} {}
-  VkResult create_and_load(const DeviceContext& device_context, const std::string& filename);
-  VkResult create_and_load_from_file(const DeviceContext& device_context, FILE *fp, int len);
+  VkResult create_and_load_spv_file(const DeviceContext& device_context, const std::string& filename);
+  VkResult create_and_load_spv_fp(const DeviceContext& device_context, FILE *fp, int len_bytes);
+  VkResult create_and_load_spv_mem(const DeviceContext& device_context, const void *buffer, int len_bytes);
   void unload_spirv(void) {
     spirv.clear();
   }
@@ -319,6 +320,8 @@ struct Shader {
   // Resources used by this shader:
   std::vector<DescriptorSetLayoutInfo> dset_layout_infos;
   VkPushConstantRange push_constant_range;  // range.size = 0 means this stage doesn't use push constants.
+private:
+  VkResult parse_spirv_and_create(const DeviceContext& device_context);
 };
 
 struct ShaderPipeline {

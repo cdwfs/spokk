@@ -666,7 +666,7 @@ static void parse_shader_resources(std::vector<DescriptorSetLayoutInfo>& dset_la
 //
 // Shader
 //
-VkResult Shader::create_and_load(const DeviceContext& device_context, const std::string& filename) {
+VkResult Shader::create_and_load_spv_file(const DeviceContext& device_context, const std::string& filename) {
   FILE *spv_file = fopen(filename.c_str(), "rb");
   if (!spv_file) {
     return VK_ERROR_INITIALIZATION_FAILED;
@@ -674,18 +674,29 @@ VkResult Shader::create_and_load(const DeviceContext& device_context, const std:
   fseek(spv_file, 0, SEEK_END);
   long spv_file_size = ftell(spv_file);
   fseek(spv_file, 0, SEEK_SET);
-  VkResult result = create_and_load_from_file(device_context, spv_file, spv_file_size);
+  VkResult result = create_and_load_spv_fp(device_context, spv_file, spv_file_size);
   fclose(spv_file);
   return result;
 }
-VkResult Shader::create_and_load_from_file(const DeviceContext& device_context, FILE *fp, int len) {
-  assert((len % sizeof(uint32_t)) == 0);
-  spirv.resize(len/sizeof(uint32_t));
-  size_t bytes_read = fread(spirv.data(), 1, len, fp);
-  if ( (int)bytes_read != len) {
+VkResult Shader::create_and_load_spv_fp(const DeviceContext& device_context, FILE *fp, int len_bytes) {
+  assert((len_bytes % sizeof(uint32_t)) == 0);
+  spirv.resize(len_bytes/sizeof(uint32_t));
+  size_t bytes_read = fread(spirv.data(), 1, len_bytes, fp);
+  if ( (int)bytes_read != len_bytes) {
     return VK_ERROR_INITIALIZATION_FAILED;
   }
+  return parse_spirv_and_create(device_context);
+}
+VkResult Shader::create_and_load_spv_mem(const DeviceContext& device_context, const void *buffer, int len_bytes) {
+  assert((len_bytes % sizeof(uint32_t)) == 0);
+  spirv.reserve(len_bytes/sizeof(uint32_t));
+  const uint32_t *buffer_as_u32 = (const uint32_t*)buffer;
+  spirv.insert(spirv.begin(), buffer_as_u32, buffer_as_u32+(len_bytes/sizeof(uint32_t)));
 
+  return parse_spirv_and_create(device_context);
+}
+
+VkResult Shader::parse_spirv_and_create(const DeviceContext& device_context) {
   spirv_cross::CompilerGLSL glsl(spirv);  // NOTE: throws an exception if you hand it malformed/invalid SPIRV.
   stage = VkShaderStageFlagBits(0);
   spv::ExecutionModel execution_model = glsl.get_execution_model();
@@ -708,7 +719,7 @@ VkResult Shader::create_and_load_from_file(const DeviceContext& device_context, 
 
   VkShaderModuleCreateInfo shader_ci = {};
   shader_ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_ci.codeSize = len;  // note: in bytes
+  shader_ci.codeSize = spirv.size() * sizeof(uint32_t);  // note: in bytes
   shader_ci.pCode = spirv.data();
   VkResult result = vkCreateShaderModule(device_context.device(), &shader_ci, device_context.host_allocator(), &handle);
   return result;
