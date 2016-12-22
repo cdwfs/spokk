@@ -1640,7 +1640,7 @@ Application::Application(const CreateInfo &ci) {
 
   // Initialize Vulkan
   std::vector<const char*> required_instance_layer_names = {};
-  if (ci.enable_validation) {
+  if (ci.debug_report_flags != 0) {
     required_instance_layer_names.push_back("VK_LAYER_LUNARG_standard_validation");
   }
   std::vector<const char*> optional_instance_layer_names = {};
@@ -1656,7 +1656,7 @@ Application::Application(const CreateInfo &ci) {
     required_instance_extension_names.push_back(PLATFORM_SURFACE_EXTENSION_NAME);
   }
   std::vector<const char*> optional_instance_extension_names = {};
-  if (ci.enable_validation) {
+  if (ci.debug_report_flags != 0) {
     optional_instance_extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
   }
   std::vector<const char*> enabled_instance_extension_names;
