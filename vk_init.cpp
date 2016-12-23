@@ -40,6 +40,9 @@ VkResult cdsvk::get_supported_instance_layers(const std::vector<const char*>& re
       result = vkEnumerateInstanceLayerProperties(&all_instance_layer_count, all_instance_layers.data());
     }
   } while (result == VK_INCOMPLETE);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
   for(const auto& layer : all_instance_layers) {
     if (layer.specVersion & (1<<31)) {
       return VK_ERROR_INITIALIZATION_FAILED; // We use the high bit to mark duplicates; it had better not be set up front!
@@ -105,6 +108,9 @@ VkResult cdsvk::get_supported_instance_extensions(const std::vector<VkLayerPrope
           layer_instance_extensions.data());
       }
     } while (result == VK_INCOMPLETE);
+    if (result != VK_SUCCESS) {
+      return result;
+    }
     for(const auto &layer_extension : layer_instance_extensions) {
       bool found = false;
       const std::string extension_name_str(layer_extension.extensionName);
