@@ -94,6 +94,89 @@ VKAPI_ATTR VkBool32 VKAPI_CALL my_debug_report_callback(VkFlags msgFlags,
   }
 }
 
+VkResult find_physical_device(const std::vector<Application::QueueFamilyRequest>& qf_reqs, VkInstance instance,
+  VkSurfaceKHR present_surface, VkPhysicalDevice *out_physical_device, std::vector<uint32_t>* out_queue_families) {
+  *out_physical_device = VK_NULL_HANDLE;
+  uint32_t physical_device_count = 0;
+  std::vector<VkPhysicalDevice> all_physical_devices;
+  VkResult result = VK_INCOMPLETE;
+  do {
+    result = vkEnumeratePhysicalDevices(instance, &physical_device_count, nullptr);
+    if (result == VK_SUCCESS && physical_device_count > 0) {
+      all_physical_devices.resize(physical_device_count);
+      result = vkEnumeratePhysicalDevices(instance, &physical_device_count, all_physical_devices.data());
+    }
+  } while (result == VK_INCOMPLETE);
+  out_queue_families->clear();
+  out_queue_families->resize(qf_reqs.size(), VK_QUEUE_FAMILY_IGNORED);
+  for(auto physical_device : all_physical_devices) {
+    uint32_t queue_family_count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
+    std::vector<VkQueueFamilyProperties> all_queue_family_properties(queue_family_count);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, all_queue_family_properties.data());
+    bool pd_meets_requirements = true;
+    for(uint32_t iReq=0; iReq < qf_reqs.size(); ++iReq) {
+      auto &req = qf_reqs[iReq];
+      bool found_qf = false;
+      // First search for an *exact* match for the requested queue flags, so that users who request e.g. a dedicated
+      // transfer queue are more likely to get one.
+      for(uint32_t iQF=0; (size_t)iQF < all_queue_family_properties.size(); ++iQF) {
+        if (all_queue_family_properties[iQF].queueCount < req.queue_count) {
+          continue;  // insufficient queue count
+        } else if (all_queue_family_properties[iQF].queueFlags != req.flags) {
+          continue;  // family doesn't the exact requested operations
+        }
+        VkBool32 supports_present = VK_FALSE;
+        if (req.flags & VK_QUEUE_GRAPHICS_BIT && present_surface != VK_NULL_HANDLE) {
+          result = vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, iQF, present_surface, &supports_present);
+          if (result != VK_SUCCESS) {
+            return result;
+          } else if (!supports_present) {
+            continue;  // Queue family can not present to the provided surface
+          }
+        }
+        // This family meets all requirements. Hooray!
+        (*out_queue_families)[iReq] = iQF;
+        found_qf = true;
+        break;
+      }
+      if (!found_qf) {
+        // Search again; this time, accept any queue family that supports the requested flags, even if it supports
+        // additional operations.
+        for(uint32_t iQF=0; (size_t)iQF < all_queue_family_properties.size(); ++iQF) {
+          if (all_queue_family_properties[iQF].queueCount < req.queue_count) {
+            continue;  // insufficient queue count
+          } else if ((all_queue_family_properties[iQF].queueFlags & req.flags) != req.flags) {
+            continue;  // family doesn't support all required operations
+          }
+          VkBool32 supports_present = VK_FALSE;
+          if (req.flags & VK_QUEUE_GRAPHICS_BIT && present_surface != VK_NULL_HANDLE) {
+            result = vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, iQF, present_surface, &supports_present);
+            if (result != VK_SUCCESS) {
+              return result;
+            } else if (!supports_present) {
+              continue;  // Queue family can not present to the provided surface
+            }
+          }
+          // This family meets all requirements. Hooray!
+          (*out_queue_families)[iReq] = iQF;
+          found_qf = true;
+          break;
+        }
+      }
+      if (!found_qf) {
+        pd_meets_requirements = false;
+        continue;
+      }
+    }
+    if (pd_meets_requirements) {
+      *out_physical_device = physical_device;
+      return VK_SUCCESS;
+    }
+  }
+  return VK_ERROR_INITIALIZATION_FAILED;
+}
+
 const uint32_t kWindowWidthDefault = 1280;
 const uint32_t kWindowHeightDefault = 720;
 }  // namespace
@@ -2075,87 +2158,4 @@ bool Application::is_device_extension_enabled(const std::string& extension_name)
     }
   }
   return false;
-}
-
-VkResult Application::find_physical_device(const std::vector<QueueFamilyRequest>& qf_reqs, VkInstance instance,
-    VkSurfaceKHR present_surface, VkPhysicalDevice *out_physical_device, std::vector<uint32_t>* out_queue_families) {
-  *out_physical_device = VK_NULL_HANDLE;
-  uint32_t physical_device_count = 0;
-  std::vector<VkPhysicalDevice> all_physical_devices;
-  VkResult result = VK_INCOMPLETE;
-  do {
-    result = vkEnumeratePhysicalDevices(instance, &physical_device_count, nullptr);
-    if (result == VK_SUCCESS && physical_device_count > 0) {
-      all_physical_devices.resize(physical_device_count);
-      result = vkEnumeratePhysicalDevices(instance, &physical_device_count, all_physical_devices.data());
-    }
-  } while (result == VK_INCOMPLETE);
-  out_queue_families->clear();
-  out_queue_families->resize(qf_reqs.size(), VK_QUEUE_FAMILY_IGNORED);
-  for(auto physical_device : all_physical_devices) {
-    uint32_t queue_family_count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
-    std::vector<VkQueueFamilyProperties> all_queue_family_properties(queue_family_count);
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, all_queue_family_properties.data());
-    bool pd_meets_requirements = true;
-    for(uint32_t iReq=0; iReq < qf_reqs.size(); ++iReq) {
-      auto &req = qf_reqs[iReq];
-      bool found_qf = false;
-      // First search for an *exact* match for the requested queue flags, so that users who request e.g. a dedicated
-      // transfer queue are more likely to get one.
-      for(uint32_t iQF=0; (size_t)iQF < all_queue_family_properties.size(); ++iQF) {
-        if (all_queue_family_properties[iQF].queueCount < req.queue_count) {
-          continue;  // insufficient queue count
-        } else if (all_queue_family_properties[iQF].queueFlags != req.flags) {
-          continue;  // family doesn't the exact requested operations
-        }
-        VkBool32 supports_present = VK_FALSE;
-        if (req.flags & VK_QUEUE_GRAPHICS_BIT && present_surface != VK_NULL_HANDLE) {
-          result = vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, iQF, present_surface, &supports_present);
-          if (result != VK_SUCCESS) {
-            return result;
-          } else if (!supports_present) {
-            continue;  // Queue family can not present to the provided surface
-          }
-        }
-        // This family meets all requirements. Hooray!
-        (*out_queue_families)[iReq] = iQF;
-        found_qf = true;
-        break;
-      }
-      if (!found_qf) {
-        // Search again; this time, accept any queue family that supports the requested flags, even if it supports
-        // additional operations.
-        for(uint32_t iQF=0; (size_t)iQF < all_queue_family_properties.size(); ++iQF) {
-          if (all_queue_family_properties[iQF].queueCount < req.queue_count) {
-            continue;  // insufficient queue count
-          } else if ((all_queue_family_properties[iQF].queueFlags & req.flags) != req.flags) {
-            continue;  // family doesn't support all required operations
-          }
-          VkBool32 supports_present = VK_FALSE;
-          if (req.flags & VK_QUEUE_GRAPHICS_BIT && present_surface != VK_NULL_HANDLE) {
-            result = vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, iQF, present_surface, &supports_present);
-            if (result != VK_SUCCESS) {
-              return result;
-            } else if (!supports_present) {
-              continue;  // Queue family can not present to the provided surface
-            }
-          }
-          // This family meets all requirements. Hooray!
-          (*out_queue_families)[iReq] = iQF;
-          found_qf = true;
-          break;
-        }
-      }
-      if (!found_qf) {
-        pd_meets_requirements = false;
-        continue;
-      }
-    }
-    if (pd_meets_requirements) {
-      *out_physical_device = physical_device;
-      return VK_SUCCESS;
-    }
-  }
-  return VK_ERROR_INITIALIZATION_FAILED;
 }

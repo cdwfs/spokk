@@ -574,10 +574,8 @@ protected:
 
   bool force_exit_ = false;  // Application can set this to true to exit at the next available chance.
 
-private:
-  VkResult find_physical_device(const std::vector<QueueFamilyRequest>& qf_reqs, VkInstance instance,
-    VkSurfaceKHR present_surface, VkPhysicalDevice *out_physical_device, std::vector<uint32_t>* out_queue_families);
 
+private:
   bool init_successful = false;
 
 };
