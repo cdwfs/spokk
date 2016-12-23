@@ -346,8 +346,9 @@ struct Shader {
       static_cast<int>( (result.cend() - result.cbegin()) * sizeof(uint32_t) ));
   }
 #endif  // defined(SPOKK_ENABLE_SHADERC)
+  // After parsing, you can probably get rid of the SPIRV to save some memory.
   void unload_spirv(void) {
-    spirv.clear();
+    spirv = std::vector<uint32_t>(0);
   }
   // Dynamic buffers need a different descriptor type, but there's no way to express it in the shader language.
   // So for now, you have to force individual buffers to be dynamic.
