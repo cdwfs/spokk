@@ -305,7 +305,7 @@ struct DescriptorSetLayoutBindingInfo {
 };
 struct DescriptorSetLayoutInfo {
   std::vector<VkDescriptorSetLayoutBinding> bindings;
-  std::vector<DescriptorSetLayoutBindingInfo> binding_infos;
+  std::vector<DescriptorSetLayoutBindingInfo> binding_infos;  // one per binding
 };
 
 #if defined(SPOKK_ENABLE_SHADERC)

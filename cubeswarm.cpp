@@ -169,9 +169,6 @@ public:
       &post_shader_pipeline_, &render_pass_, 1));
     // because the pipelines use a compatible layout, we can just add room for one full layout.
     dpool_.add((uint32_t)mesh_shader_pipeline_.dset_layout_cis.size(), mesh_shader_pipeline_.dset_layout_cis.data());
-
-    // TODO(cort): hmm, how to deal with multiple shader pipelines having overlapping (but compatible)
-    // dset layouts and push constant ranges? For now, just keep them separated.
     CDSVK_CHECK(dpool_.finalize(device_context_));
     dset_ = dpool_.allocate_set(device_context_, mesh_shader_pipeline_.dset_layouts[0]);
     DescriptorSetWriter dset_writer(mesh_shader_pipeline_.dset_layout_cis[0]);
@@ -298,7 +295,7 @@ public:
         ;
       o2w_matrices[iMesh] = o2w;
     }
-    // TODO(cort): lean this up when I figure out a good abstraction for N-buffered resources.
+    // TODO(cort): clean this up when I figure out a good abstraction for N-buffered resources.
     // Specifically, dynamic uniform buffers are currently an issue.
     mesh_uniforms_.load(device_context_, o2w_matrices.data(), MESH_INSTANCE_COUNT * sizeof(mathfu::mat4),
       0, MESH_INSTANCE_COUNT * sizeof(mathfu::mat4) * vframe_index_);
