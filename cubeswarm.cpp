@@ -23,6 +23,8 @@ class CubeSwarmApp : public cdsvk::Application {
 public:
   explicit CubeSwarmApp(Application::CreateInfo &ci) :
       Application(ci) {
+    glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
     seconds_elapsed_ = 0;
 
     const float fovDegrees = 45.0f;

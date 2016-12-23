@@ -1790,7 +1790,6 @@ Application::Application(const CreateInfo &ci) {
       glfwCreateWindow(kWindowWidthDefault, kWindowHeightDefault, ci.app_name.c_str(), NULL, NULL),
       [](GLFWwindow *w){ glfwDestroyWindow(w); });
     glfwSetInputMode(window_.get(), GLFW_STICKY_KEYS, 1);
-    glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwPollEvents(); // dummy poll for first loop iteration
 
     input_state_.set_window(window_);
