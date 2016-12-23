@@ -176,19 +176,9 @@ FUNCTION (SPOKK_APP APP_NAME APP_SOURCES_LIST APP_HEADERS_LIST APP_SHADERS_LIST)
 ENDFUNCTION(SPOKK_APP APP_NAME APP_SOURCES APP_HEADERS APP_SHADERS)
 
 # spokk-cubeswarm sample
-SET(CUBESWARM_SOURCES
-    camera.cpp
-    cubeswarm.cpp
-)
-SET(CUBESWARM_HEADERS
-    camera.h
-)
-SET(CUBESWARM_SHADERS
-    tri.vert
-    tri.frag
-    fullscreen.vert
-    subpass_post.frag
-)
+SET(CUBESWARM_SOURCES camera.cpp cubeswarm.cpp)
+SET(CUBESWARM_HEADERS camera.h)
+SET(CUBESWARM_SHADERS tri.vert tri.frag fullscreen.vert subpass_post.frag)
 SPOKK_APP(spokk-cubeswarm CUBESWARM_SOURCES CUBESWARM_HEADERS CUBESWARM_SHADERS)
 
 # spokk-compute
@@ -197,6 +187,11 @@ SET(COMPUTE_HEADERS)
 SET(COMPUTE_SHADERS double_ints.comp)
 SPOKK_APP(spokk-compute COMPUTE_SOURCES COMPUTE_HEADERS COMPUTE_SHADERS)
 
+# spokk-shadertoy
+SET(SHADERTOY_SOURCES shadertoy.cpp)
+SET(SHADERTOY_HEADERS)
+SET(SHADERTOY_SHADERS fullscreen.vert shadertoy.frag)
+SPOKK_APP(spokk-shadertoy SHADERTOY_SOURCES SHADERTOY_HEADERS SHADERTOY_SHADERS)
 
 # Copy assets directory into build dir.
 # TODO(cort): Which target should this be attached to? Or hey, what if every sample knows what assets
