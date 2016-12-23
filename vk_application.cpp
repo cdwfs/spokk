@@ -871,6 +871,18 @@ VkResult Shader::parse_spirv_and_create(const DeviceContext& device_context) {
   VkResult result = vkCreateShaderModule(device_context.device(), &shader_ci, device_context.host_allocator(), &handle);
   return result;
 }
+void Shader::override_descriptor_type(uint32_t dset, uint32_t binding, VkDescriptorType new_type) {
+  auto& b = dset_layout_infos.at(dset).bindings.at(binding);
+  if (b.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && new_type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
+    b.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+  } else if (b.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC && new_type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+    b.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+  } else if (b.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER && new_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
+    b.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+  } else if (b.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC && new_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+    b.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  }
+}
 void Shader::destroy(const DeviceContext& device_context) {
   if (handle) {
     vkDestroyShaderModule(device_context.device(), handle, device_context.host_allocator());

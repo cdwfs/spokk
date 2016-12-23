@@ -92,9 +92,7 @@ public:
     // Load shader pipelines
     CDSVK_CHECK(mesh_vs_.create_and_load_spv_file(device_context_, "tri.vert.spv"));
     CDSVK_CHECK(mesh_fs_.create_and_load_spv_file(device_context_, "tri.frag.spv"));
-    // TODO(cort): find a better way to override specific buffers as dynamic in shader pipelines.
-    // For now it's safe to just poke the new type into the Shader's layout info, before ShaderPipeline creation.
-    mesh_vs_.dset_layout_infos[0].bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    mesh_vs_.override_descriptor_type(0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     CDSVK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_vs_));
     CDSVK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_fs_));
 
@@ -296,7 +294,6 @@ public:
       o2w_matrices[iMesh] = o2w;
     }
     // TODO(cort): clean this up when I figure out a good abstraction for N-buffered resources.
-    // Specifically, dynamic uniform buffers are currently an issue.
     mesh_uniforms_.load(device_context_, o2w_matrices.data(), MESH_INSTANCE_COUNT * sizeof(mathfu::mat4),
       0, MESH_INSTANCE_COUNT * sizeof(mathfu::mat4) * vframe_index_);
   }

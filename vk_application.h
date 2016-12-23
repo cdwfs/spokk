@@ -349,6 +349,10 @@ struct Shader {
   void unload_spirv(void) {
     spirv.clear();
   }
+  // Dynamic buffers need a different descriptor type, but there's no way to express it in the shader language.
+  // So for now, you have to force individual buffers to be dynamic.
+  // TODO(cort): would it be better to do this at the ShaderPipeline level?
+  void override_descriptor_type(uint32_t dset, uint32_t binding, VkDescriptorType new_type);
   void destroy(const DeviceContext& device_context);
 
   VkShaderModule handle;
