@@ -85,7 +85,7 @@ public:
     VkSamplerCreateInfo sampler_ci = get_sampler_ci(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     CDSVK_CHECK(vkCreateSampler(device_, &sampler_ci, allocation_callbacks_, &sampler_));
     texture_loader_ = my_make_unique<TextureLoader>(device_context_);
-    albedo_tex_.create_and_load(device_context_, *texture_loader_.get(), "trevor/redf.ktx");
+    CDSVK_CHECK(albedo_tex_.create_and_load(device_context_, *texture_loader_.get(), "trevor/redf.ktx"));
 
     // Load shader pipelines
     CDSVK_CHECK(mesh_vs_.create_and_load_spv_file(device_context_, "tri.vert.spv"));
