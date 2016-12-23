@@ -1719,7 +1719,7 @@ Application::Application(const CreateInfo &ci) {
     required_instance_layer_names.push_back("VK_LAYER_LUNARG_standard_validation");
   }
   std::vector<const char*> optional_instance_layer_names = {};
-  std::vector<const char*> enabled_instance_layer_names;
+  std::vector<const char*> enabled_instance_layer_names = {};
   CDSVK_CHECK(cdsvk::get_supported_instance_layers(
     required_instance_layer_names, optional_instance_layer_names,
     &instance_layers_, &enabled_instance_layer_names));
@@ -1753,7 +1753,7 @@ Application::Application(const CreateInfo &ci) {
   instance_ci.ppEnabledLayerNames     = enabled_instance_layer_names.data();
   instance_ci.enabledExtensionCount   = (uint32_t)enabled_instance_extension_names.size();
   instance_ci.ppEnabledExtensionNames = enabled_instance_extension_names.data();
-  CDSVK_CHECK(vkCreateInstance(&instance_ci, allocation_callbacks_, &instance_));
+  CDSVK_CHECK(vkCreateInstance(&instance_ci, host_allocator_, &instance_));
 
   if (is_instance_extension_enabled(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
     VkDebugReportCallbackCreateInfoEXT debug_report_callback_ci = {};
@@ -1763,12 +1763,11 @@ Application::Application(const CreateInfo &ci) {
     debug_report_callback_ci.pUserData = nullptr;
     auto create_debug_report_func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_,
       "vkCreateDebugReportCallbackEXT");
-    CDSVK_CHECK(create_debug_report_func(instance_, &debug_report_callback_ci, allocation_callbacks_, &debug_report_callback_));
-    assert(debug_report_callback_ != VK_NULL_HANDLE);
+    CDSVK_CHECK(create_debug_report_func(instance_, &debug_report_callback_ci, host_allocator_, &debug_report_callback_));
   }
 
   if (ci.enable_graphics) {
-    CDSVK_CHECK( glfwCreateWindowSurface(instance_, window_.get(), allocation_callbacks_, &surface_) );
+    CDSVK_CHECK( glfwCreateWindowSurface(instance_, window_.get(), host_allocator_, &surface_) );
   }
 
   std::vector<uint32_t> queue_family_indices;
@@ -1815,7 +1814,7 @@ Application::Application(const CreateInfo &ci) {
   device_ci.enabledExtensionCount = (uint32_t)enabled_device_extension_names.size();
   device_ci.ppEnabledExtensionNames = enabled_device_extension_names.data();
   device_ci.pEnabledFeatures = &physical_device_features_;
-  CDSVK_CHECK(vkCreateDevice(physical_device_, &device_ci, allocation_callbacks_, &device_));
+  CDSVK_CHECK(vkCreateDevice(physical_device_, &device_ci, host_allocator_, &device_));
 
   uint32_t total_queue_family_count = 0;
   vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &total_queue_family_count, nullptr);
@@ -1845,10 +1844,10 @@ Application::Application(const CreateInfo &ci) {
 
   VkPipelineCacheCreateInfo pipeline_cache_ci = {};
   pipeline_cache_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-  CDSVK_CHECK(vkCreatePipelineCache(device_, &pipeline_cache_ci, allocation_callbacks_, &pipeline_cache_));
+  CDSVK_CHECK(vkCreatePipelineCache(device_, &pipeline_cache_ci, host_allocator_, &pipeline_cache_));
 
   device_context_ = DeviceContext(device_, physical_device_, pipeline_cache_, queue_contexts_.data(),
-    (uint32_t)queue_contexts_.size(), allocation_callbacks_, nullptr);
+    (uint32_t)queue_contexts_.size(), host_allocator_, device_allocator_);
 
   // Create VkSwapchain
   if (ci.enable_graphics && surface_ != VK_NULL_HANDLE) {
@@ -1939,7 +1938,7 @@ Application::Application(const CreateInfo &ci) {
     swapchain_ci.presentMode = present_mode;
     swapchain_ci.clipped = VK_TRUE;
     swapchain_ci.oldSwapchain = old_swapchain;
-    CDSVK_CHECK(vkCreateSwapchainKHR(device_, &swapchain_ci, allocation_callbacks_, &swapchain_));
+    CDSVK_CHECK(vkCreateSwapchainKHR(device_, &swapchain_ci, host_allocator_, &swapchain_));
     if (old_swapchain != VK_NULL_HANDLE) {
       assert(0); // TODO(cort): handle this at some point
     }
@@ -1972,7 +1971,7 @@ Application::Application(const CreateInfo &ci) {
     for(auto image : swapchain_images_) {
       image_view_ci.image = image;
       VkImageView view = VK_NULL_HANDLE;
-      CDSVK_CHECK(vkCreateImageView(device_, &image_view_ci, allocation_callbacks_, &view));
+      CDSVK_CHECK(vkCreateImageView(device_, &image_view_ci, host_allocator_, &view));
       swapchain_image_views_.push_back(view);
     }
   }
@@ -1983,14 +1982,14 @@ Application::~Application() {
   if (device_) {
     vkDeviceWaitIdle(device_);
 
-    vkDestroyPipelineCache(device_, pipeline_cache_, allocation_callbacks_);
+    vkDestroyPipelineCache(device_, pipeline_cache_, host_allocator_);
 
-    for(auto& view : swapchain_image_views_) {
-      vkDestroyImageView(device_, view, allocation_callbacks_);
-      view = VK_NULL_HANDLE;
-    }
     if (swapchain_ != VK_NULL_HANDLE) {
-      vkDestroySwapchainKHR(device_, swapchain_, allocation_callbacks_);
+      for(auto& view : swapchain_image_views_) {
+        vkDestroyImageView(device_, view, host_allocator_);
+        view = VK_NULL_HANDLE;
+      }
+      vkDestroySwapchainKHR(device_, swapchain_, host_allocator_);
       swapchain_ = VK_NULL_HANDLE;
     }
   }
@@ -1998,18 +1997,20 @@ Application::~Application() {
     window_.reset();
     glfwTerminate();
   }
-  vkDestroyDevice(device_, allocation_callbacks_);
+  vkDestroyDevice(device_, host_allocator_);
   device_ = VK_NULL_HANDLE;
   if (debug_report_callback_ != VK_NULL_HANDLE) {
     auto destroy_debug_report_func = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_, "vkDestroyDebugReportCallbackEXT");
-    destroy_debug_report_func(instance_, debug_report_callback_, allocation_callbacks_);
+    destroy_debug_report_func(instance_, debug_report_callback_, host_allocator_);
   }
   if (surface_ != VK_NULL_HANDLE) {
-    vkDestroySurfaceKHR(instance_, surface_, allocation_callbacks_);
+    vkDestroySurfaceKHR(instance_, surface_, host_allocator_);
     surface_ = VK_NULL_HANDLE;
   }
-  vkDestroyInstance(instance_, allocation_callbacks_);
-  instance_ = VK_NULL_HANDLE;
+  if (instance_ != VK_NULL_HANDLE) {
+    vkDestroyInstance(instance_, host_allocator_);
+    instance_ = VK_NULL_HANDLE;
+  }
 }
 
 int Application::run() {

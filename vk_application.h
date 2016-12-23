@@ -543,7 +543,8 @@ protected:
   bool is_instance_extension_enabled(const std::string& layer_name) const;
   bool is_device_extension_enabled(const std::string& layer_name) const;
 
-  const VkAllocationCallbacks *allocation_callbacks_ = nullptr;
+  const VkAllocationCallbacks *host_allocator_ = nullptr;
+  const DeviceAllocationCallbacks *device_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
   std::vector<VkLayerProperties> instance_layers_ = {};
   std::vector<VkExtensionProperties> instance_extensions_ = {};

@@ -26,7 +26,7 @@ public:
     cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     cpool_ci.queueFamilyIndex = queue_context->queue_family;
-    CDSVK_CHECK(vkCreateCommandPool(device_, &cpool_ci, allocation_callbacks_, &cpool_));
+    CDSVK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &cpool_));
     VkCommandBufferAllocateInfo cb_allocate_info = {};
     cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     cb_allocate_info.commandPool = cpool_;
@@ -66,7 +66,7 @@ public:
 
     VkFenceCreateInfo fence_ci = {};
     fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    CDSVK_CHECK(vkCreateFence(device_, &fence_ci, allocation_callbacks_, &submission_complete_fence_));
+    CDSVK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &submission_complete_fence_));
 
     VkCommandBuffer cb = command_buffer_;
 
@@ -145,9 +145,9 @@ public:
       compute_shader_pipeline_.destroy(device_context_);
       double_ints_cs_.destroy(device_context_);
 
-      vkDestroyFence(device_, submission_complete_fence_, allocation_callbacks_);
+      vkDestroyFence(device_, submission_complete_fence_, host_allocator_);
 
-      vkDestroyCommandPool(device_, cpool_, allocation_callbacks_);
+      vkDestroyCommandPool(device_, cpool_, host_allocator_);
     }
   }
 

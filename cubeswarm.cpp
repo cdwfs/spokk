@@ -44,7 +44,7 @@ public:
     cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     cpool_ci.queueFamilyIndex = queue_context->queue_family;
-    CDSVK_CHECK(vkCreateCommandPool(device_, &cpool_ci, allocation_callbacks_, &cpool_));
+    CDSVK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &cpool_));
     VkCommandBufferAllocateInfo cb_allocate_info = {};
     cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     cb_allocate_info.commandPool = cpool_;
@@ -78,12 +78,12 @@ public:
     framebuffers_.resize(swapchain_image_views_.size());
     for(size_t i=0; i<swapchain_image_views_.size(); ++i) {
       attachment_views[2] = swapchain_image_views_[i];
-      CDSVK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, allocation_callbacks_, &framebuffers_[i]));
+      CDSVK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
     }
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci = get_sampler_ci(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
-    CDSVK_CHECK(vkCreateSampler(device_, &sampler_ci, allocation_callbacks_, &sampler_));
+    CDSVK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
     texture_loader_ = my_make_unique<TextureLoader>(device_context_);
     CDSVK_CHECK(albedo_tex_.create_and_load(device_context_, *texture_loader_.get(), "trevor/redf.ktx"));
 
@@ -192,8 +192,8 @@ public:
     // Create the semaphores used to synchronize access to swapchain images
     VkSemaphoreCreateInfo semaphore_ci = {};
     semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    CDSVK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, allocation_callbacks_, &swapchain_image_ready_sem_));
-    CDSVK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, allocation_callbacks_, &rendering_complete_sem_));
+    CDSVK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &swapchain_image_ready_sem_));
+    CDSVK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &rendering_complete_sem_));
 
     // Create the fences used to wait for each swapchain image's command buffer to be submitted.
     // This prevents re-writing the command buffer contents before it's been submitted and processed.
@@ -201,7 +201,7 @@ public:
     fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
     for(auto &fence : submission_complete_fences_) {
-      CDSVK_CHECK(vkCreateFence(device_, &fence_ci, allocation_callbacks_, &fence));
+      CDSVK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
     }
   }
   virtual ~CubeSwarmApp() {
@@ -228,24 +228,24 @@ public:
       post_filmgrain_fs_.destroy(device_context_);
 
       for(auto &fence : submission_complete_fences_) {
-        vkDestroyFence(device_, fence, allocation_callbacks_);
+        vkDestroyFence(device_, fence, host_allocator_);
       }
-      vkDestroySemaphore(device_, swapchain_image_ready_sem_, allocation_callbacks_);
-      vkDestroySemaphore(device_, rendering_complete_sem_, allocation_callbacks_);
+      vkDestroySemaphore(device_, swapchain_image_ready_sem_, host_allocator_);
+      vkDestroySemaphore(device_, rendering_complete_sem_, host_allocator_);
 
-      vkDestroySampler(device_, sampler_, allocation_callbacks_);
+      vkDestroySampler(device_, sampler_, host_allocator_);
       albedo_tex_.destroy(device_context_);
       texture_loader_.reset();
 
       for(const auto fb : framebuffers_) {
-        vkDestroyFramebuffer(device_, fb, allocation_callbacks_);
+        vkDestroyFramebuffer(device_, fb, host_allocator_);
       }
       render_pass_.destroy(device_context_);
 
       offscreen_image_.destroy(device_context_);
       depth_image_.destroy(device_context_);
 
-      vkDestroyCommandPool(device_, cpool_, allocation_callbacks_);
+      vkDestroyCommandPool(device_, cpool_, host_allocator_);
     }
   }
 
