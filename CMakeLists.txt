@@ -2,9 +2,6 @@ cmake_minimum_required(VERSION 2.8)
 
 project(spokk)
 
-# Remove MinSizeRel and RelWithDebInfo targets
-set(CMAKE_CONFIGURATION_TYPES Debug Release CACHE TYPE INTERNAL FORCE )
-
 # SPIRV-Cross
 add_subdirectory(third_party/SPIRV-Cross)
 set(SPIRV_CROSS_TARGETS
