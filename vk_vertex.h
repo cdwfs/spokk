@@ -1,12 +1,12 @@
 #pragma once
 
-#include "vk_application.h"  // for MeshFormat
+#include "vk_mesh.h"
 
 #include <cstdint>
 #include <initializer_list>
 #include <vector>
 
-namespace cdsvk {
+namespace spokk {
 
 struct VertexLayout
 {
@@ -32,6 +32,4 @@ struct VertexLayout
 int convert_vertex_buffer(const void *src_vertices, const VertexLayout& src_layout,
   void *dst_vertices, const VertexLayout &dst_layout, size_t vertex_count);
 
-
-
-}  // namespace cdsvk
+}  // namespace spokk

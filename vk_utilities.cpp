@@ -1,11 +1,10 @@
-#include "vk_init.h"
-using namespace cdsvk;
+#include "vk_utilities.h"
 
-#include <assert.h>
-#include <float.h>
-#include <string.h>
+#include <cassert>
+#include <cfloat>
+#include <cstring>
 
-namespace {
+namespace spokk {
 
 VkImageAspectFlags vk_format_to_image_aspect_flags(VkFormat format) {
   switch(format) {
@@ -24,9 +23,82 @@ VkImageAspectFlags vk_format_to_image_aspect_flags(VkFormat format) {
   }
 }
 
-}  // namespace
+//
+// OneShotCommandPool
+//
+OneShotCommandPool::OneShotCommandPool(VkDevice device, VkQueue queue, uint32_t queue_family,
+  const VkAllocationCallbacks *allocator) :
+  device_(device),
+  queue_(queue),
+  queue_family_(queue_family),
+  allocator_(allocator) {
+  VkCommandPoolCreateInfo cpool_ci = {};
+  cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+  cpool_ci.queueFamilyIndex = queue_family_;
+  VkResult result = vkCreateCommandPool(device_, &cpool_ci, allocator, &pool_);
+  assert(result == VK_SUCCESS);
+}
+OneShotCommandPool::~OneShotCommandPool() {
+  if (pool_ != VK_NULL_HANDLE) {
+    vkDestroyCommandPool(device_, pool_, allocator_);
+    pool_ = VK_NULL_HANDLE;
+  }
+}
 
-VkResult cdsvk::get_supported_instance_layers(const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
+VkCommandBuffer OneShotCommandPool::allocate_and_begin(void) const {
+  VkCommandBuffer cb = VK_NULL_HANDLE;
+  {
+    std::lock_guard<std::mutex> lock(pool_mutex_);
+    VkCommandBufferAllocateInfo cb_allocate_info = {};
+    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cb_allocate_info.commandPool = pool_;
+    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cb_allocate_info.commandBufferCount = 1;
+    if (VK_SUCCESS != vkAllocateCommandBuffers(device_, &cb_allocate_info, &cb)) {
+      return VK_NULL_HANDLE;
+    }
+  }
+  VkCommandBufferBeginInfo cb_begin_info = {};
+  cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  VkResult result = vkBeginCommandBuffer(cb, &cb_begin_info);
+  if (VK_SUCCESS != result) {
+    vkFreeCommandBuffers(device_, pool_, 1, &cb);
+    return VK_NULL_HANDLE;
+  }
+  return cb;
+}
+
+VkResult OneShotCommandPool::end_submit_and_free(VkCommandBuffer *cb) const {
+  VkResult result = vkEndCommandBuffer(*cb);
+  if (result == VK_SUCCESS) {
+    VkFenceCreateInfo fence_ci = {};
+    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    VkFence fence = VK_NULL_HANDLE;
+    result = vkCreateFence(device_, &fence_ci, allocator_, &fence);
+    if (result == VK_SUCCESS) {
+      VkSubmitInfo submit_info = {};
+      submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+      submit_info.commandBufferCount = 1;
+      submit_info.pCommandBuffers = cb;
+      result = vkQueueSubmit(queue_, 1, &submit_info, fence);
+      if (result == VK_SUCCESS) {
+        result = vkWaitForFences(device_, 1, &fence, VK_TRUE, UINT64_MAX);
+      }
+    }
+    vkDestroyFence(device_, fence, allocator_);
+  }
+  {
+    std::lock_guard<std::mutex> lock(pool_mutex_);
+    vkFreeCommandBuffers(device_, pool_, 1, cb);
+  }
+  *cb = VK_NULL_HANDLE;
+  return result;
+}
+
+
+VkResult get_supported_instance_layers(const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
     std::vector<VkLayerProperties>* out_supported_layers, std::vector<const char*>* out_supported_layer_names) {
   out_supported_layers->clear();
   out_supported_layer_names->clear();
@@ -88,7 +160,7 @@ VkResult cdsvk::get_supported_instance_layers(const std::vector<const char*>& re
   return VK_SUCCESS;
 }
 
-VkResult cdsvk::get_supported_instance_extensions(const std::vector<VkLayerProperties>& enabled_instance_layers,
+VkResult get_supported_instance_extensions(const std::vector<VkLayerProperties>& enabled_instance_layers,
     const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
     std::vector<VkExtensionProperties>* out_supported_extensions, std::vector<const char*>* out_supported_extension_names) {
   out_supported_extensions->clear();
@@ -172,7 +244,7 @@ VkResult cdsvk::get_supported_instance_extensions(const std::vector<VkLayerPrope
   return VK_SUCCESS;
 }
 
-VkResult cdsvk::get_supported_device_extensions(VkPhysicalDevice physical_device, const std::vector<VkLayerProperties>& enabled_instance_layers,
+VkResult get_supported_device_extensions(VkPhysicalDevice physical_device, const std::vector<VkLayerProperties>& enabled_instance_layers,
     const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
     std::vector<VkExtensionProperties>* out_supported_extensions, std::vector<const char*>* out_supported_extension_names) {
   out_supported_extensions->clear();
@@ -252,7 +324,7 @@ VkResult cdsvk::get_supported_device_extensions(VkPhysicalDevice physical_device
   return VK_SUCCESS;
 }
 
-VkImageViewCreateInfo cdsvk::view_ci_from_image(VkImage image, const VkImageCreateInfo &image_ci) {
+VkImageViewCreateInfo view_ci_from_image(VkImage image, const VkImageCreateInfo &image_ci) {
   VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D;
   if (image_ci.imageType == VK_IMAGE_TYPE_1D) {
     view_type = (image_ci.arrayLayers == 1) ? VK_IMAGE_VIEW_TYPE_1D : VK_IMAGE_VIEW_TYPE_1D_ARRAY;
@@ -283,7 +355,7 @@ VkImageViewCreateInfo cdsvk::view_ci_from_image(VkImage image, const VkImageCrea
   return view_ci;
 }
 
-VkSamplerCreateInfo cdsvk::get_sampler_ci(VkFilter min_mag_filter, VkSamplerMipmapMode mipmap_mode, VkSamplerAddressMode address_mode) {
+VkSamplerCreateInfo get_sampler_ci(VkFilter min_mag_filter, VkSamplerMipmapMode mipmap_mode, VkSamplerAddressMode address_mode) {
   VkSamplerCreateInfo ci = {};
   ci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
   ci.magFilter = min_mag_filter;
@@ -302,3 +374,5 @@ VkSamplerCreateInfo cdsvk::get_sampler_ci(VkFilter min_mag_filter, VkSamplerMipm
   ci.unnormalizedCoordinates = VK_FALSE;
   return ci;
 }
+
+}  // namespace spokk

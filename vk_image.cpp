@@ -1,7 +1,6 @@
-#include "vk_application.h"  // for DeviceContext
 #include "vk_debug.h"
-#include "vk_texture.h"
-using namespace cdsvk;
+#include "vk_image.h"
+#include "vk_utilities.h"
 
 #include "image_file.h"
 
@@ -11,22 +10,6 @@ using namespace cdsvk;
 #include <string.h>
 
 namespace {
-  VkImageAspectFlags vk_format_to_image_aspect(VkFormat format) {
-    switch(format) {
-    case VK_FORMAT_D16_UNORM:
-    case VK_FORMAT_D32_SFLOAT:
-    case VK_FORMAT_X8_D24_UNORM_PACK32:
-      return VK_IMAGE_ASPECT_DEPTH_BIT;
-    case VK_FORMAT_D16_UNORM_S8_UINT:
-    case VK_FORMAT_D24_UNORM_S8_UINT:
-    case VK_FORMAT_D32_SFLOAT_S8_UINT:
-      return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-    case VK_FORMAT_UNDEFINED:
-      return static_cast<VkImageAspectFlagBits>(0);
-    default:
-      return VK_IMAGE_ASPECT_COLOR_BIT;
-    }
-  }
 
     // TODO(cort): this table probably belongs in image_file.c
     struct ImageFormatAttributes {
@@ -147,7 +130,52 @@ namespace {
 
 }  // namespace
 
-TextureLoader::TextureLoader(const DeviceContext& device_context) :
+namespace spokk {
+
+//
+// Image
+//
+VkResult Image::create(const DeviceContext& device_context, const VkImageCreateInfo image_ci,
+  VkMemoryPropertyFlags memory_properties, DeviceAllocationScope allocation_scope) {
+  VkResult result = vkCreateImage(device_context.device(), &image_ci, device_context.host_allocator(), &handle);
+  if (result == VK_SUCCESS) {
+    memory = device_context.device_alloc_and_bind_to_image(handle, memory_properties, allocation_scope);
+    if (memory.block == nullptr) {
+      vkDestroyImage(device_context.device(), handle, device_context.host_allocator());
+      handle = VK_NULL_HANDLE;
+      result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    } else {
+      VkImageViewCreateInfo view_ci = view_ci_from_image(handle, image_ci);
+      result = vkCreateImageView(device_context.device(), &view_ci, device_context.host_allocator(), &view);
+    }
+  }
+  return result;
+}
+VkResult Image::create_and_load(const DeviceContext& device_context, const ImageLoader& loader, const std::string& filename,
+  VkBool32 generate_mipmaps, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
+  VkImageCreateInfo image_ci = {};
+  int load_error = loader.load_from_file(&handle, &image_ci, &memory,
+    filename, generate_mipmaps, final_layout, final_access_flags);
+  if (load_error) {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+  VkImageViewCreateInfo view_ci = view_ci_from_image(handle, image_ci);
+  VkResult result = vkCreateImageView(device_context.device(), &view_ci, device_context.host_allocator(), &view);
+  return result;
+}
+void Image::destroy(const DeviceContext& device_context) {
+  device_context.device_free(memory);
+  memory.block = nullptr;
+  vkDestroyImageView(device_context.device(), view, device_context.host_allocator());
+  view = VK_NULL_HANDLE;
+  vkDestroyImage(device_context.device(), handle, device_context.host_allocator());
+  handle = VK_NULL_HANDLE;
+}
+
+
+
+
+ImageLoader::ImageLoader(const DeviceContext& device_context) :
     device_context_(device_context) {
   const DeviceQueue* transfer_queue = device_context.find_queue(VK_QUEUE_TRANSFER_BIT);
   assert(transfer_queue != nullptr);
@@ -156,11 +184,11 @@ TextureLoader::TextureLoader(const DeviceContext& device_context) :
   one_shot_cpool_ = my_make_unique<OneShotCommandPool>(device_context.device(),
     transfer_queue_, transfer_queue_family_, device_context.host_allocator());
 }
-TextureLoader::~TextureLoader() {
+ImageLoader::~ImageLoader() {
 }
 
 
-int TextureLoader::load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
+int ImageLoader::load_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
     DeviceMemoryAllocation *out_memory, const std::string &filename, VkBool32 generate_mipmaps,
     VkImageLayout final_layout, VkAccessFlags final_access_flags) const {
   int err = 0;
@@ -172,7 +200,7 @@ int TextureLoader::load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo 
     return err;
   }
   image_file_to_vk_image_create_info(out_image_ci, image_file);
-  VkImageAspectFlags aspect_flags = vk_format_to_image_aspect(out_image_ci->format);
+  VkImageAspectFlags aspect_flags = vk_format_to_image_aspect_flags(out_image_ci->format);
   uint32_t mips_to_load = image_file.mip_levels;
 
   if (generate_mipmaps) {
@@ -214,7 +242,7 @@ int TextureLoader::load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo 
     }
   }
   VkBuffer staging_buffer = VK_NULL_HANDLE;
-  CDSVK_CHECK(vkCreateBuffer(device_context_.device(), &staging_buffer_ci, device_context_.host_allocator(), &staging_buffer));
+  SPOKK_VK_CHECK(vkCreateBuffer(device_context_.device(), &staging_buffer_ci, device_context_.host_allocator(), &staging_buffer));
   DeviceMemoryAllocation staging_buffer_mem = device_context_.device_alloc_and_bind_to_buffer(staging_buffer,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,  // TODO(cort): manually flush/invalidate
     DEVICE_ALLOCATION_SCOPE_DEVICE);
@@ -258,7 +286,7 @@ int TextureLoader::load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo 
 
   // Create final image.
   // TODO(cort): take memory properties and scope?
-  CDSVK_CHECK(vkCreateImage(device_context_.device(), out_image_ci, device_context_.host_allocator(), out_image));
+  SPOKK_VK_CHECK(vkCreateImage(device_context_.device(), out_image_ci, device_context_.host_allocator(), out_image));
   *out_memory = device_context_.device_alloc_and_bind_to_image(*out_image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
     DEVICE_ALLOCATION_SCOPE_DEVICE);
 
@@ -312,7 +340,7 @@ int TextureLoader::load_vkimage_from_file(VkImage *out_image, VkImageCreateInfo 
   return 0;
 }
 
-int TextureLoader::generate_vkimage_mipmaps(VkImage image, const VkImageCreateInfo &image_ci,
+int ImageLoader::generate_mipmaps(VkImage image, const VkImageCreateInfo &image_ci,
     VkImageLayout input_layout, VkAccessFlags input_access_flags,
     VkImageLayout final_layout, VkAccessFlags final_access_flags) const {
   if (image_ci.mipLevels == 1) {
@@ -335,7 +363,7 @@ int TextureLoader::generate_vkimage_mipmaps(VkImage image, const VkImageCreateIn
   return record_error;
 }
 
-int TextureLoader::record_mipmap_generation(VkCommandBuffer cb, VkImage image, const VkImageCreateInfo &image_ci,
+int ImageLoader::record_mipmap_generation(VkCommandBuffer cb, VkImage image, const VkImageCreateInfo &image_ci,
     VkImageLayout input_layout, VkAccessFlags input_access_flags,
     VkImageLayout final_layout, VkAccessFlags final_access_flags) const {
   assert(image_ci.mipLevels > 1); // higher-level code should be checking for this already
@@ -349,7 +377,7 @@ int TextureLoader::record_mipmap_generation(VkCommandBuffer cb, VkImage image, c
     return -1;  // format does not support blitting; automatic mipmap generation won't work.
   }
 
-  VkImageAspectFlags aspect_flags = vk_format_to_image_aspect(image_ci.format);
+  VkImageAspectFlags aspect_flags = vk_format_to_image_aspect_flags(image_ci.format);
 
   std::array<VkImageMemoryBarrier,2> image_barriers = {};
   image_barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -442,3 +470,5 @@ int TextureLoader::record_mipmap_generation(VkCommandBuffer cb, VkImage image, c
 
   return 0;
 }
+
+}  // namespace spokk

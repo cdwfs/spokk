@@ -138,16 +138,30 @@ SET(SPOKK_HEADERS
     platform.h
     stb_image.h
     vk_application.h
+    vk_buffer.h
+    vk_context.h
     vk_debug.h
-    vk_init.h
-    vk_texture.h
+    vk_image.h
+    vk_memory.h
+    vk_mesh.h
+    vk_pipeline.h
+    vk_renderpass.h
+    vk_shader.h
+    vk_utilities.h
     vk_vertex.h
 )
 SET(SPOKK_SOURCES
     image_file.c
     vk_application.cpp
-    vk_init.cpp
-    vk_texture.cpp
+    vk_buffer.cpp
+    vk_context.cpp
+    vk_image.cpp
+    vk_memory.cpp
+    vk_mesh.cpp
+    vk_pipeline.cpp
+    vk_renderpass.cpp
+    vk_shader.cpp
+    vk_utilities.cpp
     vk_vertex.cpp
 )
 SET(SPOKK_LIB_NAME spokk)

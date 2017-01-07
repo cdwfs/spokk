@@ -1,7 +1,7 @@
 #include "vk_application.h"
 #include "vk_debug.h"
-#include "vk_init.h"
-using namespace cdsvk;
+#include "vk_utilities.h"
+using namespace spokk;
 
 #include <mathfu/vector.h>
 #include <mathfu/glsl_mappings.h>
@@ -13,7 +13,7 @@ namespace {
   constexpr uint32_t BUXEL_COUNT = 8192;
 }
 
-class ComputeApp : public cdsvk::Application {
+class ComputeApp : public spokk::Application {
 public:
   explicit ComputeApp(Application::CreateInfo &ci) :
       Application(ci) {
@@ -26,13 +26,13 @@ public:
     cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     cpool_ci.queueFamilyIndex = queue->family;
-    CDSVK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &cpool_));
+    SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &cpool_));
     VkCommandBufferAllocateInfo cb_allocate_info = {};
     cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     cb_allocate_info.commandPool = cpool_;
     cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cb_allocate_info.commandBufferCount = 1;
-    CDSVK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, &command_buffer_));
+    SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, &command_buffer_));
 
     for(size_t iBuxel=0; iBuxel<BUXEL_COUNT; ++iBuxel) {
       in_data_[iBuxel] = (int32_t)iBuxel;
@@ -43,21 +43,21 @@ public:
     buffer_ci.size = BUXEL_COUNT * sizeof(int32_t);
     buffer_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    CDSVK_CHECK(in_buffer_.create(device_context_, buffer_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
-    CDSVK_CHECK(in_buffer_.load(device_context_, in_data_.data(), buffer_ci.size));
+    SPOKK_VK_CHECK(in_buffer_.create(device_context_, buffer_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+    SPOKK_VK_CHECK(in_buffer_.load(device_context_, in_data_.data(), buffer_ci.size));
     buffer_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     // TODO(cort): until I have buffer.unload, the output buffer must be host-visible.
-    CDSVK_CHECK(out_buffer_.create(device_context_, buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(out_buffer_.create(device_context_, buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     // Load shaders
-    CDSVK_CHECK(double_ints_cs_.create_and_load_spv_file(device_context_, "double_ints.comp.spv"));
-    CDSVK_CHECK(compute_shader_pipeline_.add_shader(&double_ints_cs_, "main"));
-    CDSVK_CHECK(compute_shader_pipeline_.finalize(device_context_));
+    SPOKK_VK_CHECK(double_ints_cs_.create_and_load_spv_file(device_context_, "double_ints.comp.spv"));
+    SPOKK_VK_CHECK(compute_shader_pipeline_.add_shader(&double_ints_cs_, "main"));
+    SPOKK_VK_CHECK(compute_shader_pipeline_.finalize(device_context_));
 
     compute_pipeline_.create(device_context_, &compute_shader_pipeline_);
 
     dpool_.add((uint32_t)compute_shader_pipeline_.dset_layout_cis.size(), compute_shader_pipeline_.dset_layout_cis.data());
-    CDSVK_CHECK(dpool_.finalize(device_context_));
+    SPOKK_VK_CHECK(dpool_.finalize(device_context_));
     dset_ = dpool_.allocate_set(device_context_, compute_shader_pipeline_.dset_layouts[0]);
     DescriptorSetWriter dset_writer(compute_shader_pipeline_.dset_layout_cis[0]);
     dset_writer.bind_buffer(in_buffer_.handle, 0, VK_WHOLE_SIZE, 0);
@@ -66,14 +66,14 @@ public:
 
     VkFenceCreateInfo fence_ci = {};
     fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    CDSVK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &submission_complete_fence_));
+    SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &submission_complete_fence_));
 
     VkCommandBuffer cb = command_buffer_;
 
     VkCommandBufferBeginInfo cb_begin_info = {};
     cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    CDSVK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info) );
+    SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info) );
 
     VkBufferMemoryBarrier buffer_barriers[2] = {};
     buffer_barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -106,14 +106,14 @@ public:
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0,
       0,nullptr, 1,&buffer_barriers[1], 0,nullptr);
 
-    CDSVK_CHECK( vkEndCommandBuffer(cb) );
+    SPOKK_VK_CHECK( vkEndCommandBuffer(cb) );
     VkSubmitInfo submit_info = {};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &cb;
-    CDSVK_CHECK( vkQueueSubmit(compute_queue_, 1, &submit_info, submission_complete_fence_) );
+    SPOKK_VK_CHECK( vkQueueSubmit(compute_queue_, 1, &submit_info, submission_complete_fence_) );
 
-    CDSVK_CHECK(vkWaitForFences(device_, 1, &submission_complete_fence_, VK_TRUE, UINT64_MAX));
+    SPOKK_VK_CHECK(vkWaitForFences(device_, 1, &submission_complete_fence_, VK_TRUE, UINT64_MAX));
     out_buffer_.memory.invalidate(device_);
 
     const int32_t *out_data = (const int32_t*)out_buffer_.memory.mapped();

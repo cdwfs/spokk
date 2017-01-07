@@ -1,9 +1,6 @@
 #include "vk_application.h"
 #include "vk_debug.h"
-#include "vk_init.h"
-#include "vk_texture.h"
-#include "vk_vertex.h"
-using namespace cdsvk;
+using namespace spokk;
 
 #include "camera.h"
 #include "cube_mesh.h"
@@ -19,7 +16,7 @@ namespace {
 constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
 }  // namespace
 
-class CubeSwarmApp : public cdsvk::Application {
+class CubeSwarmApp : public spokk::Application {
 public:
   explicit CubeSwarmApp(Application::CreateInfo &ci) :
       Application(ci) {
@@ -46,27 +43,27 @@ public:
     cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     cpool_ci.queueFamilyIndex = queue->family;
-    CDSVK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &cpool_));
+    SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &cpool_));
     VkCommandBufferAllocateInfo cb_allocate_info = {};
     cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     cb_allocate_info.commandPool = cpool_;
     cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cb_allocate_info.commandBufferCount = (uint32_t)command_buffers_.size();
-    CDSVK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, command_buffers_.data()));
+    SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, command_buffers_.data()));
 
     // Create render pass
     render_pass_.init_from_preset(RenderPass::Preset::COLOR_DEPTH_POST, swapchain_surface_format_.format);
-    CDSVK_CHECK(render_pass_.finalize_and_create(device_context_));
+    SPOKK_VK_CHECK(render_pass_.finalize_and_create(device_context_));
 
     // Create depth buffer
     VkImageCreateInfo depth_image_ci = render_pass_.get_attachment_image_ci(1, swapchain_extent_);
     depth_image_ = {};
-    CDSVK_CHECK(depth_image_.create(device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    SPOKK_VK_CHECK(depth_image_.create(device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DEVICE_ALLOCATION_SCOPE_DEVICE));
 
     // Create intermediate color buffer
     VkImageCreateInfo offscreen_image_ci = render_pass_.get_attachment_image_ci(0, swapchain_extent_);
-    CDSVK_CHECK(offscreen_image_.create(device_context_, offscreen_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    SPOKK_VK_CHECK(offscreen_image_.create(device_context_, offscreen_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DEVICE_ALLOCATION_SCOPE_DEVICE));
 
     // Create VkFramebuffers
@@ -80,28 +77,28 @@ public:
     framebuffers_.resize(swapchain_image_views_.size());
     for(size_t i=0; i<swapchain_image_views_.size(); ++i) {
       attachment_views[2] = swapchain_image_views_[i];
-      CDSVK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
+      SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
     }
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci = get_sampler_ci(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
-    CDSVK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-    texture_loader_ = my_make_unique<TextureLoader>(device_context_);
-    CDSVK_CHECK(albedo_tex_.create_and_load(device_context_, *texture_loader_.get(), "trevor/redf.ktx"));
+    SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
+    image_loader_ = my_make_unique<ImageLoader>(device_context_);
+    SPOKK_VK_CHECK(albedo_tex_.create_and_load(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
 
     // Load shader pipelines
-    CDSVK_CHECK(mesh_vs_.create_and_load_spv_file(device_context_, "tri.vert.spv"));
-    CDSVK_CHECK(mesh_fs_.create_and_load_spv_file(device_context_, "tri.frag.spv"));
+    SPOKK_VK_CHECK(mesh_vs_.create_and_load_spv_file(device_context_, "tri.vert.spv"));
+    SPOKK_VK_CHECK(mesh_fs_.create_and_load_spv_file(device_context_, "tri.frag.spv"));
     mesh_vs_.override_descriptor_type(0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
-    CDSVK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_vs_));
-    CDSVK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_fs_));
+    SPOKK_VK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_vs_));
+    SPOKK_VK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_fs_));
 
-    CDSVK_CHECK(fullscreen_tri_vs_.create_and_load_spv_file(device_context_, "fullscreen.vert.spv"));
-    CDSVK_CHECK(post_filmgrain_fs_.create_and_load_spv_file(device_context_, "subpass_post.frag.spv"));
-    CDSVK_CHECK(post_shader_pipeline_.add_shader(&fullscreen_tri_vs_));
-    CDSVK_CHECK(post_shader_pipeline_.add_shader(&post_filmgrain_fs_));
+    SPOKK_VK_CHECK(fullscreen_tri_vs_.create_and_load_spv_file(device_context_, "fullscreen.vert.spv"));
+    SPOKK_VK_CHECK(post_filmgrain_fs_.create_and_load_spv_file(device_context_, "subpass_post.frag.spv"));
+    SPOKK_VK_CHECK(post_shader_pipeline_.add_shader(&fullscreen_tri_vs_));
+    SPOKK_VK_CHECK(post_shader_pipeline_.add_shader(&post_filmgrain_fs_));
 
-    CDSVK_CHECK(ShaderPipeline::force_compatible_layouts_and_finalize(device_context_,
+    SPOKK_VK_CHECK(ShaderPipeline::force_compatible_layouts_and_finalize(device_context_,
       {&mesh_shader_pipeline_, &post_shader_pipeline_}));
 
     // Populate Mesh object
@@ -113,8 +110,8 @@ public:
     index_buffer_ci.size = cube_index_count * sizeof(cube_indices[0]);
     index_buffer_ci.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    CDSVK_CHECK(mesh_.index_buffer.create(device_context_, index_buffer_ci));
-    CDSVK_CHECK(mesh_.index_buffer.load(device_context_, cube_indices, index_buffer_ci.size));
+    SPOKK_VK_CHECK(mesh_.index_buffer.create(device_context_, index_buffer_ci));
+    SPOKK_VK_CHECK(mesh_.index_buffer.load(device_context_, cube_indices, index_buffer_ci.size));
 
     // Describe the mesh format.
     mesh_format_.vertex_buffer_bindings = {
@@ -134,7 +131,7 @@ public:
     vertex_buffer_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     mesh_.vertex_buffers.resize(1);
-    CDSVK_CHECK(mesh_.vertex_buffers[0].create(device_context_, vertex_buffer_ci));
+    SPOKK_VK_CHECK(mesh_.vertex_buffers[0].create(device_context_, vertex_buffer_ci));
     // Convert the vertex data from its original uncompressed format to its final format.
     // In a real application, this conversion would happen at asset build time.
     const VertexLayout src_vertex_layout = {
@@ -148,7 +145,7 @@ public:
       final_mesh_vertices.data(), final_vertex_layout, cube_vertex_count);
     assert(convert_error == 0);
     (void)convert_error;
-    CDSVK_CHECK(mesh_.vertex_buffers[0].load(device_context_, final_mesh_vertices.data(), vertex_buffer_ci.size));
+    SPOKK_VK_CHECK(mesh_.vertex_buffers[0].load(device_context_, final_mesh_vertices.data(), vertex_buffer_ci.size));
 
     // Create buffer of per-mesh object-to-world matrices.
     // TODO(cort): It may be worth creating an abstraction for N-buffered resources.
@@ -158,16 +155,16 @@ public:
     o2w_buffer_ci.size = uniform_buffer_vframe_size * VFRAME_COUNT;
     o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    CDSVK_CHECK(mesh_uniforms_.create(device_context_, o2w_buffer_ci));
+    SPOKK_VK_CHECK(mesh_uniforms_.create(device_context_, o2w_buffer_ci));
 
-    CDSVK_CHECK(mesh_pipeline_.create(device_context_, mesh_.mesh_format, &mesh_shader_pipeline_, &render_pass_, 0));
+    SPOKK_VK_CHECK(mesh_pipeline_.create(device_context_, mesh_.mesh_format, &mesh_shader_pipeline_, &render_pass_, 0));
 
-    CDSVK_CHECK(fullscreen_pipeline_.create(device_context_,
+    SPOKK_VK_CHECK(fullscreen_pipeline_.create(device_context_,
       MeshFormat::get_empty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
       &post_shader_pipeline_, &render_pass_, 1));
     // because the pipelines use a compatible layout, we can just add room for one full layout.
     dpool_.add((uint32_t)mesh_shader_pipeline_.dset_layout_cis.size(), mesh_shader_pipeline_.dset_layout_cis.data());
-    CDSVK_CHECK(dpool_.finalize(device_context_));
+    SPOKK_VK_CHECK(dpool_.finalize(device_context_));
     dset_ = dpool_.allocate_set(device_context_, mesh_shader_pipeline_.dset_layouts[0]);
     DescriptorSetWriter dset_writer(mesh_shader_pipeline_.dset_layout_cis[0]);
     dset_writer.bind_buffer(mesh_uniforms_.handle, 0, VK_WHOLE_SIZE, 0);
@@ -189,8 +186,8 @@ public:
     // Create the semaphores used to synchronize access to swapchain images
     VkSemaphoreCreateInfo semaphore_ci = {};
     semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    CDSVK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &swapchain_image_ready_sem_));
-    CDSVK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &rendering_complete_sem_));
+    SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &swapchain_image_ready_sem_));
+    SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &rendering_complete_sem_));
 
     // Create the fences used to wait for each swapchain image's command buffer to be submitted.
     // This prevents re-writing the command buffer contents before it's been submitted and processed.
@@ -198,7 +195,7 @@ public:
     fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
     for(auto &fence : submission_complete_fences_) {
-      CDSVK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
+      SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
     }
   }
   virtual ~CubeSwarmApp() {
@@ -232,7 +229,7 @@ public:
 
       vkDestroySampler(device_, sampler_, host_allocator_);
       albedo_tex_.destroy(device_context_);
-      texture_loader_.reset();
+      image_loader_.reset();
 
       for(const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
@@ -319,14 +316,14 @@ public:
     } else if (acquire_result == VK_SUBOPTIMAL_KHR) {
       // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
     } else {
-      CDSVK_CHECK(acquire_result);
+      SPOKK_VK_CHECK(acquire_result);
     }
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
 
     VkCommandBufferBeginInfo cb_begin_info = {};
     cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    CDSVK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info) );
+    SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info) );
 
     // TODO(cort): spurious validation warning for unused clear value? Is that
     // actually bad? What if attachments 0 and 2 must be cleared but not 1?
@@ -393,7 +390,7 @@ public:
     vkCmdDraw(cb, 3, 1,0,0);
     vkCmdEndRenderPass(cb);
 
-    CDSVK_CHECK( vkEndCommandBuffer(cb) );
+    SPOKK_VK_CHECK( vkEndCommandBuffer(cb) );
     const VkPipelineStageFlags submit_wait_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
     VkSubmitInfo submit_info = {};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -404,7 +401,7 @@ public:
     submit_info.pCommandBuffers = &cb;
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = &rendering_complete_sem_;
-    CDSVK_CHECK( vkQueueSubmit(graphics_and_present_queue_, 1, &submit_info, submission_complete_fences_[vframe_index_]) );
+    SPOKK_VK_CHECK( vkQueueSubmit(graphics_and_present_queue_, 1, &submit_info, submission_complete_fences_[vframe_index_]) );
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present_info.pNext = NULL;
@@ -419,7 +416,7 @@ public:
     } else if (present_result == VK_SUBOPTIMAL_KHR) {
       // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
     } else {
-      CDSVK_CHECK(present_result);
+      SPOKK_VK_CHECK(present_result);
     }
   }
 
@@ -440,7 +437,7 @@ private:
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
 
-  std::unique_ptr<TextureLoader> texture_loader_;
+  std::unique_ptr<ImageLoader> image_loader_;
   Image albedo_tex_;
   VkSampler sampler_;
 

@@ -1,5 +1,4 @@
 #include "vk_vertex.h"
-using namespace cdsvk;
 
 #include <array>
 #include <assert.h>
@@ -689,6 +688,8 @@ namespace {
   }
 }  // namespace
 
+namespace spokk {
+
 VertexLayout::VertexLayout(std::initializer_list<AttributeInfo> attr_infos) : stride(0), attributes(attr_infos) {
   if (attributes.size() > 0) {
     AttributeInfo last_attr = attributes[0];
@@ -717,7 +718,7 @@ VertexLayout::VertexLayout(const MeshFormat& mesh_format, uint32_t binding) : st
   }
 }
 
-int cdsvk::convert_vertex_buffer(const void *src_vertices, const VertexLayout& src_layout,
+int convert_vertex_buffer(const void *src_vertices, const VertexLayout& src_layout,
     void *dst_vertices, const VertexLayout &dst_layout, size_t vertex_count) {
   for(uint32_t a = 0; a < src_layout.attributes.size(); ++a) {
     if (!is_valid_attribute_format(src_layout.attributes[a].format)) {
@@ -742,3 +743,5 @@ int cdsvk::convert_vertex_buffer(const void *src_vertices, const VertexLayout& s
   }
   return 0;
 }
+
+}  // namespace spokk
