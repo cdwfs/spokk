@@ -18,14 +18,14 @@ public:
   explicit ComputeApp(Application::CreateInfo &ci) :
       Application(ci) {
     // Retrieve Queue contexts
-    const DeviceQueueContext *queue_context = device_context_.find_queue_context(VK_QUEUE_COMPUTE_BIT);
-    compute_queue_ = queue_context->queue;
+    const DeviceQueue *queue = device_context_.find_queue(VK_QUEUE_COMPUTE_BIT);
+    compute_queue_ = queue->handle;
 
     // Allocate command buffers
     VkCommandPoolCreateInfo cpool_ci = {};
     cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    cpool_ci.queueFamilyIndex = queue_context->queue_family;
+    cpool_ci.queueFamilyIndex = queue->family;
     CDSVK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &cpool_));
     VkCommandBufferAllocateInfo cb_allocate_info = {};
     cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;

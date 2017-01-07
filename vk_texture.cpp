@@ -149,10 +149,10 @@ namespace {
 
 TextureLoader::TextureLoader(const DeviceContext& device_context) :
     device_context_(device_context) {
-  const DeviceQueueContext* transfer_queue_context = device_context.find_queue_context(VK_QUEUE_TRANSFER_BIT);
-  assert(transfer_queue_context != nullptr);
-  transfer_queue_ = transfer_queue_context->queue;
-  transfer_queue_family_ = transfer_queue_context->queue_family;
+  const DeviceQueue* transfer_queue = device_context.find_queue(VK_QUEUE_TRANSFER_BIT);
+  assert(transfer_queue != nullptr);
+  transfer_queue_ = transfer_queue->handle;
+  transfer_queue_family_ = transfer_queue->family;
   one_shot_cpool_ = my_make_unique<OneShotCommandPool>(device_context.device(),
     transfer_queue_, transfer_queue_family_, device_context.host_allocator());
 }

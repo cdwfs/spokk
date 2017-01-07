@@ -257,7 +257,7 @@ void DeviceMemoryAllocation::flush(VkDevice device) const {
 //
 
 DeviceContext::DeviceContext(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache,
-      const DeviceQueueContext *queue_contexts, uint32_t queue_context_count,
+      const DeviceQueue *queues, uint32_t queue_count,
       const VkAllocationCallbacks *host_allocator, const DeviceAllocationCallbacks *device_allocator) :
     physical_device_(physical_device),
     device_(device),
@@ -266,16 +266,16 @@ DeviceContext::DeviceContext(VkDevice device, VkPhysicalDevice physical_device, 
     device_allocator_(device_allocator) {
   vkGetPhysicalDeviceProperties(physical_device_, &device_properties_);
   vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
-  queue_contexts_.insert(queue_contexts_.begin(), queue_contexts+0, queue_contexts+queue_context_count);
+  queues_.insert(queues_.begin(), queues+0, queues+queue_count);
 }
 DeviceContext::~DeviceContext() {
 }
 
-const DeviceQueueContext* DeviceContext::find_queue_context(VkQueueFlags queue_flags,
+const DeviceQueue* DeviceContext::find_queue(VkQueueFlags queue_flags,
     VkSurfaceKHR present_surface) const {
   // Search for an exact match first
-  for(auto& queue : queue_contexts_) {
-    if (queue.queueFlags == queue_flags) {
+  for(auto& queue : queues_) {
+    if (queue.flags == queue_flags) {
       // Make sure presentation requirement is met, if necessary.
       if ((queue_flags | VK_QUEUE_GRAPHICS_BIT) != 0 && present_surface != VK_NULL_HANDLE) {
         if (queue.present_surface != present_surface) {
@@ -286,8 +286,8 @@ const DeviceQueueContext* DeviceContext::find_queue_context(VkQueueFlags queue_f
     }
   }
   // Next pass looks for anything with the right flags set
-  for(auto& queue : queue_contexts_) {
-    if ((queue.queueFlags & queue_flags) == queue_flags) {
+  for(auto& queue : queues_) {
+    if ((queue.flags & queue_flags) == queue_flags) {
       // Make sure presentation requirement is met, if necessary.
       if ((queue_flags | VK_QUEUE_GRAPHICS_BIT) != 0 && present_surface != VK_NULL_HANDLE) {
         if (queue.present_surface != present_surface) {
@@ -509,12 +509,10 @@ VkResult Buffer::load(const DeviceContext& device_context, const void *src_data,
     memory.flush(device_context.device());
   } else {
     // TODO(cort): Maybe it's time for a BufferLoader class?
-    const DeviceQueueContext* transfer_queue_context = device_context.find_queue_context(VK_QUEUE_TRANSFER_BIT);
-    assert(transfer_queue_context != nullptr);
-    VkQueue transfer_queue = transfer_queue_context->queue;
-    uint32_t transfer_queue_family = transfer_queue_context->queue_family;
+    const DeviceQueue* transfer_queue = device_context.find_queue(VK_QUEUE_TRANSFER_BIT);
+    assert(transfer_queue != nullptr);
     std::unique_ptr<OneShotCommandPool> one_shot_cpool = my_make_unique<OneShotCommandPool>(device_context.device(),
-      transfer_queue, transfer_queue_family, device_context.host_allocator());
+      transfer_queue->handle, transfer_queue->family, device_context.host_allocator());
     VkCommandBuffer cb = one_shot_cpool->allocate_and_begin();
     if (data_size <= 65536) {
       vkCmdUpdateBuffer(cb, handle, dst_offset, data_size, reinterpret_cast<const uint8_t*>(src_data) + src_offset);
@@ -1914,12 +1912,12 @@ Application::Application(const CreateInfo &ci) {
   vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &total_queue_family_count, nullptr);
   std::vector<VkQueueFamilyProperties> all_queue_family_properties(total_queue_family_count);
   vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &total_queue_family_count, all_queue_family_properties.data());
-  queue_contexts_.reserve(total_queue_count);
+  queues_.reserve(total_queue_count);
   for(uint32_t iQFR=0; iQFR<(uint32_t)ci.queue_family_requests.size(); ++iQFR) {
     const QueueFamilyRequest &qfr = ci.queue_family_requests[iQFR];
     const VkDeviceQueueCreateInfo& qci = device_queue_cis[iQFR];
     const VkQueueFamilyProperties& qfp = all_queue_family_properties[qci.queueFamilyIndex];
-    DeviceQueueContext qc = {
+    DeviceQueue qc = {
       VK_NULL_HANDLE,
       qci.queueFamilyIndex,
       0.0f,
@@ -1929,19 +1927,19 @@ Application::Application(const CreateInfo &ci) {
       (qfr.support_present && ((qfp.queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0)) ? surface_ : VK_NULL_HANDLE,
     };
     for(uint32_t iQ=0; iQ<total_queue_count; ++iQ) {
-      vkGetDeviceQueue(device_, qci.queueFamilyIndex, iQ, &qc.queue);
+      vkGetDeviceQueue(device_, qci.queueFamilyIndex, iQ, &qc.handle);
       qc.priority = qci.pQueuePriorities[iQ];
-      queue_contexts_.push_back(qc);
+      queues_.push_back(qc);
     }
   }
-  assert(queue_contexts_.size() == total_queue_count);
+  assert(queues_.size() == total_queue_count);
 
   VkPipelineCacheCreateInfo pipeline_cache_ci = {};
   pipeline_cache_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
   CDSVK_CHECK(vkCreatePipelineCache(device_, &pipeline_cache_ci, host_allocator_, &pipeline_cache_));
 
-  device_context_ = DeviceContext(device_, physical_device_, pipeline_cache_, queue_contexts_.data(),
-    (uint32_t)queue_contexts_.size(), host_allocator_, device_allocator_);
+  device_context_ = DeviceContext(device_, physical_device_, pipeline_cache_, queues_.data(),
+    (uint32_t)queues_.size(), host_allocator_, device_allocator_);
 
   // Create VkSwapchain
   if (ci.enable_graphics && surface_ != VK_NULL_HANDLE) {

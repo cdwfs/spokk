@@ -158,14 +158,14 @@ typedef struct DeviceAllocationCallbacks {
 //
 // Device queue + metadata
 //
-struct DeviceQueueContext {
-  VkQueue queue;
-  uint32_t queue_family;
+struct DeviceQueue {
+  VkQueue handle;
+  uint32_t family;
   float priority;
   // copied from VkQueueFamilyProperties
-  VkQueueFlags queueFlags;
-  uint32_t timestampValidBits;
-  VkExtent3D minImageTransferGranularity;
+  VkQueueFlags flags;
+  uint32_t timestamp_valid_bits;
+  VkExtent3D min_image_transfer_granularity;
   // For graphics queues that support presentation, this is the surface the queue can present to.
   VkSurfaceKHR present_surface;
 };
@@ -177,9 +177,9 @@ class DeviceContext {
 public:
   DeviceContext() : device_(VK_NULL_HANDLE), physical_device_(VK_NULL_HANDLE), pipeline_cache_(VK_NULL_HANDLE),
       host_allocator_(nullptr), device_allocator_(nullptr), device_properties_{},
-      memory_properties_{}, queue_contexts_{} {
+      memory_properties_{}, queues_{} {
   }
-  DeviceContext(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache, const DeviceQueueContext *queue_contexts, uint32_t queue_context_count,
+  DeviceContext(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache, const DeviceQueue *queues, uint32_t queue_count,
       const VkAllocationCallbacks *host_allocator = nullptr, const DeviceAllocationCallbacks *device_allocator = nullptr);
   ~DeviceContext();
 
@@ -191,7 +191,7 @@ public:
 
   const VkPhysicalDeviceProperties& device_properties() const { return device_properties_; }
 
-  const DeviceQueueContext* find_queue_context(VkQueueFlags queue_flags, VkSurfaceKHR present_surface = VK_NULL_HANDLE) const;
+  const DeviceQueue* find_queue(VkQueueFlags queue_flags, VkSurfaceKHR present_surface = VK_NULL_HANDLE) const;
 
   uint32_t find_memory_type_index(const VkMemoryRequirements &memory_reqs,
     VkMemoryPropertyFlags memory_properties_mask) const;
@@ -219,7 +219,7 @@ private:
 
   VkPhysicalDeviceProperties device_properties_;
   VkPhysicalDeviceMemoryProperties memory_properties_;
-  std::vector<DeviceQueueContext> queue_contexts_;
+  std::vector<DeviceQueue> queues_;
 };
 
 //
@@ -559,7 +559,7 @@ protected:
   VkPhysicalDeviceFeatures physical_device_features_ = {};
   VkDevice device_ = VK_NULL_HANDLE;
   std::vector<VkExtensionProperties> device_extensions_ = {};
-  std::vector<DeviceQueueContext> queue_contexts_;
+  std::vector<DeviceQueue> queues_;
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
   VkSurfaceFormatKHR swapchain_surface_format_ = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
   VkExtent2D swapchain_extent_;
@@ -571,7 +571,7 @@ protected:
 
   InputState input_state_;
 
-  // handles refer to this application's device_, queue_contexts_, etc.
+  // handles refer to this application's device_, queues_, etc.
   DeviceContext device_context_;
 
   uint32_t frame_index_;  // Frame number since launch
