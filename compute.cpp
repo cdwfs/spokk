@@ -60,8 +60,8 @@ public:
     SPOKK_VK_CHECK(dpool_.finalize(device_context_));
     dset_ = dpool_.allocate_set(device_context_, compute_shader_pipeline_.dset_layouts[0]);
     DescriptorSetWriter dset_writer(compute_shader_pipeline_.dset_layout_cis[0]);
-    dset_writer.bind_buffer(in_buffer_.handle, 0, VK_WHOLE_SIZE, 0);
-    dset_writer.bind_buffer(out_buffer_.handle, 0, VK_WHOLE_SIZE, 1);
+    dset_writer.bind_buffer(in_buffer_.handle(), 0, VK_WHOLE_SIZE, 0);
+    dset_writer.bind_buffer(out_buffer_.handle(), 0, VK_WHOLE_SIZE, 1);
     dset_writer.write_all_to_dset(device_context_, dset_);
 
     VkFenceCreateInfo fence_ci = {};
@@ -81,7 +81,7 @@ public:
     buffer_barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
     buffer_barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     buffer_barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barriers[0].buffer = in_buffer_.handle;
+    buffer_barriers[0].buffer = in_buffer_.handle();
     buffer_barriers[0].offset = 0;
     buffer_barriers[0].size = VK_WHOLE_SIZE;
     buffer_barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -89,7 +89,7 @@ public:
     buffer_barriers[1].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     buffer_barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     buffer_barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barriers[1].buffer = out_buffer_.handle;
+    buffer_barriers[1].buffer = out_buffer_.handle();
     buffer_barriers[1].offset = 0;
     buffer_barriers[1].size = VK_WHOLE_SIZE;
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
@@ -114,9 +114,9 @@ public:
     SPOKK_VK_CHECK( vkQueueSubmit(compute_queue_, 1, &submit_info, submission_complete_fence_) );
 
     SPOKK_VK_CHECK(vkWaitForFences(device_, 1, &submission_complete_fence_, VK_TRUE, UINT64_MAX));
-    out_buffer_.memory.invalidate(device_);
+    out_buffer_.memory().invalidate(device_);
 
-    const int32_t *out_data = (const int32_t*)out_buffer_.memory.mapped();
+    const int32_t *out_data = (const int32_t*)out_buffer_.mapped();
     bool valid = true;
     for(uint32_t iBuxel=0; iBuxel<(uint32_t)out_ref_.size(); ++iBuxel) {
       if (out_data[iBuxel] != out_ref_[iBuxel]) {

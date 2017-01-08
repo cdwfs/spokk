@@ -88,34 +88,35 @@ public:
     // Load shader pipelines
     SPOKK_VK_CHECK(fullscreen_tri_vs_.create_and_load_spv_file(device_context_, "fullscreen.vert.spv"));
     SPOKK_VK_CHECK(shadertoy_fs_.create_and_load_spv_file(device_context_, "shadertoy.frag.spv"));
-    shadertoy_fs_.override_descriptor_type(0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     SPOKK_VK_CHECK(shader_pipeline_.add_shader(&fullscreen_tri_vs_));
     SPOKK_VK_CHECK(shader_pipeline_.add_shader(&shadertoy_fs_));
     SPOKK_VK_CHECK(shader_pipeline_.finalize(device_context_));
 
-    // Create buffer of per-vframe uniforms
-    // TODO(cort): It may be worth creating an abstraction for N-buffered resources.
-    const VkDeviceSize uniform_buffer_vframe_size = sizeof(ShaderToyUniforms);
+    // Create uniform buffer
     VkBufferCreateInfo uniform_buffer_ci = {};
     uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    uniform_buffer_ci.size = uniform_buffer_vframe_size * VFRAME_COUNT;
+    uniform_buffer_ci.size = sizeof(ShaderToyUniforms);
     uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(uniform_buffer_.create(device_context_, uniform_buffer_ci));
+    SPOKK_VK_CHECK(uniform_buffer_.create(device_context_, VFRAME_COUNT, uniform_buffer_ci));
 
     SPOKK_VK_CHECK(pipeline_.create(device_context_,
       MeshFormat::get_empty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
       &shader_pipeline_, &render_pass_, 0));
     // TODO(cort): add() needs a better name
-    dpool_.add((uint32_t)shader_pipeline_.dset_layout_cis.size(), shader_pipeline_.dset_layout_cis.data());
+    for(const auto& dset_layout_ci : shader_pipeline_.dset_layout_cis) {
+      dpool_.add(dset_layout_ci, VFRAME_COUNT);
+    }
     SPOKK_VK_CHECK(dpool_.finalize(device_context_));
-    dset_ = dpool_.allocate_set(device_context_, shader_pipeline_.dset_layouts[0]);
     DescriptorSetWriter dset_writer(shader_pipeline_.dset_layout_cis[0]);
     for(uint32_t iTex = 0; iTex < (uint32_t)textures_.size(); ++iTex) {
       dset_writer.bind_image(textures_[iTex].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], iTex);
     }
-    dset_writer.bind_buffer(uniform_buffer_.handle, 0, VK_WHOLE_SIZE, 4);
-    dset_writer.write_all_to_dset(device_context_, dset_);
+    for(uint32_t pframe = 0; pframe < VFRAME_COUNT; ++pframe) {
+      dsets_[pframe] = dpool_.allocate_set(device_context_, shader_pipeline_.dset_layouts[0]);
+      dset_writer.bind_buffer(uniform_buffer_.handle(pframe), 0, VK_WHOLE_SIZE, 4);
+      dset_writer.write_all_to_dset(device_context_, dsets_[pframe]);
+    }
 
     viewport_.x = 0;
     viewport_.y = 0;
@@ -238,9 +239,7 @@ public:
     uniforms_.iMouse = mathfu::vec4((float)mouse_x, (float)mouse_y, 0.0f, 0.0f);  // TODO(cort): mouse click tracking is TBI
     uniforms_.iDate = mathfu::vec4(year, month, mday, dsec);
     uniforms_.iSampleRate = 44100.0f;
-
-    // TODO(cort): clean this up when I figure out a good abstraction for N-buffered resources.
-    uniform_buffer_.load(device_context_, &uniforms_, sizeof(uniforms_), 0, sizeof(uniforms_) * vframe_index_);
+    uniform_buffer_.load(device_context_, vframe_index_, &uniforms_, sizeof(uniforms_));
   }
 
   virtual void render() override {
@@ -285,10 +284,9 @@ public:
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_.handle);
     vkCmdSetViewport(cb, 0,1, &viewport_);
     vkCmdSetScissor(cb, 0,1, &scissor_rect_);
-    uint32_t dynamic_uniform_offset = sizeof(uniforms_) * vframe_index_;
     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
       pipeline_.shader_pipeline->pipeline_layout,
-      0, 1, &dset_, 1, &dynamic_uniform_offset);
+      0, 1, &dsets_[vframe_index_], 0, nullptr);
     vkCmdDraw(cb, 3, 1,0,0);
     vkCmdEndRenderPass(cb);
 
@@ -329,7 +327,6 @@ private:
     if (compile_result.GetCompilationStatus() == shaderc_compilation_status_success) {
       Shader new_fs;
       SPOKK_VK_CHECK(new_fs.create_and_load_compile_result(device_context_, compile_result));
-      new_fs.override_descriptor_type(0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
       ShaderPipeline new_shader_pipeline;
       SPOKK_VK_CHECK(new_shader_pipeline.add_shader(&fullscreen_tri_vs_));
       SPOKK_VK_CHECK(new_shader_pipeline.add_shader(&new_fs));
@@ -407,10 +404,10 @@ private:
   VkRect2D scissor_rect_;
 
   DescriptorPool dpool_;
-  VkDescriptorSet dset_;
+  std::array<VkDescriptorSet, VFRAME_COUNT> dsets_;
 
   ShaderToyUniforms uniforms_;
-  Buffer uniform_buffer_;
+  PipelinedBuffer uniform_buffer_;
 };
 
 int main(int argc, char *argv[]) {

@@ -89,7 +89,6 @@ public:
     // Load shader pipelines
     SPOKK_VK_CHECK(mesh_vs_.create_and_load_spv_file(device_context_, "tri.vert.spv"));
     SPOKK_VK_CHECK(mesh_fs_.create_and_load_spv_file(device_context_, "tri.frag.spv"));
-    mesh_vs_.override_descriptor_type(0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     SPOKK_VK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_vs_));
     SPOKK_VK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_fs_));
 
@@ -147,15 +146,13 @@ public:
     (void)convert_error;
     SPOKK_VK_CHECK(mesh_.vertex_buffers[0].load(device_context_, final_mesh_vertices.data(), vertex_buffer_ci.size));
 
-    // Create buffer of per-mesh object-to-world matrices.
-    // TODO(cort): It may be worth creating an abstraction for N-buffered resources.
-    const VkDeviceSize uniform_buffer_vframe_size = MESH_INSTANCE_COUNT * sizeof(mathfu::mat4);
+    // Create pipelined buffer of per-mesh object-to-world matrices.
     VkBufferCreateInfo o2w_buffer_ci = {};
     o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    o2w_buffer_ci.size = uniform_buffer_vframe_size * VFRAME_COUNT;
+    o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(mathfu::mat4);
     o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.create(device_context_, o2w_buffer_ci));
+    SPOKK_VK_CHECK(mesh_uniforms_.create(device_context_, VFRAME_COUNT, o2w_buffer_ci));
 
     SPOKK_VK_CHECK(mesh_pipeline_.create(device_context_, mesh_.mesh_format, &mesh_shader_pipeline_, &render_pass_, 0));
 
@@ -163,14 +160,20 @@ public:
       MeshFormat::get_empty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
       &post_shader_pipeline_, &render_pass_, 1));
     // because the pipelines use a compatible layout, we can just add room for one full layout.
-    dpool_.add((uint32_t)mesh_shader_pipeline_.dset_layout_cis.size(), mesh_shader_pipeline_.dset_layout_cis.data());
+    for(const auto& dset_layout_ci : mesh_shader_pipeline_.dset_layout_cis) {
+      dpool_.add(dset_layout_ci, VFRAME_COUNT);
+    }
     SPOKK_VK_CHECK(dpool_.finalize(device_context_));
-    dset_ = dpool_.allocate_set(device_context_, mesh_shader_pipeline_.dset_layouts[0]);
+
     DescriptorSetWriter dset_writer(mesh_shader_pipeline_.dset_layout_cis[0]);
-    dset_writer.bind_buffer(mesh_uniforms_.handle, 0, VK_WHOLE_SIZE, 0);
     dset_writer.bind_image(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 1);
     dset_writer.bind_image(offscreen_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, 2, 0);
-    dset_writer.write_all_to_dset(device_context_, dset_);
+    for(uint32_t pframe = 0; pframe < VFRAME_COUNT; ++pframe) { 
+      // TODO(cort): allocate_pipelined_set()?
+      dsets_[pframe] = dpool_.allocate_set(device_context_, mesh_shader_pipeline_.dset_layouts[0]);
+      dset_writer.bind_buffer(mesh_uniforms_.handle(pframe), 0, VK_WHOLE_SIZE, 0);
+      dset_writer.write_all_to_dset(device_context_, dsets_[pframe]);
+    }
 
     viewport_.x = 0;
     viewport_.y = 0;
@@ -290,9 +293,8 @@ public:
         ;
       o2w_matrices[iMesh] = o2w;
     }
-    // TODO(cort): clean this up when I figure out a good abstraction for N-buffered resources.
-    mesh_uniforms_.load(device_context_, o2w_matrices.data(), MESH_INSTANCE_COUNT * sizeof(mathfu::mat4),
-      0, MESH_INSTANCE_COUNT * sizeof(mathfu::mat4) * vframe_index_);
+    mesh_uniforms_.load(device_context_, vframe_index_, o2w_matrices.data(), MESH_INSTANCE_COUNT * sizeof(mathfu::mat4),
+      0, 0);
   }
 
   virtual void render() override {
@@ -350,11 +352,10 @@ public:
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
     vkCmdSetViewport(cb, 0,1, &viewport_);
     vkCmdSetScissor(cb, 0,1, &scissor_rect_);
-    uint32_t dynamic_uniform_offset = MESH_INSTANCE_COUNT * sizeof(mathfu::mat4) * vframe_index_;
     // TODO(cort): leaving these unbound did not trigger a validation warning...
     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
       mesh_pipeline_.shader_pipeline->pipeline_layout,
-      0, 1, &dset_, 1, &dynamic_uniform_offset);
+      0, 1, &dsets_[vframe_index_], 0, nullptr);
     struct {
       mathfu::vec4_packed time_and_res;
       mathfu::vec4_packed eye;
@@ -377,10 +378,11 @@ public:
       mesh_pipeline_.shader_pipeline->push_constant_ranges[0].offset,
       mesh_pipeline_.shader_pipeline->push_constant_ranges[0].size,
       &push_constants);
-    const VkDeviceSize vertex_buffer_offsets[1] = {};
-    vkCmdBindVertexBuffers(cb, 0,1, &mesh_.vertex_buffers[0].handle, vertex_buffer_offsets);
+    const VkDeviceSize vertex_buffer_offsets[1] = {}; // TODO(cort): mesh::bind()
+    VkBuffer vertex_buffer = mesh_.vertex_buffers[0].handle();
+    vkCmdBindVertexBuffers(cb, 0,1, &vertex_buffer, vertex_buffer_offsets);
     const VkDeviceSize index_buffer_offset = 0;
-    vkCmdBindIndexBuffer(cb, mesh_.index_buffer.handle, index_buffer_offset, mesh_.index_type);
+    vkCmdBindIndexBuffer(cb, mesh_.index_buffer.handle(), index_buffer_offset, mesh_.index_type);
     vkCmdDrawIndexed(cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0,0,0);
 
     vkCmdNextSubpass(cb, VK_SUBPASS_CONTENTS_INLINE);
@@ -453,11 +455,11 @@ private:
   VkRect2D scissor_rect_;
 
   DescriptorPool dpool_;
-  VkDescriptorSet dset_;
+  std::array<VkDescriptorSet, VFRAME_COUNT> dsets_;
 
   MeshFormat mesh_format_;
   Mesh mesh_;
-  Buffer mesh_uniforms_;
+  PipelinedBuffer mesh_uniforms_;
 
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDolly> dolly_;
