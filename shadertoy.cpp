@@ -67,6 +67,7 @@ public:
       SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler));
     }
     image_loader_ = my_make_unique<ImageLoader>(device_context_);
+    // TODO(cort): replace with some actual ShaderToy textures
     SPOKK_VK_CHECK(textures_[0].create_and_load(device_context_, *image_loader_.get(), "trevor/noise.dds"));
     SPOKK_VK_CHECK(textures_[1].create_and_load(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
     SPOKK_VK_CHECK(textures_[2].create_and_load(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
@@ -90,7 +91,6 @@ public:
     SPOKK_VK_CHECK(pipeline_.create(device_context_,
       MeshFormat::get_empty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
       &shader_pipeline_, &render_pass_, 0));
-    // TODO(cort): add() needs a better name
     for(const auto& dset_layout_ci : shader_pipeline_.dset_layout_cis) {
       dpool_.add(dset_layout_ci, PFRAME_COUNT);
     }

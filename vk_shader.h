@@ -105,6 +105,7 @@ struct DescriptorPool {
 
   // Adds a number of instances of each type of dset in the array. This would be pretty easy to call on a ShaderPipeline.
   // if dsets_per_layout is nullptr, assume one of each layout.
+  // TODO(cort): add() really needs a better name.
   void add(uint32_t layout_count, const VkDescriptorSetLayoutCreateInfo* dset_layout_cis, const uint32_t* dsets_per_layout = nullptr);
   // Shortcut to add a single dset layout
   void add(const VkDescriptorSetLayoutCreateInfo& dset_layout, uint32_t dset_count = 1);
