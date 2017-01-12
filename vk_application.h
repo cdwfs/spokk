@@ -174,6 +174,7 @@ protected:
 private:
   bool init_successful = false;
 
+  // TODO(cort): Do apps need to know the graphics/present queue, so they can transition resources to it if necessary?
   const DeviceQueue* graphics_and_present_queue_;
   VkCommandPool primary_cpool_;
   std::array<VkCommandBuffer, VFRAME_COUNT> primary_command_buffers_;

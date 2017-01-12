@@ -465,6 +465,8 @@ int ImageLoader::record_mipmap_generation(VkCommandBuffer cb, VkImage image, con
   image_barriers[1].newLayout = final_layout;
   image_barriers[1].subresourceRange.baseMipLevel = image_ci.mipLevels - 1;
   image_barriers[1].subresourceRange.levelCount = 1;
+  // TODO(cort): this barrier may need to transfer ownership of the image to a different queue family,
+  // if the transfer queue isn't the same as the final graphics queue!
   vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
     (VkDependencyFlags)0, 0,NULL, 0,NULL, (uint32_t)image_barriers.size(),image_barriers.data());
 
