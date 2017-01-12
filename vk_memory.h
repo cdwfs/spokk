@@ -16,7 +16,16 @@ public:
   VkDeviceMemory handle() const { return handle_; }
   const VkMemoryAllocateInfo& info() const { return info_; }
   void* mapped() const { return mapped_; }
+  
+  // Invalidate a range of this block in the host's caches, to ensure GPU writes to that range are visible by the host.
+  // If this block was not allocated with the HOST_VISIBLE flag, this function has no effect.
+  void invalidate_host_cache(const VkMappedMemoryRange& range) const;  
+  // Flush a range of this block from the host's caches, to ensure host writes to that range are visible by the GPU.
+  // If this block was not allocated with the HOST_VISIBLE flag, this function has no effect.
+  void flush_host_cache(const VkMappedMemoryRange& range) const;
+
 private:
+  VkDevice device_;  // Cached, to allow invalidate/flush
   VkDeviceMemory handle_;
   VkMemoryAllocateInfo info_;
   void *mapped_;  // NULL if allocation is not mapped.
@@ -30,9 +39,14 @@ struct DeviceMemoryAllocation {
     }
     return (void*)( uintptr_t(block->mapped()) + offset );
   }
-  // TODO(cort): cache a VkDevice with the memory block?
-  void invalidate(VkDevice device) const;  // invalidate host caches, to make sure GPU writes are visible on the host.
-  void flush(VkDevice device) const;  // flush host caches, to make sure host writes are visible by the GPU.
+
+  // Invalidate this allocation in the host's caches, to ensure GPU writes to its range are visible by the host.
+  // If this allocation is not mapped, this function has no effect.
+  void invalidate_host_caches() const;
+  // Flush this allocation from the host's caches, to ensure host writes to its range are visible by the GPU.
+  // If this allocation is not mapped, this function has no effect.
+  void flush_host_caches() const;
+
   DeviceMemoryBlock *block;  // May or may not be exclusively owned; depends on the device allocator.
                              // May be NULL for invalid allocations.
   VkDeviceSize offset;
