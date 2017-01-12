@@ -83,17 +83,17 @@ private:
   std::weak_ptr<GLFWwindow> window_;
 };
 
-// How many frames can be in flight simultaneously? The higher the count, the more independent copies
-// of various resources (anything changing per-frame) must be created and maintained in memory.
+// How many frames can be pipelined ("in flight") simultaneously? The higher the count, the more independent copies
+// of various resources (anything changing per frame) must be created and maintained in memory.
 // 1 = CPU and GPU run synchronously, each idling while the other works. Safe, but slow.
 // 2 = GPU renders from N while CPU builds commands for frame N+1. Usually a safe choice.
 //     If the CPU finishes early, it will block until the GPU is finished.
 // 3 = GPU renders from N, while CPU builds commands for frame N+1. This mode is best when using the
 //     MAILBOX present mode; it prevents the CPU from ever blocking on the GPU. If the CPU finishes
-//     early, it can queue it for presentation and get started on frame N+2; if it finishes *that*
+//     early, it can queue frame N+1 for presentation and get started on frame N+2; if it finishes *that*
 //     before the GPU finishes frame N, then frame N+1 is discarded and frame N+2 is queued for
-//     presentation instead.
-const uint32_t VFRAME_COUNT = 2;
+//     presentation instead, and the CPU starts work on frame N+3. And so on.
+const uint32_t PFRAME_COUNT = 2;
 
 //
 // Application base class
@@ -167,7 +167,7 @@ protected:
   DeviceContext device_context_;
 
   uint32_t frame_index_;  // Frame number since launch
-  uint32_t vframe_index_;  // current vframe index; cycles from 0 to VFRAME_COUNT.
+  uint32_t pframe_index_;  // current pframe (pipelined frame) index; cycles from 0 to PFRAME_COUNT-1, then back to 0.
 
   bool force_exit_ = false;  // Application can set this to true to exit at the next available chance.
 
@@ -177,10 +177,10 @@ private:
   // TODO(cort): Do apps need to know the graphics/present queue, so they can transition resources to it if necessary?
   const DeviceQueue* graphics_and_present_queue_;
   VkCommandPool primary_cpool_;
-  std::array<VkCommandBuffer, VFRAME_COUNT> primary_command_buffers_;
+  std::array<VkCommandBuffer, PFRAME_COUNT> primary_command_buffers_;
   VkSemaphore image_acquire_semaphore_;
   VkSemaphore submit_complete_semaphore_;
-  std::array<VkFence, VFRAME_COUNT> submit_complete_fences_;
+  std::array<VkFence, PFRAME_COUNT> submit_complete_fences_;
 };
 
 }  // namespace spokk

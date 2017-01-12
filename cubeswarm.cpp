@@ -135,7 +135,7 @@ public:
     o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(mathfu::mat4);
     o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.create(device_context_, VFRAME_COUNT, o2w_buffer_ci));
+    SPOKK_VK_CHECK(mesh_uniforms_.create(device_context_, PFRAME_COUNT, o2w_buffer_ci));
 
     SPOKK_VK_CHECK(mesh_pipeline_.create(device_context_, mesh_.mesh_format, &mesh_shader_pipeline_, &render_pass_, 0));
 
@@ -144,14 +144,14 @@ public:
       &post_shader_pipeline_, &render_pass_, 1));
     // because the pipelines use a compatible layout, we can just add room for one full layout.
     for(const auto& dset_layout_ci : mesh_shader_pipeline_.dset_layout_cis) {
-      dpool_.add(dset_layout_ci, VFRAME_COUNT);
+      dpool_.add(dset_layout_ci, PFRAME_COUNT);
     }
     SPOKK_VK_CHECK(dpool_.finalize(device_context_));
 
     DescriptorSetWriter dset_writer(mesh_shader_pipeline_.dset_layout_cis[0]);
     dset_writer.bind_image(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 1);
     dset_writer.bind_image(offscreen_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, 2, 0);
-    for(uint32_t pframe = 0; pframe < VFRAME_COUNT; ++pframe) { 
+    for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
       // TODO(cort): allocate_pipelined_set()?
       dsets_[pframe] = dpool_.allocate_set(device_context_, mesh_shader_pipeline_.dset_layouts[0]);
       dset_writer.bind_buffer(mesh_uniforms_.handle(pframe), 0, VK_WHOLE_SIZE, 0);
@@ -242,7 +242,7 @@ public:
         ;
       o2w_matrices[iMesh] = o2w;
     }
-    mesh_uniforms_.load(device_context_, vframe_index_, o2w_matrices.data(), MESH_INSTANCE_COUNT * sizeof(mathfu::mat4),
+    mesh_uniforms_.load(device_context_, pframe_index_, o2w_matrices.data(), MESH_INSTANCE_COUNT * sizeof(mathfu::mat4),
       0, 0);
   }
 
@@ -278,7 +278,7 @@ public:
     // TODO(cort): leaving these unbound did not trigger a validation warning...
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
       mesh_pipeline_.shader_pipeline->pipeline_layout,
-      0, 1, &dsets_[vframe_index_], 0, nullptr);
+      0, 1, &dsets_[pframe_index_], 0, nullptr);
     struct {
       mathfu::vec4_packed time_and_res;
       mathfu::vec4_packed eye;
@@ -339,7 +339,7 @@ private:
   GraphicsPipeline fullscreen_pipeline_;
 
   DescriptorPool dpool_;
-  std::array<VkDescriptorSet, VFRAME_COUNT> dsets_;
+  std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
   MeshFormat mesh_format_;
   Mesh mesh_;

@@ -549,7 +549,7 @@ int Application::run() {
   const uint64_t clock_start = zomboClockTicks();
   uint64_t ticks_prev = clock_start;
   frame_index_ = 0;
-  vframe_index_ = 0;
+  pframe_index_ = 0;
   while(!force_exit_ && !glfwWindowShouldClose(window_.get())) {
     uint64_t ticks_now = zomboClockTicks();
     const double dt = (float)zomboTicksToSeconds(ticks_now - ticks_prev);
@@ -563,12 +563,12 @@ int Application::run() {
     // Wait for the command buffer previously used to generate this swapchain image to be submitted.
     // TODO(cort): this does not guarantee memory accesses from this submission will be visible on the host;
     // there'd need to be a memory barrier for that.
-    vkWaitForFences(device_, 1, &submit_complete_fences_[vframe_index_], VK_TRUE, UINT64_MAX);
-    vkResetFences(device_, 1, &submit_complete_fences_[vframe_index_]);
+    vkWaitForFences(device_, 1, &submit_complete_fences_[pframe_index_], VK_TRUE, UINT64_MAX);
+    vkResetFences(device_, 1, &submit_complete_fences_[pframe_index_]);
 
     // The host can now safely reset and rebuild this command buffer, even if the GPU hasn't finished presenting the
     // resulting frame yet.
-    VkCommandBuffer cb = primary_command_buffers_[vframe_index_];
+    VkCommandBuffer cb = primary_command_buffers_[pframe_index_];
 
     // Retrieve the index of the next available swapchain index
     VkFence image_acquire_fence = VK_NULL_HANDLE; // currently unused, but if you want the CPU to wait for an image to be acquired...
@@ -606,7 +606,7 @@ int Application::run() {
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = &submit_complete_semaphore_;
     SPOKK_VK_CHECK( vkQueueSubmit(graphics_and_present_queue_->handle, 1,
-      &submit_info, submit_complete_fences_[vframe_index_]) );
+      &submit_info, submit_complete_fences_[pframe_index_]) );
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present_info.pNext = NULL;
@@ -626,9 +626,9 @@ int Application::run() {
 
     glfwPollEvents();
     frame_index_ += 1;
-    vframe_index_ += 1;
-    if (vframe_index_ == VFRAME_COUNT) {
-      vframe_index_ = 0;
+    pframe_index_ += 1;
+    if (pframe_index_ == PFRAME_COUNT) {
+      pframe_index_ = 0;
     }
   }
   return 0;

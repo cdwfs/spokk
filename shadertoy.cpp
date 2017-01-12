@@ -81,21 +81,21 @@ public:
     uniform_buffer_ci.size = sizeof(ShaderToyUniforms);
     uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(uniform_buffer_.create(device_context_, VFRAME_COUNT, uniform_buffer_ci));
+    SPOKK_VK_CHECK(uniform_buffer_.create(device_context_, PFRAME_COUNT, uniform_buffer_ci));
 
     SPOKK_VK_CHECK(pipeline_.create(device_context_,
       MeshFormat::get_empty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
       &shader_pipeline_, &render_pass_, 0));
     // TODO(cort): add() needs a better name
     for(const auto& dset_layout_ci : shader_pipeline_.dset_layout_cis) {
-      dpool_.add(dset_layout_ci, VFRAME_COUNT);
+      dpool_.add(dset_layout_ci, PFRAME_COUNT);
     }
     SPOKK_VK_CHECK(dpool_.finalize(device_context_));
     DescriptorSetWriter dset_writer(shader_pipeline_.dset_layout_cis[0]);
     for(uint32_t iTex = 0; iTex < (uint32_t)textures_.size(); ++iTex) {
       dset_writer.bind_image(textures_[iTex].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], iTex);
     }
-    for(uint32_t pframe = 0; pframe < VFRAME_COUNT; ++pframe) {
+    for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dsets_[pframe] = dpool_.allocate_set(device_context_, shader_pipeline_.dset_layouts[0]);
       dset_writer.bind_buffer(uniform_buffer_.handle(pframe), 0, VK_WHOLE_SIZE, 4);
       dset_writer.write_all_to_dset(device_context_, dsets_[pframe]);
@@ -192,7 +192,7 @@ public:
     uniforms_.iMouse = mathfu::vec4((float)mouse_x, (float)mouse_y, 0.0f, 0.0f);  // TODO(cort): mouse click tracking is TBI
     uniforms_.iDate = mathfu::vec4(year, month, mday, dsec);
     uniforms_.iSampleRate = 44100.0f;
-    uniform_buffer_.load(device_context_, vframe_index_, &uniforms_, sizeof(uniforms_));
+    uniform_buffer_.load(device_context_, pframe_index_, &uniforms_, sizeof(uniforms_));
   }
 
   void render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
@@ -211,7 +211,7 @@ public:
     vkCmdSetScissor(primary_cb, 0,1, &scissor_rect_);
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
       pipeline_.shader_pipeline->pipeline_layout,
-      0, 1, &dsets_[vframe_index_], 0, nullptr);
+      0, 1, &dsets_[pframe_index_], 0, nullptr);
     vkCmdDraw(primary_cb, 3, 1,0,0);
     vkCmdEndRenderPass(primary_cb);
   }
@@ -291,7 +291,7 @@ private:
   VkRect2D scissor_rect_;
 
   DescriptorPool dpool_;
-  std::array<VkDescriptorSet, VFRAME_COUNT> dsets_;
+  std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
   ShaderToyUniforms uniforms_;
   PipelinedBuffer uniform_buffer_;
