@@ -33,7 +33,6 @@ struct ShaderToyUniforms {
   mathfu::vec4_packed iMouse;      // mouse pixel coords. xy: current (if MLB down), zw: click
   mathfu::vec4_packed iDate;       // (year, month, day, time in seconds)
   float     iSampleRate;           // sound sample rate (i.e., 44100
-  uint32_t padding[1+32];          // TODO(cort): dynamic uniform buffer offsets must be a multiple of minUniformBufferOffsetAlignment
 };
 
 }  // namespace
