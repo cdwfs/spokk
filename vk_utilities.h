@@ -52,7 +52,7 @@ private:
   VkCommandPool pool_ = VK_NULL_HANDLE;
   mutable std::mutex pool_mutex_ = {};
 
-  // Cached handled -- do not delete!
+  // Cached handles -- do not delete!
   VkDevice device_ = VK_NULL_HANDLE;
   VkQueue queue_ = VK_NULL_HANDLE;
   uint32_t queue_family_ = VK_QUEUE_FAMILY_IGNORED;

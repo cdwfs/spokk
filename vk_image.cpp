@@ -262,7 +262,7 @@ int ImageLoader::load_from_file(VkImage *out_image, VkImageCreateInfo *out_image
     // copy region dimensions are specified in pixels (not texel blocks or bytes), but must be
     // an even integer multiple of the texel block dimensions for compressed formats.
     // It must also respect the minImageTransferGranularity, but I don't have a good way of testing
-    // that right now.
+    // that right now.  ...Wait, yes I do! It's in the DeviceQueue!
     copy_regions[i_mip].bufferRowLength = get_mip_dimension(
       image_file.row_pitch_bytes * texel_block_width / texel_block_bytes, i_mip);
     copy_regions[i_mip].bufferImageHeight = get_mip_dimension(image_file.height, i_mip) * texel_block_height;
