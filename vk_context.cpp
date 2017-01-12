@@ -1,6 +1,7 @@
 #include "vk_context.h"
 
 #include <cassert>
+#include <cstdlib>
 
 namespace spokk {
 
@@ -138,7 +139,9 @@ void *DeviceContext::host_alloc(size_t size, size_t alignment, VkSystemAllocatio
 #if defined(_MSC_VER)
     return _mm_malloc(size, alignment);
 #else
-    return malloc(size); // TODO(cort): ignores alignment :(
+    void *ptr = nullptr;
+    int ret = posix_memalign(&ptr, alignment, size);
+    return ptr;
 #endif
   }
 }

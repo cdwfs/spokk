@@ -23,6 +23,7 @@ using namespace spokk;
 
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 
 #define CDSVK__CLAMP(x, xmin, xmax) ( ((x)<(xmin)) ? (xmin) : ( ((x)>(xmax)) ? (xmax) : (x) ) )
 

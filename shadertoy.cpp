@@ -7,6 +7,11 @@ using namespace spokk;
 #include <mathfu/vector.h>
 #include <mathfu/glsl_mappings.h>
 
+#if defined(__linux__)
+# include <sys/inotify.h>
+# include <limits.h>
+#endif  // defined(__linux__)
+
 #include <array>
 #include <atomic>
 #include <cstdio>
@@ -241,10 +246,10 @@ private:
     }
   }
   void watch_shader_dir(const std::string dir_path) {
-#ifdef _MSC_VER // Detect changes using Windows change notification API
+#ifdef _MSC_VER  // Detect changes using Windows change notification API
     std::wstring wpath(dir_path.begin(), dir_path.end()); // only works for ASCII input, but I'm okay with that.
     HANDLE dwChangeHandle = FindFirstChangeNotification(wpath.c_str(), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE);
-    assert(dwChangeHandle != INVALID_HANDLE_VALUE);
+    ZOMBO_ASSERT(dwChangeHandle != INVALID_HANDLE_VALUE, "FindFirstChangeNotification() returned invalid handle");
     int lastUpdateSeconds = -1;
     for(;;) {
       DWORD dwWaitStatus = WaitForSingleObject(dwChangeHandle, INFINITE);
@@ -260,8 +265,38 @@ private:
       }
       FindNextChangeNotification(dwChangeHandle);
     }
+#elif defined(__linux__)  // Detect changes using inotify
+    int fd = inotify_init();
+    ZOMBO_ASSERT(fd != -1, "inotify_init() failed (errno=%d)", errno);
+    int wd = inotify_add_watch(fd, dir_path.c_str(), IN_MODIFY | IN_MOVED_TO);
+    ZOMBO_ASSERT(wd != -1, "inotify_add_watch() failed (errno=%d)", errno);
+    for(;;) {
+      // TODO(cort): Many text editors will "modify" a file as a write to a temp file (IN_MODIFY), followed by
+      // a rename to the original file (IN_MOVED_TO). We shouldn't reload a shader until the rename. I think this
+      // is currently handled by the zomboSleepMsec() below, but it seems janky.
+      uint8_t event_buffer[sizeof(inotify_event) + NAME_MAX + 1] = {};
+      ssize_t event_bytes = read(fd, event_buffer, sizeof(inotify_event) + NAME_MAX + 1);
+      ZOMBO_ASSERT(event_bytes >= sizeof(inotify_event), "inotify event read failed (errno=%d)", errno);
+      int32_t event_offset = 0;
+      while(event_offset < event_bytes) {
+        inotify_event *event = reinterpret_cast<inotify_event*>(event_buffer + event_offset);
+        if (event->wd != wd) {
+          continue;
+        }
+        // printf("%s: 0x%08X\n", event->name, event->mask);
+        if ((event->mask & IN_MODIFY) != 0) {
+          reload_shader();
+          sleep(1);  // only process one reload per second.
+        } else if ((event->mask & (IN_IGNORED | IN_UNMOUNT | IN_Q_OVERFLOW)) != 0) {
+          ZOMBO_ERROR("inotify event mask (0x%08X) indicates something awful is afoot!", event->mask);
+        }
+        event_offset += sizeof(inotify_event) + event->len;
+      }
+    }
+    inotify_rm_watch(fd, wd);
+    close(fd);
 #else
-#error Unsupported platform! Find your platform's equivalent of inotify!
+#error Unsupported platform! Find the equivalent of inotify on your platform!
 #endif
   }
 

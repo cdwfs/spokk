@@ -3,6 +3,7 @@
 #include "vk_utilities.h"
 
 #include <cassert>
+#include <cstring>
 #include <memory>
 
 namespace spokk {
