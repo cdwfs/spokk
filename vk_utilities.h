@@ -17,6 +17,21 @@ std::unique_ptr<T> my_make_unique(Ts&&... params) {
 
 VkImageAspectFlags vk_format_to_image_aspect_flags(VkFormat format);
 
+// Utilities for constructing viewports and scissor rects
+inline VkViewport vk_extent_to_viewport(const VkExtent2D extent, float zMin = 0.0f, float zMax = 1.0f) {
+  return {0, 0, (float)extent.width, (float)extent.height, zMin, zMax};
+}
+inline VkRect2D vk_extent_to_rect2d(const VkExtent2D extent) {
+  return {0, 0, extent.width, extent.height};
+}
+inline VkViewport vk_rect2d_to_viewport(VkRect2D rect, float z_min = 0.0f, float z_max = 1.0f) {
+  return {
+    (float)rect.offset.x, (float)rect.offset.y,
+    (float)rect.extent.width, (float)rect.extent.height,
+    z_min, z_max
+  };
+}
+
 //
 // Simplifies quick, synchronous, single-shot command buffers.
 //

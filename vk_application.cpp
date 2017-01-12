@@ -467,11 +467,48 @@ Application::Application(const CreateInfo &ci) {
     }
   }
 
+  graphics_and_present_queue_ = device_context_.find_queue(VK_QUEUE_GRAPHICS_BIT, surface_);
+
+  // Allocate command buffers
+  VkCommandPoolCreateInfo cpool_ci = {};
+  cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+  cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
+  SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &primary_cpool_));
+  VkCommandBufferAllocateInfo cb_allocate_info = {};
+  cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  cb_allocate_info.commandPool = primary_cpool_;
+  cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  cb_allocate_info.commandBufferCount = (uint32_t)primary_command_buffers_.size();
+  SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, primary_command_buffers_.data()));
+
+  // Create the semaphores used to synchronize access to swapchain images
+  VkSemaphoreCreateInfo semaphore_ci = {};
+  semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+  SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
+  SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
+
+  // Create the fences used to wait for each swapchain image's command buffer to be submitted.
+  // This prevents re-writing the command buffer contents before it's been submitted and processed.
+  VkFenceCreateInfo fence_ci = {};
+  fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+  fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+  for(auto &fence : submit_complete_fences_) {
+    SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
+  }
+
   init_successful = true;
 }
 Application::~Application() {
   if (device_) {
     vkDeviceWaitIdle(device_);
+
+    vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
+    vkDestroySemaphore(device_, submit_complete_semaphore_, host_allocator_);
+    for(auto fence : submit_complete_fences_) {
+      vkDestroyFence(device_, fence, host_allocator_);
+    }
+    vkDestroyCommandPool(device_, primary_cpool_, host_allocator_);
 
     vkDestroyPipelineCache(device_, pipeline_cache_, host_allocator_);
 
@@ -522,9 +559,69 @@ int Application::run() {
     if (force_exit_) {
       break;
     }
-    render();
+
+    // Wait for the command buffer previously used to generate this swapchain image to be submitted.
+    // TODO(cort): this does not guarantee memory accesses from this submission will be visible on the host;
+    // there'd need to be a memory barrier for that.
+    vkWaitForFences(device_, 1, &submit_complete_fences_[vframe_index_], VK_TRUE, UINT64_MAX);
+    vkResetFences(device_, 1, &submit_complete_fences_[vframe_index_]);
+
+    // The host can now safely reset and rebuild this command buffer, even if the GPU hasn't finished presenting the
+    // resulting frame yet.
+    VkCommandBuffer cb = primary_command_buffers_[vframe_index_];
+
+    // Retrieve the index of the next available swapchain index
+    VkFence image_acquire_fence = VK_NULL_HANDLE; // currently unused, but if you want the CPU to wait for an image to be acquired...
+    uint32_t swapchain_image_index = 0;
+    VkResult acquire_result = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX,
+      image_acquire_semaphore_, image_acquire_fence, &swapchain_image_index);
+    if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) {
+      assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
+    } else if (acquire_result == VK_SUBOPTIMAL_KHR) {
+      // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
+    } else {
+      SPOKK_VK_CHECK(acquire_result);
+    }
+
+    VkCommandBufferBeginInfo cb_begin_info = {};
+    cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info) );
+
+    // Applications-specific render code
+    render(cb, swapchain_image_index);
     if (force_exit_) {
       break;
+    }
+
+    SPOKK_VK_CHECK( vkEndCommandBuffer(cb) );
+    const VkPipelineStageFlags submit_wait_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = &image_acquire_semaphore_;
+    submit_info.pWaitDstStageMask = &submit_wait_stages;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &cb;
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = &submit_complete_semaphore_;
+    SPOKK_VK_CHECK( vkQueueSubmit(graphics_and_present_queue_->handle, 1,
+      &submit_info, submit_complete_fences_[vframe_index_]) );
+    VkPresentInfoKHR present_info = {};
+    present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    present_info.pNext = NULL;
+    present_info.swapchainCount = 1;
+    present_info.pSwapchains = &swapchain_;
+    present_info.pImageIndices = &swapchain_image_index;
+    present_info.waitSemaphoreCount = 1;
+    present_info.pWaitSemaphores = &submit_complete_semaphore_;
+    VkResult present_result = vkQueuePresentKHR(graphics_and_present_queue_->handle, &present_info);
+    if (present_result == VK_ERROR_OUT_OF_DATE_KHR) {
+      assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
+    } else if (present_result == VK_SUBOPTIMAL_KHR) {
+      // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
+    } else {
+      SPOKK_VK_CHECK(present_result);
     }
 
     glfwPollEvents();
@@ -539,8 +636,6 @@ int Application::run() {
 
 void Application::update(double /*dt*/) {
   input_state_.Update();
-}
-void Application::render() {
 }
 
 bool Application::is_instance_layer_enabled(const std::string& layer_name) const {

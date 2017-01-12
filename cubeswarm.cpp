@@ -34,23 +34,6 @@ public:
     camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
     dolly_ = my_make_unique<CameraDolly>(*camera_);
 
-    // Retrieve queue handles
-    const DeviceQueue *queue = device_context_.find_queue(VK_QUEUE_GRAPHICS_BIT, surface_);
-    graphics_and_present_queue_ = queue->handle;
-
-    // Allocate command buffers
-    VkCommandPoolCreateInfo cpool_ci = {};
-    cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    cpool_ci.queueFamilyIndex = queue->family;
-    SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &cpool_));
-    VkCommandBufferAllocateInfo cb_allocate_info = {};
-    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cb_allocate_info.commandPool = cpool_;
-    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cb_allocate_info.commandBufferCount = (uint32_t)command_buffers_.size();
-    SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, command_buffers_.data()));
-
     // Create render pass
     render_pass_.init_from_preset(RenderPass::Preset::COLOR_DEPTH_POST, swapchain_surface_format_.format);
     SPOKK_VK_CHECK(render_pass_.finalize_and_create(device_context_));
@@ -174,32 +157,6 @@ public:
       dset_writer.bind_buffer(mesh_uniforms_.handle(pframe), 0, VK_WHOLE_SIZE, 0);
       dset_writer.write_all_to_dset(device_context_, dsets_[pframe]);
     }
-
-    viewport_.x = 0;
-    viewport_.y = 0;
-    viewport_.width  = (float)swapchain_extent_.width;
-    viewport_.height = (float)swapchain_extent_.height;
-    viewport_.minDepth = 0.0f;
-    viewport_.maxDepth = 1.0f;
-    scissor_rect_.extent.width  = swapchain_extent_.width;
-    scissor_rect_.extent.height = swapchain_extent_.height;
-    scissor_rect_.offset.x = 0;
-    scissor_rect_.offset.y = 0;
-
-    // Create the semaphores used to synchronize access to swapchain images
-    VkSemaphoreCreateInfo semaphore_ci = {};
-    semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &swapchain_image_ready_sem_));
-    SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &rendering_complete_sem_));
-
-    // Create the fences used to wait for each swapchain image's command buffer to be submitted.
-    // This prevents re-writing the command buffer contents before it's been submitted and processed.
-    VkFenceCreateInfo fence_ci = {};
-    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    for(auto &fence : submission_complete_fences_) {
-      SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
-    }
   }
   virtual ~CubeSwarmApp() {
     if (device_) {
@@ -224,12 +181,6 @@ public:
       fullscreen_tri_vs_.destroy(device_context_);
       post_filmgrain_fs_.destroy(device_context_);
 
-      for(auto &fence : submission_complete_fences_) {
-        vkDestroyFence(device_, fence, host_allocator_);
-      }
-      vkDestroySemaphore(device_, swapchain_image_ready_sem_, host_allocator_);
-      vkDestroySemaphore(device_, rendering_complete_sem_, host_allocator_);
-
       vkDestroySampler(device_, sampler_, host_allocator_);
       albedo_tex_.destroy(device_context_);
       image_loader_.reset();
@@ -241,8 +192,6 @@ public:
 
       offscreen_image_.destroy(device_context_);
       depth_image_.destroy(device_context_);
-
-      vkDestroyCommandPool(device_, cpool_, host_allocator_);
     }
   }
 
@@ -297,36 +246,8 @@ public:
       0, 0);
   }
 
-  virtual void render() override {
-    // Wait for the command buffer previously used to generate this swapchain image to be submitted.
-    // TODO(cort): this does not guarantee memory accesses from this submission will be visible on the host;
-    // there'd need to be a memory barrier for that.
-    vkWaitForFences(device_, 1, &submission_complete_fences_[vframe_index_], VK_TRUE, UINT64_MAX);
-    vkResetFences(device_, 1, &submission_complete_fences_[vframe_index_]);
-
-    // The host can now safely reset and rebuild this command buffer, even if the GPU hasn't finished presenting the
-    // resulting frame yet.
-    VkCommandBuffer cb = command_buffers_[vframe_index_];
-
-    // Retrieve the index of the next available swapchain index
-    uint32_t swapchain_image_index = UINT32_MAX;
-    VkFence image_acquired_fence = VK_NULL_HANDLE; // currently unused, but if you want the CPU to wait for an image to be acquired...
-    VkResult acquire_result = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX, swapchain_image_ready_sem_,
-      image_acquired_fence, &swapchain_image_index);
-    if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) {
-      assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
-    } else if (acquire_result == VK_SUBOPTIMAL_KHR) {
-      // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
-    } else {
-      SPOKK_VK_CHECK(acquire_result);
-    }
+  void render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
-
-    VkCommandBufferBeginInfo cb_begin_info = {};
-    cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info) );
-
     // TODO(cort): spurious validation warning for unused clear value? Is that
     // actually bad? What if attachments 0 and 2 must be cleared but not 1?
     // Easy enough to work around in this case, just hard-code the array size.
@@ -348,12 +269,14 @@ public:
     render_pass_begin_info.clearValueCount = (uint32_t)clear_values.size();
     render_pass_begin_info.pClearValues = clear_values.data();
 
-    vkCmdBeginRenderPass(cb, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
-    vkCmdSetViewport(cb, 0,1, &viewport_);
-    vkCmdSetScissor(cb, 0,1, &scissor_rect_);
+    vkCmdBeginRenderPass(primary_cb, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
+    VkRect2D scissor_rect = render_pass_begin_info.renderArea;
+    VkViewport viewport = vk_rect2d_to_viewport(scissor_rect);
+    vkCmdSetViewport(primary_cb, 0,1, &viewport);
+    vkCmdSetScissor(primary_cb, 0,1, &scissor_rect);
     // TODO(cort): leaving these unbound did not trigger a validation warning...
-    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
+    vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
       mesh_pipeline_.shader_pipeline->pipeline_layout,
       0, 1, &dsets_[vframe_index_], 0, nullptr);
     struct {
@@ -362,7 +285,7 @@ public:
       mathfu::mat4 viewproj;
     } push_constants = {};
     push_constants.time_and_res = mathfu::vec4((float)seconds_elapsed_,
-      viewport_.width, viewport_.height, 0);
+      viewport.width, viewport.height, 0);
     push_constants.eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
     mathfu::mat4 w2v = camera_->getViewMatrix();
     const mathfu::mat4 proj = camera_->getProjectionMatrix();
@@ -373,65 +296,29 @@ public:
       +0.0f, +0.0f, +0.0f, +1.0f);
     const mathfu::mat4 viewproj = clip_fixup * proj * w2v;
     push_constants.viewproj = viewproj;
-    vkCmdPushConstants(cb, mesh_pipeline_.shader_pipeline->pipeline_layout,
+    vkCmdPushConstants(primary_cb, mesh_pipeline_.shader_pipeline->pipeline_layout,
       mesh_pipeline_.shader_pipeline->push_constant_ranges[0].stageFlags,
       mesh_pipeline_.shader_pipeline->push_constant_ranges[0].offset,
       mesh_pipeline_.shader_pipeline->push_constant_ranges[0].size,
       &push_constants);
     const VkDeviceSize vertex_buffer_offsets[1] = {}; // TODO(cort): mesh::bind()
     VkBuffer vertex_buffer = mesh_.vertex_buffers[0].handle();
-    vkCmdBindVertexBuffers(cb, 0,1, &vertex_buffer, vertex_buffer_offsets);
+    vkCmdBindVertexBuffers(primary_cb, 0,1, &vertex_buffer, vertex_buffer_offsets);
     const VkDeviceSize index_buffer_offset = 0;
-    vkCmdBindIndexBuffer(cb, mesh_.index_buffer.handle(), index_buffer_offset, mesh_.index_type);
-    vkCmdDrawIndexed(cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0,0,0);
+    vkCmdBindIndexBuffer(primary_cb, mesh_.index_buffer.handle(), index_buffer_offset, mesh_.index_type);
+    vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0,0,0);
 
-    vkCmdNextSubpass(cb, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, fullscreen_pipeline_.handle);
-    vkCmdSetViewport(cb, 0,1, &viewport_);
-    vkCmdSetScissor(cb, 0,1, &scissor_rect_);
-    vkCmdDraw(cb, 3, 1,0,0);
-    vkCmdEndRenderPass(cb);
-
-    SPOKK_VK_CHECK( vkEndCommandBuffer(cb) );
-    const VkPipelineStageFlags submit_wait_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    VkSubmitInfo submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = &swapchain_image_ready_sem_;
-    submit_info.pWaitDstStageMask = &submit_wait_stages;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &cb;
-    submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = &rendering_complete_sem_;
-    SPOKK_VK_CHECK( vkQueueSubmit(graphics_and_present_queue_, 1, &submit_info, submission_complete_fences_[vframe_index_]) );
-    VkPresentInfoKHR present_info = {};
-    present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    present_info.pNext = NULL;
-    present_info.swapchainCount = 1;
-    present_info.pSwapchains = &swapchain_;
-    present_info.pImageIndices = &swapchain_image_index;
-    present_info.waitSemaphoreCount = 1;
-    present_info.pWaitSemaphores = &rendering_complete_sem_;
-    VkResult present_result = vkQueuePresentKHR(graphics_and_present_queue_, &present_info);
-    if (present_result == VK_ERROR_OUT_OF_DATE_KHR) {
-      assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
-    } else if (present_result == VK_SUBOPTIMAL_KHR) {
-      // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
-    } else {
-      SPOKK_VK_CHECK(present_result);
-    }
+    // post-processing subpass
+    vkCmdNextSubpass(primary_cb, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, fullscreen_pipeline_.handle);
+    vkCmdSetViewport(primary_cb, 0,1, &viewport);
+    vkCmdSetScissor(primary_cb, 0,1, &scissor_rect);
+    vkCmdDraw(primary_cb, 3, 1,0,0);
+    vkCmdEndRenderPass(primary_cb);
   }
 
 private:
   double seconds_elapsed_;
-
-  VkQueue graphics_and_present_queue_;
-
-  VkCommandPool cpool_;
-  std::array<VkCommandBuffer, VFRAME_COUNT> command_buffers_;
-
-  VkSemaphore swapchain_image_ready_sem_, rendering_complete_sem_;
-  std::array<VkFence, VFRAME_COUNT> submission_complete_fences_;
 
   Image depth_image_;
   Image offscreen_image_;
@@ -450,9 +337,6 @@ private:
   Shader fullscreen_tri_vs_, post_filmgrain_fs_;
   ShaderPipeline post_shader_pipeline_;
   GraphicsPipeline fullscreen_pipeline_;
-
-  VkViewport viewport_;
-  VkRect2D scissor_rect_;
 
   DescriptorPool dpool_;
   std::array<VkDescriptorSet, VFRAME_COUNT> dsets_;

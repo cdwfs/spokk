@@ -131,7 +131,7 @@ public:
   int run();
 
   virtual void update(double dt);
-  virtual void render();
+  virtual void render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) = 0;
 
 protected:
   bool is_instance_layer_enabled(const std::string& layer_name) const;
@@ -150,11 +150,13 @@ protected:
   VkDevice device_ = VK_NULL_HANDLE;
   std::vector<VkExtensionProperties> device_extensions_ = {};
   std::vector<DeviceQueue> queues_;
+
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
   VkSurfaceFormatKHR swapchain_surface_format_ = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
   VkExtent2D swapchain_extent_;
   std::vector<VkImage> swapchain_images_ = {};
   std::vector<VkImageView> swapchain_image_views_ = {};
+
   VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
     
   std::shared_ptr<GLFWwindow> window_ = nullptr;
@@ -169,10 +171,15 @@ protected:
 
   bool force_exit_ = false;  // Application can set this to true to exit at the next available chance.
 
-
 private:
   bool init_successful = false;
 
+  const DeviceQueue* graphics_and_present_queue_;
+  VkCommandPool primary_cpool_;
+  std::array<VkCommandBuffer, VFRAME_COUNT> primary_command_buffers_;
+  VkSemaphore image_acquire_semaphore_;
+  VkSemaphore submit_complete_semaphore_;
+  std::array<VkFence, VFRAME_COUNT> submit_complete_fences_;
 };
 
 }  // namespace spokk
