@@ -35,18 +35,18 @@ public:
     dolly_ = my_make_unique<CameraDolly>(*camera_);
 
     // Create render pass
-    render_pass_.init_from_preset(RenderPass::Preset::COLOR_DEPTH_POST, swapchain_surface_format_.format);
-    SPOKK_VK_CHECK(render_pass_.finalize_and_create(device_context_));
+    render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH_POST, swapchain_surface_format_.format);
+    SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
 
     // Create depth buffer
-    VkImageCreateInfo depth_image_ci = render_pass_.get_attachment_image_ci(1, swapchain_extent_);
+    VkImageCreateInfo depth_image_ci = render_pass_.GetAttachmentImageCreateInfo(1, swapchain_extent_);
     depth_image_ = {};
-    SPOKK_VK_CHECK(depth_image_.create(device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    SPOKK_VK_CHECK(depth_image_.Create(device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DEVICE_ALLOCATION_SCOPE_DEVICE));
 
     // Create intermediate color buffer
-    VkImageCreateInfo offscreen_image_ci = render_pass_.get_attachment_image_ci(0, swapchain_extent_);
-    SPOKK_VK_CHECK(offscreen_image_.create(device_context_, offscreen_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    VkImageCreateInfo offscreen_image_ci = render_pass_.GetAttachmentImageCreateInfo(0, swapchain_extent_);
+    SPOKK_VK_CHECK(offscreen_image_.Create(device_context_, offscreen_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DEVICE_ALLOCATION_SCOPE_DEVICE));
 
     // Create VkFramebuffers
@@ -55,7 +55,7 @@ public:
       depth_image_.view,
       VK_NULL_HANDLE, // filled in below
     };
-    VkFramebufferCreateInfo framebuffer_ci = render_pass_.get_framebuffer_ci(swapchain_extent_);
+    VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(swapchain_extent_);
     framebuffer_ci.pAttachments = attachment_views.data();
     framebuffers_.resize(swapchain_image_views_.size());
     for(size_t i=0; i<swapchain_image_views_.size(); ++i) {
@@ -64,23 +64,23 @@ public:
     }
 
     // Load textures and samplers
-    VkSamplerCreateInfo sampler_ci = get_sampler_ci(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
     image_loader_ = my_make_unique<ImageLoader>(device_context_);
-    SPOKK_VK_CHECK(albedo_tex_.create_and_load(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
+    SPOKK_VK_CHECK(albedo_tex_.CreateAndLoad(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
 
     // Load shader pipelines
-    SPOKK_VK_CHECK(mesh_vs_.create_and_load_spv_file(device_context_, "tri.vert.spv"));
-    SPOKK_VK_CHECK(mesh_fs_.create_and_load_spv_file(device_context_, "tri.frag.spv"));
-    SPOKK_VK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_vs_));
-    SPOKK_VK_CHECK(mesh_shader_pipeline_.add_shader(&mesh_fs_));
+    SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_context_, "tri.vert.spv"));
+    SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_context_, "tri.frag.spv"));
+    SPOKK_VK_CHECK(mesh_shader_pipeline_.AddShader(&mesh_vs_));
+    SPOKK_VK_CHECK(mesh_shader_pipeline_.AddShader(&mesh_fs_));
 
-    SPOKK_VK_CHECK(fullscreen_tri_vs_.create_and_load_spv_file(device_context_, "fullscreen.vert.spv"));
-    SPOKK_VK_CHECK(post_filmgrain_fs_.create_and_load_spv_file(device_context_, "subpass_post.frag.spv"));
-    SPOKK_VK_CHECK(post_shader_pipeline_.add_shader(&fullscreen_tri_vs_));
-    SPOKK_VK_CHECK(post_shader_pipeline_.add_shader(&post_filmgrain_fs_));
+    SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_context_, "fullscreen.vert.spv"));
+    SPOKK_VK_CHECK(post_filmgrain_fs_.CreateAndLoadSpirvFile(device_context_, "subpass_post.frag.spv"));
+    SPOKK_VK_CHECK(post_shader_pipeline_.AddShader(&fullscreen_tri_vs_));
+    SPOKK_VK_CHECK(post_shader_pipeline_.AddShader(&post_filmgrain_fs_));
 
-    SPOKK_VK_CHECK(ShaderPipeline::force_compatible_layouts_and_finalize(device_context_,
+    SPOKK_VK_CHECK(ShaderPipeline::ForceCompatibleLayoutsAndFinalize(device_context_,
       {&mesh_shader_pipeline_, &post_shader_pipeline_}));
 
     // Populate Mesh object
@@ -92,8 +92,8 @@ public:
     index_buffer_ci.size = cube_index_count * sizeof(cube_indices[0]);
     index_buffer_ci.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_.index_buffer.create(device_context_, index_buffer_ci));
-    SPOKK_VK_CHECK(mesh_.index_buffer.load(device_context_, cube_indices, index_buffer_ci.size));
+    SPOKK_VK_CHECK(mesh_.index_buffer.Create(device_context_, index_buffer_ci));
+    SPOKK_VK_CHECK(mesh_.index_buffer.Load(device_context_, cube_indices, index_buffer_ci.size));
 
     // Describe the mesh format.
     mesh_format_.vertex_buffer_bindings = {
@@ -104,7 +104,7 @@ public:
       {1, 0, VK_FORMAT_R8G8B8_SNORM, 3},
       {2, 0, VK_FORMAT_R16G16_SFLOAT, 6},
     };
-    mesh_format_.finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     mesh_.mesh_format = &mesh_format_;
 
     VkBufferCreateInfo vertex_buffer_ci = {};
@@ -113,7 +113,7 @@ public:
     vertex_buffer_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     mesh_.vertex_buffers.resize(1);
-    SPOKK_VK_CHECK(mesh_.vertex_buffers[0].create(device_context_, vertex_buffer_ci));
+    SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Create(device_context_, vertex_buffer_ci));
     // Convert the vertex data from its original uncompressed format to its final format.
     // In a real application, this conversion would happen at asset build time.
     const VertexLayout src_vertex_layout = {
@@ -123,11 +123,11 @@ public:
     };
     const VertexLayout final_vertex_layout(mesh_format_, 0);
     std::vector<uint8_t> final_mesh_vertices(vertex_buffer_ci.size);
-    int convert_error = convert_vertex_buffer(cube_vertices, src_vertex_layout,
+    int convert_error = ConvertVertexBuffer(cube_vertices, src_vertex_layout,
       final_mesh_vertices.data(), final_vertex_layout, cube_vertex_count);
     assert(convert_error == 0);
     (void)convert_error;
-    SPOKK_VK_CHECK(mesh_.vertex_buffers[0].load(device_context_, final_mesh_vertices.data(), vertex_buffer_ci.size));
+    SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Load(device_context_, final_mesh_vertices.data(), vertex_buffer_ci.size));
 
     // Create pipelined buffer of per-mesh object-to-world matrices.
     VkBufferCreateInfo o2w_buffer_ci = {};
@@ -135,71 +135,71 @@ public:
     o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(mathfu::mat4);
     o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.create(device_context_, PFRAME_COUNT, o2w_buffer_ci));
+    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_context_, PFRAME_COUNT, o2w_buffer_ci));
 
-    SPOKK_VK_CHECK(mesh_pipeline_.create(device_context_, mesh_.mesh_format, &mesh_shader_pipeline_, &render_pass_, 0));
+    SPOKK_VK_CHECK(mesh_pipeline_.Create(device_context_, mesh_.mesh_format, &mesh_shader_pipeline_, &render_pass_, 0));
 
-    SPOKK_VK_CHECK(fullscreen_pipeline_.create(device_context_,
-      MeshFormat::get_empty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+    SPOKK_VK_CHECK(fullscreen_pipeline_.Create(device_context_,
+      MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
       &post_shader_pipeline_, &render_pass_, 1));
     // because the pipelines use a compatible layout, we can just add room for one full layout.
     for(const auto& dset_layout_ci : mesh_shader_pipeline_.dset_layout_cis) {
-      dpool_.add(dset_layout_ci, PFRAME_COUNT);
+      dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
-    SPOKK_VK_CHECK(dpool_.finalize(device_context_));
+    SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
 
     DescriptorSetWriter dset_writer(mesh_shader_pipeline_.dset_layout_cis[0]);
-    dset_writer.bind_image(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 1);
-    dset_writer.bind_image(offscreen_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, 2, 0);
+    dset_writer.BindImage(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 1);
+    dset_writer.BindImage(offscreen_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, 2, 0);
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
       // TODO(cort): allocate_pipelined_set()?
-      dsets_[pframe] = dpool_.allocate_set(device_context_, mesh_shader_pipeline_.dset_layouts[0]);
-      dset_writer.bind_buffer(mesh_uniforms_.handle(pframe), 0, VK_WHOLE_SIZE, 0);
-      dset_writer.write_all_to_dset(device_context_, dsets_[pframe]);
+      dsets_[pframe] = dpool_.AllocateSet(device_context_, mesh_shader_pipeline_.dset_layouts[0]);
+      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), 0, VK_WHOLE_SIZE, 0);
+      dset_writer.WriteAll(device_context_, dsets_[pframe]);
     }
   }
   virtual ~CubeSwarmApp() {
     if (device_) {
       vkDeviceWaitIdle(device_);
 
-      dpool_.destroy(device_context_);
+      dpool_.Destroy(device_context_);
 
-      mesh_uniforms_.destroy(device_context_);
+      mesh_uniforms_.Destroy(device_context_);
 
       // TODO(cort): automate!
-      mesh_.index_buffer.destroy(device_context_);
-      mesh_.vertex_buffers[0].destroy(device_context_);
+      mesh_.index_buffer.Destroy(device_context_);
+      mesh_.vertex_buffers[0].Destroy(device_context_);
 
-      fullscreen_pipeline_.destroy(device_context_);
+      fullscreen_pipeline_.Destroy(device_context_);
 
-      mesh_vs_.destroy(device_context_);
-      mesh_fs_.destroy(device_context_);
-      mesh_shader_pipeline_.destroy(device_context_);
-      mesh_pipeline_.destroy(device_context_);
+      mesh_vs_.Destroy(device_context_);
+      mesh_fs_.Destroy(device_context_);
+      mesh_shader_pipeline_.Destroy(device_context_);
+      mesh_pipeline_.Destroy(device_context_);
 
-      post_shader_pipeline_.destroy(device_context_);
-      fullscreen_tri_vs_.destroy(device_context_);
-      post_filmgrain_fs_.destroy(device_context_);
+      post_shader_pipeline_.Destroy(device_context_);
+      fullscreen_tri_vs_.Destroy(device_context_);
+      post_filmgrain_fs_.Destroy(device_context_);
 
       vkDestroySampler(device_, sampler_, host_allocator_);
-      albedo_tex_.destroy(device_context_);
+      albedo_tex_.Destroy(device_context_);
       image_loader_.reset();
 
       for(const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
       }
-      render_pass_.destroy(device_context_);
+      render_pass_.Destroy(device_context_);
 
-      offscreen_image_.destroy(device_context_);
-      depth_image_.destroy(device_context_);
+      offscreen_image_.Destroy(device_context_);
+      depth_image_.Destroy(device_context_);
     }
   }
 
   CubeSwarmApp(const CubeSwarmApp&) = delete;
   const CubeSwarmApp& operator=(const CubeSwarmApp&) = delete;
 
-  virtual void update(double dt) override {
-    Application::update(dt);
+  virtual void Update(double dt) override {
+    Application::Update(dt);
     seconds_elapsed_ += dt;
 
     // Update camera
@@ -242,11 +242,11 @@ public:
         ;
       o2w_matrices[iMesh] = o2w;
     }
-    mesh_uniforms_.load(device_context_, pframe_index_, o2w_matrices.data(), MESH_INSTANCE_COUNT * sizeof(mathfu::mat4),
+    mesh_uniforms_.Load(device_context_, pframe_index_, o2w_matrices.data(), MESH_INSTANCE_COUNT * sizeof(mathfu::mat4),
       0, 0);
   }
 
-  void render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+  void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     // TODO(cort): spurious validation warning for unused clear value? Is that
     // actually bad? What if attachments 0 and 2 must be cleared but not 1?
@@ -272,7 +272,7 @@ public:
     vkCmdBeginRenderPass(primary_cb, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
     VkRect2D scissor_rect = render_pass_begin_info.renderArea;
-    VkViewport viewport = vk_rect2d_to_viewport(scissor_rect);
+    VkViewport viewport = Rect2DToViewport(scissor_rect);
     vkCmdSetViewport(primary_cb, 0,1, &viewport);
     vkCmdSetScissor(primary_cb, 0,1, &scissor_rect);
     // TODO(cort): leaving these unbound did not trigger a validation warning...
@@ -302,10 +302,10 @@ public:
       mesh_pipeline_.shader_pipeline->push_constant_ranges[0].size,
       &push_constants);
     const VkDeviceSize vertex_buffer_offsets[1] = {}; // TODO(cort): mesh::bind()
-    VkBuffer vertex_buffer = mesh_.vertex_buffers[0].handle();
+    VkBuffer vertex_buffer = mesh_.vertex_buffers[0].Handle();
     vkCmdBindVertexBuffers(primary_cb, 0,1, &vertex_buffer, vertex_buffer_offsets);
     const VkDeviceSize index_buffer_offset = 0;
-    vkCmdBindIndexBuffer(primary_cb, mesh_.index_buffer.handle(), index_buffer_offset, mesh_.index_type);
+    vkCmdBindIndexBuffer(primary_cb, mesh_.index_buffer.Handle(), index_buffer_offset, mesh_.index_type);
     vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0,0,0);
 
     // post-processing subpass
@@ -360,7 +360,7 @@ int main(int argc, char *argv[]) {
   app_ci.queue_family_requests = queue_requests;
 
   CubeSwarmApp app(app_ci);
-  int run_error = app.run();
+  int run_error = app.Run();
 
   return run_error;
 }

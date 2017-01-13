@@ -10,19 +10,20 @@ class DeviceMemoryBlock {
 public:
   DeviceMemoryBlock() : handle_(VK_NULL_HANDLE), info_{}, mapped_(nullptr) {}
   ~DeviceMemoryBlock();
-  VkResult allocate(const DeviceContext& device_context, const VkMemoryAllocateInfo &alloc_info);
-  void free(const DeviceContext& device_context);
 
-  VkDeviceMemory handle() const { return handle_; }
-  const VkMemoryAllocateInfo& info() const { return info_; }
-  void* mapped() const { return mapped_; }
+  VkResult Allocate(const DeviceContext& device_context, const VkMemoryAllocateInfo &alloc_info);
+  void Free(const DeviceContext& device_context);
+
+  VkDeviceMemory Handle() const { return handle_; }
+  const VkMemoryAllocateInfo& Info() const { return info_; }
+  void* Mapped() const { return mapped_; }
   
   // Invalidate a range of this block in the host's caches, to ensure GPU writes to that range are visible by the host.
   // If this block was not allocated with the HOST_VISIBLE flag, this function has no effect.
-  void invalidate_host_cache(const VkMappedMemoryRange& range) const;  
+  void InvalidateHostCache(const VkMappedMemoryRange& range) const;  
   // Flush a range of this block from the host's caches, to ensure host writes to that range are visible by the GPU.
   // If this block was not allocated with the HOST_VISIBLE flag, this function has no effect.
-  void flush_host_cache(const VkMappedMemoryRange& range) const;
+  void FlushHostCache(const VkMappedMemoryRange& range) const;
 
 private:
   VkDevice device_;  // Cached, to allow invalidate/flush
@@ -33,19 +34,20 @@ private:
 
 struct DeviceMemoryAllocation {
   DeviceMemoryAllocation() : block(nullptr), offset(0), size(0) {}
-  void *mapped() const {
-    if (block == nullptr || block->mapped() == nullptr) {
+
+  void *Mapped() const {
+    if (block == nullptr || block->Mapped() == nullptr) {
       return nullptr;
     }
-    return (void*)( uintptr_t(block->mapped()) + offset );
+    return (void*)( uintptr_t(block->Mapped()) + offset );
   }
 
   // Invalidate this allocation in the host's caches, to ensure GPU writes to its range are visible by the host.
   // If this allocation is not mapped, this function has no effect.
-  void invalidate_host_caches() const;
+  void InvalidateHostCache() const;
   // Flush this allocation from the host's caches, to ensure host writes to its range are visible by the GPU.
   // If this allocation is not mapped, this function has no effect.
-  void flush_host_caches() const;
+  void FlushHostCache() const;
 
   DeviceMemoryBlock *block;  // May or may not be exclusively owned; depends on the device allocator.
                              // May be NULL for invalid allocations.

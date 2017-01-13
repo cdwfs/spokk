@@ -6,7 +6,7 @@
 
 namespace spokk {
 
-VkImageAspectFlags vk_format_to_image_aspect_flags(VkFormat format) {
+VkImageAspectFlags GetImageAspectFlags(VkFormat format) {
   switch(format) {
   case VK_FORMAT_D16_UNORM:
   case VK_FORMAT_D32_SFLOAT:
@@ -46,7 +46,7 @@ OneShotCommandPool::~OneShotCommandPool() {
   }
 }
 
-VkCommandBuffer OneShotCommandPool::allocate_and_begin(void) const {
+VkCommandBuffer OneShotCommandPool::AllocateAndBegin(void) const {
   VkCommandBuffer cb = VK_NULL_HANDLE;
   {
     std::lock_guard<std::mutex> lock(pool_mutex_);
@@ -70,7 +70,7 @@ VkCommandBuffer OneShotCommandPool::allocate_and_begin(void) const {
   return cb;
 }
 
-VkResult OneShotCommandPool::end_submit_and_free(VkCommandBuffer *cb) const {
+VkResult OneShotCommandPool::EndSubmitAndFree(VkCommandBuffer *cb) const {
   VkResult result = vkEndCommandBuffer(*cb);
   if (result == VK_SUCCESS) {
     VkFenceCreateInfo fence_ci = {};
@@ -98,7 +98,7 @@ VkResult OneShotCommandPool::end_submit_and_free(VkCommandBuffer *cb) const {
 }
 
 
-VkResult get_supported_instance_layers(const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
+VkResult GetSupportedInstanceLayers(const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
     std::vector<VkLayerProperties>* out_supported_layers, std::vector<const char*>* out_supported_layer_names) {
   out_supported_layers->clear();
   out_supported_layer_names->clear();
@@ -160,7 +160,7 @@ VkResult get_supported_instance_layers(const std::vector<const char*>& required_
   return VK_SUCCESS;
 }
 
-VkResult get_supported_instance_extensions(const std::vector<VkLayerProperties>& enabled_instance_layers,
+VkResult GetSupportedInstanceExtensions(const std::vector<VkLayerProperties>& enabled_instance_layers,
     const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
     std::vector<VkExtensionProperties>* out_supported_extensions, std::vector<const char*>* out_supported_extension_names) {
   out_supported_extensions->clear();
@@ -244,7 +244,7 @@ VkResult get_supported_instance_extensions(const std::vector<VkLayerProperties>&
   return VK_SUCCESS;
 }
 
-VkResult get_supported_device_extensions(VkPhysicalDevice physical_device, const std::vector<VkLayerProperties>& enabled_instance_layers,
+VkResult GetSupportedDeviceExtensions(VkPhysicalDevice physical_device, const std::vector<VkLayerProperties>& enabled_instance_layers,
     const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
     std::vector<VkExtensionProperties>* out_supported_extensions, std::vector<const char*>* out_supported_extension_names) {
   out_supported_extensions->clear();
@@ -324,7 +324,7 @@ VkResult get_supported_device_extensions(VkPhysicalDevice physical_device, const
   return VK_SUCCESS;
 }
 
-VkImageViewCreateInfo view_ci_from_image(VkImage image, const VkImageCreateInfo &image_ci) {
+VkImageViewCreateInfo GetImageViewCreateInfo(VkImage image, const VkImageCreateInfo &image_ci) {
   VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D;
   if (image_ci.imageType == VK_IMAGE_TYPE_1D) {
     view_type = (image_ci.arrayLayers == 1) ? VK_IMAGE_VIEW_TYPE_1D : VK_IMAGE_VIEW_TYPE_1D_ARRAY;
@@ -347,7 +347,7 @@ VkImageViewCreateInfo view_ci_from_image(VkImage image, const VkImageCreateInfo 
   view_ci.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
   view_ci.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
   view_ci.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-  view_ci.subresourceRange.aspectMask = vk_format_to_image_aspect_flags(image_ci.format);
+  view_ci.subresourceRange.aspectMask = GetImageAspectFlags(image_ci.format);
   view_ci.subresourceRange.baseMipLevel = 0;
   view_ci.subresourceRange.levelCount = image_ci.mipLevels;
   view_ci.subresourceRange.baseArrayLayer = 0;
@@ -355,7 +355,7 @@ VkImageViewCreateInfo view_ci_from_image(VkImage image, const VkImageCreateInfo 
   return view_ci;
 }
 
-VkSamplerCreateInfo get_sampler_ci(VkFilter min_mag_filter, VkSamplerMipmapMode mipmap_mode, VkSamplerAddressMode address_mode) {
+VkSamplerCreateInfo GetSamplerCreateInfo(VkFilter min_mag_filter, VkSamplerMipmapMode mipmap_mode, VkSamplerAddressMode address_mode) {
   VkSamplerCreateInfo ci = {};
   ci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
   ci.magFilter = min_mag_filter;

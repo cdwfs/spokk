@@ -4,9 +4,12 @@
 
 namespace spokk {
 
+//
+// ComputePipeline
+//
 ComputePipeline::ComputePipeline() : handle(VK_NULL_HANDLE), shader_pipeline(nullptr), ci{} {
 }
-VkResult ComputePipeline::create(const DeviceContext& device_context, const ShaderPipeline *shader_pipeline_in,
+VkResult ComputePipeline::Create(const DeviceContext& device_context, const ShaderPipeline *shader_pipeline_in,
   bool defer_pipeline_creation) {
   this->shader_pipeline = shader_pipeline_in;
   assert(shader_pipeline->shader_stage_cis.size() == 1);
@@ -22,14 +25,14 @@ VkResult ComputePipeline::create(const DeviceContext& device_context, const Shad
 
   VkResult result = VK_SUCCESS;
   if (!defer_pipeline_creation) {
-    result = vkCreateComputePipelines(device_context.device(), device_context.pipeline_cache(),
-      1, &ci, device_context.host_allocator(), &handle);
+    result = vkCreateComputePipelines(device_context.Device(), device_context.PipelineCache(),
+      1, &ci, device_context.HostAllocator(), &handle);
   }
   return result;
 }
-void ComputePipeline::destroy(const DeviceContext& device_context) {
+void ComputePipeline::Destroy(const DeviceContext& device_context) {
   if (handle != VK_NULL_HANDLE) {
-    vkDestroyPipeline(device_context.device(), handle, device_context.host_allocator());
+    vkDestroyPipeline(device_context.Device(), handle, device_context.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
   shader_pipeline = nullptr;
@@ -43,7 +46,7 @@ GraphicsPipeline::GraphicsPipeline() :
   ci{}, tessellation_state_ci{}, viewport_state_ci{}, viewports{}, scissor_rects{}, rasterization_state_ci{},
   depth_stencil_state_ci{}, color_blend_state_ci{}, color_blend_attachment_states{}, dynamic_state_ci{} {
 }
-VkResult GraphicsPipeline::create(const DeviceContext& device_context, const MeshFormat *mesh_format_in, const ShaderPipeline *shader_pipeline_in, const RenderPass *render_pass_in, uint32_t subpass_in,
+VkResult GraphicsPipeline::Create(const DeviceContext& device_context, const MeshFormat *mesh_format_in, const ShaderPipeline *shader_pipeline_in, const RenderPass *render_pass_in, uint32_t subpass_in,
   const std::vector<VkDynamicState> dynamic_states_in, const VkViewport viewport, const VkRect2D scissor_rect, bool defer_pipeline_creation) {
   this->mesh_format = mesh_format_in;
   this->shader_pipeline = shader_pipeline_in;
@@ -119,14 +122,14 @@ VkResult GraphicsPipeline::create(const DeviceContext& device_context, const Mes
 
   VkResult result = VK_SUCCESS;
   if (!defer_pipeline_creation) {
-    result = vkCreateGraphicsPipelines(device_context.device(), device_context.pipeline_cache(),
-      1, &ci, device_context.host_allocator(), &handle);
+    result = vkCreateGraphicsPipelines(device_context.Device(), device_context.PipelineCache(),
+      1, &ci, device_context.HostAllocator(), &handle);
   }
   return result;
 }
-void GraphicsPipeline::destroy(const DeviceContext& device_context) {
+void GraphicsPipeline::Destroy(const DeviceContext& device_context) {
   if (handle != VK_NULL_HANDLE) {
-    vkDestroyPipeline(device_context.device(), handle, device_context.host_allocator());
+    vkDestroyPipeline(device_context.Device(), handle, device_context.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
   mesh_format = nullptr;

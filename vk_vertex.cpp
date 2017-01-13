@@ -20,7 +20,7 @@ namespace {
     uint32_t components;
     uint32_t size;
   };
-  AttributeFormatInfo get_attribute_format_info(VkFormat format) {
+  AttributeFormatInfo GetAttributeFormatInfo(VkFormat format) {
     static const std::array<AttributeFormatInfo, 49> format_info_lut = {{
       { VK_FORMAT_UNDEFINED           , 0,  0, },
       { VK_FORMAT_R8_UNORM            , 1,  1, },
@@ -91,8 +91,8 @@ namespace {
     assert(format_info_lut[0].format == VK_FORMAT_UNDEFINED);
     return format_info_lut[0];
   }
-  bool is_valid_attribute_format(VkFormat format) {
-    return get_attribute_format_info(format).format != VK_FORMAT_UNDEFINED;
+  bool IsValidAttributeFormat(VkFormat format) {
+    return GetAttributeFormatInfo(format).format != VK_FORMAT_UNDEFINED;
   }
 
   typedef struct u8x4 {
@@ -136,7 +136,7 @@ namespace {
     } parts;
   } f16;
 
-  float convert1_f16_to_f32(uint16_t in) {
+  float Convert1_F16toF32(uint16_t in) {
     f16 h;
     h.asInt = in;
     f32 f;
@@ -158,7 +158,7 @@ namespace {
     f.parts.mantissa = h.parts.mantissa << (23 - 10); /* shift mantissa into high bits */
     return f.asFloat;
   }
-  uint16_t convert1_f32_to_f16(float in) {
+  uint16_t Convert1_F32toF16(float in) {
     f32 f;
     f.asFloat = in;
     f16 h;
@@ -200,7 +200,7 @@ namespace {
   }
 
 
-  f32x4 convert4_u8n_to_f32(const u8x4 in) {
+  f32x4 Convert4_U8NtoF32(const u8x4 in) {
     return {{
         (float)(in.elem[0]) / 255.0f,
         (float)(in.elem[1]) / 255.0f,
@@ -208,7 +208,7 @@ namespace {
         (float)(in.elem[3]) / 255.0f,
       }};
   }
-  f32x4 convert4_s8n_to_f32(const s8x4 in) {
+  f32x4 Convert4_S8NtoF32(const s8x4 in) {
     return {{
         (in.elem[0] == -128) ? -1.0f : ((float)(in.elem[0]) / 127.0f),
         (in.elem[1] == -128) ? -1.0f : ((float)(in.elem[1]) / 127.0f),
@@ -216,7 +216,7 @@ namespace {
         (in.elem[3] == -128) ? -1.0f : ((float)(in.elem[3]) / 127.0f),
       }};
   }
-  f32x4 convert4_u8_to_f32(const u8x4 in) {
+  f32x4 Convert4_U8toF32(const u8x4 in) {
     return {{
         (float)(in.elem[0]),
         (float)(in.elem[1]),
@@ -224,7 +224,7 @@ namespace {
         (float)(in.elem[3]),
       }};
   }
-  f32x4 convert4_s8_to_f32(const s8x4 in) {
+  f32x4 Convert4_S8toF32(const s8x4 in) {
     return {{
         (float)(in.elem[0]),
         (float)(in.elem[1]),
@@ -232,7 +232,7 @@ namespace {
         (float)(in.elem[3]),
       }};
   }
-  f32x4 convert4_u16n_to_f32(const u16x4 in) {
+  f32x4 Convert4_U16NtoF32(const u16x4 in) {
     return {{
         (float)(in.elem[0]) / 65535.0f,
         (float)(in.elem[1]) / 65535.0f,
@@ -240,7 +240,7 @@ namespace {
         (float)(in.elem[3]) / 65535.0f,
       }};
   }
-  f32x4 convert4_s16n_to_f32(const s16x4 in) {
+  f32x4 Convert4_S16NtoF32(const s16x4 in) {
     return {{
         (in.elem[0] == -32768) ? 0.0f : ((float)(in.elem[0]) / 32767.0f),
         (in.elem[1] == -32768) ? 0.0f : ((float)(in.elem[1]) / 32767.0f),
@@ -248,7 +248,7 @@ namespace {
         (in.elem[3] == -32768) ? 0.0f : ((float)(in.elem[3]) / 32767.0f),
       }};
   }
-  f32x4 convert4_u16_to_f32(const u16x4 in) {
+  f32x4 Convert4_U16toF32(const u16x4 in) {
     return {{
         (float)(in.elem[0]),
         (float)(in.elem[1]),
@@ -256,7 +256,7 @@ namespace {
         (float)(in.elem[3]),
       }};
   }
-  f32x4 convert4_s16_to_f32(const s16x4 in) {
+  f32x4 Convert4_S16toF32(const s16x4 in) {
     return {{
         (float)(in.elem[0]),
         (float)(in.elem[1]),
@@ -264,15 +264,15 @@ namespace {
         (float)(in.elem[3]),
       }};
   }
-  f32x4 convert4_f16_to_f32(const u16x4 in) {
+  f32x4 Convert4_F16toF32(const u16x4 in) {
     return {{
-        convert1_f16_to_f32(in.elem[0]),
-        convert1_f16_to_f32(in.elem[1]),
-        convert1_f16_to_f32(in.elem[2]),
-        convert1_f16_to_f32(in.elem[3]),
+        Convert1_F16toF32(in.elem[0]),
+        Convert1_F16toF32(in.elem[1]),
+        Convert1_F16toF32(in.elem[2]),
+        Convert1_F16toF32(in.elem[3]),
       }};
   }
-  f32x4 convert4_u32_to_f32(const u32x4 in) {
+  f32x4 Convert4_U32toF32(const u32x4 in) {
     return {{
         (float)(in.elem[0]),
         (float)(in.elem[1]),
@@ -280,7 +280,7 @@ namespace {
         (float)(in.elem[3]),
       }};
   }
-  f32x4 convert4_s32_to_f32(const s32x4 in) {
+  f32x4 Convert4_S32toF32(const s32x4 in) {
     return {{
         (float)(in.elem[0]),
         (float)(in.elem[1]),
@@ -290,7 +290,7 @@ namespace {
   }
 
 
-  u8x4 convert_f32_to_u8n(const f32x4 in) {
+  u8x4 Convert4_F32toU8N(const f32x4 in) {
     return {{
         (uint8_t)( my_clamp(in.elem[0], 0.0f, 1.0f) * 255.0f + 0.5f),
         (uint8_t)( my_clamp(in.elem[1], 0.0f, 1.0f) * 255.0f + 0.5f),
@@ -298,7 +298,7 @@ namespace {
         (uint8_t)( my_clamp(in.elem[3], 0.0f, 1.0f) * 255.0f + 0.5f),
       }};
   }
-  s8x4 convert_f32_to_s8n(const f32x4 in) {
+  s8x4 Convert4_F32toS8N(const f32x4 in) {
     return {{
         (int8_t)floorf( my_clamp(in.elem[0], -1.0f, 1.0f) * 127.0f + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
         (int8_t)floorf( my_clamp(in.elem[1], -1.0f, 1.0f) * 127.0f + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
@@ -306,7 +306,7 @@ namespace {
         (int8_t)floorf( my_clamp(in.elem[3], -1.0f, 1.0f) * 127.0f + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
       }};
   }
-  u8x4 convert_f32_to_u8(const f32x4 in) {
+  u8x4 Convert4_F32toU8(const f32x4 in) {
     return {{
         (uint8_t)( my_clamp(in.elem[0], 0.0f, 1.0f) + 0.5f ),
         (uint8_t)( my_clamp(in.elem[1], 0.0f, 1.0f) + 0.5f ),
@@ -314,7 +314,7 @@ namespace {
         (uint8_t)( my_clamp(in.elem[3], 0.0f, 1.0f) + 0.5f ),
       }};
   }
-  s8x4 convert_f32_to_s8(const f32x4 in) {
+  s8x4 Convert4_F32toS8(const f32x4 in) {
     return {{
         (int8_t)floorf( my_clamp(in.elem[0], -1.0f, 1.0f) + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
         (int8_t)floorf( my_clamp(in.elem[1], -1.0f, 1.0f) + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
@@ -322,7 +322,7 @@ namespace {
         (int8_t)floorf( my_clamp(in.elem[3], -1.0f, 1.0f) + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
       }};
   }
-  u16x4 convert_f32_to_u16n(const f32x4 in) {
+  u16x4 Convert4_F32toU16N(const f32x4 in) {
     return {{
         (uint16_t)( my_clamp(in.elem[0], 0.0f, 1.0f) * 65535.0f + 0.5f ),
         (uint16_t)( my_clamp(in.elem[1], 0.0f, 1.0f) * 65535.0f + 0.5f ),
@@ -330,7 +330,7 @@ namespace {
         (uint16_t)( my_clamp(in.elem[3], 0.0f, 1.0f) * 65535.0f + 0.5f ),
       }};
   }
-  s16x4 convert_f32_to_s16n(const f32x4 in) {
+  s16x4 Convert4_F32toS16N(const f32x4 in) {
     return {{
         (int16_t)floorf( my_clamp(in.elem[0], -1.0f, 1.0f) * 32767.0f + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
         (int16_t)floorf( my_clamp(in.elem[1], -1.0f, 1.0f) * 32767.0f + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
@@ -338,7 +338,7 @@ namespace {
         (int16_t)floorf( my_clamp(in.elem[3], -1.0f, 1.0f) * 32767.0f + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
       }};
   }
-  u16x4 convert_f32_to_u16(const f32x4 in) {
+  u16x4 Convert4_F32toU16(const f32x4 in) {
     return {{
         (uint16_t)( my_clamp(in.elem[0], 0.0f, 1.0f) + 0.5f ),
         (uint16_t)( my_clamp(in.elem[1], 0.0f, 1.0f) + 0.5f ),
@@ -346,7 +346,7 @@ namespace {
         (uint16_t)( my_clamp(in.elem[3], 0.0f, 1.0f) + 0.5f ),
       }};
   }
-  s16x4 convert_f32_to_s16(const f32x4 in) {
+  s16x4 Convert4_F32toS16(const f32x4 in) {
     return {{
         (int16_t)floorf( my_clamp(in.elem[0], -1.0f, 1.0f) + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
         (int16_t)floorf( my_clamp(in.elem[1], -1.0f, 1.0f) + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
@@ -354,15 +354,15 @@ namespace {
         (int16_t)floorf( my_clamp(in.elem[3], -1.0f, 1.0f) + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
       }};
   }
-  u16x4 convert_f32_to_f16(const f32x4 in) {
+  u16x4 Convert4_F32toF16(const f32x4 in) {
     return {{
-        convert1_f32_to_f16(in.elem[0]),
-        convert1_f32_to_f16(in.elem[1]),
-        convert1_f32_to_f16(in.elem[2]),
-        convert1_f32_to_f16(in.elem[3]),
+        Convert1_F32toF16(in.elem[0]),
+        Convert1_F32toF16(in.elem[1]),
+        Convert1_F32toF16(in.elem[2]),
+        Convert1_F32toF16(in.elem[3]),
       }};
   }
-  u32x4 convert_f32_to_u32(const f32x4 in) {
+  u32x4 Convert4_F32toU32(const f32x4 in) {
     return {{
         (uint32_t)( my_max(in.elem[0], 0.0f) + 0.5f ),
         (uint32_t)( my_max(in.elem[1], 0.0f) + 0.5f ),
@@ -370,7 +370,7 @@ namespace {
         (uint32_t)( my_max(in.elem[3], 0.0f) + 0.5f ),
       }};
   }
-  s32x4 convert_f32_to_s32(const f32x4 in) {
+  s32x4 Convert4_F32toS32(const f32x4 in) {
     return {{
         (int32_t)floorf( in.elem[0] + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
         (int32_t)floorf( in.elem[1] + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
@@ -379,12 +379,12 @@ namespace {
       }};
   }
 
-  void convert_attribute(const void *in, VkFormat in_format, void *out, VkFormat out_format) {
+  void ConvertAttribute(const void *in, VkFormat in_format, void *out, VkFormat out_format) {
     /* TODO(cort): special case for in_format == out_format that's just a small memcpy? */
 
     /* Precondition: formats have already been validated. */
-    const AttributeFormatInfo in_format_info = get_attribute_format_info(in_format);
-    const AttributeFormatInfo out_format_info = get_attribute_format_info(out_format);
+    const AttributeFormatInfo in_format_info = GetAttributeFormatInfo(in_format);
+    const AttributeFormatInfo out_format_info = GetAttributeFormatInfo(out_format);
     uint32_t in_comp = in_format_info.components;
     uint32_t out_comp = out_format_info.components;
 
@@ -402,7 +402,7 @@ namespace {
       const uint8_t *in_u8 = (const uint8_t*)in;
       for(uint32_t i=0; i<in_comp; ++i)
         temp_u8.elem[i] = in_u8[i];
-      temp_f32 = convert4_u8n_to_f32(temp_u8);
+      temp_f32 = Convert4_U8NtoF32(temp_u8);
       break;
     }
     case VK_FORMAT_R8_SNORM:
@@ -414,7 +414,7 @@ namespace {
       const int8_t *in_s8 = (const int8_t*)in;
       for(uint32_t i=0; i<in_comp; ++i)
         temp_s8.elem[i] = in_s8[i];
-      temp_f32 = convert4_s8n_to_f32(temp_s8);
+      temp_f32 = Convert4_S8NtoF32(temp_s8);
       break;
     }
     case VK_FORMAT_R8_UINT:
@@ -426,7 +426,7 @@ namespace {
       const uint8_t *in_u8 = (const uint8_t*)in;
       for(uint32_t i=0; i<in_comp; ++i)
         temp_u8.elem[i] = in_u8[i];
-      temp_f32 = convert4_u8_to_f32(temp_u8);
+      temp_f32 = Convert4_U8toF32(temp_u8);
       break;
     }
     case VK_FORMAT_R8_SINT:
@@ -438,7 +438,7 @@ namespace {
       const int8_t *in_s8 = (const int8_t*)in;
       for(uint32_t i=0; i<in_comp; ++i)
         temp_s8.elem[i] = in_s8[i];
-      temp_f32 = convert4_s8_to_f32(temp_s8);
+      temp_f32 = Convert4_S8toF32(temp_s8);
       break;
     }
     case VK_FORMAT_R16_UNORM:
@@ -450,7 +450,7 @@ namespace {
       const uint16_t *in_u16 = (const uint16_t*)in;
       for(uint32_t i=0; i<in_comp; ++i)
         temp_u16.elem[i] = in_u16[i];
-      temp_f32 = convert4_u16n_to_f32(temp_u16);
+      temp_f32 = Convert4_U16NtoF32(temp_u16);
       break;
     }
     case VK_FORMAT_R16_SNORM:
@@ -462,7 +462,7 @@ namespace {
       const int16_t *in_s16 = (const int16_t*)in;
       for(uint32_t i=0; i<in_comp; ++i)
         temp_s16.elem[i] = in_s16[i];
-      temp_f32 = convert4_s16n_to_f32(temp_s16);
+      temp_f32 = Convert4_S16NtoF32(temp_s16);
       break;
     }
     case VK_FORMAT_R16_UINT:
@@ -474,7 +474,7 @@ namespace {
       const uint16_t *in_u16 = (const uint16_t*)in;
       for(uint32_t i=0; i<in_comp; ++i)
         temp_u16.elem[i] = in_u16[i];
-      temp_f32 = convert4_u16_to_f32(temp_u16);
+      temp_f32 = Convert4_U16toF32(temp_u16);
       break;
     }
     case VK_FORMAT_R16_SINT:
@@ -486,7 +486,7 @@ namespace {
       const int16_t *in_s16 = (const int16_t*)in;
       for(uint32_t i=0; i<in_comp; ++i)
         temp_s16.elem[i] = in_s16[i];
-      temp_f32 = convert4_s16_to_f32(temp_s16);
+      temp_f32 = Convert4_S16toF32(temp_s16);
       break;
     }
     case VK_FORMAT_R16_SFLOAT:
@@ -498,7 +498,7 @@ namespace {
       const uint16_t *in_u16 = (const uint16_t*)in;
       for(uint32_t i=0; i<in_comp; ++i)
         temp_u16.elem[i] = in_u16[i];
-      temp_f32 = convert4_f16_to_f32(temp_u16);
+      temp_f32 = Convert4_F16toF32(temp_u16);
       break;
     }
     case VK_FORMAT_R32_UINT:
@@ -510,7 +510,7 @@ namespace {
       const uint32_t *in_u32 = (const uint32_t*)in;
       for(uint32_t i=0; i<in_comp; ++i)
         temp_u32.elem[i] = in_u32[i];
-      temp_f32 = convert4_u32_to_f32(temp_u32);
+      temp_f32 = Convert4_U32toF32(temp_u32);
       break;
     }
     case VK_FORMAT_R32_SINT:
@@ -522,7 +522,7 @@ namespace {
       const int32_t *in_s32 = (const int32_t*)in;
       for(uint32_t i=0; i<in_comp; ++i)
         temp_s32.elem[i] = in_s32[i];
-      temp_f32 = convert4_s32_to_f32(temp_s32);
+      temp_f32 = Convert4_S32toF32(temp_s32);
       break;
     }
     case VK_FORMAT_R32_SFLOAT:
@@ -548,7 +548,7 @@ namespace {
     case VK_FORMAT_R8G8B8A8_UNORM:
     {
       u8x4 temp_u8 = {{0,0,0,0}};
-      temp_u8 = convert_f32_to_u8n(temp_f32);
+      temp_u8 = Convert4_F32toU8N(temp_f32);
       uint8_t *out_u8 = (uint8_t*)out;
       for(uint32_t i=0; i<out_comp; ++i)
         out_u8[i] = temp_u8.elem[i];
@@ -560,7 +560,7 @@ namespace {
     case VK_FORMAT_R8G8B8A8_SNORM:
     {
       s8x4 temp_s8 = {{0,0,0,0}};
-      temp_s8 = convert_f32_to_s8n(temp_f32);
+      temp_s8 = Convert4_F32toS8N(temp_f32);
       int8_t *out_s8 = (int8_t*)out;
       for(uint32_t i=0; i<out_comp; ++i)
         out_s8[i] = temp_s8.elem[i];
@@ -572,7 +572,7 @@ namespace {
     case VK_FORMAT_R8G8B8A8_UINT:
     {
       u8x4 temp_u8 = {{0,0,0,0}};
-      temp_u8 = convert_f32_to_u8(temp_f32);
+      temp_u8 = Convert4_F32toU8(temp_f32);
       uint8_t *out_u8 = (uint8_t*)out;
       for(uint32_t i=0; i<out_comp; ++i)
         out_u8[i] = temp_u8.elem[i];
@@ -584,7 +584,7 @@ namespace {
     case VK_FORMAT_R8G8B8A8_SINT:
     {
       s8x4 temp_s8 = {{0,0,0,0}};
-      temp_s8 = convert_f32_to_s8(temp_f32);
+      temp_s8 = Convert4_F32toS8(temp_f32);
       int8_t *out_s8 = (int8_t*)out;
       for(uint32_t i=0; i<out_comp; ++i)
         out_s8[i] = temp_s8.elem[i];
@@ -596,7 +596,7 @@ namespace {
     case VK_FORMAT_R16G16B16A16_UNORM:
     {
       u16x4 temp_u16 = {{0,0,0,0}};
-      temp_u16 = convert_f32_to_u16n(temp_f32);
+      temp_u16 = Convert4_F32toU16N(temp_f32);
       uint16_t *out_u16 = (uint16_t*)out;
       for(uint32_t i=0; i<out_comp; ++i)
         out_u16[i] = temp_u16.elem[i];
@@ -608,7 +608,7 @@ namespace {
     case VK_FORMAT_R16G16B16A16_SNORM:
     {
       s16x4 temp_s16 = {{0,0,0,0}};
-      temp_s16 = convert_f32_to_s16n(temp_f32);
+      temp_s16 = Convert4_F32toS16N(temp_f32);
       int16_t *out_s16 = (int16_t*)out;
       for(uint32_t i=0; i<out_comp; ++i)
         out_s16[i] = temp_s16.elem[i];
@@ -620,7 +620,7 @@ namespace {
     case VK_FORMAT_R16G16B16A16_UINT:
     {
       u16x4 temp_u16 = {{0,0,0,0}};
-      temp_u16 = convert_f32_to_u16(temp_f32);
+      temp_u16 = Convert4_F32toU16(temp_f32);
       uint16_t *out_u16 = (uint16_t*)out;
       for(uint32_t i=0; i<out_comp; ++i)
         out_u16[i] = temp_u16.elem[i];
@@ -632,7 +632,7 @@ namespace {
     case VK_FORMAT_R16G16B16A16_SINT:
     {
       s16x4 temp_s16 = {{0,0,0,0}};
-      temp_s16 = convert_f32_to_s16(temp_f32);
+      temp_s16 = Convert4_F32toS16(temp_f32);
       int16_t *out_s16 = (int16_t*)out;
       for(uint32_t i=0; i<out_comp; ++i)
         out_s16[i] = temp_s16.elem[i];
@@ -644,7 +644,7 @@ namespace {
     case VK_FORMAT_R16G16B16A16_SFLOAT:
     {
       u16x4 temp_u16 = {{0,0,0,0}};
-      temp_u16 = convert_f32_to_f16(temp_f32);
+      temp_u16 = Convert4_F32toF16(temp_f32);
       uint16_t *out_u16 = (uint16_t*)out;
       for(uint32_t i=0; i<out_comp; ++i)
         out_u16[i] = temp_u16.elem[i];
@@ -656,7 +656,7 @@ namespace {
     case VK_FORMAT_R32G32B32A32_UINT:
     {
       u32x4 temp_u32 = {{0,0,0,0}};
-      temp_u32 = convert_f32_to_u32(temp_f32);
+      temp_u32 = Convert4_F32toU32(temp_f32);
       uint32_t *out_u32 = (uint32_t*)out;
       for(uint32_t i=0; i<out_comp; ++i)
         out_u32[i] = temp_u32.elem[i];
@@ -668,7 +668,7 @@ namespace {
     case VK_FORMAT_R32G32B32A32_SINT:
     {
       s32x4 temp_s32 = {{0,0,0,0}};
-      temp_s32 = convert_f32_to_s32(temp_f32);
+      temp_s32 = Convert4_F32toS32(temp_f32);
       int32_t *out_s32 = (int32_t*)out;
       for(uint32_t i=0; i<out_comp; ++i)
         out_s32[i] = temp_s32.elem[i];
@@ -698,7 +698,7 @@ VertexLayout::VertexLayout(std::initializer_list<AttributeInfo> attr_infos) : st
         last_attr = attr;
       }
     }
-    AttributeFormatInfo format_info = get_attribute_format_info(last_attr.format);
+    AttributeFormatInfo format_info = GetAttributeFormatInfo(last_attr.format);
     if (format_info.format == last_attr.format) {
       stride = last_attr.offset + format_info.size;
     }
@@ -718,15 +718,15 @@ VertexLayout::VertexLayout(const MeshFormat& mesh_format, uint32_t binding) : st
   }
 }
 
-int convert_vertex_buffer(const void *src_vertices, const VertexLayout& src_layout,
+int ConvertVertexBuffer(const void *src_vertices, const VertexLayout& src_layout,
     void *dst_vertices, const VertexLayout &dst_layout, size_t vertex_count) {
   for(uint32_t a = 0; a < src_layout.attributes.size(); ++a) {
-    if (!is_valid_attribute_format(src_layout.attributes[a].format)) {
+    if (!IsValidAttributeFormat(src_layout.attributes[a].format)) {
       return -1;
     }
   }
   for(uint32_t a = 0; a < dst_layout.attributes.size(); ++a) {
-    if (!is_valid_attribute_format(dst_layout.attributes[a].format)) {
+    if (!IsValidAttributeFormat(dst_layout.attributes[a].format)) {
       return -1;
     }
   }
@@ -735,7 +735,7 @@ int convert_vertex_buffer(const void *src_vertices, const VertexLayout& src_layo
   uint8_t *dst_bytes = (uint8_t*)dst_vertices;
   for(size_t v = 0; v < vertex_count; ++v) {
     for(uint32_t a = 0; a < src_layout.attributes.size(); ++a) {
-      convert_attribute(src_bytes + src_layout.attributes[a].offset, src_layout.attributes[a].format,
+      ConvertAttribute(src_bytes + src_layout.attributes[a].offset, src_layout.attributes[a].format,
         dst_bytes + dst_layout.attributes[a].offset, dst_layout.attributes[a].format);
     }
     src_bytes += src_layout.stride;

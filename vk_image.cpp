@@ -91,7 +91,8 @@ namespace {
       { 16,  4,  4, IMAGE_FILE_DATA_FORMAT_EAC_R11G11_UNORM,   VK_FORMAT_EAC_R11G11_UNORM_BLOCK, },
       { 16,  4,  4, IMAGE_FILE_DATA_FORMAT_EAC_R11G11_SNORM,   VK_FORMAT_EAC_R11G11_SNORM_BLOCK, },
     }};
-    void image_file_to_vk_image_create_info(VkImageCreateInfo *out_ci, const ImageFile &image) {
+
+    void ImageFileToVkImageCreateInfo(VkImageCreateInfo *out_ci, const ImageFile &image) {
       *out_ci = {};
       out_ci->sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
       if (image.flags & IMAGE_FILE_FLAG_CUBE_BIT) {
@@ -118,12 +119,12 @@ namespace {
       out_ci->initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     }
 
-    uint32_t get_mip_dimension(uint32_t base, uint32_t mip) {
+    uint32_t GetMipDimension(uint32_t base, uint32_t mip) {
       uint32_t out = (base>>mip);
       return (out < 1) ? 1 : out;
     }
 
-    uint32_t align_to_n(uint32_t x, uint32_t n) {
+    uint32_t AlignTo(uint32_t x, uint32_t n) {
       assert( (n & (n-1)) == 0); // n must be a power of 2
       return (x + n-1) & ~(n-1);
     }
@@ -135,40 +136,40 @@ namespace spokk {
 //
 // Image
 //
-VkResult Image::create(const DeviceContext& device_context, const VkImageCreateInfo image_ci,
+VkResult Image::Create(const DeviceContext& device_context, const VkImageCreateInfo image_ci,
   VkMemoryPropertyFlags memory_properties, DeviceAllocationScope allocation_scope) {
-  VkResult result = vkCreateImage(device_context.device(), &image_ci, device_context.host_allocator(), &handle);
+  VkResult result = vkCreateImage(device_context.Device(), &image_ci, device_context.HostAllocator(), &handle);
   if (result == VK_SUCCESS) {
-    memory = device_context.device_alloc_and_bind_to_image(handle, memory_properties, allocation_scope);
+    memory = device_context.DeviceAllocAndBindToImage(handle, memory_properties, allocation_scope);
     if (memory.block == nullptr) {
-      vkDestroyImage(device_context.device(), handle, device_context.host_allocator());
+      vkDestroyImage(device_context.Device(), handle, device_context.HostAllocator());
       handle = VK_NULL_HANDLE;
       result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
     } else {
-      VkImageViewCreateInfo view_ci = view_ci_from_image(handle, image_ci);
-      result = vkCreateImageView(device_context.device(), &view_ci, device_context.host_allocator(), &view);
+      VkImageViewCreateInfo view_ci = GetImageViewCreateInfo(handle, image_ci);
+      result = vkCreateImageView(device_context.Device(), &view_ci, device_context.HostAllocator(), &view);
     }
   }
   return result;
 }
-VkResult Image::create_and_load(const DeviceContext& device_context, const ImageLoader& loader, const std::string& filename,
+VkResult Image::CreateAndLoad(const DeviceContext& device_context, const ImageLoader& loader, const std::string& filename,
   VkBool32 generate_mipmaps, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
   VkImageCreateInfo image_ci = {};
-  int load_error = loader.load_from_file(&handle, &image_ci, &memory,
+  int load_error = loader.LoadFromFile(&handle, &image_ci, &memory,
     filename, generate_mipmaps, final_layout, final_access_flags);
   if (load_error) {
     return VK_ERROR_INITIALIZATION_FAILED;
   }
-  VkImageViewCreateInfo view_ci = view_ci_from_image(handle, image_ci);
-  VkResult result = vkCreateImageView(device_context.device(), &view_ci, device_context.host_allocator(), &view);
+  VkImageViewCreateInfo view_ci = GetImageViewCreateInfo(handle, image_ci);
+  VkResult result = vkCreateImageView(device_context.Device(), &view_ci, device_context.HostAllocator(), &view);
   return result;
 }
-void Image::destroy(const DeviceContext& device_context) {
-  device_context.device_free(memory);
+void Image::Destroy(const DeviceContext& device_context) {
+  device_context.DeviceFree(memory);
   memory.block = nullptr;
-  vkDestroyImageView(device_context.device(), view, device_context.host_allocator());
+  vkDestroyImageView(device_context.Device(), view, device_context.HostAllocator());
   view = VK_NULL_HANDLE;
-  vkDestroyImage(device_context.device(), handle, device_context.host_allocator());
+  vkDestroyImage(device_context.Device(), handle, device_context.HostAllocator());
   handle = VK_NULL_HANDLE;
 }
 
@@ -177,18 +178,18 @@ void Image::destroy(const DeviceContext& device_context) {
 
 ImageLoader::ImageLoader(const DeviceContext& device_context) :
     device_context_(device_context) {
-  const DeviceQueue* transfer_queue = device_context.find_queue(VK_QUEUE_TRANSFER_BIT);
+  const DeviceQueue* transfer_queue = device_context.FindQueue(VK_QUEUE_TRANSFER_BIT);
   assert(transfer_queue != nullptr);
   transfer_queue_ = transfer_queue->handle;
   transfer_queue_family_ = transfer_queue->family;
-  one_shot_cpool_ = my_make_unique<OneShotCommandPool>(device_context.device(),
-    transfer_queue_, transfer_queue_family_, device_context.host_allocator());
+  one_shot_cpool_ = my_make_unique<OneShotCommandPool>(device_context.Device(),
+    transfer_queue_, transfer_queue_family_, device_context.HostAllocator());
 }
 ImageLoader::~ImageLoader() {
 }
 
 
-int ImageLoader::load_from_file(VkImage *out_image, VkImageCreateInfo *out_image_ci,
+int ImageLoader::LoadFromFile(VkImage *out_image, VkImageCreateInfo *out_image_ci,
     DeviceMemoryAllocation *out_memory, const std::string &filename, VkBool32 generate_mipmaps,
     VkImageLayout final_layout, VkAccessFlags final_access_flags) const {
   int err = 0;
@@ -199,13 +200,13 @@ int ImageLoader::load_from_file(VkImage *out_image, VkImageCreateInfo *out_image
   if (err != 0) {
     return err;
   }
-  image_file_to_vk_image_create_info(out_image_ci, image_file);
-  VkImageAspectFlags aspect_flags = vk_format_to_image_aspect_flags(out_image_ci->format);
+  ImageFileToVkImageCreateInfo(out_image_ci, image_file);
+  VkImageAspectFlags aspect_flags = GetImageAspectFlags(out_image_ci->format);
   uint32_t mips_to_load = image_file.mip_levels;
 
   if (generate_mipmaps) {
     VkFormatProperties format_properties;
-    vkGetPhysicalDeviceFormatProperties(device_context_.physical_device(), out_image_ci->format, &format_properties);
+    vkGetPhysicalDeviceFormatProperties(device_context_.PhysicalDevice(), out_image_ci->format, &format_properties);
     const VkFormatFeatureFlags blit_mask = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
     const VkFormatFeatureFlags feature_flags = (out_image_ci->tiling == VK_IMAGE_TILING_LINEAR)
       ? format_properties.linearTilingFeatures : format_properties.optimalTilingFeatures;
@@ -242,11 +243,11 @@ int ImageLoader::load_from_file(VkImage *out_image, VkImageCreateInfo *out_image
     }
   }
   VkBuffer staging_buffer = VK_NULL_HANDLE;
-  SPOKK_VK_CHECK(vkCreateBuffer(device_context_.device(), &staging_buffer_ci, device_context_.host_allocator(), &staging_buffer));
-  DeviceMemoryAllocation staging_buffer_mem = device_context_.device_alloc_and_bind_to_buffer(staging_buffer,
+  SPOKK_VK_CHECK(vkCreateBuffer(device_context_.Device(), &staging_buffer_ci, device_context_.HostAllocator(), &staging_buffer));
+  DeviceMemoryAllocation staging_buffer_mem = device_context_.DeviceAllocAndBindToBuffer(staging_buffer,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,  // TODO(cort): manually flush/invalidate
     DEVICE_ALLOCATION_SCOPE_DEVICE);
-  uint8_t *staging_buffer_data = reinterpret_cast<uint8_t*>(staging_buffer_mem.mapped());
+  uint8_t *staging_buffer_data = reinterpret_cast<uint8_t*>(staging_buffer_mem.Mapped());
   assert(staging_buffer_data != nullptr);
 
   // Populate staging buffer, and build a list of regions to copy into the final image.
@@ -263,18 +264,18 @@ int ImageLoader::load_from_file(VkImage *out_image, VkImageCreateInfo *out_image
     // an even integer multiple of the texel block dimensions for compressed formats.
     // It must also respect the minImageTransferGranularity, but I don't have a good way of testing
     // that right now.  ...Wait, yes I do! It's in the DeviceQueue!
-    copy_regions[i_mip].bufferRowLength = get_mip_dimension(
+    copy_regions[i_mip].bufferRowLength = GetMipDimension(
       image_file.row_pitch_bytes * texel_block_width / texel_block_bytes, i_mip);
-    copy_regions[i_mip].bufferImageHeight = get_mip_dimension(image_file.height, i_mip) * texel_block_height;
-    copy_regions[i_mip].bufferRowLength   = align_to_n(copy_regions[i_mip].bufferRowLength, texel_block_width);
-    copy_regions[i_mip].bufferImageHeight = align_to_n(copy_regions[i_mip].bufferImageHeight, texel_block_height);
+    copy_regions[i_mip].bufferImageHeight = GetMipDimension(image_file.height, i_mip) * texel_block_height;
+    copy_regions[i_mip].bufferRowLength   = AlignTo(copy_regions[i_mip].bufferRowLength, texel_block_width);
+    copy_regions[i_mip].bufferImageHeight = AlignTo(copy_regions[i_mip].bufferImageHeight, texel_block_height);
     copy_regions[i_mip].imageSubresource.aspectMask = aspect_flags;
     copy_regions[i_mip].imageSubresource.mipLevel = i_mip;
     copy_regions[i_mip].imageSubresource.baseArrayLayer = 0;  // TODO(cort): take a VkImageSubresourceRange?
     copy_regions[i_mip].imageSubresource.layerCount = image_file.array_layers;
-    copy_regions[i_mip].imageExtent.width  = get_mip_dimension(image_file.width, i_mip);
-    copy_regions[i_mip].imageExtent.height = get_mip_dimension(image_file.height, i_mip);
-    copy_regions[i_mip].imageExtent.depth  = get_mip_dimension(image_file.depth, i_mip);
+    copy_regions[i_mip].imageExtent.width  = GetMipDimension(image_file.width, i_mip);
+    copy_regions[i_mip].imageExtent.height = GetMipDimension(image_file.height, i_mip);
+    copy_regions[i_mip].imageExtent.depth  = GetMipDimension(image_file.depth, i_mip);
     for(uint32_t i_layer=0; i_layer<image_file.array_layers; ++i_layer) {
       subresource.array_layer = i_layer;
       size_t subresource_size = ImageFileGetSubresourceSize(&image_file, subresource);
@@ -286,12 +287,12 @@ int ImageLoader::load_from_file(VkImage *out_image, VkImageCreateInfo *out_image
 
   // Create final image.
   // TODO(cort): take memory properties and scope?
-  SPOKK_VK_CHECK(vkCreateImage(device_context_.device(), out_image_ci, device_context_.host_allocator(), out_image));
-  *out_memory = device_context_.device_alloc_and_bind_to_image(*out_image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+  SPOKK_VK_CHECK(vkCreateImage(device_context_.Device(), out_image_ci, device_context_.HostAllocator(), out_image));
+  *out_memory = device_context_.DeviceAllocAndBindToImage(*out_image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
     DEVICE_ALLOCATION_SCOPE_DEVICE);
 
   // Build command buffer 
-  VkCommandBuffer cb = one_shot_cpool_->allocate_and_begin();
+  VkCommandBuffer cb = one_shot_cpool_->AllocateAndBegin();
   VkBufferMemoryBarrier buffer_barrier = {};
   buffer_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
   buffer_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
@@ -328,26 +329,26 @@ int ImageLoader::load_from_file(VkImage *out_image, VkImageCreateInfo *out_image
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
       (VkDependencyFlags)0, 0,NULL, 0,NULL, 1,&image_barrier);
   } else {
-    int record_error = record_mipmap_generation(cb, *out_image, *out_image_ci,
+    int record_error = RecordMipmapGeneration(cb, *out_image, *out_image_ci,
       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT, final_layout, final_access_flags);
     assert(!record_error);
     (void)record_error;
   }
-  one_shot_cpool_->end_submit_and_free(&cb);
-  device_context_.device_free(staging_buffer_mem);
-  vkDestroyBuffer(device_context_.device(), staging_buffer, device_context_.host_allocator());
+  one_shot_cpool_->EndSubmitAndFree(&cb);
+  device_context_.DeviceFree(staging_buffer_mem);
+  vkDestroyBuffer(device_context_.Device(), staging_buffer, device_context_.HostAllocator());
   ImageFileDestroy(&image_file);
   return 0;
 }
 
-int ImageLoader::generate_mipmaps(VkImage image, const VkImageCreateInfo &image_ci,
+int ImageLoader::GenerateMipmaps(VkImage image, const VkImageCreateInfo &image_ci,
     VkImageLayout input_layout, VkAccessFlags input_access_flags,
     VkImageLayout final_layout, VkAccessFlags final_access_flags) const {
   if (image_ci.mipLevels == 1) {
     return 0;  // nothing to do
   }
   VkFormatProperties format_properties = {};
-  vkGetPhysicalDeviceFormatProperties(device_context_.physical_device(), image_ci.format, &format_properties);
+  vkGetPhysicalDeviceFormatProperties(device_context_.PhysicalDevice(), image_ci.format, &format_properties);
   const VkFormatFeatureFlags blit_mask = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
   const VkFormatFeatureFlags feature_flags = (image_ci.tiling == VK_IMAGE_TILING_LINEAR)
     ? format_properties.linearTilingFeatures : format_properties.optimalTilingFeatures;
@@ -356,20 +357,20 @@ int ImageLoader::generate_mipmaps(VkImage image, const VkImageCreateInfo &image_
   }
 
   // Build command buffer 
-  VkCommandBuffer cb = one_shot_cpool_->allocate_and_begin();
-  int record_error = record_mipmap_generation(cb, image, image_ci,
+  VkCommandBuffer cb = one_shot_cpool_->AllocateAndBegin();
+  int record_error = RecordMipmapGeneration(cb, image, image_ci,
     input_layout, input_access_flags, final_layout, final_access_flags);
-  one_shot_cpool_->end_submit_and_free(&cb);
+  one_shot_cpool_->EndSubmitAndFree(&cb);
   return record_error;
 }
 
-int ImageLoader::record_mipmap_generation(VkCommandBuffer cb, VkImage image, const VkImageCreateInfo &image_ci,
+int ImageLoader::RecordMipmapGeneration(VkCommandBuffer cb, VkImage image, const VkImageCreateInfo &image_ci,
     VkImageLayout input_layout, VkAccessFlags input_access_flags,
     VkImageLayout final_layout, VkAccessFlags final_access_flags) const {
   assert(image_ci.mipLevels > 1); // higher-level code should be checking for this already
 
   VkFormatProperties format_properties = {};
-  vkGetPhysicalDeviceFormatProperties(device_context_.physical_device(), image_ci.format, &format_properties);
+  vkGetPhysicalDeviceFormatProperties(device_context_.PhysicalDevice(), image_ci.format, &format_properties);
   const VkFormatFeatureFlags blit_mask = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
   const VkFormatFeatureFlags feature_flags = (image_ci.tiling == VK_IMAGE_TILING_LINEAR)
     ? format_properties.linearTilingFeatures : format_properties.optimalTilingFeatures;
@@ -377,7 +378,7 @@ int ImageLoader::record_mipmap_generation(VkCommandBuffer cb, VkImage image, con
     return -1;  // format does not support blitting; automatic mipmap generation won't work.
   }
 
-  VkImageAspectFlags aspect_flags = vk_format_to_image_aspect_flags(image_ci.format);
+  VkImageAspectFlags aspect_flags = GetImageAspectFlags(image_ci.format);
 
   std::array<VkImageMemoryBarrier,2> image_barriers = {};
   image_barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -414,9 +415,9 @@ int ImageLoader::record_mipmap_generation(VkCommandBuffer cb, VkImage image, con
   blit_region.srcOffsets[0].x = 0;
   blit_region.srcOffsets[0].y = 0;
   blit_region.srcOffsets[0].z = 0;
-  blit_region.srcOffsets[1].x = get_mip_dimension(image_ci.extent.width, 0);
-  blit_region.srcOffsets[1].y = get_mip_dimension(image_ci.extent.height, 0);
-  blit_region.srcOffsets[1].z = get_mip_dimension(image_ci.extent.depth, 0);
+  blit_region.srcOffsets[1].x = GetMipDimension(image_ci.extent.width, 0);
+  blit_region.srcOffsets[1].y = GetMipDimension(image_ci.extent.height, 0);
+  blit_region.srcOffsets[1].z = GetMipDimension(image_ci.extent.depth, 0);
   blit_region.dstSubresource.aspectMask = aspect_flags;
   blit_region.dstSubresource.baseArrayLayer = 0;
   blit_region.dstSubresource.layerCount = image_ci.arrayLayers;
@@ -424,9 +425,9 @@ int ImageLoader::record_mipmap_generation(VkCommandBuffer cb, VkImage image, con
   blit_region.dstOffsets[0].x = 0;
   blit_region.dstOffsets[0].y = 0;
   blit_region.dstOffsets[0].z = 0;
-  blit_region.dstOffsets[1].x = get_mip_dimension(image_ci.extent.width, 1);
-  blit_region.dstOffsets[1].y = get_mip_dimension(image_ci.extent.height, 1);
-  blit_region.dstOffsets[1].z = get_mip_dimension(image_ci.extent.depth, 1);
+  blit_region.dstOffsets[1].x = GetMipDimension(image_ci.extent.width, 1);
+  blit_region.dstOffsets[1].y = GetMipDimension(image_ci.extent.height, 1);
+  blit_region.dstOffsets[1].z = GetMipDimension(image_ci.extent.depth, 1);
   for(uint32_t dst_mip = 1; dst_mip < image_ci.mipLevels; ++dst_mip) {
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
       (VkDependencyFlags)0, 0,NULL, 0,NULL, (uint32_t)image_barriers.size(),image_barriers.data());
@@ -441,13 +442,13 @@ int ImageLoader::record_mipmap_generation(VkCommandBuffer cb, VkImage image, con
     image_barriers[1].subresourceRange.baseMipLevel += 1;
 
     blit_region.srcSubresource.mipLevel += 1;
-    blit_region.srcOffsets[1].x = get_mip_dimension(image_ci.extent.width, dst_mip);
-    blit_region.srcOffsets[1].y = get_mip_dimension(image_ci.extent.height, dst_mip);
-    blit_region.srcOffsets[1].z = get_mip_dimension(image_ci.extent.depth, dst_mip);
+    blit_region.srcOffsets[1].x = GetMipDimension(image_ci.extent.width, dst_mip);
+    blit_region.srcOffsets[1].y = GetMipDimension(image_ci.extent.height, dst_mip);
+    blit_region.srcOffsets[1].z = GetMipDimension(image_ci.extent.depth, dst_mip);
     blit_region.dstSubresource.mipLevel += 1;
-    blit_region.dstOffsets[1].x = get_mip_dimension(image_ci.extent.width, dst_mip+1);
-    blit_region.dstOffsets[1].y = get_mip_dimension(image_ci.extent.height, dst_mip+1);
-    blit_region.dstOffsets[1].z = get_mip_dimension(image_ci.extent.depth, dst_mip+1);
+    blit_region.dstOffsets[1].x = GetMipDimension(image_ci.extent.width, dst_mip+1);
+    blit_region.dstOffsets[1].y = GetMipDimension(image_ci.extent.height, dst_mip+1);
+    blit_region.dstOffsets[1].z = GetMipDimension(image_ci.extent.depth, dst_mip+1);
   }
   // Coming out of the loop, all but the last mip are in TRANSFER_SRC mode, and the last mip
   // is in TRANSFER_DST. Convert them all to the final layout/access mode.

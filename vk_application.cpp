@@ -38,11 +38,11 @@ T my_max(T x, T y) {
   return (x > y) ? x : y;
 }
 
-void my_glfw_error_callback(int error, const char *description) {
+void MyGlfwErrorCallback(int error, const char *description) {
   fprintf( stderr, "GLFW Error %d: %s\n", error, description);
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL my_debug_report_callback(VkFlags msgFlags,
+VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkFlags msgFlags,
     VkDebugReportObjectTypeEXT /*objType*/, uint64_t /*srcObject*/, size_t /*location*/, int32_t msgCode,
     const char *pLayerPrefix, const char *pMsg, void * /*pUserData*/) {
   char *message = (char*)malloc(strlen(pMsg)+100);
@@ -72,7 +72,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL my_debug_report_callback(VkFlags msgFlags,
   }
 }
 
-VkResult find_physical_device(const std::vector<Application::QueueFamilyRequest>& qf_reqs, VkInstance instance,
+VkResult FindPhysicalDevice(const std::vector<Application::QueueFamilyRequest>& qf_reqs, VkInstance instance,
   VkSurfaceKHR present_surface, VkPhysicalDevice *out_physical_device, std::vector<uint32_t>* out_queue_families) {
   *out_physical_device = VK_NULL_HANDLE;
   uint32_t physical_device_count = 0;
@@ -186,7 +186,7 @@ void InputState::Update(void) {
 Application::Application(const CreateInfo &ci) {
   if (ci.enable_graphics) {
     // Initialize GLFW
-    glfwSetErrorCallback(my_glfw_error_callback);
+    glfwSetErrorCallback(MyGlfwErrorCallback);
     if( !glfwInit() ) {
       fprintf( stderr, "Failed to initialize GLFW\n" );
       return;
@@ -202,7 +202,7 @@ Application::Application(const CreateInfo &ci) {
     glfwSetInputMode(window_.get(), GLFW_STICKY_KEYS, 1);
     glfwPollEvents(); // dummy poll for first loop iteration
 
-    input_state_.set_window(window_);
+    input_state_.SetWindow(window_);
   }
 
   // Initialize Vulkan
@@ -212,7 +212,7 @@ Application::Application(const CreateInfo &ci) {
   }
   std::vector<const char*> optional_instance_layer_names = {};
   std::vector<const char*> enabled_instance_layer_names = {};
-  SPOKK_VK_CHECK(get_supported_instance_layers(
+  SPOKK_VK_CHECK(GetSupportedInstanceLayers(
     required_instance_layer_names, optional_instance_layer_names,
     &instance_layers_, &enabled_instance_layer_names));
 
@@ -227,7 +227,7 @@ Application::Application(const CreateInfo &ci) {
     optional_instance_extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
   }
   std::vector<const char*> enabled_instance_extension_names;
-  SPOKK_VK_CHECK(get_supported_instance_extensions(instance_layers_,
+  SPOKK_VK_CHECK(GetSupportedInstanceExtensions(instance_layers_,
     required_instance_extension_names, optional_instance_extension_names,
     &instance_extensions_, &enabled_instance_extension_names));
 
@@ -247,11 +247,11 @@ Application::Application(const CreateInfo &ci) {
   instance_ci.ppEnabledExtensionNames = enabled_instance_extension_names.data();
   SPOKK_VK_CHECK(vkCreateInstance(&instance_ci, host_allocator_, &instance_));
 
-  if (is_instance_extension_enabled(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
+  if (IsInstanceExtensionEnabled(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
     VkDebugReportCallbackCreateInfoEXT debug_report_callback_ci = {};
     debug_report_callback_ci.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
     debug_report_callback_ci.flags = ci.debug_report_flags;
-    debug_report_callback_ci.pfnCallback = my_debug_report_callback;
+    debug_report_callback_ci.pfnCallback = MyDebugReportCallback;
     debug_report_callback_ci.pUserData = nullptr;
     auto create_debug_report_func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_,
       "vkCreateDebugReportCallbackEXT");
@@ -263,7 +263,7 @@ Application::Application(const CreateInfo &ci) {
   }
 
   std::vector<uint32_t> queue_family_indices;
-  SPOKK_VK_CHECK(find_physical_device(ci.queue_family_requests, instance_, surface_, &physical_device_, &queue_family_indices));
+  SPOKK_VK_CHECK(FindPhysicalDevice(ci.queue_family_requests, instance_, surface_, &physical_device_, &queue_family_indices));
   std::vector<VkDeviceQueueCreateInfo> device_queue_cis = {};
   uint32_t total_queue_count = 0;
   for(uint32_t iQF=0; iQF<(uint32_t)ci.queue_family_requests.size(); ++iQF) {
@@ -293,7 +293,7 @@ Application::Application(const CreateInfo &ci) {
 #endif
   };
   std::vector<const char*> enabled_device_extension_names;
-  SPOKK_VK_CHECK(get_supported_device_extensions(physical_device_, instance_layers_,
+  SPOKK_VK_CHECK(GetSupportedDeviceExtensions(physical_device_, instance_layers_,
     required_device_extension_names, optional_device_extension_names,
     &device_extensions_, &enabled_device_extension_names));
 
@@ -468,7 +468,7 @@ Application::Application(const CreateInfo &ci) {
     }
   }
 
-  graphics_and_present_queue_ = device_context_.find_queue(VK_QUEUE_GRAPHICS_BIT, surface_);
+  graphics_and_present_queue_ = device_context_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
 
   // Allocate command buffers
   VkCommandPoolCreateInfo cpool_ci = {};
@@ -542,7 +542,7 @@ Application::~Application() {
   }
 }
 
-int Application::run() {
+int Application::Run() {
   if (!init_successful) {
     return -1;
   }
@@ -556,7 +556,7 @@ int Application::run() {
     const double dt = (float)zomboTicksToSeconds(ticks_now - ticks_prev);
     ticks_prev = ticks_now;
 
-    update(dt);
+    Update(dt);
     if (force_exit_) {
       break;
     }
@@ -590,7 +590,7 @@ int Application::run() {
     SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info) );
 
     // Applications-specific render code
-    render(cb, swapchain_image_index);
+    Render(cb, swapchain_image_index);
     if (force_exit_) {
       break;
     }
@@ -635,11 +635,11 @@ int Application::run() {
   return 0;
 }
 
-void Application::update(double /*dt*/) {
+void Application::Update(double /*dt*/) {
   input_state_.Update();
 }
 
-bool Application::is_instance_layer_enabled(const std::string& layer_name) const {
+bool Application::IsInstanceLayerEnabled(const std::string& layer_name) const {
   for(const auto &layer : instance_layers_) {
     if (layer_name == layer.layerName) {
       return true;
@@ -647,7 +647,7 @@ bool Application::is_instance_layer_enabled(const std::string& layer_name) const
   }
   return false;
 }
-bool Application::is_instance_extension_enabled(const std::string& extension_name) const {
+bool Application::IsInstanceExtensionEnabled(const std::string& extension_name) const {
   for(const auto &extension : instance_extensions_) {
     if (extension_name == extension.extensionName) {
       return true;
@@ -655,7 +655,7 @@ bool Application::is_instance_extension_enabled(const std::string& extension_nam
   }
   return false;
 }
-bool Application::is_device_extension_enabled(const std::string& extension_name) const {
+bool Application::IsDeviceExtensionEnabled(const std::string& extension_name) const {
   for(const auto &extension : device_extensions_) {
     if (extension_name == extension.extensionName) {
       return true;

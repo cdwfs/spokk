@@ -30,14 +30,15 @@ struct RenderPass {
     COLOR_POST       = 3,  // 2 subpass; color (clear -> dontcare); final color (dontcare -> store)
     COLOR_DEPTH_POST = 4,  // 2 subpass; color (clear -> store), depth (clear -> dontcare); final color (dontcare -> store)
   };
-  void init_from_preset(Preset preset, VkFormat output_color_format);
+  void InitFromPreset(Preset preset, VkFormat output_color_format);
   // ...and call this after populating the previous vectors.
-  VkResult finalize_and_create(const DeviceContext& device_context, VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS,
+  VkResult Finalize(const DeviceContext& device_context, VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS,
     VkSubpassDescriptionFlags flags = 0);
-  VkImageCreateInfo get_attachment_image_ci(uint32_t attachment_index, const VkExtent2D& render_area) const;
-  VkImageViewCreateInfo get_attachment_image_view_ci(uint32_t attachment_index, VkImage image) const;
-  VkFramebufferCreateInfo get_framebuffer_ci(const VkExtent2D& render_area) const;
-  void destroy(const DeviceContext& device_context);
+
+  VkImageCreateInfo GetAttachmentImageCreateInfo(uint32_t attachment_index, const VkExtent2D& render_area) const;
+  VkImageViewCreateInfo GetAttachmentImageViewCreateInfo(uint32_t attachment_index, VkImage image) const;
+  VkFramebufferCreateInfo GetFramebufferCreateInfo(const VkExtent2D& render_area) const;
+  void Destroy(const DeviceContext& device_context);
 
   // These are created during finalization
   VkRenderPass handle;

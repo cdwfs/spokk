@@ -31,7 +31,7 @@ ShaderCompiler::ShaderCompiler() : compiler_() {
 }
 ShaderCompiler::~ShaderCompiler() {
 }
-shaderc::SpvCompilationResult ShaderCompiler::compile_glsl_string(const char *glsl_source,
+shaderc::SpvCompilationResult ShaderCompiler::CompileGlslString(const char *glsl_source,
   const std::string& logging_name, const std::string& entry_point,
   VkShaderStageFlagBits target_stage, const shaderc::CompileOptions& options) const {
   shaderc_shader_kind shader_kind = shaderc_glsl_infer_from_source; // VK_SHADER_STAGE_ALL = infer
@@ -55,7 +55,7 @@ shaderc::SpvCompilationResult ShaderCompiler::compile_glsl_string(const char *gl
     compiler_.CompileGlslToSpv(glsl_source, shader_kind, logging_name.c_str(), entry_point.c_str(), options);
   return compile_result;
 }
-shaderc::SpvCompilationResult ShaderCompiler::compile_glsl_fp(FILE *fp, int len_bytes,
+shaderc::SpvCompilationResult ShaderCompiler::CompileGlslFp(FILE *fp, int len_bytes,
   const std::string& logging_name, const std::string& entry_point,
   VkShaderStageFlagBits target_stage, const shaderc::CompileOptions& options) const {
   std::vector<char> glsl_str(len_bytes+1);
@@ -64,9 +64,9 @@ shaderc::SpvCompilationResult ShaderCompiler::compile_glsl_fp(FILE *fp, int len_
     return shaderc::SpvCompilationResult(nullptr);
   }
   glsl_str[len_bytes] = 0;
-  return compile_glsl_string(glsl_str.data(), logging_name, entry_point, target_stage, options);
+  return CompileGlslString(glsl_str.data(), logging_name, entry_point, target_stage, options);
 }
-shaderc::SpvCompilationResult ShaderCompiler::compile_glsl_file(const std::string& filename,
+shaderc::SpvCompilationResult ShaderCompiler::CompileGlslFile(const std::string& filename,
   const std::string& entry_point, VkShaderStageFlagBits target_stage, const shaderc::CompileOptions& options) const {
   FILE *glsl_file = fopen(filename.c_str(), "rb");
   if (!glsl_file) {
@@ -75,7 +75,7 @@ shaderc::SpvCompilationResult ShaderCompiler::compile_glsl_file(const std::strin
   fseek(glsl_file, 0, SEEK_END);
   long glsl_file_size = ftell(glsl_file);
   fseek(glsl_file, 0, SEEK_SET);
-  auto result = compile_glsl_fp(glsl_file, glsl_file_size, filename, entry_point, target_stage, options);
+  auto result = CompileGlslFp(glsl_file, glsl_file_size, filename, entry_point, target_stage, options);
   fclose(glsl_file);
   return result;
 }
@@ -197,7 +197,7 @@ static void parse_shader_resources(std::vector<DescriptorSetLayoutInfo>& dset_la
 //
 // Shader
 //
-VkResult Shader::create_and_load_spv_file(const DeviceContext& device_context, const std::string& filename) {
+VkResult Shader::CreateAndLoadSpirvFile(const DeviceContext& device_context, const std::string& filename) {
   FILE *spv_file = fopen(filename.c_str(), "rb");
   if (!spv_file) {
     return VK_ERROR_INITIALIZATION_FAILED;
@@ -205,29 +205,29 @@ VkResult Shader::create_and_load_spv_file(const DeviceContext& device_context, c
   fseek(spv_file, 0, SEEK_END);
   long spv_file_size = ftell(spv_file);
   fseek(spv_file, 0, SEEK_SET);
-  VkResult result = create_and_load_spv_fp(device_context, spv_file, spv_file_size);
+  VkResult result = CreateAndLoadSpirvFp(device_context, spv_file, spv_file_size);
   fclose(spv_file);
   return result;
 }
-VkResult Shader::create_and_load_spv_fp(const DeviceContext& device_context, FILE *fp, int len_bytes) {
+VkResult Shader::CreateAndLoadSpirvFp(const DeviceContext& device_context, FILE *fp, int len_bytes) {
   assert((len_bytes % sizeof(uint32_t)) == 0);
   spirv.resize(len_bytes/sizeof(uint32_t));
   size_t bytes_read = fread(spirv.data(), 1, len_bytes, fp);
   if ( (int)bytes_read != len_bytes) {
     return VK_ERROR_INITIALIZATION_FAILED;
   }
-  return parse_spirv_and_create(device_context);
+  return ParseSpirvAndCreate(device_context);
 }
-VkResult Shader::create_and_load_spv_mem(const DeviceContext& device_context, const void *buffer, int len_bytes) {
+VkResult Shader::CreateAndLoadSpirvMem(const DeviceContext& device_context, const void *buffer, int len_bytes) {
   assert((len_bytes % sizeof(uint32_t)) == 0);
   spirv.reserve(len_bytes/sizeof(uint32_t));
   const uint32_t *buffer_as_u32 = (const uint32_t*)buffer;
   spirv.insert(spirv.begin(), buffer_as_u32, buffer_as_u32+(len_bytes/sizeof(uint32_t)));
 
-  return parse_spirv_and_create(device_context);
+  return ParseSpirvAndCreate(device_context);
 }
 
-VkResult Shader::parse_spirv_and_create(const DeviceContext& device_context) {
+VkResult Shader::ParseSpirvAndCreate(const DeviceContext& device_context) {
   spirv_cross::CompilerGLSL glsl(spirv);  // NOTE: throws an exception if you hand it malformed/invalid SPIRV.
   stage = VkShaderStageFlagBits(0);
   spv::ExecutionModel execution_model = glsl.get_execution_model();
@@ -252,10 +252,10 @@ VkResult Shader::parse_spirv_and_create(const DeviceContext& device_context) {
   shader_ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
   shader_ci.codeSize = spirv.size() * sizeof(uint32_t);  // note: in bytes
   shader_ci.pCode = spirv.data();
-  VkResult result = vkCreateShaderModule(device_context.device(), &shader_ci, device_context.host_allocator(), &handle);
+  VkResult result = vkCreateShaderModule(device_context.Device(), &shader_ci, device_context.HostAllocator(), &handle);
   return result;
 }
-void Shader::override_descriptor_type(uint32_t dset, uint32_t binding, VkDescriptorType new_type) {
+void Shader::OverrideDescriptorType(uint32_t dset, uint32_t binding, VkDescriptorType new_type) {
   auto& b = dset_layout_infos.at(dset).bindings.at(binding);
   if (b.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && new_type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
     b.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
@@ -267,19 +267,19 @@ void Shader::override_descriptor_type(uint32_t dset, uint32_t binding, VkDescrip
     b.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
   }
 }
-void Shader::destroy(const DeviceContext& device_context) {
+void Shader::Destroy(const DeviceContext& device_context) {
   if (handle) {
-    vkDestroyShaderModule(device_context.device(), handle, device_context.host_allocator());
+    vkDestroyShaderModule(device_context.Device(), handle, device_context.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
-  unload_spirv();
+  UnloadSpirv();
   stage = (VkShaderStageFlagBits)0;
 }
 
 //
 // ShaderPipeline
 //
-VkResult ShaderPipeline::add_shader(const Shader *shader, const char *entry_point) {
+VkResult ShaderPipeline::AddShader(const Shader *shader, const char *entry_point) {
   if (pipeline_layout != VK_NULL_HANDLE) {
     return VK_ERROR_INITIALIZATION_FAILED; // pipeline is already finalized; can't add more shaders
   }
@@ -353,7 +353,7 @@ VkResult ShaderPipeline::add_shader(const Shader *shader, const char *entry_poin
   return VK_SUCCESS;
 }
 
-VkResult ShaderPipeline::force_compatible_layouts_and_finalize(const DeviceContext& device_context,
+VkResult ShaderPipeline::ForceCompatibleLayoutsAndFinalize(const DeviceContext& device_context,
   const std::vector<ShaderPipeline*> pipelines) {
   if (pipelines.empty()) {
     return VK_SUCCESS;
@@ -446,12 +446,12 @@ VkResult ShaderPipeline::force_compatible_layouts_and_finalize(const DeviceConte
   }
 
   for(auto pipeline : pipelines) {
-    pipeline->finalize(device_context);
+    pipeline->Finalize(device_context);
   }
   return VK_SUCCESS;
 }
 
-VkResult ShaderPipeline::finalize(const DeviceContext& device_context) {
+VkResult ShaderPipeline::Finalize(const DeviceContext& device_context) {
   // Determine active shader stages
   active_stages = 0;
   for(const auto& stage_ci : shader_stage_cis) {
@@ -491,8 +491,8 @@ VkResult ShaderPipeline::finalize(const DeviceContext& device_context) {
     layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layout_ci.bindingCount = (uint32_t)layout_info.bindings.size();
     layout_ci.pBindings = layout_info.bindings.data();
-    VkResult result = vkCreateDescriptorSetLayout(device_context.device(),
-      &layout_ci, device_context.host_allocator(), &dset_layouts[iLayout]);
+    VkResult result = vkCreateDescriptorSetLayout(device_context.Device(),
+      &layout_ci, device_context.HostAllocator(), &dset_layouts[iLayout]);
     if (result != VK_SUCCESS) {
       return result;
     }
@@ -504,8 +504,8 @@ VkResult ShaderPipeline::finalize(const DeviceContext& device_context) {
   pipeline_layout_ci.pSetLayouts = dset_layouts.data();
   pipeline_layout_ci.pushConstantRangeCount = (uint32_t)push_constant_ranges.size();
   pipeline_layout_ci.pPushConstantRanges = push_constant_ranges.data();
-  VkResult result = vkCreatePipelineLayout(device_context.device(), &pipeline_layout_ci,
-    device_context.host_allocator(), &pipeline_layout);
+  VkResult result = vkCreatePipelineLayout(device_context.Device(), &pipeline_layout_ci,
+    device_context.HostAllocator(), &pipeline_layout);
   // Set entry point names now that the shader count is finalized
   for(size_t iShader=0; iShader<shader_stage_cis.size(); ++iShader) {
     shader_stage_cis[iShader].pName = entry_point_names[iShader].c_str();
@@ -513,9 +513,9 @@ VkResult ShaderPipeline::finalize(const DeviceContext& device_context) {
 
   return result;
 }
-void ShaderPipeline::destroy(const DeviceContext& device_context) {
+void ShaderPipeline::Destroy(const DeviceContext& device_context) {
   for(auto dset_layout : dset_layouts) {
-    vkDestroyDescriptorSetLayout(device_context.device(), dset_layout, device_context.host_allocator());
+    vkDestroyDescriptorSetLayout(device_context.Device(), dset_layout, device_context.HostAllocator());
   }
   dset_layouts.clear();
   dset_layout_cis.clear();
@@ -523,7 +523,7 @@ void ShaderPipeline::destroy(const DeviceContext& device_context) {
   push_constant_ranges.clear();
   shader_stage_cis.clear();
   entry_point_names.clear();
-  vkDestroyPipelineLayout(device_context.device(), pipeline_layout, device_context.host_allocator());
+  vkDestroyPipelineLayout(device_context.Device(), pipeline_layout, device_context.HostAllocator());
   pipeline_layout = VK_NULL_HANDLE;
 }
 
@@ -540,55 +540,55 @@ DescriptorPool::DescriptorPool() : handle(VK_NULL_HANDLE), ci{}, pool_sizes{} {
     pool_sizes[i].descriptorCount = 0;
   }
 }
-void DescriptorPool::add(uint32_t layout_count, const VkDescriptorSetLayoutCreateInfo* dset_layout_cis, const uint32_t* dsets_per_layout) {
+void DescriptorPool::Add(uint32_t layout_count, const VkDescriptorSetLayoutCreateInfo* dset_layout_cis, const uint32_t* dsets_per_layout) {
   for(uint32_t iLayout = 0; iLayout < layout_count; ++iLayout) {
     const VkDescriptorSetLayoutCreateInfo &layout = dset_layout_cis[iLayout];
     uint32_t dset_count = (dsets_per_layout != nullptr) ? dsets_per_layout[iLayout] : 1;
-    add(layout, dset_count);
+    Add(layout, dset_count);
   }
 }
-void DescriptorPool::add(const VkDescriptorSetLayoutCreateInfo& dset_layout, uint32_t dset_count) {
+void DescriptorPool::Add(const VkDescriptorSetLayoutCreateInfo& dset_layout, uint32_t dset_count) {
   for(uint32_t iBinding = 0; iBinding < dset_layout.bindingCount; ++iBinding) {
     const VkDescriptorSetLayoutBinding &binding = dset_layout.pBindings[iBinding];
     pool_sizes[binding.descriptorType].descriptorCount += binding.descriptorCount * dset_count;
   }
   ci.maxSets += dset_count;
 }
-VkResult DescriptorPool::finalize(const DeviceContext& device_context, VkDescriptorPoolCreateFlags flags) {
+VkResult DescriptorPool::Finalize(const DeviceContext& device_context, VkDescriptorPoolCreateFlags flags) {
   ci.flags = flags;
-  VkResult result = vkCreateDescriptorPool(device_context.device(), &ci, device_context.host_allocator(), &handle);
+  VkResult result = vkCreateDescriptorPool(device_context.Device(), &ci, device_context.HostAllocator(), &handle);
   return result;
 }
-void DescriptorPool::destroy(const DeviceContext& device_context) {
+void DescriptorPool::Destroy(const DeviceContext& device_context) {
   if (handle != VK_NULL_HANDLE) {
-    vkDestroyDescriptorPool(device_context.device(), handle, device_context.host_allocator());
+    vkDestroyDescriptorPool(device_context.Device(), handle, device_context.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
 }
-VkResult DescriptorPool::allocate_sets(const DeviceContext& device_context, uint32_t dset_count,
+VkResult DescriptorPool::AllocateSets(const DeviceContext& device_context, uint32_t dset_count,
   const VkDescriptorSetLayout *dset_layouts, VkDescriptorSet *out_dsets) const {
   VkDescriptorSetAllocateInfo alloc_info = {};
   alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
   alloc_info.descriptorPool = handle;
   alloc_info.descriptorSetCount = dset_count;
   alloc_info.pSetLayouts = dset_layouts;
-  VkResult result = vkAllocateDescriptorSets(device_context.device(), &alloc_info, out_dsets);
+  VkResult result = vkAllocateDescriptorSets(device_context.Device(), &alloc_info, out_dsets);
   return result;
 }
-VkDescriptorSet DescriptorPool::allocate_set(const DeviceContext& device_context,
+VkDescriptorSet DescriptorPool::AllocateSet(const DeviceContext& device_context,
   VkDescriptorSetLayout dset_layout) const {
   VkDescriptorSet dset = VK_NULL_HANDLE;
-  allocate_sets(device_context, 1, &dset_layout, &dset);
+  AllocateSets(device_context, 1, &dset_layout, &dset);
   return dset;
 }
-void DescriptorPool::free_sets(DeviceContext& device_context, uint32_t set_count, const VkDescriptorSet* sets) const {
+void DescriptorPool::FreeSets(DeviceContext& device_context, uint32_t set_count, const VkDescriptorSet* sets) const {
   if (ci.flags & VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT) {
-    vkFreeDescriptorSets(device_context.device(), handle, set_count, sets);
+    vkFreeDescriptorSets(device_context.Device(), handle, set_count, sets);
   }
 }
-void DescriptorPool::free_set(DeviceContext& device_context, VkDescriptorSet set) const {
+void DescriptorPool::FreeSet(DeviceContext& device_context, VkDescriptorSet set) const {
   if (ci.flags & VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT) {
-    vkFreeDescriptorSets(device_context.device(), handle, 1, &set);
+    vkFreeDescriptorSets(device_context.Device(), handle, 1, &set);
   }
 }
 
@@ -656,7 +656,7 @@ DescriptorSetWriter::DescriptorSetWriter(const VkDescriptorSetLayoutCreateInfo &
   assert(next_buffer_info == buffer_infos.size());
   assert(next_image_info == image_infos.size());
 }
-void DescriptorSetWriter::bind_image(VkImageView view, VkImageLayout layout, VkSampler sampler, uint32_t binding, uint32_t array_element) {
+void DescriptorSetWriter::BindImage(VkImageView view, VkImageLayout layout, VkSampler sampler, uint32_t binding, uint32_t array_element) {
   // TODO(cort): make this search more efficient!
   VkWriteDescriptorSet *write = nullptr;
   for(size_t iWrite=0; iWrite<binding_writes.size(); ++iWrite) {
@@ -673,7 +673,7 @@ void DescriptorSetWriter::bind_image(VkImageView view, VkImageLayout layout, VkS
   pImageInfo->imageLayout = layout;
   pImageInfo->sampler = sampler;
 }
-void DescriptorSetWriter::bind_buffer(VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range, uint32_t binding, uint32_t array_element) {
+void DescriptorSetWriter::BindBuffer(VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range, uint32_t binding, uint32_t array_element) {
   // TODO(cort): make this search more efficient!
   VkWriteDescriptorSet *write = nullptr;
   for(size_t iWrite=0; iWrite<binding_writes.size(); ++iWrite) {
@@ -690,7 +690,7 @@ void DescriptorSetWriter::bind_buffer(VkBuffer buffer, VkDeviceSize offset, VkDe
   pBufferInfo->offset = offset;
   pBufferInfo->range = range;
 }
-void DescriptorSetWriter::bind_texel_buffer(VkBufferView view, uint32_t binding, uint32_t array_element) {
+void DescriptorSetWriter::BindTexelBuffer(VkBufferView view, uint32_t binding, uint32_t array_element) {
   // TODO(cort): make this search more efficient!
   VkWriteDescriptorSet *write = nullptr;
   for(size_t iWrite=0; iWrite<binding_writes.size(); ++iWrite) {
@@ -705,19 +705,19 @@ void DescriptorSetWriter::bind_texel_buffer(VkBufferView view, uint32_t binding,
   auto *pTexelBufferView = const_cast<VkBufferView*>(write->pTexelBufferView);
   *pTexelBufferView = view;
 }
-void DescriptorSetWriter::write_all_to_dset(const DeviceContext& device_context, VkDescriptorSet dset) {
+void DescriptorSetWriter::WriteAll(const DeviceContext& device_context, VkDescriptorSet dest_set) {
   for(auto& write : binding_writes) {
-    write.dstSet = dset;
+    write.dstSet = dest_set;
   }
-  vkUpdateDescriptorSets(device_context.device(),
+  vkUpdateDescriptorSets(device_context.Device(),
     (uint32_t)binding_writes.size(), binding_writes.data(), 0, nullptr);
 }
-void DescriptorSetWriter::write_one_to_dset(const DeviceContext& device_context, VkDescriptorSet dset,
+void DescriptorSetWriter::WriteOne(const DeviceContext& device_context, VkDescriptorSet dest_set,
   uint32_t binding, uint32_t array_element) {
   assert(binding < binding_writes.size());
   VkWriteDescriptorSet writeCopy = binding_writes[binding];
   assert(array_element < writeCopy.dstArrayElement);
-  writeCopy.dstSet = dset;
+  writeCopy.dstSet = dest_set;
   writeCopy.dstArrayElement = array_element;
   if (writeCopy.pImageInfo != nullptr) {
     writeCopy.pImageInfo += array_element;
@@ -726,7 +726,7 @@ void DescriptorSetWriter::write_one_to_dset(const DeviceContext& device_context,
   } else if (writeCopy.pTexelBufferView != nullptr) {
     writeCopy.pTexelBufferView += array_element;
   }
-  vkUpdateDescriptorSets(device_context.device(), 1, &writeCopy, 0, nullptr);
+  vkUpdateDescriptorSets(device_context.Device(), 1, &writeCopy, 0, nullptr);
 }
 
 }  // namespace spokk

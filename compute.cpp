@@ -18,7 +18,7 @@ public:
   explicit ComputeApp(Application::CreateInfo &ci) :
       Application(ci) {
     // Find a compute queue
-    const DeviceQueue *compute_queue = device_context_.find_queue(VK_QUEUE_COMPUTE_BIT);
+    const DeviceQueue *compute_queue = device_context_.FindQueue(VK_QUEUE_COMPUTE_BIT);
 
     // Allocate command buffers
     VkCommandPoolCreateInfo cpool_ci = {};
@@ -46,31 +46,31 @@ public:
     buffer_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     Buffer in_buffer = {}, out_buffer = {};
-    SPOKK_VK_CHECK(in_buffer.create(device_context_, buffer_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
-    SPOKK_VK_CHECK(in_buffer.load(device_context_, in_data.data(), buffer_ci.size));
+    SPOKK_VK_CHECK(in_buffer.Create(device_context_, buffer_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+    SPOKK_VK_CHECK(in_buffer.Load(device_context_, in_data.data(), buffer_ci.size));
     buffer_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     // TODO(cort): until I have buffer.unload, the output buffer must be host-visible.
-    SPOKK_VK_CHECK(out_buffer.create(device_context_, buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(out_buffer.Create(device_context_, buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     // Load shaders
     Shader double_ints_cs = {};
     ShaderPipeline compute_shader_pipeline = {};
-    SPOKK_VK_CHECK(double_ints_cs.create_and_load_spv_file(device_context_, "double_ints.comp.spv"));
-    SPOKK_VK_CHECK(compute_shader_pipeline.add_shader(&double_ints_cs, "main"));
-    SPOKK_VK_CHECK(compute_shader_pipeline.finalize(device_context_));
+    SPOKK_VK_CHECK(double_ints_cs.CreateAndLoadSpirvFile(device_context_, "double_ints.comp.spv"));
+    SPOKK_VK_CHECK(compute_shader_pipeline.AddShader(&double_ints_cs, "main"));
+    SPOKK_VK_CHECK(compute_shader_pipeline.Finalize(device_context_));
 
     ComputePipeline compute_pipeline = {};
-    compute_pipeline.create(device_context_, &compute_shader_pipeline);
+    compute_pipeline.Create(device_context_, &compute_shader_pipeline);
 
     DescriptorPool dpool = {};
-    dpool.add((uint32_t)compute_shader_pipeline.dset_layout_cis.size(), compute_shader_pipeline.dset_layout_cis.data());
-    SPOKK_VK_CHECK(dpool.finalize(device_context_));
+    dpool.Add((uint32_t)compute_shader_pipeline.dset_layout_cis.size(), compute_shader_pipeline.dset_layout_cis.data());
+    SPOKK_VK_CHECK(dpool.Finalize(device_context_));
     VkDescriptorSet dset = VK_NULL_HANDLE;
-    dset = dpool.allocate_set(device_context_, compute_shader_pipeline.dset_layouts[0]);
+    dset = dpool.AllocateSet(device_context_, compute_shader_pipeline.dset_layouts[0]);
     DescriptorSetWriter dset_writer(compute_shader_pipeline.dset_layout_cis[0]);
-    dset_writer.bind_buffer(in_buffer.handle(), 0, VK_WHOLE_SIZE, 0);
-    dset_writer.bind_buffer(out_buffer.handle(), 0, VK_WHOLE_SIZE, 1);
-    dset_writer.write_all_to_dset(device_context_, dset);
+    dset_writer.BindBuffer(in_buffer.Handle(), 0, VK_WHOLE_SIZE, 0);
+    dset_writer.BindBuffer(out_buffer.Handle(), 0, VK_WHOLE_SIZE, 1);
+    dset_writer.WriteAll(device_context_, dset);
 
     VkFenceCreateInfo fence_ci = {};
     fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
@@ -88,7 +88,7 @@ public:
     buffer_barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
     buffer_barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     buffer_barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barriers[0].buffer = in_buffer.handle();
+    buffer_barriers[0].buffer = in_buffer.Handle();
     buffer_barriers[0].offset = 0;
     buffer_barriers[0].size = VK_WHOLE_SIZE;
     buffer_barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -96,7 +96,7 @@ public:
     buffer_barriers[1].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     buffer_barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     buffer_barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barriers[1].buffer = out_buffer.handle();
+    buffer_barriers[1].buffer = out_buffer.Handle();
     buffer_barriers[1].offset = 0;
     buffer_barriers[1].size = VK_WHOLE_SIZE;
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
@@ -121,9 +121,9 @@ public:
     SPOKK_VK_CHECK( vkQueueSubmit(compute_queue->handle, 1, &submit_info, compute_done_fence) );
 
     SPOKK_VK_CHECK(vkWaitForFences(device_, 1, &compute_done_fence, VK_TRUE, UINT64_MAX));
-    out_buffer.memory().invalidate_host_caches();
+    out_buffer.Memory().InvalidateHostCache();
 
-    const int32_t *out_data = (const int32_t*)out_buffer.mapped();
+    const int32_t *out_data = (const int32_t*)out_buffer.Mapped();
     bool valid = true;
     for(uint32_t iBuxel=0; iBuxel<(uint32_t)out_ref.size(); ++iBuxel) {
       if (out_data[iBuxel] != out_ref[iBuxel]) {
@@ -137,12 +137,12 @@ public:
     }
 
     // Cleanup
-    dpool.destroy(device_context_);
-    in_buffer.destroy(device_context_);
-    out_buffer.destroy(device_context_);
-    compute_pipeline.destroy(device_context_);
-    compute_shader_pipeline.destroy(device_context_);
-    double_ints_cs.destroy(device_context_);
+    dpool.Destroy(device_context_);
+    in_buffer.Destroy(device_context_);
+    out_buffer.Destroy(device_context_);
+    compute_pipeline.Destroy(device_context_);
+    compute_shader_pipeline.Destroy(device_context_);
+    double_ints_cs.Destroy(device_context_);
     vkDestroyFence(device_, compute_done_fence, host_allocator_);
     vkDestroyCommandPool(device_, cpool, host_allocator_);
 
@@ -154,7 +154,7 @@ public:
   ComputeApp(const ComputeApp&) = delete;
   const ComputeApp& operator=(const ComputeApp&) = delete;
 
-  void render(VkCommandBuffer, uint32_t) override {
+  void Render(VkCommandBuffer, uint32_t) override {
     // nothing to do in a compute sample
   }
 };
@@ -171,7 +171,7 @@ int main(int argc, char *argv[]) {
   app_ci.enable_graphics = false;
 
   ComputeApp app(app_ci);
-  int run_error = app.run();
+  int run_error = app.Run();
 
   return run_error;
 }

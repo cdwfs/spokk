@@ -43,7 +43,7 @@ public:
   }
   ~InputState() = default;
 
-  void set_window(const std::shared_ptr<GLFWwindow>& window) {
+  void SetWindow(const std::shared_ptr<GLFWwindow>& window) {
     window_ = window;
   }
 
@@ -128,15 +128,15 @@ public:
   Application(const Application&) = delete;
   const Application& operator=(const Application&) = delete;
 
-  int run();
+  int Run();
 
-  virtual void update(double dt);
-  virtual void render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) = 0;
+  virtual void Update(double dt);
+  virtual void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) = 0;
 
 protected:
-  bool is_instance_layer_enabled(const std::string& layer_name) const;
-  bool is_instance_extension_enabled(const std::string& layer_name) const;
-  bool is_device_extension_enabled(const std::string& layer_name) const;
+  bool IsInstanceLayerEnabled(const std::string& layer_name) const;
+  bool IsInstanceExtensionEnabled(const std::string& layer_name) const;
+  bool IsDeviceExtensionEnabled(const std::string& layer_name) const;
 
   const VkAllocationCallbacks *host_allocator_ = nullptr;
   const DeviceAllocationCallbacks *device_allocator_ = nullptr;

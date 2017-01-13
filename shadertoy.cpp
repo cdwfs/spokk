@@ -44,16 +44,16 @@ public:
     seconds_elapsed_ = 0;
 
     // Create render pass
-    render_pass_.init_from_preset(RenderPass::Preset::COLOR, swapchain_surface_format_.format);
+    render_pass_.InitFromPreset(RenderPass::Preset::COLOR, swapchain_surface_format_.format);
     // Customize
     render_pass_.attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    SPOKK_VK_CHECK(render_pass_.finalize_and_create(device_context_));
+    SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
 
     // Create VkFramebuffers
     std::vector<VkImageView> attachment_views = {
       VK_NULL_HANDLE, // filled in below
     };
-    VkFramebufferCreateInfo framebuffer_ci = render_pass_.get_framebuffer_ci(swapchain_extent_);
+    VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(swapchain_extent_);
     framebuffer_ci.pAttachments = attachment_views.data();
     framebuffers_.resize(swapchain_image_views_.size());
     for(size_t i=0; i<swapchain_image_views_.size(); ++i) {
@@ -62,23 +62,23 @@ public:
     }
 
     // Load textures and samplers
-    VkSamplerCreateInfo sampler_ci = get_sampler_ci(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     for(auto& sampler : samplers_) {
       SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler));
     }
     image_loader_ = my_make_unique<ImageLoader>(device_context_);
     // TODO(cort): replace with some actual ShaderToy textures
-    SPOKK_VK_CHECK(textures_[0].create_and_load(device_context_, *image_loader_.get(), "trevor/noise.dds"));
-    SPOKK_VK_CHECK(textures_[1].create_and_load(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
-    SPOKK_VK_CHECK(textures_[2].create_and_load(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
-    SPOKK_VK_CHECK(textures_[3].create_and_load(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
+    SPOKK_VK_CHECK(textures_[0].CreateAndLoad(device_context_, *image_loader_.get(), "trevor/noise.dds"));
+    SPOKK_VK_CHECK(textures_[1].CreateAndLoad(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
+    SPOKK_VK_CHECK(textures_[2].CreateAndLoad(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
+    SPOKK_VK_CHECK(textures_[3].CreateAndLoad(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
 
     // Load shader pipelines
-    SPOKK_VK_CHECK(fullscreen_tri_vs_.create_and_load_spv_file(device_context_, "fullscreen.vert.spv"));
-    SPOKK_VK_CHECK(shadertoy_fs_.create_and_load_spv_file(device_context_, "shadertoy.frag.spv"));
-    SPOKK_VK_CHECK(shader_pipeline_.add_shader(&fullscreen_tri_vs_));
-    SPOKK_VK_CHECK(shader_pipeline_.add_shader(&shadertoy_fs_));
-    SPOKK_VK_CHECK(shader_pipeline_.finalize(device_context_));
+    SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_context_, "fullscreen.vert.spv"));
+    SPOKK_VK_CHECK(shadertoy_fs_.CreateAndLoadSpirvFile(device_context_, "shadertoy.frag.spv"));
+    SPOKK_VK_CHECK(shader_pipeline_.AddShader(&fullscreen_tri_vs_));
+    SPOKK_VK_CHECK(shader_pipeline_.AddShader(&shadertoy_fs_));
+    SPOKK_VK_CHECK(shader_pipeline_.Finalize(device_context_));
 
     // Create uniform buffer
     VkBufferCreateInfo uniform_buffer_ci = {};
@@ -86,30 +86,30 @@ public:
     uniform_buffer_ci.size = sizeof(ShaderToyUniforms);
     uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(uniform_buffer_.create(device_context_, PFRAME_COUNT, uniform_buffer_ci));
+    SPOKK_VK_CHECK(uniform_buffer_.Create(device_context_, PFRAME_COUNT, uniform_buffer_ci));
 
-    SPOKK_VK_CHECK(pipeline_.create(device_context_,
-      MeshFormat::get_empty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+    SPOKK_VK_CHECK(pipeline_.Create(device_context_,
+      MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
       &shader_pipeline_, &render_pass_, 0));
     for(const auto& dset_layout_ci : shader_pipeline_.dset_layout_cis) {
-      dpool_.add(dset_layout_ci, PFRAME_COUNT);
+      dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
-    SPOKK_VK_CHECK(dpool_.finalize(device_context_));
+    SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
     DescriptorSetWriter dset_writer(shader_pipeline_.dset_layout_cis[0]);
     for(uint32_t iTex = 0; iTex < (uint32_t)textures_.size(); ++iTex) {
-      dset_writer.bind_image(textures_[iTex].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], iTex);
+      dset_writer.BindImage(textures_[iTex].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], iTex);
     }
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      dsets_[pframe] = dpool_.allocate_set(device_context_, shader_pipeline_.dset_layouts[0]);
-      dset_writer.bind_buffer(uniform_buffer_.handle(pframe), 0, VK_WHOLE_SIZE, 4);
-      dset_writer.write_all_to_dset(device_context_, dsets_[pframe]);
+      dsets_[pframe] = dpool_.AllocateSet(device_context_, shader_pipeline_.dset_layouts[0]);
+      dset_writer.BindBuffer(uniform_buffer_.Handle(pframe), 0, VK_WHOLE_SIZE, 4);
+      dset_writer.WriteAll(device_context_, dsets_[pframe]);
     }
 
     // Spawn the shader-watcher thread, to set a shared bool whenever the contents of the shader
     // directory change.
     swap_shader_.store(false);
 
-    shader_reloader_thread_ = std::thread(&ShaderToyApp::watch_shader_dir, this, "..");
+    shader_reloader_thread_ = std::thread(&ShaderToyApp::WatchShaderDir, this, "..");
   }
   virtual ~ShaderToyApp() {
     if (device_) {
@@ -117,23 +117,23 @@ public:
 
       vkDeviceWaitIdle(device_);
 
-      dpool_.destroy(device_context_);
+      dpool_.Destroy(device_context_);
 
-      uniform_buffer_.destroy(device_context_);
+      uniform_buffer_.Destroy(device_context_);
 
-      pipeline_.destroy(device_context_);
+      pipeline_.Destroy(device_context_);
 
-      shader_pipeline_.destroy(device_context_);
-      fullscreen_tri_vs_.destroy(device_context_);
-      shadertoy_fs_.destroy(device_context_);
+      shader_pipeline_.Destroy(device_context_);
+      fullscreen_tri_vs_.Destroy(device_context_);
+      shadertoy_fs_.Destroy(device_context_);
 
       for(const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
       }
-      render_pass_.destroy(device_context_);
+      render_pass_.Destroy(device_context_);
 
       for(auto& image : textures_) {
-        image.destroy(device_context_);
+        image.Destroy(device_context_);
       }
       for(auto sampler : samplers_) {
         vkDestroySampler(device_, sampler, host_allocator_);
@@ -145,8 +145,8 @@ public:
   ShaderToyApp(const ShaderToyApp&) = delete;
   const ShaderToyApp& operator=(const ShaderToyApp&) = delete;
 
-  void update(double dt) override {
-    Application::update(dt);
+  void Update(double dt) override {
+    Application::Update(dt);
     seconds_elapsed_ += dt;
 
     // Reload shaders, if necessary
@@ -155,9 +155,9 @@ public:
     if (reload) {
       // If we get this far, it's time to replace the existing pipeline
       vkDeviceWaitIdle(device_);
-      pipeline_.destroy(device_context_);
-      shader_pipeline_.destroy(device_context_);
-      shadertoy_fs_.destroy(device_context_);
+      pipeline_.Destroy(device_context_);
+      shader_pipeline_.Destroy(device_context_);
+      shadertoy_fs_.Destroy(device_context_);
       shadertoy_fs_ = staging_fs_;
       shader_pipeline_ = staging_shader_pipeline_;
       pipeline_ = staging_pipeline_;
@@ -179,8 +179,8 @@ public:
     float mday = (float)cal->tm_mday;
     float dsec = (float)(cal->tm_hour * 3600 + cal->tm_min * 60 + cal->tm_sec);
 
-    viewport_ = vk_extent_to_viewport(swapchain_extent_);
-    scissor_rect_ = vk_extent_to_rect2d(swapchain_extent_);
+    viewport_ = ExtentToViewport(swapchain_extent_);
+    scissor_rect_ = ExtentToRect2D(swapchain_extent_);
     uniforms_.iResolution = mathfu::vec3(viewport_.width, viewport_.height, 1.0f);
     uniforms_.iGlobalTime = (float)seconds_elapsed_;
     uniforms_.iTimeDelta = (float)dt;
@@ -196,10 +196,10 @@ public:
     uniforms_.iMouse = mathfu::vec4((float)mouse_x, (float)mouse_y, 0.0f, 0.0f);  // TODO(cort): mouse click tracking is TBI
     uniforms_.iDate = mathfu::vec4(year, month, mday, dsec);
     uniforms_.iSampleRate = 44100.0f;
-    uniform_buffer_.load(device_context_, pframe_index_, &uniforms_, sizeof(uniforms_));
+    uniform_buffer_.Load(device_context_, pframe_index_, &uniforms_, sizeof(uniforms_));
   }
 
-  void render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+  void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     VkRenderPassBeginInfo render_pass_begin_info = {};
     render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -221,18 +221,18 @@ public:
   }
 
 private:
-  void reload_shader() {
-    shaderc::SpvCompilationResult compile_result = shader_compiler_.compile_glsl_file(frag_shader_path);
+  void ReloadShader() {
+    shaderc::SpvCompilationResult compile_result = shader_compiler_.CompileGlslFile(frag_shader_path);
     if (compile_result.GetCompilationStatus() == shaderc_compilation_status_success) {
       Shader new_fs;
-      SPOKK_VK_CHECK(new_fs.create_and_load_compile_result(device_context_, compile_result));
+      SPOKK_VK_CHECK(new_fs.CreateAndLoadCompileResult(device_context_, compile_result));
       ShaderPipeline new_shader_pipeline;
-      SPOKK_VK_CHECK(new_shader_pipeline.add_shader(&fullscreen_tri_vs_));
-      SPOKK_VK_CHECK(new_shader_pipeline.add_shader(&new_fs));
-      SPOKK_VK_CHECK(new_shader_pipeline.finalize(device_context_));
+      SPOKK_VK_CHECK(new_shader_pipeline.AddShader(&fullscreen_tri_vs_));
+      SPOKK_VK_CHECK(new_shader_pipeline.AddShader(&new_fs));
+      SPOKK_VK_CHECK(new_shader_pipeline.Finalize(device_context_));
       GraphicsPipeline new_pipeline;
-      SPOKK_VK_CHECK(new_pipeline.create(device_context_,
-        MeshFormat::get_empty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+      SPOKK_VK_CHECK(new_pipeline.Create(device_context_,
+        MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
         &new_shader_pipeline, &render_pass_, 0));
       // Success!
       staging_fs_ = new_fs;
@@ -244,7 +244,7 @@ private:
       printf("%s\n", compile_result.GetErrorMessage().c_str());
     }
   }
-  void watch_shader_dir(const std::string dir_path) {
+  void WatchShaderDir(const std::string dir_path) {
 #ifdef _MSC_VER  // Detect changes using Windows change notification API
     std::wstring wpath(dir_path.begin(), dir_path.end()); // only works for ASCII input, but I'm okay with that.
     HANDLE dwChangeHandle = FindFirstChangeNotification(wpath.c_str(), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE);
@@ -258,7 +258,7 @@ private:
       if (!swap_shader_ && dwWaitStatus == WAIT_OBJECT_0 && localTime.wSecond != lastUpdateSeconds) {
         zomboSleepMsec(20); // Reloading immediately doesn't work; fopen() fails. Give it a little bit to resolve itself.
                            // Attempt to rebuild the shader and pipeline first
-        reload_shader();
+        ReloadShader();
         // Don't reload more than once a second
         lastUpdateSeconds = localTime.wSecond;
       }
@@ -284,7 +284,7 @@ private:
         }
         // printf("%s: 0x%08X\n", event->name, event->mask);
         if ((event->mask & IN_MODIFY) != 0) {
-          reload_shader();
+          ReloadShader();
           sleep(1);  // only process one reload per second.
         } else if ((event->mask & (IN_IGNORED | IN_UNMOUNT | IN_Q_OVERFLOW)) != 0) {
           ZOMBO_ERROR("inotify event mask (0x%08X) indicates something awful is afoot!", event->mask);
@@ -344,7 +344,7 @@ int main(int argc, char *argv[]) {
   app_ci.queue_family_requests = queue_requests;
 
   ShaderToyApp app(app_ci);
-  int run_error = app.run();
+  int run_error = app.Run();
 
   return run_error;
 }

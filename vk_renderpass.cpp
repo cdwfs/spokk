@@ -8,7 +8,7 @@ namespace spokk {
 //
 // RenderPass
 //
-void RenderPass::init_from_preset(Preset preset, VkFormat output_color_format) {
+void RenderPass::InitFromPreset(Preset preset, VkFormat output_color_format) {
   if (preset == Preset::COLOR) {
     attachment_descs.resize(1);
     attachment_descs[0].format = output_color_format;
@@ -172,7 +172,7 @@ void RenderPass::init_from_preset(Preset preset, VkFormat output_color_format) {
   }
 }
 
-VkResult RenderPass::finalize_and_create(const DeviceContext& device_context,
+VkResult RenderPass::Finalize(const DeviceContext& device_context,
   VkPipelineBindPoint bind_point, VkSubpassDescriptionFlags flags) {
   subpass_descs.resize(subpass_attachments.size());
   for(const auto& dep : subpass_dependencies) {
@@ -225,10 +225,10 @@ VkResult RenderPass::finalize_and_create(const DeviceContext& device_context,
   render_pass_ci.pSubpasses = subpass_descs.data();;
   render_pass_ci.dependencyCount = (uint32_t)subpass_dependencies.size();
   render_pass_ci.pDependencies = subpass_dependencies.data();
-  return vkCreateRenderPass(device_context.device(), &render_pass_ci, device_context.host_allocator(), &handle);
+  return vkCreateRenderPass(device_context.Device(), &render_pass_ci, device_context.HostAllocator(), &handle);
 }
 
-VkImageCreateInfo RenderPass::get_attachment_image_ci(uint32_t attachment_index, const VkExtent2D& render_area) const {
+VkImageCreateInfo RenderPass::GetAttachmentImageCreateInfo(uint32_t attachment_index, const VkExtent2D& render_area) const {
   VkImageCreateInfo ci = {};
   if (handle != VK_NULL_HANDLE && attachment_index < (uint32_t)attachment_descs.size()) {
     ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -271,7 +271,7 @@ VkImageCreateInfo RenderPass::get_attachment_image_ci(uint32_t attachment_index,
   }
   return ci;
 }
-VkImageViewCreateInfo RenderPass::get_attachment_image_view_ci(uint32_t attachment_index, VkImage image) const {
+VkImageViewCreateInfo RenderPass::GetAttachmentImageViewCreateInfo(uint32_t attachment_index, VkImage image) const {
   VkImageViewCreateInfo ci = {};
   if (handle != VK_NULL_HANDLE && attachment_index < (uint32_t)attachment_descs.size()) {
     ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -284,11 +284,11 @@ VkImageViewCreateInfo RenderPass::get_attachment_image_view_ci(uint32_t attachme
       VK_COMPONENT_SWIZZLE_IDENTITY,
       VK_COMPONENT_SWIZZLE_IDENTITY
     };
-    ci.subresourceRange.aspectMask = vk_format_to_image_aspect_flags(ci.format);
+    ci.subresourceRange.aspectMask = GetImageAspectFlags(ci.format);
   }
   return ci;
 }
-VkFramebufferCreateInfo RenderPass::get_framebuffer_ci(const VkExtent2D& render_area) const {
+VkFramebufferCreateInfo RenderPass::GetFramebufferCreateInfo(const VkExtent2D& render_area) const {
   VkFramebufferCreateInfo ci = {};
   if (handle != VK_NULL_HANDLE) {
     ci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -302,8 +302,8 @@ VkFramebufferCreateInfo RenderPass::get_framebuffer_ci(const VkExtent2D& render_
   return ci;
 }
 
-void RenderPass::destroy(const DeviceContext& device_context) {
-  vkDestroyRenderPass(device_context.device(), handle, device_context.host_allocator());
+void RenderPass::Destroy(const DeviceContext& device_context) {
+  vkDestroyRenderPass(device_context.Device(), handle, device_context.HostAllocator());
   handle = VK_NULL_HANDLE;
 }
 

@@ -10,21 +10,23 @@ namespace spokk {
 
 struct ComputePipeline {
   ComputePipeline();
-  VkResult create(const DeviceContext& device_context, const ShaderPipeline *shader_pipeline, bool defer_pipeline_creation = false);
-  void destroy(const DeviceContext& device_context);
+
+  VkResult Create(const DeviceContext& device_context, const ShaderPipeline *shader_pipeline, bool defer_pipeline_creation = false);
+  void Destroy(const DeviceContext& device_context);
+
   VkPipeline handle;
-
   const ShaderPipeline *shader_pipeline;
-
   VkComputePipelineCreateInfo ci;
 };
 
 struct GraphicsPipeline {
   GraphicsPipeline();
-  VkResult create(const DeviceContext& device_context, const MeshFormat *mesh_format, const ShaderPipeline *shader_pipeline, const RenderPass *render_pass, uint32_t subpass,
+
+  VkResult Create(const DeviceContext& device_context, const MeshFormat *mesh_format, const ShaderPipeline *shader_pipeline, const RenderPass *render_pass, uint32_t subpass,
     const std::vector<VkDynamicState> dynamic_states = {VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_VIEWPORT},
     const VkViewport viewport = {}, const VkRect2D scissor_rect = {}, bool defer_pipeline_creation = false);
-  void destroy(const DeviceContext& device_context);
+  void Destroy(const DeviceContext& device_context);
+
   VkPipeline handle;
 
   const MeshFormat *mesh_format;
@@ -44,8 +46,6 @@ struct GraphicsPipeline {
   std::vector<VkPipelineColorBlendAttachmentState> color_blend_attachment_states;
   VkPipelineDynamicStateCreateInfo dynamic_state_ci;
 };
-
-
 
 }  // namespace spokk
 

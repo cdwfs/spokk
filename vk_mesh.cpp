@@ -4,10 +4,8 @@
 
 namespace spokk {
 
-//
-// MeshFormat
-//
-static const std::array<MeshFormat, VK_PRIMITIVE_TOPOLOGY_RANGE_SIZE * 2> g_empty_mesh_formats = {{
+namespace {
+const std::array<MeshFormat, VK_PRIMITIVE_TOPOLOGY_RANGE_SIZE * 2> g_empty_mesh_formats = {{
     // Primitive restart disabled
   { {}, {}, {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,nullptr,0, 0,nullptr, 0,nullptr}, {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,nullptr,0, VK_PRIMITIVE_TOPOLOGY_POINT_LIST, VK_FALSE} },
   { {}, {}, {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,nullptr,0, 0,nullptr, 0,nullptr}, {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,nullptr,0, VK_PRIMITIVE_TOPOLOGY_LINE_LIST, VK_FALSE} },
@@ -33,7 +31,12 @@ static const std::array<MeshFormat, VK_PRIMITIVE_TOPOLOGY_RANGE_SIZE * 2> g_empt
   { {}, {}, {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,nullptr,0, 0,nullptr, 0,nullptr}, {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,nullptr,0, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY, VK_TRUE} },
   { {}, {}, {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,nullptr,0, 0,nullptr, 0,nullptr}, {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,nullptr,0, VK_PRIMITIVE_TOPOLOGY_PATCH_LIST, VK_TRUE} },
   }};
-const MeshFormat* MeshFormat::get_empty(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart) {
+}  // namespace
+
+//
+// MeshFormat
+//
+const MeshFormat* MeshFormat::GetEmpty(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart) {
   uint32_t index = topology;
   if (enable_primitive_restart) {
     index += VK_PRIMITIVE_TOPOLOGY_RANGE_SIZE;
@@ -41,7 +44,7 @@ const MeshFormat* MeshFormat::get_empty(VkPrimitiveTopology topology, VkBool32 e
   return &g_empty_mesh_formats[index];
 }
 
-void MeshFormat::finalize(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart) {
+void MeshFormat::Finalize(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart) {
   vertex_input_state_ci = {};
   vertex_input_state_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
   vertex_input_state_ci.vertexBindingDescriptionCount = (uint32_t)vertex_buffer_bindings.size();

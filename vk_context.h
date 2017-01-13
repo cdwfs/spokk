@@ -36,31 +36,31 @@ public:
     const VkAllocationCallbacks *host_allocator = nullptr, const DeviceAllocationCallbacks *device_allocator = nullptr);
   ~DeviceContext();
 
-  VkDevice device() const { return device_; }
-  VkPhysicalDevice physical_device() const { return physical_device_; }
-  VkPipelineCache pipeline_cache() const { return pipeline_cache_; }
-  const VkAllocationCallbacks* host_allocator() const { return host_allocator_; }
-  const DeviceAllocationCallbacks *device_allocator() const { return device_allocator_; }
+  VkDevice Device() const { return device_; }
+  VkPhysicalDevice PhysicalDevice() const { return physical_device_; }
+  VkPipelineCache PipelineCache() const { return pipeline_cache_; }
+  const VkAllocationCallbacks* HostAllocator() const { return host_allocator_; }
+  const DeviceAllocationCallbacks *DeviceAllocator() const { return device_allocator_; }
 
-  const VkPhysicalDeviceProperties& device_properties() const { return device_properties_; }
+  const VkPhysicalDeviceProperties& DeviceProperties() const { return device_properties_; }
 
-  const DeviceQueue* find_queue(VkQueueFlags queue_flags, VkSurfaceKHR present_surface = VK_NULL_HANDLE) const;
+  const DeviceQueue* FindQueue(VkQueueFlags queue_flags, VkSurfaceKHR present_surface = VK_NULL_HANDLE) const;
 
-  uint32_t find_memory_type_index(const VkMemoryRequirements &memory_reqs,
+  uint32_t FindMemoryTypeIndex(const VkMemoryRequirements &memory_reqs,
     VkMemoryPropertyFlags memory_properties_mask) const;
-  VkMemoryPropertyFlags memory_type_properties(uint32_t memory_type_index) const;
+  VkMemoryPropertyFlags MemoryTypeProperties(uint32_t memory_type_index) const;
 
-  DeviceMemoryAllocation device_alloc(const VkMemoryRequirements &mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
+  DeviceMemoryAllocation DeviceAlloc(const VkMemoryRequirements &mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
     DeviceAllocationScope scope) const;
-  void device_free(DeviceMemoryAllocation allocation) const;
+  void DeviceFree(DeviceMemoryAllocation allocation) const;
   // Additional shortcuts for the most common device memory allocations
-  DeviceMemoryAllocation device_alloc_and_bind_to_image(VkImage image, VkMemoryPropertyFlags memory_properties_mask,
+  DeviceMemoryAllocation DeviceAllocAndBindToImage(VkImage image, VkMemoryPropertyFlags memory_properties_mask,
     DeviceAllocationScope scope) const;
-  DeviceMemoryAllocation device_alloc_and_bind_to_buffer(VkBuffer buffer, VkMemoryPropertyFlags memory_properties_mask,
+  DeviceMemoryAllocation DeviceAllocAndBindToBuffer(VkBuffer buffer, VkMemoryPropertyFlags memory_properties_mask,
     DeviceAllocationScope scope) const;
 
-  void *host_alloc(size_t size, size_t alignment, VkSystemAllocationScope scope) const;
-  void host_free(void *ptr) const;
+  void *HostAlloc(size_t size, size_t alignment, VkSystemAllocationScope scope) const;
+  void HostFree(void *ptr) const;
 
 private:
   // cached Vulkan handles; do not destroy!

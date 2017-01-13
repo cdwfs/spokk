@@ -11,36 +11,36 @@ namespace spokk {
 DeviceMemoryBlock::~DeviceMemoryBlock() {
   assert(handle_ == VK_NULL_HANDLE);  // call free() before deleting!
 }
-VkResult DeviceMemoryBlock::allocate(const DeviceContext& device_context, const VkMemoryAllocateInfo &alloc_info) {
+VkResult DeviceMemoryBlock::Allocate(const DeviceContext& device_context, const VkMemoryAllocateInfo &alloc_info) {
   assert(handle_ == VK_NULL_HANDLE);
-  VkResult result = vkAllocateMemory(device_context.device(), &alloc_info, device_context.host_allocator(), &handle_);
+  VkResult result = vkAllocateMemory(device_context.Device(), &alloc_info, device_context.HostAllocator(), &handle_);
   if (result == VK_SUCCESS) {
     info_ = alloc_info;
-    device_ = device_context.device();
-    VkMemoryPropertyFlags properties = device_context.memory_type_properties(alloc_info.memoryTypeIndex);
+    device_ = device_context.Device();
+    VkMemoryPropertyFlags properties = device_context.MemoryTypeProperties(alloc_info.memoryTypeIndex);
     if (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-      result = vkMapMemory(device_context.device(), handle_, 0, VK_WHOLE_SIZE, 0, &mapped_);
+      result = vkMapMemory(device_context.Device(), handle_, 0, VK_WHOLE_SIZE, 0, &mapped_);
     } else {
       mapped_ = nullptr;
     }
   }
   return result;
 }
-void DeviceMemoryBlock::free(const DeviceContext& device_context) {
+void DeviceMemoryBlock::Free(const DeviceContext& device_context) {
   if (handle_ != VK_NULL_HANDLE) {
-    assert(device_context.device() == device_);
-    vkFreeMemory(device_context.device(), handle_, device_context.host_allocator());
+    assert(device_context.Device() == device_);
+    vkFreeMemory(device_context.Device(), handle_, device_context.HostAllocator());
     handle_ = VK_NULL_HANDLE;
     mapped_ = nullptr;
   }
 }
 
-void DeviceMemoryBlock::invalidate_host_cache(const VkMappedMemoryRange& range) const {
+void DeviceMemoryBlock::InvalidateHostCache(const VkMappedMemoryRange& range) const {
   if (mapped_ != nullptr) {
     vkInvalidateMappedMemoryRanges(device_, 1, &range);
   }
 }
-void DeviceMemoryBlock::flush_host_cache(const VkMappedMemoryRange& range) const {
+void DeviceMemoryBlock::FlushHostCache(const VkMappedMemoryRange& range) const {
   if (mapped_ != nullptr) {
     vkFlushMappedMemoryRanges(device_, 1, &range);
   }
@@ -50,21 +50,21 @@ void DeviceMemoryBlock::flush_host_cache(const VkMappedMemoryRange& range) const
 //
 // DeviceMemoryAllocation
 //
-void DeviceMemoryAllocation::invalidate_host_caches() const {
+void DeviceMemoryAllocation::InvalidateHostCache() const {
   VkMappedMemoryRange range = {};
   range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-  range.memory = block->handle();
+  range.memory = block->Handle();
   range.offset = offset;
   range.size = size;
-  block->invalidate_host_cache(range);
+  block->InvalidateHostCache(range);
 }
-void DeviceMemoryAllocation::flush_host_caches() const {
+void DeviceMemoryAllocation::FlushHostCache() const {
   VkMappedMemoryRange range = {};
   range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-  range.memory = block->handle();
+  range.memory = block->Handle();
   range.offset = offset;
   range.size = size;
-  block->flush_host_cache(range);
+  block->FlushHostCache(range);
 }
 
 }  // namespace spokk
