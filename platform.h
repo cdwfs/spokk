@@ -1,6 +1,7 @@
 #pragma once
 /* Collection of cross-platform functions and macros */
 
+// clang-format off
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -330,3 +331,4 @@ ZOMBO_DEF ZOMBO_INLINE FILE *zomboFopen(const char *path, const char *mode)
 #ifdef __cplusplus
 }
 #endif
+// clang-format on

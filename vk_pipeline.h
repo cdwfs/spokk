@@ -13,12 +13,12 @@ struct ComputePipeline {
   ComputePipeline(const ComputePipeline& rhs) = delete;
   ComputePipeline& operator=(const ComputePipeline& rhs) = delete;
 
-  void Init(const ShaderProgram *shader_program);
+  void Init(const ShaderProgram* shader_program);
   VkResult Finalize(const DeviceContext& device_context);
   void Destroy(const DeviceContext& device_context);
 
   VkPipeline handle;
-  const ShaderProgram *shader_program;
+  const ShaderProgram* shader_program;
   VkComputePipelineCreateInfo ci;
 };
 
@@ -27,17 +27,18 @@ struct GraphicsPipeline {
   GraphicsPipeline(const GraphicsPipeline& rhs) = delete;
   GraphicsPipeline& operator=(const GraphicsPipeline& rhs) = delete;
 
-  void Init(const MeshFormat *mesh_format, const ShaderProgram *shader_program, const RenderPass *render_pass, uint32_t subpass,
-    const std::vector<VkDynamicState> dynamic_states = {VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_VIEWPORT},
-    const VkViewport viewport = {}, const VkRect2D scissor_rect = {});
+  void Init(const MeshFormat* mesh_format, const ShaderProgram* shader_program, const RenderPass* render_pass,
+      uint32_t subpass,
+      const std::vector<VkDynamicState> dynamic_states = {VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_VIEWPORT},
+      const VkViewport viewport = {}, const VkRect2D scissor_rect = {});
   VkResult Finalize(const DeviceContext& device_context);
   void Destroy(const DeviceContext& device_context);
 
   VkPipeline handle;
 
-  const MeshFormat *mesh_format;
-  const ShaderProgram *shader_program;
-  const RenderPass *render_pass;
+  const MeshFormat* mesh_format;
+  const ShaderProgram* shader_program;
+  const RenderPass* render_pass;
   uint32_t subpass;
   std::vector<VkDynamicState> dynamic_states;
 

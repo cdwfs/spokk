@@ -3,20 +3,19 @@
 #include "vk_utilities.h"
 using namespace spokk;
 
-#include <mathfu/vector.h>
 #include <mathfu/glsl_mappings.h>
+#include <mathfu/vector.h>
 
 #include <array>
 #include <cstdio>
 
 namespace {
-  constexpr uint32_t BUXEL_COUNT = 8192;
+constexpr uint32_t BUXEL_COUNT = 8192;
 }
 
 class ComputeApp : public spokk::Application {
 public:
-  explicit ComputeApp(Application::CreateInfo &ci) :
-      Application(ci) {
+  explicit ComputeApp(Application::CreateInfo &ci) : Application(ci) {
     // Find a compute queue
     const DeviceQueue *compute_queue = device_context_.FindQueue(VK_QUEUE_COMPUTE_BIT);
 
@@ -36,7 +35,7 @@ public:
     SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, &cb));
 
     std::array<int32_t, BUXEL_COUNT> in_data, out_ref;
-    for(size_t iBuxel=0; iBuxel<BUXEL_COUNT; ++iBuxel) {
+    for (size_t iBuxel = 0; iBuxel < BUXEL_COUNT; ++iBuxel) {
       in_data[iBuxel] = (int32_t)iBuxel;
       out_ref[iBuxel] = (int32_t)iBuxel * 2;
     }
@@ -81,7 +80,7 @@ public:
     VkCommandBufferBeginInfo cb_begin_info = {};
     cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info) );
+    SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info));
 
     VkBufferMemoryBarrier buffer_barriers[2] = {};
     buffer_barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -100,35 +99,35 @@ public:
     buffer_barriers[1].buffer = out_buffer.Handle();
     buffer_barriers[1].offset = 0;
     buffer_barriers[1].size = VK_WHOLE_SIZE;
-    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-      0,nullptr, 2,buffer_barriers, 0,nullptr);
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 2,
+        buffer_barriers, 0, nullptr);
 
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline.handle);
-    vkCmdBindDescriptorSets (cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_shader_program.pipeline_layout,
-      0, 1, &dset, 0,nullptr);
-    vkCmdDispatch(cb, BUXEL_COUNT,1,1);
+    vkCmdBindDescriptorSets(
+        cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_shader_program.pipeline_layout, 0, 1, &dset, 0, nullptr);
+    vkCmdDispatch(cb, BUXEL_COUNT, 1, 1);
 
     buffer_barriers[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     buffer_barriers[1].srcAccessMask = VK_ACCESS_HOST_READ_BIT;
-    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0,
-      0,nullptr, 1,&buffer_barriers[1], 0,nullptr);
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1,
+        &buffer_barriers[1], 0, nullptr);
 
-    SPOKK_VK_CHECK( vkEndCommandBuffer(cb) );
+    SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
     VkSubmitInfo submit_info = {};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &cb;
-    SPOKK_VK_CHECK( vkQueueSubmit(compute_queue->handle, 1, &submit_info, compute_done_fence) );
+    SPOKK_VK_CHECK(vkQueueSubmit(compute_queue->handle, 1, &submit_info, compute_done_fence));
 
     SPOKK_VK_CHECK(vkWaitForFences(device_, 1, &compute_done_fence, VK_TRUE, UINT64_MAX));
     out_buffer.InvalidateHostCache();
 
-    const int32_t *out_data = (const int32_t*)out_buffer.Mapped();
+    const int32_t *out_data = (const int32_t *)out_buffer.Mapped();
     bool valid = true;
-    for(uint32_t iBuxel=0; iBuxel<(uint32_t)out_ref.size(); ++iBuxel) {
+    for (uint32_t iBuxel = 0; iBuxel < (uint32_t)out_ref.size(); ++iBuxel) {
       if (out_data[iBuxel] != out_ref[iBuxel]) {
-        fprintf(stderr, "ERROR: in[%4d]=%4d, out[%4d]]%4d, ref[%4d]=%4d\n",
-          iBuxel, in_data[iBuxel], iBuxel, out_data[iBuxel], iBuxel, out_ref[iBuxel]);
+        fprintf(stderr, "ERROR: in[%4d]=%4d, out[%4d]]%4d, ref[%4d]=%4d\n", iBuxel, in_data[iBuxel], iBuxel,
+            out_data[iBuxel], iBuxel, out_ref[iBuxel]);
         valid = false;
       }
     }
@@ -148,11 +147,10 @@ public:
 
     force_exit_ = true;
   }
-  virtual ~ComputeApp() {
-  }
+  virtual ~ComputeApp() {}
 
-  ComputeApp(const ComputeApp&) = delete;
-  const ComputeApp& operator=(const ComputeApp&) = delete;
+  ComputeApp(const ComputeApp &) = delete;
+  const ComputeApp &operator=(const ComputeApp &) = delete;
 
   void Render(VkCommandBuffer, uint32_t) override {
     // nothing to do in a compute sample
@@ -164,8 +162,7 @@ int main(int argc, char *argv[]) {
   (void)argv;
 
   std::vector<Application::QueueFamilyRequest> queue_requests = {
-    {(VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT), true, 1, 0.0f}
-  };
+      {(VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT), true, 1, 0.0f}};
   Application::CreateInfo app_ci = {};
   app_ci.queue_family_requests = queue_requests;
   app_ci.enable_graphics = false;

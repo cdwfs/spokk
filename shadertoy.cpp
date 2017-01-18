@@ -4,12 +4,12 @@ using namespace spokk;
 
 #include "platform.h"
 
-#include <mathfu/vector.h>
 #include <mathfu/glsl_mappings.h>
+#include <mathfu/vector.h>
 
 #if defined(__linux__)
-# include <sys/inotify.h>
-# include <limits.h>
+#include <limits.h>
+#include <sys/inotify.h>
 #endif  // defined(__linux__)
 
 #include <array>
@@ -57,23 +57,23 @@ void main() {
 )glsl";
 
 struct ShaderToyUniforms {
-  mathfu::vec4_packed iResolution; // xyz: viewport resolution (in pixels), w: unused
-  mathfu::vec4_packed iChannelTime[4];       // x: channel playback time (in seconds), yzw: unused
-  mathfu::vec4_packed iChannelResolution[4]; // xyz: channel resolution (in pixels)
-  mathfu::vec4_packed iMouse;      // mouse pixel coords. xy: current (if MLB down), zw: click
-  mathfu::vec4_packed iDate;       // (year, month, day, time in seconds)
-  float     iGlobalTime;           // shader playback time (in seconds)
-  float     iTimeDelta;            // render time (in seconds)
-  int       iFrame;                // shader playback frame
-  float     iSampleRate;           // sound sample rate (i.e., 44100
+  mathfu::vec4_packed iResolution;  // xyz: viewport resolution (in pixels), w: unused
+  mathfu::vec4_packed iChannelTime[4];  // x: channel playback time (in seconds), yzw: unused
+  mathfu::vec4_packed iChannelResolution[4];  // xyz: channel resolution (in pixels)
+  mathfu::vec4_packed iMouse;  // mouse pixel coords. xy: current (if MLB down), zw: click
+  mathfu::vec4_packed iDate;  // (year, month, day, time in seconds)
+  float iGlobalTime;  // shader playback time (in seconds)
+  float iTimeDelta;  // render time (in seconds)
+  int iFrame;  // shader playback frame
+  float iSampleRate;  // sound sample rate (i.e., 44100
 };
 
-mathfu::vec2 click_pos(0,0);
+mathfu::vec2 click_pos(0, 0);
 void MyGlfwMouseButtonCallback(GLFWwindow* window, int button, int action, int /*mods*/) {
   if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
     double mouse_x, mouse_y;
     glfwGetCursorPos(window, &mouse_x, &mouse_y);
-    click_pos = mathfu::vec2( (float)mouse_x, (float)mouse_y );
+    click_pos = mathfu::vec2((float)mouse_x, (float)mouse_y);
   }
 }
 
@@ -81,11 +81,10 @@ void MyGlfwMouseButtonCallback(GLFWwindow* window, int button, int action, int /
 
 class ShaderToyApp : public spokk::Application {
 public:
-  explicit ShaderToyApp(Application::CreateInfo &ci) :
-      Application(ci) {
+  explicit ShaderToyApp(Application::CreateInfo& ci) : Application(ci) {
     seconds_elapsed_ = 0;
 
-    mouse_pos_ = mathfu::vec2(0,0);
+    mouse_pos_ = mathfu::vec2(0, 0);
     glfwSetMouseButtonCallback(window_.get(), MyGlfwMouseButtonCallback);
 
     empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
@@ -97,21 +96,22 @@ public:
     SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
 
     // Load textures and samplers
-    VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
-    for(auto& sampler : samplers_) {
+    VkSamplerCreateInfo sampler_ci =
+        GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    for (auto& sampler : samplers_) {
       SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler));
     }
-    for(size_t i=0; i<textures_.size(); ++i) {
+    for (size_t i = 0; i < textures_.size(); ++i) {
       char filename[17];
       zomboSnprintf(filename, 17, "data/tex%02u.ktx", (uint32_t)i);
       ZOMBO_ASSERT(0 == textures_[i].CreateFromFile(device_context_, graphics_and_present_queue_, filename, VK_FALSE),
-        "Failed to load %s", filename);
+          "Failed to load %s", filename);
     }
-    for(size_t i=0; i<cubemaps_.size(); ++i) {
+    for (size_t i = 0; i < cubemaps_.size(); ++i) {
       char filename[18];
       zomboSnprintf(filename, 18, "data/cube%02u.ktx", (uint32_t)i);
       ZOMBO_ASSERT(0 == cubemaps_[i].CreateFromFile(device_context_, graphics_and_present_queue_, filename, VK_FALSE),
-        "Failed to load %s", filename);
+          "Failed to load %s", filename);
     }
     active_images_[0] = &textures_[15];
     active_images_[1] = &cubemaps_[2];
@@ -133,20 +133,20 @@ public:
     uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(uniform_buffer_.Create(device_context_, PFRAME_COUNT, uniform_buffer_ci));
 
-    for(const auto& dset_layout_ci : shader_programs_[active_pipeline_index_].dset_layout_cis) {
+    for (const auto& dset_layout_ci : shader_programs_[active_pipeline_index_].dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
     SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
-    
+
     // Create swapchain-sized resources.
     CreateRenderBuffers(swapchain_extent_);
-    
+
     DescriptorSetWriter dset_writer(shader_programs_[active_pipeline_index_].dset_layout_cis[0]);
-    for(size_t iTex = 0; iTex < active_images_.size(); ++iTex) {
-      dset_writer.BindCombinedImageSampler(active_images_[iTex]->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        samplers_[iTex], (uint32_t)iTex);
+    for (size_t iTex = 0; iTex < active_images_.size(); ++iTex) {
+      dset_writer.BindCombinedImageSampler(
+          active_images_[iTex]->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], (uint32_t)iTex);
     }
-    for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
+    for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dsets_[pframe] = dpool_.AllocateSet(device_context_, shader_programs_[active_pipeline_index_].dset_layouts[0]);
       dset_writer.BindBuffer(uniform_buffer_.Handle(pframe), 4);
       dset_writer.WriteAll(device_context_, dsets_[pframe]);
@@ -160,7 +160,8 @@ public:
   }
   virtual ~ShaderToyApp() {
     if (device_) {
-      shader_reloader_thread_.detach();  // TODO(https://github.com/cdwfs/spokk/issues/15) Getting occasional crahes here; graceful exit?
+      // TODO(https://github.com/cdwfs/spokk/issues/15) Getting occasional crahes here; graceful exit?
+      shader_reloader_thread_.detach();  
 
       vkDeviceWaitIdle(device_);
 
@@ -177,18 +178,18 @@ public:
       fragment_shaders_[0].Destroy(device_context_);
       fragment_shaders_[1].Destroy(device_context_);
 
-      for(const auto fb : framebuffers_) {
+      for (const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
       }
       render_pass_.Destroy(device_context_);
 
-      for(auto& image : textures_) {
+      for (auto& image : textures_) {
         image.Destroy(device_context_);
       }
-      for(auto& cube : cubemaps_) {
+      for (auto& cube : cubemaps_) {
         cube.Destroy(device_context_);
       }
-      for(auto sampler : samplers_) {
+      for (auto sampler : samplers_) {
         vkDestroySampler(device_, sampler, host_allocator_);
       }
     }
@@ -235,22 +236,14 @@ public:
     uniforms_.iChannelTime[1] = mathfu::vec4(1.0f, 0.0f, 0.0f, 0.0f);
     uniforms_.iChannelTime[2] = mathfu::vec4(2.0f, 0.0f, 0.0f, 0.0f);
     uniforms_.iChannelTime[3] = mathfu::vec4(3.0f, 0.0f, 0.0f, 0.0f);
-    uniforms_.iChannelResolution[0] = mathfu::vec4(
-      (float)active_images_[0]->image_ci.extent.width,
-      (float)active_images_[0]->image_ci.extent.height,
-      (float)active_images_[0]->image_ci.extent.depth, 0.0f);
-    uniforms_.iChannelResolution[1] = mathfu::vec4(
-      (float)active_images_[1]->image_ci.extent.width,
-      (float)active_images_[1]->image_ci.extent.height,
-      (float)active_images_[1]->image_ci.extent.depth, 0.0f);
-    uniforms_.iChannelResolution[2] = mathfu::vec4(
-      (float)active_images_[2]->image_ci.extent.width,
-      (float)active_images_[2]->image_ci.extent.height,
-      (float)active_images_[2]->image_ci.extent.depth, 0.0f);
-    uniforms_.iChannelResolution[3] = mathfu::vec4(
-      (float)active_images_[3]->image_ci.extent.width,
-      (float)active_images_[3]->image_ci.extent.height,
-      (float)active_images_[3]->image_ci.extent.depth, 0.0f);
+    uniforms_.iChannelResolution[0] = mathfu::vec4((float)active_images_[0]->image_ci.extent.width,
+        (float)active_images_[0]->image_ci.extent.height, (float)active_images_[0]->image_ci.extent.depth, 0.0f);
+    uniforms_.iChannelResolution[1] = mathfu::vec4((float)active_images_[1]->image_ci.extent.width,
+        (float)active_images_[1]->image_ci.extent.height, (float)active_images_[1]->image_ci.extent.depth, 0.0f);
+    uniforms_.iChannelResolution[2] = mathfu::vec4((float)active_images_[2]->image_ci.extent.width,
+        (float)active_images_[2]->image_ci.extent.height, (float)active_images_[2]->image_ci.extent.depth, 0.0f);
+    uniforms_.iChannelResolution[3] = mathfu::vec4((float)active_images_[3]->image_ci.extent.width,
+        (float)active_images_[3]->image_ci.extent.height, (float)active_images_[3]->image_ci.extent.depth, 0.0f);
     uniforms_.iGlobalTime = (float)seconds_elapsed_;
     uniforms_.iTimeDelta = (float)dt;
     uniforms_.iFrame = frame_index_;
@@ -266,12 +259,11 @@ public:
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
     vkCmdBeginRenderPass(primary_cb, &render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_[active_pipeline_index_].handle);
-    vkCmdSetViewport(primary_cb, 0,1, &viewport_);
-    vkCmdSetScissor(primary_cb, 0,1, &scissor_rect_);
+    vkCmdSetViewport(primary_cb, 0, 1, &viewport_);
+    vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect_);
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      pipelines_[active_pipeline_index_].shader_program->pipeline_layout,
-      0, 1, &dsets_[pframe_index_], 0, nullptr);
-    vkCmdDraw(primary_cb, 3, 1,0,0);
+        pipelines_[active_pipeline_index_].shader_program->pipeline_layout, 0, 1, &dsets_[pframe_index_], 0, nullptr);
+    vkCmdDraw(primary_cb, 3, 1, 0, 0);
     vkCmdEndRenderPass(primary_cb);
   }
 
@@ -279,7 +271,7 @@ protected:
   void HandleWindowResize(VkExtent2D new_window_extent) override {
     Application::HandleWindowResize(new_window_extent);
 
-    for(auto fb : framebuffers_) {
+    for (auto fb : framebuffers_) {
       if (fb != VK_NULL_HANDLE) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
       }
@@ -293,12 +285,12 @@ private:
   void CreateRenderBuffers(VkExtent2D extent) {
     // Create VkFramebuffers
     std::vector<VkImageView> attachment_views = {
-      VK_NULL_HANDLE, // filled in below
+        VK_NULL_HANDLE,  // filled in below
     };
     VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(extent);
     framebuffer_ci.pAttachments = attachment_views.data();
     framebuffers_.resize(swapchain_image_views_.size());
-    for(size_t i=0; i<swapchain_image_views_.size(); ++i) {
+    for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
       attachment_views[0] = swapchain_image_views_[i];
       SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
     }
@@ -306,14 +298,14 @@ private:
 
   void ReloadShader() {
     const char* image_types[4] = {
-      (active_images_[0]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
-      (active_images_[1]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
-      (active_images_[2]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
-      (active_images_[3]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
+        (active_images_[0]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
+        (active_images_[1]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
+        (active_images_[2]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
+        (active_images_[3]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
     };
-    int preamble_len = snprintf(nullptr, 0, frag_shader_preamble.c_str(),
-      image_types[0], image_types[1], image_types[2], image_types[3]);
-    FILE *frag_file = zomboFopen(frag_shader_path.c_str(), "rb");
+    int preamble_len = snprintf(
+        nullptr, 0, frag_shader_preamble.c_str(), image_types[0], image_types[1], image_types[2], image_types[3]);
+    FILE* frag_file = zomboFopen(frag_shader_path.c_str(), "rb");
     if (!frag_file) {
       // Load failed -- try again in a moment?
       zomboSleepMsec(1);
@@ -321,10 +313,11 @@ private:
     }
     fseek(frag_file, 0, SEEK_END);
     size_t frag_file_bytes = ftell(frag_file);
-    // TODO(https://github.com/cdwfs/spokk/issues/15): potential race condition here, if the file is modified between ftell and fread()
+    // TODO(https://github.com/cdwfs/spokk/issues/15): potential race condition here, if the file is modified between
+    // ftell and fread()
     std::vector<char> final_frag_source(preamble_len + frag_file_bytes);
-    zomboSnprintf(final_frag_source.data(), preamble_len, frag_shader_preamble.c_str(),
-      image_types[0], image_types[1], image_types[2], image_types[3]);
+    zomboSnprintf(final_frag_source.data(), preamble_len, frag_shader_preamble.c_str(), image_types[0], image_types[1],
+        image_types[2], image_types[3]);
     fseek(frag_file, 0, SEEK_SET);
     size_t bytes_read = fread(final_frag_source.data() + preamble_len - 1, 1, frag_file_bytes, frag_file);
     fclose(frag_file);
@@ -333,9 +326,9 @@ private:
       printf("Shader file changed in mid-reload; save again to be safe.\n");
       return;
     }
-    final_frag_source[final_frag_source.size()-1] = 0;
-    shaderc::SpvCompilationResult compile_result = shader_compiler_.CompileGlslString(final_frag_source.data(),
-      frag_shader_path, "main", VK_SHADER_STAGE_FRAGMENT_BIT);
+    final_frag_source[final_frag_source.size() - 1] = 0;
+    shaderc::SpvCompilationResult compile_result = shader_compiler_.CompileGlslString(
+        final_frag_source.data(), frag_shader_path, "main", VK_SHADER_STAGE_FRAGMENT_BIT);
     if (compile_result.GetCompilationStatus() == shaderc_compilation_status_success) {
       Shader& new_fs = fragment_shaders_[1 - active_pipeline_index_];
       SPOKK_VK_CHECK(new_fs.CreateAndLoadCompileResult(device_context_, compile_result));
@@ -353,18 +346,19 @@ private:
   }
   void WatchShaderDir(const std::string dir_path) {
 #ifdef _MSC_VER  // Detect changes using Windows change notification API
-    std::wstring wpath(dir_path.begin(), dir_path.end()); // only works for ASCII input, but I'm okay with that.
+    std::wstring wpath(dir_path.begin(), dir_path.end());  // only works for ASCII input, but I'm okay with that.
     HANDLE dwChangeHandle = FindFirstChangeNotification(wpath.c_str(), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE);
     ZOMBO_ASSERT(dwChangeHandle != INVALID_HANDLE_VALUE, "FindFirstChangeNotification() returned invalid handle");
     int lastUpdateSeconds = -1;
-    for(;;) {
+    for (;;) {
       DWORD dwWaitStatus = WaitForSingleObject(dwChangeHandle, INFINITE);
       SYSTEMTIME localTime;
       GetLocalTime(&localTime);
       // Only reload at most once per second
       if (!swap_shader_ && dwWaitStatus == WAIT_OBJECT_0 && localTime.wSecond != lastUpdateSeconds) {
-        zomboSleepMsec(20); // Reloading immediately doesn't work; fopen() fails. Give it a little bit to resolve itself.
-                           // Attempt to rebuild the shader and pipeline first
+        zomboSleepMsec(
+            20);  // Reloading immediately doesn't work; fopen() fails. Give it a little bit to resolve itself.
+        // Attempt to rebuild the shader and pipeline first
         ReloadShader();
         // Don't reload more than once a second
         lastUpdateSeconds = localTime.wSecond;
@@ -376,7 +370,7 @@ private:
     ZOMBO_ASSERT(fd != -1, "inotify_init() failed (errno=%d)", errno);
     int wd = inotify_add_watch(fd, dir_path.c_str(), IN_MODIFY | IN_MOVED_TO);
     ZOMBO_ASSERT(wd != -1, "inotify_add_watch() failed (errno=%d)", errno);
-    for(;;) {
+    for (;;) {
       // TODO(https://github.com/cdwfs/spokk/issues/15): Potential race condition here.
       // Many text editors will "modify" a file as a write to a temp file (IN_MODIFY), followed by
       // a rename to the original file (IN_MOVED_TO). We shouldn't reload a shader until the rename. I think this
@@ -385,8 +379,8 @@ private:
       ssize_t event_bytes = read(fd, event_buffer, sizeof(inotify_event) + NAME_MAX + 1);
       ZOMBO_ASSERT(event_bytes >= sizeof(inotify_event), "inotify event read failed (errno=%d)", errno);
       int32_t event_offset = 0;
-      while(event_offset < event_bytes) {
-        inotify_event *event = reinterpret_cast<inotify_event*>(event_buffer + event_offset);
+      while (event_offset < event_bytes) {
+        inotify_event* event = reinterpret_cast<inotify_event*>(event_buffer + event_offset);
         if (event->wd != wd) {
           continue;
         }
@@ -417,7 +411,7 @@ private:
   std::array<Image, 16> textures_;
   std::array<Image, 6> cubemaps_;
   std::array<Image*, 4> active_images_;
-  std::array<VkSampler,4> samplers_;
+  std::array<VkSampler, 4> samplers_;
 
   MeshFormat empty_mesh_format_;
 
@@ -443,13 +437,12 @@ private:
   PipelinedBuffer uniform_buffer_;
 };
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   (void)argc;
   (void)argv;
 
   std::vector<Application::QueueFamilyRequest> queue_requests = {
-    {(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT), true, 1, 0.0f}
-  };
+      {(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT), true, 1, 0.0f}};
   Application::CreateInfo app_ci = {};
   app_ci.debug_report_flags |= VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
   app_ci.queue_family_requests = queue_requests;

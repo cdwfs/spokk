@@ -1,22 +1,23 @@
-#include "vk_debug.h"
 #include "vk_image.h"
+#include "vk_debug.h"
 #include "vk_utilities.h"
 
 #include "image_file.h"
 
-#include <array>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <array>
 
 namespace {
-    struct ImageFormatAttributes {
-      int32_t texel_block_bytes;
-      int32_t texel_block_width;
-      int32_t texel_block_height;
-      ImageFileDataFormat image_format;  // primary key; g_format_attributes[img_fmt].image_format == img_fmt
-      VkFormat vk_format;
-    };
+struct ImageFormatAttributes {
+  int32_t texel_block_bytes;
+  int32_t texel_block_width;
+  int32_t texel_block_height;
+  ImageFileDataFormat image_format;  // primary key; g_format_attributes[img_fmt].image_format == img_fmt
+  VkFormat vk_format;
+};
+// clang-format off
     const std::array<ImageFormatAttributes, IMAGE_FILE_DATA_FORMAT_COUNT> g_format_attributes = {{
       {  0,  0,  0, IMAGE_FILE_DATA_FORMAT_UNKNOWN,            VK_FORMAT_UNDEFINED, },
       {  3,  1,  1, IMAGE_FILE_DATA_FORMAT_R8G8B8_UNORM,       VK_FORMAT_R8G8B8_UNORM, },
@@ -94,53 +95,54 @@ namespace {
       { 16,  4,  4, IMAGE_FILE_DATA_FORMAT_EAC_R11G11_UNORM,   VK_FORMAT_EAC_R11G11_UNORM_BLOCK, },
       { 16,  4,  4, IMAGE_FILE_DATA_FORMAT_EAC_R11G11_SNORM,   VK_FORMAT_EAC_R11G11_SNORM_BLOCK, },
     }};
+// clang-format on
 
-    const ImageFormatAttributes& GetVkFormatInfo(VkFormat format) {
-      for(const auto& attr : g_format_attributes) {
-        if (attr.vk_format == format) {
-          return attr;
-        }
-      }
-      assert(0);  // not found!
-      return g_format_attributes[IMAGE_FILE_DATA_FORMAT_UNKNOWN];
+const ImageFormatAttributes& GetVkFormatInfo(VkFormat format) {
+  for (const auto& attr : g_format_attributes) {
+    if (attr.vk_format == format) {
+      return attr;
     }
+  }
+  assert(0);  // not found!
+  return g_format_attributes[IMAGE_FILE_DATA_FORMAT_UNKNOWN];
+}
 
-    void ImageFileToVkImageCreateInfo(VkImageCreateInfo *out_ci, const ImageFile &image) {
-      *out_ci = {};
-      out_ci->sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-      if (image.flags & IMAGE_FILE_FLAG_CUBE_BIT) {
-        out_ci->flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-      }
-      if (image.depth == 1 && image.height == 1) {
-        out_ci->imageType = VK_IMAGE_TYPE_1D;
-      } else if (image.depth == 1) {
-        out_ci->imageType = VK_IMAGE_TYPE_2D;
-      } else {
-        out_ci->imageType = VK_IMAGE_TYPE_3D;
-      }
-      out_ci->format = g_format_attributes[image.data_format].vk_format;
-      out_ci->extent.width  = image.width;
-      out_ci->extent.height = image.height;
-      out_ci->extent.depth  = image.depth;
-      out_ci->mipLevels = image.mip_levels;
-      out_ci->arrayLayers = image.array_layers;
-      out_ci->samples = VK_SAMPLE_COUNT_1_BIT;
-      // Everything below here is a guess.
-      out_ci->tiling = VK_IMAGE_TILING_OPTIMAL;
-      out_ci->usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-      out_ci->sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-      out_ci->initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    }
+void ImageFileToVkImageCreateInfo(VkImageCreateInfo* out_ci, const ImageFile& image) {
+  *out_ci = {};
+  out_ci->sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+  if (image.flags & IMAGE_FILE_FLAG_CUBE_BIT) {
+    out_ci->flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+  }
+  if (image.depth == 1 && image.height == 1) {
+    out_ci->imageType = VK_IMAGE_TYPE_1D;
+  } else if (image.depth == 1) {
+    out_ci->imageType = VK_IMAGE_TYPE_2D;
+  } else {
+    out_ci->imageType = VK_IMAGE_TYPE_3D;
+  }
+  out_ci->format = g_format_attributes[image.data_format].vk_format;
+  out_ci->extent.width = image.width;
+  out_ci->extent.height = image.height;
+  out_ci->extent.depth = image.depth;
+  out_ci->mipLevels = image.mip_levels;
+  out_ci->arrayLayers = image.array_layers;
+  out_ci->samples = VK_SAMPLE_COUNT_1_BIT;
+  // Everything below here is a guess.
+  out_ci->tiling = VK_IMAGE_TILING_OPTIMAL;
+  out_ci->usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+  out_ci->sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  out_ci->initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+}
 
-    uint32_t GetMipDimension(uint32_t base, uint32_t mip) {
-      uint32_t out = (base>>mip);
-      return (out < 1) ? 1 : out;
-    }
+uint32_t GetMipDimension(uint32_t base, uint32_t mip) {
+  uint32_t out = (base >> mip);
+  return (out < 1) ? 1 : out;
+}
 
-    uint32_t AlignTo(uint32_t x, uint32_t n) {
-      assert( (n & (n-1)) == 0); // n must be a power of 2
-      return (x + n-1) & ~(n-1);
-    }
+uint32_t AlignTo(uint32_t x, uint32_t n) {
+  assert((n & (n - 1)) == 0);  // n must be a power of 2
+  return (x + n - 1) & ~(n - 1);
+}
 
 }  // namespace
 
@@ -167,8 +169,8 @@ VkResult Image::Create(const DeviceContext& device_context, const VkImageCreateI
   image_ci = ci;
   return result;
 }
-int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue *queue,
-  const std::string& filename, VkBool32 generate_mipmaps, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
+int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue* queue, const std::string& filename,
+    VkBool32 generate_mipmaps, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
   ZOMBO_ASSERT_RETURN(handle == VK_NULL_HANDLE, -1, "Can't re-create an existing Image");
 
   // Load image file. TODO(cort): ideally, we'd load directly into the staging buffer here to save a memcpy.
@@ -188,8 +190,9 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
     vkGetPhysicalDeviceFormatProperties(device_context.PhysicalDevice(), image_ci.format, &format_properties);
     const VkFormatFeatureFlags blit_mask = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
     const VkFormatFeatureFlags feature_flags = (image_ci.tiling == VK_IMAGE_TILING_LINEAR)
-      ? format_properties.linearTilingFeatures : format_properties.optimalTilingFeatures;
-    if ( (feature_flags & blit_mask) != blit_mask ) {
+        ? format_properties.linearTilingFeatures
+        : format_properties.optimalTilingFeatures;
+    if ((feature_flags & blit_mask) != blit_mask) {
       generate_mipmaps = VK_FALSE;  // format does not support blitting; automatic mipmap generation won't work.
     } else {
       uint32_t num_mip_levels = 1;
@@ -200,7 +203,7 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
         num_mip_levels += 1;
       }
       image_ci.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;  // needed for self-blitting
-                                                          // Reserve space for the full mip chain...
+      // Reserve space for the full mip chain...
       image_ci.mipLevels = num_mip_levels;
       // ...but only load the base level from the image file.
       mips_to_load = 1;
@@ -208,8 +211,8 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
   }
   // TODO(cort): caller passes in memory properties and scope?
   SPOKK_VK_CHECK(vkCreateImage(device_context.Device(), &image_ci, device_context.HostAllocator(), &handle));
-  memory = device_context.DeviceAllocAndBindToImage(handle, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-    DEVICE_ALLOCATION_SCOPE_DEVICE);
+  memory = device_context.DeviceAllocAndBindToImage(
+      handle, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE);
 
   // Gimme a command buffer
   OneShotCommandPool cpool(device_context.Device(), queue->handle, queue->family, device_context.HostAllocator());
@@ -230,8 +233,8 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
   barrier_init_to_dst.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
   barrier_init_to_dst.subresourceRange.baseMipLevel = 0;
   barrier_init_to_dst.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT,
-    0, nullptr, 0, nullptr, 1, &barrier_init_to_dst);
+  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0,
+      nullptr, 0, nullptr, 1, &barrier_init_to_dst);
 
   // Load those mips!
   int32_t texel_block_bytes = g_format_attributes[image_file.data_format].texel_block_bytes;
@@ -239,7 +242,7 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
   int32_t texel_block_height = g_format_attributes[image_file.data_format].texel_block_height;
   // TODO(cort): move staging buffer into device context
   size_t total_upload_size = 0;
-  for(uint32_t iMip=0; iMip < mips_to_load; ++iMip) {
+  for (uint32_t iMip = 0; iMip < mips_to_load; ++iMip) {
     ImageFileSubresource subresource = {};
     subresource.mip_level = iMip;
     // TODO(cort): each source subresource may need to start on a properly aligned offset. For now,
@@ -253,8 +256,8 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
   staging_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
   staging_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   Buffer staging_buffer = {};
-  SPOKK_VK_CHECK(staging_buffer.Create(device_context, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-    spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
+  SPOKK_VK_CHECK(staging_buffer.Create(
+      device_context, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
   // barrier between host writes and transfer reads
   VkBufferMemoryBarrier buffer_barrier = {};
   buffer_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -265,18 +268,18 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
   buffer_barrier.buffer = staging_buffer.Handle();
   buffer_barrier.offset = 0;
   buffer_barrier.size = VK_WHOLE_SIZE;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-    0,nullptr, 1,&buffer_barrier, 0,nullptr);  // TODO(cort): combine with previous barrier
+  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1,
+      &buffer_barrier, 0, nullptr);  // TODO(cort): combine with previous barrier
   VkDeviceSize src_offset = 0;
-  for(uint32_t i_mip=0; i_mip<mips_to_load; ++i_mip) {
+  for (uint32_t i_mip = 0; i_mip < mips_to_load; ++i_mip) {
     ImageFileSubresource subresource;
     subresource.array_layer = 0;
     subresource.mip_level = i_mip;
     size_t subresource_size = ImageFileGetSubresourceSize(&image_file, subresource);
-    for(uint32_t i_layer=0; i_layer<image_file.array_layers; ++i_layer) {
+    for (uint32_t i_layer = 0; i_layer < image_file.array_layers; ++i_layer) {
       // Copy subresource into staging buffer
       subresource.array_layer = i_layer;
-      const void *subresource_data = ImageFileGetSubresourceData(&image_file, subresource);
+      const void* subresource_data = ImageFileGetSubresourceData(&image_file, subresource);
       memcpy((uint8_t*)(staging_buffer.Mapped()) + src_offset, subresource_data, subresource_size);
       // Emit commands to copy subresource from staging buffer to image
       VkBufferImageCopy copy_region = {};
@@ -285,19 +288,20 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
       // an even integer multiple of the texel block dimensions for compressed formats.
       // It must also respect the minImageTransferGranularity, but in practice that just means we
       // need to transfer whole mips here, which we are.
-      copy_region.bufferRowLength = GetMipDimension(image_file.row_pitch_bytes * texel_block_width / texel_block_bytes, i_mip);
+      copy_region.bufferRowLength =
+          GetMipDimension(image_file.row_pitch_bytes * texel_block_width / texel_block_bytes, i_mip);
       copy_region.bufferImageHeight = GetMipDimension(image_file.height, i_mip);
-      copy_region.bufferRowLength   = AlignTo(copy_region.bufferRowLength, texel_block_width);
+      copy_region.bufferRowLength = AlignTo(copy_region.bufferRowLength, texel_block_width);
       copy_region.bufferImageHeight = AlignTo(copy_region.bufferImageHeight, texel_block_height);
       copy_region.imageSubresource.aspectMask = aspect_flags;
       copy_region.imageSubresource.mipLevel = i_mip;
       copy_region.imageSubresource.baseArrayLayer = i_layer;
       copy_region.imageSubresource.layerCount = 1;  // TODO(cort): copy all layers from a single mip in one go?
-      copy_region.imageExtent.width  = AlignTo(GetMipDimension(image_file.width, i_mip), texel_block_width);
+      copy_region.imageExtent.width = AlignTo(GetMipDimension(image_file.width, i_mip), texel_block_width);
       copy_region.imageExtent.height = AlignTo(GetMipDimension(image_file.height, i_mip), texel_block_height);
-      copy_region.imageExtent.depth  = GetMipDimension(image_file.depth, i_mip);
-      vkCmdCopyBufferToImage(cb, staging_buffer.Handle(), handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        1, &copy_region);
+      copy_region.imageExtent.depth = GetMipDimension(image_file.depth, i_mip);
+      vkCmdCopyBufferToImage(
+          cb, staging_buffer.Handle(), handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
       src_offset += subresource_size;
     }
   }
@@ -310,13 +314,13 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
   barrier_dst_to_final.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
   barrier_dst_to_final.newLayout = final_layout;
   if (generate_mipmaps) {
-    for(uint32_t i_layer=0; i_layer < image_file.array_layers; ++i_layer) {
+    for (uint32_t i_layer = 0; i_layer < image_file.array_layers; ++i_layer) {
       GenerateMipmapsImpl(cb, barrier_dst_to_final, i_layer, 0, image_ci.mipLevels - 1);
     }
   } else {
     // transition to final layout/access
-    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_DEPENDENCY_BY_REGION_BIT,
-      0, nullptr, 0, nullptr, 1, &barrier_dst_to_final);
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &barrier_dst_to_final);
   }
   staging_buffer.FlushHostCache();
   cpool.EndSubmitAndFree(&cb);
@@ -346,9 +350,9 @@ void Image::Destroy(const DeviceContext& device_context) {
   }
 }
 
-int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const DeviceQueue *queue,
-    const void* src_data, uint32_t src_row_nbytes, uint32_t src_layer_height,
-    const VkImageSubresource& dst_subresource, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
+int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const DeviceQueue* queue,
+    const void* src_data, uint32_t src_row_nbytes, uint32_t src_layer_height, const VkImageSubresource& dst_subresource,
+    VkImageLayout final_layout, VkAccessFlags final_access_flags) {
   ZOMBO_ASSERT_RETURN(handle != VK_NULL_HANDLE, -1, "Call Create() first!");
   // TODO(cort): This function needs a new signature.
   // - existing src_row_nbytes and src_layer_height are currently implicitly assumed to be the *base* pitch/height.
@@ -376,13 +380,13 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const 
   barrier_init_to_dst.subresourceRange.layerCount = 1;
   barrier_init_to_dst.subresourceRange.baseMipLevel = dst_subresource.mipLevel;
   barrier_init_to_dst.subresourceRange.levelCount = 1;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT,
-    0, nullptr, 0, nullptr, 1, &barrier_init_to_dst);
+  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0,
+      nullptr, 0, nullptr, 1, &barrier_init_to_dst);
 
   // Load!
   const ImageFormatAttributes& format_info = GetVkFormatInfo(image_ci.format);
-  const int32_t texel_block_bytes  = format_info.texel_block_bytes;
-  const int32_t texel_block_width  = format_info.texel_block_width;
+  const int32_t texel_block_bytes = format_info.texel_block_bytes;
+  const int32_t texel_block_width = format_info.texel_block_width;
   const int32_t texel_block_height = format_info.texel_block_height;
   const uint32_t i_mip = dst_subresource.mipLevel;
   const uint32_t i_layer = dst_subresource.arrayLayer;
@@ -394,8 +398,8 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const 
   staging_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
   staging_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   Buffer staging_buffer = {};
-  SPOKK_VK_CHECK(staging_buffer.Create(device_context, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-    spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
+  SPOKK_VK_CHECK(staging_buffer.Create(
+      device_context, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
   memcpy((uint8_t*)staging_buffer.Mapped(), src_data, src_nbytes);
   // barrier between host writes and transfer reads
   VkBufferMemoryBarrier buffer_barrier = {};
@@ -407,8 +411,8 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const 
   buffer_barrier.buffer = staging_buffer.Handle();
   buffer_barrier.offset = 0;
   buffer_barrier.size = VK_WHOLE_SIZE;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-    0,nullptr, 1,&buffer_barrier, 0,nullptr);
+  vkCmdPipelineBarrier(
+      cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &buffer_barrier, 0, nullptr);
 
   VkBufferImageCopy copy_region = {};
   copy_region.bufferOffset = 0;
@@ -418,17 +422,16 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const 
   // that right now.  ...Wait, yes I do! It's in the DeviceQueue!
   copy_region.bufferRowLength = GetMipDimension(src_row_nbytes * texel_block_width / texel_block_bytes, i_mip);
   copy_region.bufferImageHeight = GetMipDimension(src_layer_height, i_mip);
-  copy_region.bufferRowLength   = AlignTo(copy_region.bufferRowLength, texel_block_width);
+  copy_region.bufferRowLength = AlignTo(copy_region.bufferRowLength, texel_block_width);
   copy_region.bufferImageHeight = AlignTo(copy_region.bufferImageHeight, texel_block_height);
   copy_region.imageSubresource.aspectMask = dst_subresource.aspectMask;
   copy_region.imageSubresource.mipLevel = i_mip;
   copy_region.imageSubresource.baseArrayLayer = i_layer;
   copy_region.imageSubresource.layerCount = 1;  // can only copy one layer at a time
-  copy_region.imageExtent.width  = AlignTo(GetMipDimension(image_ci.extent.width, i_mip), texel_block_width);
+  copy_region.imageExtent.width = AlignTo(GetMipDimension(image_ci.extent.width, i_mip), texel_block_width);
   copy_region.imageExtent.height = AlignTo(GetMipDimension(image_ci.extent.height, i_mip), texel_block_height);
-  copy_region.imageExtent.depth  = GetMipDimension(image_ci.extent.depth, i_mip);
-  vkCmdCopyBufferToImage(cb, staging_buffer.Handle(), handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-    1, &copy_region);
+  copy_region.imageExtent.depth = GetMipDimension(image_ci.extent.depth, i_mip);
+  vkCmdCopyBufferToImage(cb, staging_buffer.Handle(), handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
 
   // transition to final layout/access
   VkImageMemoryBarrier barrier_dst_to_final = barrier_init_to_dst;
@@ -437,8 +440,8 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const 
   barrier_dst_to_final.dstAccessMask = final_access_flags;
   barrier_dst_to_final.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
   barrier_dst_to_final.newLayout = final_layout;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_DEPENDENCY_BY_REGION_BIT,
-    0, nullptr, 0, nullptr, 1, &barrier_dst_to_final);
+  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+      VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &barrier_dst_to_final);
 
   staging_buffer.FlushHostCache();
   cpool.EndSubmitAndFree(&cb);
@@ -446,7 +449,7 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const 
   return 0;
 }
 
-int Image::GenerateMipmaps(const DeviceContext& device_context, const DeviceQueue *queue,
+int Image::GenerateMipmaps(const DeviceContext& device_context, const DeviceQueue* queue,
     const VkImageMemoryBarrier& barrier, uint32_t layer, uint32_t src_mip_level, uint32_t mips_to_gen) {
   assert(handle != VK_NULL_HANDLE);  // must create image first!
 
@@ -463,8 +466,8 @@ int Image::GenerateMipmaps(const DeviceContext& device_context, const DeviceQueu
   return 0;
 }
 
-int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& dst_barrier,
-    uint32_t layer, uint32_t src_mip_level, uint32_t mips_to_gen) {
+int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& dst_barrier, uint32_t layer,
+    uint32_t src_mip_level, uint32_t mips_to_gen) {
   if (mips_to_gen == 0) {
     return 0;  // nothing to do
   }
@@ -491,7 +494,7 @@ int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& d
   VkImageAspectFlags aspect_flags = GetImageAspectFlags(image_ci.format);
 
   // transition mip 0 to TRANSFER_READ, mip 1 to TRANSFER_WRITE
-  std::array<VkImageMemoryBarrier,2> image_barriers = {};
+  std::array<VkImageMemoryBarrier, 2> image_barriers = {};
   image_barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
   image_barriers[0].srcAccessMask = dst_barrier.srcAccessMask;
   image_barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
@@ -518,15 +521,15 @@ int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& d
   image_barriers[1].subresourceRange.layerCount = 1;
   image_barriers[1].subresourceRange.baseMipLevel = src_mip_level + 1;
   image_barriers[1].subresourceRange.levelCount = mips_to_gen;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-    (VkDependencyFlags)0, 0,NULL, 0,NULL, (uint32_t)image_barriers.size(),image_barriers.data());
+  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, (VkDependencyFlags)0, 0,
+      NULL, 0, NULL, (uint32_t)image_barriers.size(), image_barriers.data());
   // recycle image_barriers[0] to transition each dst_mip from TRANSFER_DST to TRANSFER_SRC after its blit
   image_barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
   image_barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
   image_barriers[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
   image_barriers[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
   image_barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  image_barriers[0].subresourceRange.baseMipLevel = src_mip_level+1;
+  image_barriers[0].subresourceRange.baseMipLevel = src_mip_level + 1;
 
   VkImageBlit blit_region = {};
   blit_region.srcSubresource.aspectMask = aspect_flags;
@@ -542,19 +545,19 @@ int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& d
   blit_region.dstSubresource.aspectMask = aspect_flags;
   blit_region.dstSubresource.baseArrayLayer = layer;
   blit_region.dstSubresource.layerCount = 1;
-  blit_region.dstSubresource.mipLevel = src_mip_level+1;
+  blit_region.dstSubresource.mipLevel = src_mip_level + 1;
   blit_region.dstOffsets[0].x = 0;
   blit_region.dstOffsets[0].y = 0;
   blit_region.dstOffsets[0].z = 0;
-  blit_region.dstOffsets[1].x = GetMipDimension(image_ci.extent.width, src_mip_level+1);
-  blit_region.dstOffsets[1].y = GetMipDimension(image_ci.extent.height, src_mip_level+1);
-  blit_region.dstOffsets[1].z = GetMipDimension(image_ci.extent.depth, src_mip_level+1);
-  for(uint32_t dst_mip = src_mip_level+1; dst_mip <= src_mip_level+mips_to_gen; ++dst_mip) {
-    vkCmdBlitImage(cb, handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-      1, &blit_region, VK_FILTER_LINEAR);
-    if (dst_mip != src_mip_level+mips_to_gen) { // all but the last mip must be switched from WRITE/DST to READ/SRC
-      vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-        (VkDependencyFlags)0, 0,NULL, 0,NULL, 1,&image_barriers[0]);
+  blit_region.dstOffsets[1].x = GetMipDimension(image_ci.extent.width, src_mip_level + 1);
+  blit_region.dstOffsets[1].y = GetMipDimension(image_ci.extent.height, src_mip_level + 1);
+  blit_region.dstOffsets[1].z = GetMipDimension(image_ci.extent.depth, src_mip_level + 1);
+  for (uint32_t dst_mip = src_mip_level + 1; dst_mip <= src_mip_level + mips_to_gen; ++dst_mip) {
+    vkCmdBlitImage(cb, handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+        &blit_region, VK_FILTER_LINEAR);
+    if (dst_mip != src_mip_level + mips_to_gen) {  // all but the last mip must be switched from WRITE/DST to READ/SRC
+      vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, (VkDependencyFlags)0, 0,
+          NULL, 0, NULL, 1, &image_barriers[0]);
     }
     image_barriers[0].subresourceRange.baseMipLevel += 1;
 
@@ -563,9 +566,9 @@ int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& d
     blit_region.srcOffsets[1].y = GetMipDimension(image_ci.extent.height, dst_mip);
     blit_region.srcOffsets[1].z = GetMipDimension(image_ci.extent.depth, dst_mip);
     blit_region.dstSubresource.mipLevel += 1;
-    blit_region.dstOffsets[1].x = GetMipDimension(image_ci.extent.width, dst_mip+1);
-    blit_region.dstOffsets[1].y = GetMipDimension(image_ci.extent.height, dst_mip+1);
-    blit_region.dstOffsets[1].z = GetMipDimension(image_ci.extent.depth, dst_mip+1);
+    blit_region.dstOffsets[1].x = GetMipDimension(image_ci.extent.width, dst_mip + 1);
+    blit_region.dstOffsets[1].y = GetMipDimension(image_ci.extent.height, dst_mip + 1);
+    blit_region.dstOffsets[1].z = GetMipDimension(image_ci.extent.depth, dst_mip + 1);
   }
   // Coming out of the loop, all but the last mip are in TRANSFER_SRC mode, and the last mip
   // is in TRANSFER_DST. Convert them all to the final layout/access mode.
@@ -587,8 +590,8 @@ int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& d
   image_barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   image_barriers[1].subresourceRange.baseMipLevel = src_mip_level + mips_to_gen;
   image_barriers[1].subresourceRange.levelCount = 1;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-    (VkDependencyFlags)0, 0,NULL, 0,NULL, (uint32_t)image_barriers.size(),image_barriers.data());
+  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, (VkDependencyFlags)0, 0,
+      NULL, 0, NULL, (uint32_t)image_barriers.size(), image_barriers.data());
 
   return 0;
 }

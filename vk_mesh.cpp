@@ -1,7 +1,7 @@
-#include "platform.h"
-#include "vk_context.h"
 #include "vk_mesh.h"
 #include <array>
+#include "platform.h"
+#include "vk_context.h"
 
 namespace spokk {
 
@@ -9,14 +9,8 @@ namespace spokk {
 // MeshFormat
 //
 MeshFormat::MeshFormat()
-  : vertex_buffer_bindings{},
-    vertex_attributes{},
-    vertex_input_state_ci{},
-    input_assembly_state_ci{} {
-}
-MeshFormat::MeshFormat(const MeshFormat& rhs) {
-  *this = rhs;
-}
+  : vertex_buffer_bindings{}, vertex_attributes{}, vertex_input_state_ci{}, input_assembly_state_ci{} {}
+MeshFormat::MeshFormat(const MeshFormat& rhs) { *this = rhs; }
 MeshFormat& MeshFormat::operator=(const MeshFormat& rhs) {
   vertex_buffer_bindings = rhs.vertex_buffer_bindings;
   vertex_attributes = rhs.vertex_attributes;
@@ -43,17 +37,16 @@ void MeshFormat::Finalize(VkPrimitiveTopology topology, VkBool32 enable_primitiv
 //
 // Mesh
 //
-Mesh::Mesh() 
+Mesh::Mesh()
   : vertex_buffers{},
     mesh_format{},
     index_buffer{},
     vertex_count(0),
     index_count(0),
-    index_type(VK_INDEX_TYPE_MAX_ENUM) {
-}
+    index_type(VK_INDEX_TYPE_MAX_ENUM) {}
 
 int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_filename) {
-  FILE *mesh_file = zomboFopen(mesh_filename, "rb");
+  FILE* mesh_file = zomboFopen(mesh_filename, "rb");
   if (mesh_file == nullptr) {
     fprintf(stderr, "Could not open %s for reading\n", mesh_filename);
     return -1;
@@ -68,18 +61,16 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
   }
 
   mesh_format.vertex_buffer_bindings.resize(mesh_header.vertex_buffer_count);
-  read_count = fread(mesh_format.vertex_buffer_bindings.data(),
-    sizeof(mesh_format.vertex_buffer_bindings[0]), mesh_header.vertex_buffer_count,
-    mesh_file);
+  read_count = fread(mesh_format.vertex_buffer_bindings.data(), sizeof(mesh_format.vertex_buffer_bindings[0]),
+      mesh_header.vertex_buffer_count, mesh_file);
   mesh_format.vertex_attributes.resize(mesh_header.attribute_count);
-  read_count = fread(mesh_format.vertex_attributes.data(),
-    sizeof(mesh_format.vertex_attributes[0]), mesh_header.attribute_count,
-    mesh_file);
+  read_count = fread(mesh_format.vertex_attributes.data(), sizeof(mesh_format.vertex_attributes[0]),
+      mesh_header.attribute_count, mesh_file);
 
   // Load VB, IB
   std::vector<uint8_t> vertices(mesh_header.vertex_count * mesh_format.vertex_buffer_bindings[0].stride);
-  read_count = fread(vertices.data(), mesh_format.vertex_buffer_bindings[0].stride,
-    mesh_header.vertex_count, mesh_file);
+  read_count =
+      fread(vertices.data(), mesh_format.vertex_buffer_bindings[0].stride, mesh_header.vertex_count, mesh_file);
   std::vector<uint8_t> indices(mesh_header.index_count * mesh_header.bytes_per_index);
   read_count = fread(indices.data(), mesh_header.bytes_per_index, mesh_header.index_count, mesh_file);
   fclose(mesh_file);
@@ -103,7 +94,7 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
   index_buffer.Create(device_context, index_buffer_ci);
   index_buffer.Load(device_context, indices.data(), indices.size());
   vertex_buffers.resize(mesh_header.vertex_buffer_count, {});
-  for(uint32_t iVB = 0; iVB < mesh_header.vertex_buffer_count; ++iVB) {
+  for (uint32_t iVB = 0; iVB < mesh_header.vertex_buffer_count; ++iVB) {
     VkBufferCreateInfo vertex_buffer_ci = {};
     vertex_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     vertex_buffer_ci.size = vertices.size();
@@ -115,7 +106,7 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
 
   // Populate buffer offsets
   vertex_buffer_byte_offsets.resize(vertex_buffers.size());
-  for(size_t i = 0; i < vertex_buffers.size(); ++i) {
+  for (size_t i = 0; i < vertex_buffers.size(); ++i) {
     vertex_buffer_byte_offsets[i] = 0;
   }
   index_buffer_byte_offset = 0;
@@ -124,7 +115,7 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
 }
 
 void Mesh::Destroy(const DeviceContext& device_context) {
-  for(auto& vb : vertex_buffers) {
+  for (auto& vb : vertex_buffers) {
     vb.Destroy(device_context);
   }
   vertex_buffers.clear();
@@ -132,14 +123,15 @@ void Mesh::Destroy(const DeviceContext& device_context) {
   index_count = 0;
 }
 
-void Mesh::BindBuffersAndDraw(VkCommandBuffer cb, uint32_t index_cnt, uint32_t instance_cnt,
-    uint32_t first_index, uint32_t vertex_offset, uint32_t first_instance) const {
+void Mesh::BindBuffersAndDraw(VkCommandBuffer cb, uint32_t index_cnt, uint32_t instance_cnt, uint32_t first_index,
+    uint32_t vertex_offset, uint32_t first_instance) const {
   ZOMBO_ASSERT((uint32_t)vertex_buffers.size() == mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount,
-    "Mesh's vertex buffer count (%u) does not match count in MeshFormat (%u)", (uint32_t)vertex_buffers.size(),
-    mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount);
-  for(uint32_t i = 0; i < mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount; ++i) {
+      "Mesh's vertex buffer count (%u) does not match count in MeshFormat (%u)", (uint32_t)vertex_buffers.size(),
+      mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount);
+  for (uint32_t i = 0; i < mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount; ++i) {
     VkBuffer handle = vertex_buffers[i].Handle();
-    vkCmdBindVertexBuffers(cb, mesh_format.vertex_buffer_bindings[i].binding, 1, &handle, &vertex_buffer_byte_offsets[i]);
+    vkCmdBindVertexBuffers(
+        cb, mesh_format.vertex_buffer_bindings[i].binding, 1, &handle, &vertex_buffer_byte_offsets[i]);
   }
   vkCmdBindIndexBuffer(cb, index_buffer.Handle(), index_buffer_byte_offset, index_type);
   vkCmdDrawIndexed(cb, index_cnt, instance_cnt, first_index, vertex_offset, first_instance);

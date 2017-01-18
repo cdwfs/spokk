@@ -17,9 +17,9 @@
 #include <array>
 #include <cassert>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
-#include <mutex>
 
 #if defined(SPOKK_ENABLE_SHADERC)
 #include <shaderc/shaderc.hpp>
@@ -36,34 +36,34 @@ public:
   void SetWindow(const std::shared_ptr<GLFWwindow>& window);
 
   enum Digital {
-    DIGITAL_LPAD_UP    =  0,
-    DIGITAL_LPAD_LEFT  =  1,
-    DIGITAL_LPAD_RIGHT =  2,
-    DIGITAL_LPAD_DOWN  =  3,
-    DIGITAL_RPAD_UP    =  4,
-    DIGITAL_RPAD_LEFT  =  5,
-    DIGITAL_RPAD_RIGHT =  6,
-    DIGITAL_RPAD_DOWN  =  7,
+    DIGITAL_LPAD_UP = 0,
+    DIGITAL_LPAD_LEFT = 1,
+    DIGITAL_LPAD_RIGHT = 2,
+    DIGITAL_LPAD_DOWN = 3,
+    DIGITAL_RPAD_UP = 4,
+    DIGITAL_RPAD_LEFT = 5,
+    DIGITAL_RPAD_RIGHT = 6,
+    DIGITAL_RPAD_DOWN = 7,
 
     DIGITAL_COUNT
   };
   enum Analog {
-    ANALOG_L_X     = 0,
-    ANALOG_L_Y     = 1,
-    ANALOG_R_X     = 2,
-    ANALOG_R_Y     = 3,
+    ANALOG_L_X = 0,
+    ANALOG_L_Y = 1,
+    ANALOG_R_X = 2,
+    ANALOG_R_Y = 3,
     ANALOG_MOUSE_X = 4,
     ANALOG_MOUSE_Y = 5,
 
     ANALOG_COUNT
   };
   void Update();
-  int32_t GetDigital(Digital id) const { return  current_.digital[id]; }
-  int32_t GetDigitalDelta(Digital id) const { return  current_.digital[id] - prev_.digital[id]; }
-  float GetAnalog(Analog id) const  { return  current_.analog[id]; }
+  int32_t GetDigital(Digital id) const { return current_.digital[id]; }
+  int32_t GetDigitalDelta(Digital id) const { return current_.digital[id] - prev_.digital[id]; }
+  float GetAnalog(Analog id) const { return current_.analog[id]; }
   float GetAnalogDelta(Analog id) const { return current_.analog[id] - prev_.analog[id]; }
 
-  bool IsPressed(Digital id) const  { return  GetDigitalDelta(id) > 0; }
+  bool IsPressed(Digital id) const { return GetDigitalDelta(id) > 0; }
   bool IsReleased(Digital id) const { return GetDigitalDelta(id) < 0; }
 
 private:
@@ -93,7 +93,7 @@ class Application {
 public:
   struct QueueFamilyRequest {
     VkQueueFlags flags;  // Mask of features which must be supported by this queue family.
-    bool support_present;  // If flags & VK_QUEUE_GRAPHICS_BIT, support_present=true means the queue must support presentation to the application's VkSurfaceKHR.
+    bool support_present;  // If flags & VK_QUEUE_GRAPHICS_BIT, true means the queue can present to surface_.
     uint32_t queue_count;
     float priority;
   };
@@ -102,11 +102,11 @@ public:
     std::string app_name = "Spokk Application";
     uint32_t window_width = 1280, window_height = 720;
     bool enable_graphics = true;
-    VkDebugReportFlagsEXT debug_report_flags = 
+    VkDebugReportFlagsEXT debug_report_flags =
 #ifdef NDEBUG
-      0;
+        0;
 #else
-      VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+        VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
 #endif
     std::vector<QueueFamilyRequest> queue_family_requests;
     // If NULL, no device features are enabled. To easily enable all supported features,
@@ -114,7 +114,7 @@ public:
     SetDeviceFeaturesFunc pfn_set_device_features = nullptr;
   };
 
-  explicit Application(const CreateInfo &ci);
+  explicit Application(const CreateInfo& ci);
   virtual ~Application();
 
   Application(const Application&) = delete;
@@ -135,8 +135,8 @@ protected:
   // no resources are in use on the GPU and can be safely destroyed/recreated.
   virtual void HandleWindowResize(VkExtent2D new_window_extent);
 
-  const VkAllocationCallbacks *host_allocator_ = nullptr;
-  const DeviceAllocationCallbacks *device_allocator_ = nullptr;
+  const VkAllocationCallbacks* host_allocator_ = nullptr;
+  const DeviceAllocationCallbacks* device_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
   std::vector<VkLayerProperties> instance_layers_ = {};
   std::vector<VkExtensionProperties> instance_extensions_ = {};
@@ -155,7 +155,7 @@ protected:
   std::vector<VkImageView> swapchain_image_views_ = {};
 
   VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
-    
+
   std::shared_ptr<GLFWwindow> window_ = nullptr;
 
   InputState input_state_;

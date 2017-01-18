@@ -10,7 +10,7 @@
 namespace spokk {
 
 DeviceContext::DeviceContext(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache,
-    const DeviceQueue *queues, uint32_t queue_count, const VkPhysicalDeviceFeatures& enabled_device_features,
+    const DeviceQueue *queues, uint32_t queue_count, const VkPhysicalDeviceFeatures &enabled_device_features,
     const VkAllocationCallbacks *host_allocator, const DeviceAllocationCallbacks *device_allocator)
   : physical_device_(physical_device),
     device_(device),
@@ -20,15 +20,13 @@ DeviceContext::DeviceContext(VkDevice device, VkPhysicalDevice physical_device, 
     device_features_(enabled_device_features) {
   vkGetPhysicalDeviceProperties(physical_device_, &device_properties_);
   vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
-  queues_.insert(queues_.begin(), queues+0, queues+queue_count);
+  queues_.insert(queues_.begin(), queues + 0, queues + queue_count);
 }
-DeviceContext::~DeviceContext() {
-}
+DeviceContext::~DeviceContext() {}
 
-const DeviceQueue* DeviceContext::FindQueue(VkQueueFlags queue_flags,
-  VkSurfaceKHR present_surface) const {
+const DeviceQueue *DeviceContext::FindQueue(VkQueueFlags queue_flags, VkSurfaceKHR present_surface) const {
   // Search for an exact match first
-  for(auto& queue : queues_) {
+  for (auto &queue : queues_) {
     if (queue.flags == queue_flags) {
       // Make sure presentation requirement is met, if necessary.
       if ((queue_flags | VK_QUEUE_GRAPHICS_BIT) != 0 && present_surface != VK_NULL_HANDLE) {
@@ -40,7 +38,7 @@ const DeviceQueue* DeviceContext::FindQueue(VkQueueFlags queue_flags,
     }
   }
   // Next pass looks for anything with the right flags set
-  for(auto& queue : queues_) {
+  for (auto &queue : queues_) {
     if ((queue.flags & queue_flags) == queue_flags) {
       // Make sure presentation requirement is met, if necessary.
       if ((queue_flags | VK_QUEUE_GRAPHICS_BIT) != 0 && present_surface != VK_NULL_HANDLE) {
@@ -55,15 +53,15 @@ const DeviceQueue* DeviceContext::FindQueue(VkQueueFlags queue_flags,
   return nullptr;
 }
 
-uint32_t DeviceContext::FindMemoryTypeIndex(const VkMemoryRequirements &memory_reqs,
-  VkMemoryPropertyFlags memory_properties_mask) const {
-  for(uint32_t iMemType=0; iMemType<VK_MAX_MEMORY_TYPES; ++iMemType) {
-    if ((memory_reqs.memoryTypeBits & (1<<iMemType)) != 0
-      && (memory_properties_.memoryTypes[iMemType].propertyFlags & memory_properties_mask) == memory_properties_mask) {
+uint32_t DeviceContext::FindMemoryTypeIndex(
+    const VkMemoryRequirements &memory_reqs, VkMemoryPropertyFlags memory_properties_mask) const {
+  for (uint32_t iMemType = 0; iMemType < VK_MAX_MEMORY_TYPES; ++iMemType) {
+    if ((memory_reqs.memoryTypeBits & (1 << iMemType)) != 0 &&
+        (memory_properties_.memoryTypes[iMemType].propertyFlags & memory_properties_mask) == memory_properties_mask) {
       return iMemType;
     }
   }
-  return VK_MAX_MEMORY_TYPES; // invalid index
+  return VK_MAX_MEMORY_TYPES;  // invalid index
 }
 VkMemoryPropertyFlags DeviceContext::MemoryTypeProperties(uint32_t memory_type_index) const {
   if (memory_type_index >= memory_properties_.memoryTypeCount) {
@@ -72,10 +70,11 @@ VkMemoryPropertyFlags DeviceContext::MemoryTypeProperties(uint32_t memory_type_i
   return memory_properties_.memoryTypes[memory_type_index].propertyFlags;
 }
 
-DeviceMemoryAllocation DeviceContext::DeviceAlloc(const VkMemoryRequirements &mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
-  DeviceAllocationScope scope) const {
+DeviceMemoryAllocation DeviceContext::DeviceAlloc(const VkMemoryRequirements &mem_reqs,
+    VkMemoryPropertyFlags memory_properties_mask, DeviceAllocationScope scope) const {
   if (device_allocator_ != nullptr) {
-    return device_allocator_->pfnAllocation(device_allocator_->pUserData, *this, mem_reqs, memory_properties_mask, scope);
+    return device_allocator_->pfnAllocation(
+        device_allocator_->pUserData, *this, mem_reqs, memory_properties_mask, scope);
   } else {
     DeviceMemoryAllocation allocation = {};
     VkMemoryAllocateInfo alloc_info = {};
@@ -107,8 +106,8 @@ void DeviceContext::DeviceFree(DeviceMemoryAllocation allocation) const {
     }
   }
 }
-DeviceMemoryAllocation DeviceContext::DeviceAllocAndBindToImage(VkImage image, VkMemoryPropertyFlags memory_properties_mask,
-  DeviceAllocationScope scope) const {
+DeviceMemoryAllocation DeviceContext::DeviceAllocAndBindToImage(
+    VkImage image, VkMemoryPropertyFlags memory_properties_mask, DeviceAllocationScope scope) const {
   VkMemoryRequirements mem_reqs = {};
   vkGetImageMemoryRequirements(device_, image, &mem_reqs);
   DeviceMemoryAllocation allocation = DeviceAlloc(mem_reqs, memory_properties_mask, scope);
@@ -121,8 +120,8 @@ DeviceMemoryAllocation DeviceContext::DeviceAllocAndBindToImage(VkImage image, V
   }
   return allocation;
 }
-DeviceMemoryAllocation DeviceContext::DeviceAllocAndBindToBuffer(VkBuffer buffer, VkMemoryPropertyFlags memory_properties_mask,
-  DeviceAllocationScope scope) const {
+DeviceMemoryAllocation DeviceContext::DeviceAllocAndBindToBuffer(
+    VkBuffer buffer, VkMemoryPropertyFlags memory_properties_mask, DeviceAllocationScope scope) const {
   VkMemoryRequirements mem_reqs = {};
   vkGetBufferMemoryRequirements(device_, buffer, &mem_reqs);
   DeviceMemoryAllocation allocation = DeviceAlloc(mem_reqs, memory_properties_mask, scope);
@@ -138,8 +137,7 @@ DeviceMemoryAllocation DeviceContext::DeviceAllocAndBindToBuffer(VkBuffer buffer
 
 void *DeviceContext::HostAlloc(size_t size, size_t alignment, VkSystemAllocationScope scope) const {
   if (host_allocator_) {
-    return host_allocator_->pfnAllocation(host_allocator_->pUserData,
-      size, alignment, scope);
+    return host_allocator_->pfnAllocation(host_allocator_->pUserData, size, alignment, scope);
   } else {
 #if defined(_MSC_VER)
     return _aligned_malloc(size, alignment);

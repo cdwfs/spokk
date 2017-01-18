@@ -1,8 +1,8 @@
 #if !defined(VK_MESH_H)
 #define VK_MESH_H
 
-#include "vk_buffer.h"
 #include <vector>
+#include "vk_buffer.h"
 
 namespace spokk {
 
@@ -30,8 +30,8 @@ struct Mesh {
   void Destroy(const DeviceContext& device_context);
 
   // Helper to bind all vertex buffers and index buffers, and draw all indices
-  void BindBuffersAndDraw(VkCommandBuffer cb, uint32_t index_cnt, uint32_t instance_cnt = 1,
-    uint32_t first_index = 0, uint32_t vertex_offset = 0, uint32_t first_instance = 0) const;
+  void BindBuffersAndDraw(VkCommandBuffer cb, uint32_t index_cnt, uint32_t instance_cnt = 1, uint32_t first_index = 0,
+      uint32_t vertex_offset = 0, uint32_t first_instance = 0) const;
 
   std::vector<Buffer> vertex_buffers;
   MeshFormat mesh_format;
@@ -43,6 +43,7 @@ struct Mesh {
   // Handy arrays of buffer offsets, to avoid allocating them for every bind call
   std::vector<VkDeviceSize> vertex_buffer_byte_offsets;
   VkDeviceSize index_buffer_byte_offset;
+
 private:
   Mesh(const Mesh& rhs) = delete;
   Mesh& operator=(const Mesh& rhs) = delete;
@@ -64,4 +65,4 @@ struct MeshFileHeader {
 
 }  // namespace spokk
 
-#endif // !defined(VK_MESH_H)
+#endif  // !defined(VK_MESH_H)

@@ -1,5 +1,5 @@
-#include "vk_context.h"
 #include "vk_memory.h"
+#include "vk_context.h"
 
 #include <cassert>
 
@@ -11,7 +11,7 @@ namespace spokk {
 DeviceMemoryBlock::~DeviceMemoryBlock() {
   assert(handle_ == VK_NULL_HANDLE);  // call free() before deleting!
 }
-VkResult DeviceMemoryBlock::Allocate(const DeviceContext& device_context, const VkMemoryAllocateInfo &alloc_info) {
+VkResult DeviceMemoryBlock::Allocate(const DeviceContext& device_context, const VkMemoryAllocateInfo& alloc_info) {
   assert(handle_ == VK_NULL_HANDLE);
   VkResult result = vkAllocateMemory(device_context.Device(), &alloc_info, device_context.HostAllocator(), &handle_);
   if (result == VK_SUCCESS) {
@@ -45,7 +45,6 @@ void DeviceMemoryBlock::FlushHostCache(const VkMappedMemoryRange& range) const {
     vkFlushMappedMemoryRanges(device_, 1, &range);
   }
 }
-
 
 //
 // DeviceMemoryAllocation

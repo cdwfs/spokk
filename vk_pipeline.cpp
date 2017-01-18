@@ -7,9 +7,8 @@ namespace spokk {
 //
 // ComputePipeline
 //
-ComputePipeline::ComputePipeline() : handle(VK_NULL_HANDLE), shader_program(nullptr), ci{} {
-}
-void ComputePipeline::Init(const ShaderProgram *shader_program_in) {
+ComputePipeline::ComputePipeline() : handle(VK_NULL_HANDLE), shader_program(nullptr), ci{} {}
+void ComputePipeline::Init(const ShaderProgram* shader_program_in) {
   this->shader_program = shader_program_in;
   assert(shader_program->shader_stage_cis.size() == 1);
   assert(shader_program->shader_stage_cis[0].stage == VK_SHADER_STAGE_COMPUTE_BIT);
@@ -23,8 +22,8 @@ void ComputePipeline::Init(const ShaderProgram *shader_program_in) {
   ci.basePipelineIndex = 0;
 }
 VkResult ComputePipeline::Finalize(const DeviceContext& device_context) {
-  return vkCreateComputePipelines(device_context.Device(), device_context.PipelineCache(),
-    1, &ci, device_context.HostAllocator(), &handle);
+  return vkCreateComputePipelines(
+      device_context.Device(), device_context.PipelineCache(), 1, &ci, device_context.HostAllocator(), &handle);
 }
 void ComputePipeline::Destroy(const DeviceContext& device_context) {
   if (handle != VK_NULL_HANDLE) {
@@ -37,14 +36,26 @@ void ComputePipeline::Destroy(const DeviceContext& device_context) {
 //
 // GraphicsPipeline
 //
-GraphicsPipeline::GraphicsPipeline() :
-  handle(VK_NULL_HANDLE), mesh_format(nullptr), shader_program(nullptr), render_pass(nullptr), subpass(0), dynamic_states{},
-  ci{}, tessellation_state_ci{}, viewport_state_ci{}, viewports{}, scissor_rects{}, rasterization_state_ci{},
-  depth_stencil_state_ci{}, color_blend_state_ci{}, color_blend_attachment_states{}, dynamic_state_ci{} {
-}
-void GraphicsPipeline::Init(const MeshFormat *mesh_format_in, const ShaderProgram *shader_program_in,
-    const RenderPass *render_pass_in, uint32_t subpass_in,
-    const std::vector<VkDynamicState> dynamic_states_in, const VkViewport viewport, const VkRect2D scissor_rect) {
+GraphicsPipeline::GraphicsPipeline()
+  : handle(VK_NULL_HANDLE),
+    mesh_format(nullptr),
+    shader_program(nullptr),
+    render_pass(nullptr),
+    subpass(0),
+    dynamic_states{},
+    ci{},
+    tessellation_state_ci{},
+    viewport_state_ci{},
+    viewports{},
+    scissor_rects{},
+    rasterization_state_ci{},
+    depth_stencil_state_ci{},
+    color_blend_state_ci{},
+    color_blend_attachment_states{},
+    dynamic_state_ci{} {}
+void GraphicsPipeline::Init(const MeshFormat* mesh_format_in, const ShaderProgram* shader_program_in,
+    const RenderPass* render_pass_in, uint32_t subpass_in, const std::vector<VkDynamicState> dynamic_states_in,
+    const VkViewport viewport, const VkRect2D scissor_rect) {
   this->mesh_format = mesh_format_in;
   this->shader_program = shader_program_in;
   this->render_pass = render_pass_in;
@@ -72,21 +83,22 @@ void GraphicsPipeline::Init(const MeshFormat *mesh_format_in, const ShaderProgra
   rasterization_state_ci.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
   rasterization_state_ci.lineWidth = 1.0f;
 
-  VkBool32 subpass_has_depth_attachment = (render_pass->subpass_descs[subpass].pDepthStencilAttachment != nullptr)
-    ? VK_TRUE : VK_FALSE;
+  VkBool32 subpass_has_depth_attachment =
+      (render_pass->subpass_descs[subpass].pDepthStencilAttachment != nullptr) ? VK_TRUE : VK_FALSE;
   depth_stencil_state_ci = {};
   depth_stencil_state_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
   depth_stencil_state_ci.depthTestEnable = subpass_has_depth_attachment;
   depth_stencil_state_ci.depthWriteEnable = subpass_has_depth_attachment &&
-    render_pass->subpass_descs[subpass].pDepthStencilAttachment->layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+      render_pass->subpass_descs[subpass].pDepthStencilAttachment->layout ==
+          VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
   depth_stencil_state_ci.depthCompareOp = VK_COMPARE_OP_LESS;
 
   color_blend_attachment_states.resize(render_pass->subpass_descs[subpass].colorAttachmentCount);
-  for(auto& attachment : color_blend_attachment_states) {
+  for (auto& attachment : color_blend_attachment_states) {
     attachment = {};
     attachment.blendEnable = VK_FALSE;
-    attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-      VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    attachment.colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
   }
   color_blend_state_ci = {};
   color_blend_state_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -105,9 +117,10 @@ void GraphicsPipeline::Init(const MeshFormat *mesh_format_in, const ShaderProgra
   ci.pStages = shader_program->shader_stage_cis.data();
   ci.pVertexInputState = &(mesh_format->vertex_input_state_ci);
   ci.pInputAssemblyState = &(mesh_format->input_assembly_state_ci);
-  ci.pTessellationState =
-    (shader_program->active_stages & (VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT))
-    ? &tessellation_state_ci : nullptr;
+  ci.pTessellationState = (shader_program->active_stages &
+                              (VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT))
+      ? &tessellation_state_ci
+      : nullptr;
   ci.pViewportState = &viewport_state_ci;
   ci.pRasterizationState = &rasterization_state_ci;
   ci.pMultisampleState = &(render_pass->subpass_multisample_state_cis[subpass]);
@@ -121,8 +134,8 @@ void GraphicsPipeline::Init(const MeshFormat *mesh_format_in, const ShaderProgra
   ci.basePipelineIndex = 0;
 }
 VkResult GraphicsPipeline::Finalize(const DeviceContext& device_context) {
-  return vkCreateGraphicsPipelines(device_context.Device(), device_context.PipelineCache(),
-    1, &ci, device_context.HostAllocator(), &handle);
+  return vkCreateGraphicsPipelines(
+      device_context.Device(), device_context.PipelineCache(), 1, &ci, device_context.HostAllocator(), &handle);
 }
 void GraphicsPipeline::Destroy(const DeviceContext& device_context) {
   if (handle != VK_NULL_HANDLE) {

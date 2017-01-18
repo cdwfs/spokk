@@ -5,8 +5,8 @@
 
 #include <memory>
 #include <mutex>
-#include <vector>
 #include <string>
+#include <vector>
 
 namespace spokk {
 
@@ -40,17 +40,13 @@ VkImageAspectFlags GetImageAspectFlags(VkFormat format);
 inline VkViewport ExtentToViewport(const VkExtent2D extent, float zMin = 0.0f, float zMax = 1.0f) {
   return {0, 0, (float)extent.width, (float)extent.height, zMin, zMax};
 }
-inline VkRect2D ExtentToRect2D(const VkExtent2D extent) {
-  return {0, 0, extent.width, extent.height};
-}
+inline VkRect2D ExtentToRect2D(const VkExtent2D extent) { return {0, 0, extent.width, extent.height}; }
 inline VkViewport Rect2DToViewport(VkRect2D rect, float z_min = 0.0f, float z_max = 1.0f) {
   return {
-    (float)rect.offset.x, (float)rect.offset.y,
-    (float)rect.extent.width, (float)rect.extent.height,
-    z_min, z_max
-  };
+      (float)rect.offset.x, (float)rect.offset.y, (float)rect.extent.width, (float)rect.extent.height, z_min, z_max};
 }
 
+// clang-format off
 inline VkBool32 IsDepthFormat(VkFormat format) {
   return (format == VK_FORMAT_X8_D24_UNORM_PACK32 ||
       format == VK_FORMAT_D16_UNORM ||
@@ -59,6 +55,7 @@ inline VkBool32 IsDepthFormat(VkFormat format) {
       format == VK_FORMAT_D32_SFLOAT ||
       format == VK_FORMAT_D32_SFLOAT_S8_UINT);
 }
+// clang-format on
 
 // Initializing VkClearValue objects is a pain. Let's fix that.
 inline VkClearValue CreateColorClearValue(float r, float g, float b, float a = 1.0f) {
@@ -89,22 +86,22 @@ uint32_t GetMaxMipLevels(VkExtent3D base_extent);
 // that device creation should fail.
 // If all required features are supported, set them in enabled_features and return VK_TRUE.
 //
-typedef VkBool32 (*SetDeviceFeaturesFunc)(const VkPhysicalDeviceFeatures& supported_features,
-  VkPhysicalDeviceFeatures* enabled_features);
+typedef VkBool32 (*SetDeviceFeaturesFunc)(
+    const VkPhysicalDeviceFeatures& supported_features, VkPhysicalDeviceFeatures* enabled_features);
 // Shortcut: enable features used by the spokk framework
-VkBool32 EnableMinimumDeviceFeatures(const VkPhysicalDeviceFeatures& supported_features,
-  VkPhysicalDeviceFeatures* enabled_features);
+VkBool32 EnableMinimumDeviceFeatures(
+    const VkPhysicalDeviceFeatures& supported_features, VkPhysicalDeviceFeatures* enabled_features);
 // Shortcut: enable all supported features.
-VkBool32 EnableAllSupportedDeviceFeatures(const VkPhysicalDeviceFeatures& supported_features,
-  VkPhysicalDeviceFeatures* enabled_features);
+VkBool32 EnableAllSupportedDeviceFeatures(
+    const VkPhysicalDeviceFeatures& supported_features, VkPhysicalDeviceFeatures* enabled_features);
 
 //
 // Simplifies quick, synchronous, single-shot command buffers.
 //
 class OneShotCommandPool {
 public:
-  OneShotCommandPool(VkDevice device, VkQueue queue, uint32_t queue_family,
-    const VkAllocationCallbacks *allocator = nullptr);
+  OneShotCommandPool(
+      VkDevice device, VkQueue queue, uint32_t queue_family, const VkAllocationCallbacks* allocator = nullptr);
   ~OneShotCommandPool();
 
   // Allocates a new single shot command buffer and puts it into the recording state.
@@ -112,9 +109,9 @@ public:
   VkCommandBuffer AllocateAndBegin(void) const;
   // Ends recording on the command buffer, submits it, waits for it to complete, and returns
   // the command buffer to the pool.
-  VkResult EndSubmitAndFree(VkCommandBuffer *cb) const;
+  VkResult EndSubmitAndFree(VkCommandBuffer* cb) const;
   // In the event of an error, this variant skips submission and simply returns the CB to the pool.
-  VkResult EndAbortAndFree(VkCommandBuffer *cb) const;
+  VkResult EndAbortAndFree(VkCommandBuffer* cb) const;
 
 private:
   VkCommandPool pool_ = VK_NULL_HANDLE;
@@ -124,24 +121,28 @@ private:
   VkDevice device_ = VK_NULL_HANDLE;
   VkQueue queue_ = VK_NULL_HANDLE;
   uint32_t queue_family_ = VK_QUEUE_FAMILY_IGNORED;
-  const VkAllocationCallbacks *allocator_ = nullptr;
+  const VkAllocationCallbacks* allocator_ = nullptr;
 };
 
-VkResult GetSupportedInstanceLayers(const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
-  std::vector<VkLayerProperties>* out_supported_layers, std::vector<const char*>* out_supported_layer_names);
+VkResult GetSupportedInstanceLayers(const std::vector<const char*>& required_names,
+    const std::vector<const char*>& optional_names, std::vector<VkLayerProperties>* out_supported_layers,
+    std::vector<const char*>* out_supported_layer_names);
 
 VkResult GetSupportedInstanceExtensions(const std::vector<VkLayerProperties>& enabled_instance_layers,
-  const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
-  std::vector<VkExtensionProperties>* out_supported_extensions, std::vector<const char*>* out_supported_extension_names);
+    const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
+    std::vector<VkExtensionProperties>* out_supported_extensions,
+    std::vector<const char*>* out_supported_extension_names);
 
-VkResult GetSupportedDeviceExtensions(VkPhysicalDevice physical_device, const std::vector<VkLayerProperties>& enabled_instance_layers,
-  const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
-  std::vector<VkExtensionProperties>* out_supported_extensions, std::vector<const char*>* out_supported_extension_names);
+VkResult GetSupportedDeviceExtensions(VkPhysicalDevice physical_device,
+    const std::vector<VkLayerProperties>& enabled_instance_layers, const std::vector<const char*>& required_names,
+    const std::vector<const char*>& optional_names, std::vector<VkExtensionProperties>* out_supported_extensions,
+    std::vector<const char*>* out_supported_extension_names);
 
-VkImageViewCreateInfo GetImageViewCreateInfo(VkImage image, const VkImageCreateInfo &image_ci);
+VkImageViewCreateInfo GetImageViewCreateInfo(VkImage image, const VkImageCreateInfo& image_ci);
 
-VkSamplerCreateInfo GetSamplerCreateInfo(VkFilter min_mag_filter, VkSamplerMipmapMode mipmap_mode, VkSamplerAddressMode address_mode);
+VkSamplerCreateInfo GetSamplerCreateInfo(
+    VkFilter min_mag_filter, VkSamplerMipmapMode mipmap_mode, VkSamplerAddressMode address_mode);
 
 }  // namespace spokk
 
-#endif // !defined(VK_UTILITIES_H)
+#endif  // !defined(VK_UTILITIES_H)
