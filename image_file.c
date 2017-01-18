@@ -10,7 +10,7 @@
 #   pragma warning(push)
 #   pragma warning(disable:4244) // conversion from int to uint16_t
 #endif
-#include "stb_image.h"
+#include <stb_image.h>
 #ifdef _MSC_VER
 #   pragma warning(pop)
 // Warning C4505 (unreferenced function removed) can not be suppressed, by design.
