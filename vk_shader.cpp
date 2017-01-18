@@ -673,7 +673,7 @@ void DescriptorSetWriter::BindImage(VkImageView view, VkImageLayout layout, VkSa
   pImageInfo->imageLayout = layout;
   pImageInfo->sampler = sampler;
 }
-void DescriptorSetWriter::BindBuffer(VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range, uint32_t binding, uint32_t array_element) {
+void DescriptorSetWriter::BindBuffer(VkBuffer buffer, uint32_t binding, VkDeviceSize offset, VkDeviceSize range, uint32_t array_element) {
   // TODO(cort): make this search more efficient!
   VkWriteDescriptorSet *write = nullptr;
   for(size_t iWrite=0; iWrite<binding_writes.size(); ++iWrite) {

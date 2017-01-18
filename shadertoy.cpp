@@ -101,7 +101,7 @@ public:
     }
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dsets_[pframe] = dpool_.AllocateSet(device_context_, shader_pipeline_.dset_layouts[0]);
-      dset_writer.BindBuffer(uniform_buffer_.Handle(pframe), 0, VK_WHOLE_SIZE, 4);
+      dset_writer.BindBuffer(uniform_buffer_.Handle(pframe), 4);
       dset_writer.WriteAll(device_context_, dsets_[pframe]);
     }
 

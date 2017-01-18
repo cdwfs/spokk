@@ -130,7 +130,8 @@ struct DescriptorSetWriter {
   explicit DescriptorSetWriter(const VkDescriptorSetLayoutCreateInfo &layout_ci);
 
   void BindImage(VkImageView view, VkImageLayout layout, VkSampler sampler, uint32_t binding, uint32_t array_element = 0);
-  void BindBuffer(VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range, uint32_t binding, uint32_t array_element = 0);
+  void BindBuffer(VkBuffer buffer, uint32_t binding, VkDeviceSize offset = 0,
+    VkDeviceSize range = VK_WHOLE_SIZE, uint32_t array_element = 0);
   void BindTexelBuffer(VkBufferView view, uint32_t binding, uint32_t array_element = 0);
 
   void WriteAll(const DeviceContext& device_context, VkDescriptorSet dest_set);

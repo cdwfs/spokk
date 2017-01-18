@@ -154,7 +154,7 @@ public:
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
       // TODO(cort): allocate_pipelined_set()?
       dsets_[pframe] = dpool_.AllocateSet(device_context_, mesh_shader_pipeline_.dset_layouts[0]);
-      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), 0, VK_WHOLE_SIZE, 0);
+      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), 0);
       dset_writer.WriteAll(device_context_, dsets_[pframe]);
     }
   }
