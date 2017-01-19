@@ -91,6 +91,12 @@ static void add_shader_resource_to_dset_layouts(std::vector<DescriptorSetLayoutI
   uint32_t dset_index     = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
   uint32_t binding_index = glsl.get_decoration(resource.id, spv::DecorationBinding);
   auto resource_type = glsl.get_type(resource.type_id);
+  // In some cases, we need to tweak the descriptor type based on the resource type.
+  if (resource_type.basetype == spirv_cross::SPIRType::SampledImage && resource_type.image.dim == spv::DimBuffer) {
+    desc_type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+  } else if (resource_type.basetype == spirv_cross::SPIRType::Image && resource_type.image.dim == spv::DimBuffer) {
+    desc_type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+  }
   uint32_t array_size = 1;
   for(auto arr_size : resource_type.array) {
     array_size *= arr_size;
