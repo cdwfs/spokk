@@ -40,6 +40,25 @@ void Camera::setViewDirection( const vec3 &viewDirection )
     mModelViewCached = false;
 }
 
+mathfu::vec3 Camera::getEulersYPR() const {
+  const mathfu::vec3 X(1,0,0), Y(0,1,0), Z(0,0,1);
+  const mathfu::quat cq = getOrientation();
+  const mathfu::vec3 f_in(0,0,-1);
+  const mathfu::vec3 f_out = cq * f_in;
+  // Compute yaw
+  const mathfu::vec2 vy(dot(f_out, -Z), dot(f_out, -X));
+  float yaw = (vy.LengthSquared() > 0)
+    ? atan2f(vy.y(), vy.x())
+    : 0; // straight up/down. Need more info. TODO(cort): use sign of f_out.y() and atan2 of r_out or u_out.
+          // Compute pitch
+  const mathfu::vec2 vp(dot(f_out, mathfu::vec3(f_out.x(), 0.0f, f_out.z()).Normalized()), dot(f_out, Y));
+  float pitch = (vp.LengthSquared() > 0)
+    ? atan2f(vp.y(), vp.x())
+    : 0;
+  float roll = 0;
+  mathfu::vec3 camera_eulers(pitch, yaw, roll);
+  return camera_eulers;
+}
 void Camera::setOrientation( const quat &orientation )
 {
     mOrientation = normalize( orientation );

@@ -32,6 +32,8 @@ class Camera {
 
     //! Returns the world-space quaternion that expresses the camera's orientation
     mathfu::quat		getOrientation() const { return mOrientation; }
+    //! Returns the world-space Euler angles in Yaw, Pitch, Roll order with +Y=up, -Z=forward.
+    mathfu::vec3    getEulersYPR() const;
     //! Sets the camera's orientation with world-space quaternion \a orientation
     void		setOrientation( const mathfu::quat &orientation );
 

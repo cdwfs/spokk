@@ -224,11 +224,18 @@ public:
       impulse += viewUp * MOVE_SPEED;
     }
 
-    mathfu::quat view_offset = mathfu::quat::FromEulerAngles(mathfu::vec3(
+    // Update camera based on mouse delta
+    mathfu::vec3 camera_eulers = camera_->getEulersYPR() + mathfu::vec3(
       -TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
       -TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_X),
-      0));
-    camera_->setOrientation(camera_->getOrientation() * view_offset);
+      0);
+    if (camera_eulers[0] >= float(M_PI_2 - 0.01f)) {
+      camera_eulers[0] = float(M_PI_2 - 0.01f);
+    } else if (camera_eulers[0] <= float(-M_PI_2 + 0.01f)) {
+      camera_eulers[0] = float(-M_PI_2 + 0.01f);
+    }
+    camera_eulers[2] = 0; // disallow roll
+    camera_->setOrientation(mathfu::quat::FromEulerAngles(camera_eulers));
     dolly_->Impulse(impulse);
     dolly_->Update((float)dt);
 
