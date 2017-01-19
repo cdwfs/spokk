@@ -32,8 +32,8 @@ ShaderCompiler::ShaderCompiler() : compiler_() {
 ShaderCompiler::~ShaderCompiler() {
 }
 shaderc::SpvCompilationResult ShaderCompiler::CompileGlslString(const char *glsl_source,
-  const std::string& logging_name, const std::string& entry_point,
-  VkShaderStageFlagBits target_stage, const shaderc::CompileOptions& options) const {
+    const std::string& logging_name, const std::string& entry_point,
+    VkShaderStageFlagBits target_stage, const shaderc::CompileOptions& options) const {
   shaderc_shader_kind shader_kind = shaderc_glsl_infer_from_source; // VK_SHADER_STAGE_ALL = infer
   if (target_stage == VK_SHADER_STAGE_COMPUTE_BIT) {
     shader_kind = shaderc_glsl_default_compute_shader;
@@ -56,8 +56,8 @@ shaderc::SpvCompilationResult ShaderCompiler::CompileGlslString(const char *glsl
   return compile_result;
 }
 shaderc::SpvCompilationResult ShaderCompiler::CompileGlslFp(FILE *fp, int len_bytes,
-  const std::string& logging_name, const std::string& entry_point,
-  VkShaderStageFlagBits target_stage, const shaderc::CompileOptions& options) const {
+    const std::string& logging_name, const std::string& entry_point,
+    VkShaderStageFlagBits target_stage, const shaderc::CompileOptions& options) const {
   std::vector<char> glsl_str(len_bytes+1);
   size_t bytes_read = fread(glsl_str.data(), 1, len_bytes, fp);
   if ( (int)bytes_read != len_bytes) {
@@ -67,7 +67,7 @@ shaderc::SpvCompilationResult ShaderCompiler::CompileGlslFp(FILE *fp, int len_by
   return CompileGlslString(glsl_str.data(), logging_name, entry_point, target_stage, options);
 }
 shaderc::SpvCompilationResult ShaderCompiler::CompileGlslFile(const std::string& filename,
-  const std::string& entry_point, VkShaderStageFlagBits target_stage, const shaderc::CompileOptions& options) const {
+    const std::string& entry_point, VkShaderStageFlagBits target_stage, const shaderc::CompileOptions& options) const {
   FILE *glsl_file = fopen(filename.c_str(), "rb");
   if (!glsl_file) {
     return shaderc::SpvCompilationResult(nullptr);
@@ -86,8 +86,8 @@ shaderc::SpvCompilationResult ShaderCompiler::CompileGlslFile(const std::string&
 
 // Helper for SPIRV-Cross shader resource parsing
 static void add_shader_resource_to_dset_layouts(std::vector<DescriptorSetLayoutInfo>& dset_layout_infos,
-  const spirv_cross::CompilerGLSL& glsl, const spirv_cross::Resource& resource,
-  VkDescriptorType desc_type, VkShaderStageFlagBits stage) {
+    const spirv_cross::CompilerGLSL& glsl, const spirv_cross::Resource& resource,
+    VkDescriptorType desc_type, VkShaderStageFlagBits stage) {
   uint32_t dset_index     = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
   uint32_t binding_index = glsl.get_decoration(resource.id, spv::DecorationBinding);
   auto resource_type = glsl.get_type(resource.type_id);
@@ -596,24 +596,24 @@ void DescriptorPool::FreeSet(DeviceContext& device_context, VkDescriptorSet set)
 // DescriptorSetWriter
 //
 DescriptorSetWriter::DescriptorSetWriter(const VkDescriptorSetLayoutCreateInfo &layout_ci) :
-  image_infos{}, buffer_infos{}, texel_buffer_views{}, binding_writes{layout_ci.bindingCount} {
+    image_infos{}, buffer_infos{}, texel_buffer_views{}, binding_writes{layout_ci.bindingCount} {
   // First time through, we're building a total count of each class of descriptor.
   uint32_t image_count = 0, buffer_count = 0, texel_buffer_count = 0;
   for(uint32_t iBinding = 0; iBinding < layout_ci.bindingCount; ++iBinding) {
     const VkDescriptorSetLayoutBinding &binding = layout_ci.pBindings[iBinding];
     if (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER) {
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER) {
       texel_buffer_count += binding.descriptorCount;
     } else if (binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
       buffer_count += binding.descriptorCount;
     } else if (binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
       image_count += binding.descriptorCount;
     }
   }
@@ -634,20 +634,20 @@ DescriptorSetWriter::DescriptorSetWriter(const VkDescriptorSetLayoutCreateInfo &
     write.descriptorCount = binding.descriptorCount;
     write.descriptorType = binding.descriptorType;
     if (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER) {
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER) {
       write.pTexelBufferView = &texel_buffer_views[next_texel_buffer_view];
       next_texel_buffer_view += binding.descriptorCount;
     } else if (binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
       write.pBufferInfo = &buffer_infos[next_buffer_info];
       next_buffer_info += binding.descriptorCount;
     } else if (binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
-      binding.descriptorType == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
+        binding.descriptorType == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
       write.pImageInfo = &image_infos[next_image_info];
       next_image_info += write.descriptorCount;
     }
@@ -713,7 +713,7 @@ void DescriptorSetWriter::WriteAll(const DeviceContext& device_context, VkDescri
     (uint32_t)binding_writes.size(), binding_writes.data(), 0, nullptr);
 }
 void DescriptorSetWriter::WriteOne(const DeviceContext& device_context, VkDescriptorSet dest_set,
-  uint32_t binding, uint32_t array_element) {
+    uint32_t binding, uint32_t array_element) {
   assert(binding < binding_writes.size());
   VkWriteDescriptorSet writeCopy = binding_writes[binding];
   assert(array_element < writeCopy.dstArrayElement);
