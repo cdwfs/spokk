@@ -162,6 +162,24 @@ const uint32_t kWindowHeightDefault = 720;
 //
 // InputState
 //
+InputState::InputState()
+  : window_{}
+  , current_{}
+  , prev_{} {
+}
+InputState::InputState(const std::shared_ptr<GLFWwindow>& window)
+    : window_{}
+    , current_{}
+    , prev_{} {
+  SetWindow(window);
+}
+
+void InputState::SetWindow(const std::shared_ptr<GLFWwindow>& window) {
+  window_ = window;
+  // Force an update to get meaningful deltas on the first frame
+  Update();
+}
+
 void InputState::Update(void) {
   std::shared_ptr<GLFWwindow> w = window_.lock();
   assert(w != nullptr);
@@ -169,10 +187,10 @@ void InputState::Update(void) {
 
   prev_ = current_;
 
-  current_.digital[DIGITAL_LPAD_UP] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_W));
-  current_.digital[DIGITAL_LPAD_LEFT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_A));
-  current_.digital[DIGITAL_LPAD_RIGHT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_D));
-  current_.digital[DIGITAL_LPAD_DOWN] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_S));
+  current_.digital[DIGITAL_LPAD_UP] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_W)) ? 1 : 0;
+  current_.digital[DIGITAL_LPAD_LEFT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_A)) ? 1 : 0;
+  current_.digital[DIGITAL_LPAD_RIGHT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_D)) ? 1 : 0;
+  current_.digital[DIGITAL_LPAD_DOWN] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_S)) ? 1 : 0;
 
   double mx = 0, my = 0;
   glfwGetCursorPos(pw, &mx, &my);

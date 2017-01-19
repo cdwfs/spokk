@@ -30,22 +30,11 @@ namespace spokk {
 
 class InputState {
 public:
-  InputState()
-      : window_{}
-      , current_{}
-      , prev_{} {
-
-  }
-  explicit InputState(const std::shared_ptr<GLFWwindow>& window)
-      : window_(window)
-      , current_{}
-      , prev_{} {
-  }
+  InputState();
+  explicit InputState(const std::shared_ptr<GLFWwindow>& window);
   ~InputState() = default;
 
-  void SetWindow(const std::shared_ptr<GLFWwindow>& window) {
-    window_ = window;
-  }
+  void SetWindow(const std::shared_ptr<GLFWwindow>& window);
 
   enum Digital {
     DIGITAL_LPAD_UP    =  0,
@@ -70,14 +59,17 @@ public:
     ANALOG_COUNT
   };
   void Update();
-  bool IsPressed(Digital id) const  { return  current_.digital[id] && !prev_.digital[id]; }
-  bool IsReleased(Digital id) const { return !current_.digital[id] &&  prev_.digital[id]; }
-  bool GetDigital(Digital id) const { return  current_.digital[id]; }
+  int32_t GetDigital(Digital id) const { return  current_.digital[id]; }
+  int32_t GetDigitalDelta(Digital id) const { return  current_.digital[id] - prev_.digital[id]; }
   float GetAnalog(Analog id) const  { return  current_.analog[id]; }
+  float GetAnalogDelta(Analog id) const { return current_.analog[id] - prev_.analog[id]; }
+
+  bool IsPressed(Digital id) const  { return  GetDigitalDelta(id) > 0; }
+  bool IsReleased(Digital id) const { return GetDigitalDelta(id) < 0; }
 
 private:
   struct {
-    std::array<bool, DIGITAL_COUNT> digital;
+    std::array<int32_t, DIGITAL_COUNT> digital;
     std::array<float, ANALOG_COUNT> analog;
   } current_, prev_;
   std::weak_ptr<GLFWwindow> window_;
