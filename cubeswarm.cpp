@@ -209,19 +209,26 @@ public:
       impulse += camera_->getViewDirection() * MOVE_SPEED;
     }
     if (input_state_.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
-      impulse -= cross(camera_->getViewDirection(), camera_->getWorldUp()) * MOVE_SPEED;
+      mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1,0,0);
+      impulse -= viewRight * MOVE_SPEED;
     }
     if (input_state_.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
       impulse -= camera_->getViewDirection() * MOVE_SPEED;
     }
     if (input_state_.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
-      impulse += cross(camera_->getViewDirection(), camera_->getWorldUp()) * MOVE_SPEED;
+      mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1,0,0);
+      impulse += viewRight * MOVE_SPEED;
+    }
+    if (input_state_.GetDigital(InputState::DIGITAL_RPAD_DOWN)) {
+      mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0,1,0);
+      impulse += viewUp * MOVE_SPEED;
     }
 
-    camera_->setOrientation(mathfu::quat::FromEulerAngles(mathfu::vec3(
-      -TURN_SPEED * input_state_.GetAnalog(InputState::ANALOG_MOUSE_Y),
-      -TURN_SPEED * input_state_.GetAnalog(InputState::ANALOG_MOUSE_X),
-      0)));
+    mathfu::quat view_offset = mathfu::quat::FromEulerAngles(mathfu::vec3(
+      -TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
+      -TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_X),
+      0));
+    camera_->setOrientation(camera_->getOrientation() * view_offset);
     dolly_->Impulse(impulse);
     dolly_->Update((float)dt);
 
