@@ -32,8 +32,13 @@ public:
   uint32_t Depth() const { return depth_; }
   // TODO(cort): this is dangerous, and should be revisited.
   // - No indication whether the allocation is for one buffer or N.
-  // - No way to flush/invalidate only a specific pframe's range.
   const DeviceMemoryAllocation& Memory() const { return memory_; }
+  // Invalidate the specified pframe's data in the host's caches, to ensure GPU writes to its range are visible by the host.
+  // If this allocation is not mapped, this function has no effect.
+  void InvalidatePframeHostCache(uint32_t pframe) const;
+  // Flush the specified pframe's data from the host's caches, to ensure host writes to its range are visible by the GPU.
+  // If this allocation is not mapped, this function has no effect.
+  void FlushPframeHostCache(uint32_t pframe) const;
 
 protected:
   std::vector<VkBuffer> handles_;
@@ -65,6 +70,8 @@ public:
   VkBuffer Handle() const { return handles_[0]; }
   VkBufferView View() const { return views_[0]; }
   void *Mapped() const { return memory_.Mapped(); }
+  void InvalidateHostCache() const { return InvalidatePframeHostCache(0); }
+  void FlushHostCache() const { return FlushPframeHostCache(0); }
 };
 
 }  // namespace spokk
