@@ -187,10 +187,12 @@ void InputState::Update(void) {
 
   prev_ = current_;
 
+  // TODO(cort): custom key bindings
   current_.digital[DIGITAL_LPAD_UP] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_W)) ? 1 : 0;
   current_.digital[DIGITAL_LPAD_LEFT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_A)) ? 1 : 0;
   current_.digital[DIGITAL_LPAD_RIGHT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_D)) ? 1 : 0;
   current_.digital[DIGITAL_LPAD_DOWN] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_S)) ? 1 : 0;
+  current_.digital[DIGITAL_RPAD_DOWN] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_SPACE)) ? 1 : 0;
 
   double mx = 0, my = 0;
   glfwGetCursorPos(pw, &mx, &my);
