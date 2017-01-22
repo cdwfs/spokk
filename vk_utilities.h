@@ -52,6 +52,21 @@ inline VkViewport Rect2DToViewport(VkRect2D rect, float z_min = 0.0f, float z_ma
 }
 
 //
+// Helpers for configuring device features. Passed in Application::CreateInfo.
+// First parameter is the features supported by the device.
+// Second parameter is the features that will be enabled.
+// if an optional feature isn't set in supported_features, just don't set it.
+// if a required feature isn't set in supported_features, return VK_FALSE to indicate
+// that device creation should fail.
+// If all required features are supported, set them in enabled_features and return VK_TRUE.
+//
+typedef VkBool32 (*SetDeviceFeaturesFunc)(const VkPhysicalDeviceFeatures& supported_features,
+  VkPhysicalDeviceFeatures* enabled_features);
+// Shortcut: enable all supported features.
+VkBool32 EnableAllSupportedDeviceFeatures(const VkPhysicalDeviceFeatures& supported_features,
+  VkPhysicalDeviceFeatures* enabled_features);
+
+//
 // Simplifies quick, synchronous, single-shot command buffers.
 //
 class OneShotCommandPool {

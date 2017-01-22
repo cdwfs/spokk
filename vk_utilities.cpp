@@ -97,6 +97,11 @@ VkResult OneShotCommandPool::EndSubmitAndFree(VkCommandBuffer *cb) const {
   return result;
 }
 
+VkBool32 EnableAllSupportedDeviceFeatures(const VkPhysicalDeviceFeatures& supported_features,
+    VkPhysicalDeviceFeatures* enabled_features) {
+  *enabled_features = supported_features;
+  return VK_TRUE;
+}
 
 VkResult GetSupportedInstanceLayers(const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
     std::vector<VkLayerProperties>* out_supported_layers, std::vector<const char*>* out_supported_layer_names) {

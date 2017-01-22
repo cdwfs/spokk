@@ -6,13 +6,14 @@
 namespace spokk {
 
 DeviceContext::DeviceContext(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache,
-  const DeviceQueue *queues, uint32_t queue_count,
-  const VkAllocationCallbacks *host_allocator, const DeviceAllocationCallbacks *device_allocator) :
-  physical_device_(physical_device),
-  device_(device),
-  pipeline_cache_(pipeline_cache),
-  host_allocator_(host_allocator),
-  device_allocator_(device_allocator) {
+    const DeviceQueue *queues, uint32_t queue_count, const VkPhysicalDeviceFeatures& enabled_device_features,
+    const VkAllocationCallbacks *host_allocator, const DeviceAllocationCallbacks *device_allocator)
+  : physical_device_(physical_device),
+    device_(device),
+    pipeline_cache_(pipeline_cache),
+    host_allocator_(host_allocator),
+    device_allocator_(device_allocator),
+    device_features_(enabled_device_features) {
   vkGetPhysicalDeviceProperties(physical_device_, &device_properties_);
   vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
   queues_.insert(queues_.begin(), queues+0, queues+queue_count);

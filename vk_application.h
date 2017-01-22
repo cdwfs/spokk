@@ -7,13 +7,12 @@
 #include <GLFW/glfw3.h>
 
 #include "vk_buffer.h"
-#include "vk_image.h"
-#include "vk_utilities.h"
-#include "vk_vertex.h"
-
 #include "vk_context.h"
+#include "vk_image.h"
 #include "vk_memory.h"
 #include "vk_pipeline.h"
+#include "vk_utilities.h"
+#include "vk_vertex.h"
 
 #include <array>
 #include <cassert>
@@ -112,6 +111,9 @@ public:
       VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
 #endif
     std::vector<QueueFamilyRequest> queue_family_requests;
+    // If NULL, no device features are enabled. To easily enable all supported features,
+    // pass EnableAllSupportedDeviceFeatures.
+    SetDeviceFeaturesFunc pfn_set_device_features = nullptr;
   };
 
   explicit Application(const CreateInfo &ci);
@@ -138,7 +140,7 @@ protected:
   VkDebugReportCallbackEXT debug_report_callback_ = VK_NULL_HANDLE;
   VkSurfaceKHR surface_ = VK_NULL_HANDLE;
   VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
-  VkPhysicalDeviceFeatures physical_device_features_ = {};
+  VkPhysicalDeviceFeatures enabled_device_features_ = {};
   VkDevice device_ = VK_NULL_HANDLE;
   std::vector<VkExtensionProperties> device_extensions_ = {};
   std::vector<DeviceQueue> queues_;

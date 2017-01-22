@@ -32,7 +32,8 @@ public:
     host_allocator_(nullptr), device_allocator_(nullptr), device_properties_{},
     memory_properties_{}, queues_{} {
   }
-  DeviceContext(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache, const DeviceQueue *queues, uint32_t queue_count,
+  DeviceContext(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache,
+    const DeviceQueue *queues, uint32_t queue_count, const VkPhysicalDeviceFeatures& enabled_device_features,
     const VkAllocationCallbacks *host_allocator = nullptr, const DeviceAllocationCallbacks *device_allocator = nullptr);
   ~DeviceContext();
 
@@ -43,6 +44,7 @@ public:
   const DeviceAllocationCallbacks *DeviceAllocator() const { return device_allocator_; }
 
   const VkPhysicalDeviceProperties& DeviceProperties() const { return device_properties_; }
+  const VkPhysicalDeviceFeatures& DeviceFeatures() const { return device_features_; }
 
   const DeviceQueue* FindQueue(VkQueueFlags queue_flags, VkSurfaceKHR present_surface = VK_NULL_HANDLE) const;
 
@@ -70,6 +72,7 @@ private:
   const VkAllocationCallbacks* host_allocator_;
   const DeviceAllocationCallbacks *device_allocator_;
 
+  VkPhysicalDeviceFeatures device_features_;  // Features enabled at device creation time.
   VkPhysicalDeviceProperties device_properties_;
   VkPhysicalDeviceMemoryProperties memory_properties_;
   std::vector<DeviceQueue> queues_;

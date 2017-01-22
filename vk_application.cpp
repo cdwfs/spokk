@@ -203,7 +203,8 @@ void InputState::Update(void) {
 //
 // Application
 //
-Application::Application(const CreateInfo &ci) {
+Application::Application(const CreateInfo &ci) 
+  : enabled_device_features_{} {
   if (ci.enable_graphics) {
     // Initialize GLFW
     glfwSetErrorCallback(MyGlfwErrorCallback);
@@ -317,7 +318,17 @@ Application::Application(const CreateInfo &ci) {
     required_device_extension_names, optional_device_extension_names,
     &device_extensions_, &enabled_device_extension_names));
 
-  vkGetPhysicalDeviceFeatures(physical_device_, &physical_device_features_);
+  VkPhysicalDeviceFeatures supported_device_features = {};
+  vkGetPhysicalDeviceFeatures(physical_device_, &supported_device_features);
+  VkBool32 all_required_features_enabled = VK_TRUE;
+  if (ci.pfn_set_device_features != nullptr) {
+    all_required_features_enabled =
+      ci.pfn_set_device_features(supported_device_features, &enabled_device_features_);
+  }
+  if (!all_required_features_enabled) {
+    ZOMBO_ERROR("Device creation failed: not all required features are supported.");
+    return;
+  }
 
   VkDeviceCreateInfo device_ci = {};
   device_ci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -325,7 +336,7 @@ Application::Application(const CreateInfo &ci) {
   device_ci.pQueueCreateInfos = device_queue_cis.data();
   device_ci.enabledExtensionCount = (uint32_t)enabled_device_extension_names.size();
   device_ci.ppEnabledExtensionNames = enabled_device_extension_names.data();
-  device_ci.pEnabledFeatures = &physical_device_features_;
+  device_ci.pEnabledFeatures = &enabled_device_features_;
   SPOKK_VK_CHECK(vkCreateDevice(physical_device_, &device_ci, host_allocator_, &device_));
 
   uint32_t total_queue_family_count = 0;
@@ -359,7 +370,7 @@ Application::Application(const CreateInfo &ci) {
   SPOKK_VK_CHECK(vkCreatePipelineCache(device_, &pipeline_cache_ci, host_allocator_, &pipeline_cache_));
 
   device_context_ = DeviceContext(device_, physical_device_, pipeline_cache_, queues_.data(),
-    (uint32_t)queues_.size(), host_allocator_, device_allocator_);
+    (uint32_t)queues_.size(), enabled_device_features_, host_allocator_, device_allocator_);
 
   // Create VkSwapchain
   if (ci.enable_graphics && surface_ != VK_NULL_HANDLE) {
