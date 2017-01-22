@@ -272,32 +272,44 @@ class CameraStereo : public CameraPersp {
     float			mEyeSeparation;
 };
 
+// Just a quick hacked-up "physical" representation of a Camera -- it has momentum,
+// it can be pushed around with impulses, and can be constrained to move within an AABB.
 class CameraDolly
 {
 public:
-    explicit CameraDolly(Camera &cam) :
-            camera_(cam),
-            velocity_(0,0,0),
-            damping_(0.98f) {
-    }
-    ~CameraDolly() = default;
-    CameraDolly& operator=(const CameraDolly&) = delete;
+  explicit CameraDolly(Camera &cam) :
+      camera_(cam),
+      velocity_(0,0,0),
+      damping_(0.98f),
+      pos_min_(-FLT_MAX, -FLT_MAX, -FLT_MAX),
+      pos_max_(FLT_MAX, FLT_MAX, FLT_MAX) {
+  }
+  ~CameraDolly() = default;
+  CameraDolly& operator=(const CameraDolly&) = delete;
 
-    Camera& GetCamera() { return camera_; }
-    const Camera& GetCamera() const { return camera_; }
-    void Impulse(mathfu::vec3& dv) { velocity_ += dv; }
-    void Update(float dt) {
-        camera_.setEyePoint(camera_.getEyePoint() + velocity_ * dt);
-        velocity_ *= damping_;
-        if (velocity_.LengthSquared() < 0.001f) {
-            velocity_ = mathfu::vec3(0,0,0);
-        }
+  void SetBounds(mathfu::vec3 aabb_min, mathfu::vec3 aabb_max) {
+    pos_min_ = aabb_min;
+    pos_max_ = aabb_max;
+  }
+  Camera& GetCamera() { return camera_; }
+  const Camera& GetCamera() const { return camera_; }
+  void Impulse(mathfu::vec3& dv) { velocity_ += dv; }
+  void Update(float dt) {
+    mathfu::vec3 new_eye = camera_.getEyePoint() + velocity_ * dt;
+    new_eye = mathfu::vec3::Max(new_eye, pos_min_);
+    new_eye = mathfu::vec3::Min(new_eye, pos_max_);
+    camera_.setEyePoint(new_eye);
+    velocity_ *= damping_;
+    if (velocity_.LengthSquared() < 0.001f) {
+      velocity_ = mathfu::vec3(0,0,0);
     }
+  }
 
 private:
-    Camera& camera_;
-    mathfu::vec3 velocity_;
-    float damping_;
+  Camera& camera_;
+  mathfu::vec3 velocity_;
+  float damping_;
+  mathfu::vec3 pos_min_, pos_max_;
 };
 
 #endif //!defined(CAMERA_H)
