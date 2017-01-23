@@ -2,6 +2,7 @@
 #define CAMERA_H
 
 #include <mathfu/glsl_mappings.h>
+#include <float.h>
 
 class Camera {
   public:
