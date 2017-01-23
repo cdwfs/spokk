@@ -79,8 +79,11 @@ VkResult PipelinedBuffer::Load(const DeviceContext& device_context, uint32_t pfr
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
       0, nullptr, 1, &barrier, 0, nullptr);
     if (data_size <= 65536) {
+      uintptr_t src_dwords = uintptr_t(src_data) + src_offset;
+      ZOMBO_ASSERT((src_dwords % sizeof(uint32_t)) == 0, "src_data (%p) + src_offset (%d) must be 4-byte aligned.",
+                   src_data, uint32_t(src_offset));
       vkCmdUpdateBuffer(cb, Handle(pframe), dst_offset, data_size,
-        reinterpret_cast<const uint8_t*>(src_data) + src_offset);
+        reinterpret_cast<const uint32_t*>(src_dwords));
     } else {
       assert(0); // TODO(cort): staging buffer? Multiple vkCmdUpdateBuffers? Ignore for now, buffers are small.
     }
