@@ -32,17 +32,6 @@ ELSEIF(UNIX)
     SET(libs m)
 ENDIF()
 
-# SPIRV-Cross
-add_subdirectory(third_party/SPIRV-Cross)
-set(SPIRV_CROSS_TARGETS
-	spirv-cross-core
-	spirv-cross-glsl
-	spirv-cross-cpp
-	spirv-cross-msl
-	spirv-cross
-)
-set_target_properties(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
-
 # GLFW
 option(GLFW_BUILD_EXAMPLES "Build the GLFW example programs" OFF)
 option(GLFW_BUILD_TESTS "Build the GLFW test programs" OFF)
@@ -61,6 +50,17 @@ ELSEIF(APPLE)
 ELSEIF(UNIX)
     SET(libs ${libs} ${VULKAN_LIBRARY})
 ENDIF()
+
+# SPIRV-Cross
+add_subdirectory(third_party/SPIRV-Cross)
+set(SPIRV_CROSS_TARGETS
+	spirv-cross-core
+	spirv-cross-glsl
+	spirv-cross-cpp
+	spirv-cross-msl
+	spirv-cross
+)
+set_target_properties(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
 
 # Mathfu
 set(mathfu_build_benchmarks OFF CACHE BOOL "")
