@@ -58,14 +58,14 @@ VkCommandBuffer OneShotCommandPool::AllocateAndBegin(void) const {
     if (VK_SUCCESS != vkAllocateCommandBuffers(device_, &cb_allocate_info, &cb)) {
       return VK_NULL_HANDLE;
     }
-  }
-  VkCommandBufferBeginInfo cb_begin_info = {};
-  cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  VkResult result = vkBeginCommandBuffer(cb, &cb_begin_info);
-  if (VK_SUCCESS != result) {
-    vkFreeCommandBuffers(device_, pool_, 1, &cb);
-    return VK_NULL_HANDLE;
+    VkCommandBufferBeginInfo cb_begin_info = {};
+    cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VkResult result = vkBeginCommandBuffer(cb, &cb_begin_info);
+    if (VK_SUCCESS != result) {
+      vkFreeCommandBuffers(device_, pool_, 1, &cb);
+      return VK_NULL_HANDLE;
+    }
   }
   return cb;
 }
