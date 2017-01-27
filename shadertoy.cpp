@@ -339,8 +339,7 @@ int main(int argc, char *argv[]) {
     {(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT), true, 1, 0.0f}
   };
   Application::CreateInfo app_ci = {};
-  // TODO(cort): re-enable performance warnings once Tobin's fix for unused VB bindings goes in
-  //app_ci.debug_report_flags |= VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
+  app_ci.debug_report_flags |= VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
   app_ci.queue_family_requests = queue_requests;
 
   ShaderToyApp app(app_ci);
