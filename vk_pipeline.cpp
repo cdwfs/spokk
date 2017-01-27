@@ -107,7 +107,9 @@ VkResult GraphicsPipeline::Create(const DeviceContext& device_context, const Mes
   ci.pStages = shader_pipeline->shader_stage_cis.data();
   ci.pVertexInputState = &(mesh_format->vertex_input_state_ci);
   ci.pInputAssemblyState = &(mesh_format->input_assembly_state_ci);
-  ci.pTessellationState = &tessellation_state_ci;
+  ci.pTessellationState =
+    (shader_pipeline->active_stages & (VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT))
+    ? &tessellation_state_ci : nullptr;
   ci.pViewportState = &viewport_state_ci;
   ci.pRasterizationState = &rasterization_state_ci;
   ci.pMultisampleState = &(render_pass->subpass_multisample_state_cis[subpass]);
