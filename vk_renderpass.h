@@ -17,9 +17,9 @@ struct SubpassAttachments {
 
 struct RenderPass {
   // Fill in these arrays manually...
-  std::vector<VkAttachmentDescription> attachment_descs;
-  std::vector<SubpassAttachments> subpass_attachments;
-  std::vector<VkSubpassDependency> subpass_dependencies;
+  std::vector<VkAttachmentDescription> attachment_descs;  // one per attachment,
+  std::vector<SubpassAttachments> subpass_attachments;    // one per subpass,
+  std::vector<VkSubpassDependency> subpass_dependencies;  // one per dependency between subpasses (and/or previous/next render passes).
   // ...or call this to populate the arrays using common presets...
   // TODO(cort): This is not satisfying. Needs limited customizability -- format preferences for various use cases,
   // sample counts, a way to decouple framebuffer and target image creation from renderpass configuration, etc.
