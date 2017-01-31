@@ -10,6 +10,7 @@ using namespace spokk;
 
 #include <array>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 
 namespace {
