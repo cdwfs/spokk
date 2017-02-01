@@ -168,6 +168,7 @@ SET(SPOKK_HEADERS
     vk_renderpass.h
     vk_shader.h
     vk_utilities.h
+    vk_text.h
     vk_vertex.h
 )
 SET(SPOKK_SOURCES
@@ -182,6 +183,7 @@ SET(SPOKK_SOURCES
     vk_renderpass.cpp
     vk_shader.cpp
     vk_utilities.cpp
+    vk_text.cpp
     vk_vertex.cpp
 )
 SET(SPOKK_LIB_NAME spokk)
