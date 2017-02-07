@@ -125,8 +125,10 @@ typedef struct ImageFile
     void *file_contents;  // NOTE: may not include the entire file; headers may be stripped, etc.
 } ImageFile;
 
+// Returns 0 on success, non-zero on error
 int ImageFileCreate(ImageFile *out_image, const char *image_path);
 void ImageFileDestroy(const ImageFile *image);
+
 size_t ImageFileGetSubresourceSize(const ImageFile *image, const ImageFileSubresource subresource);
 void *ImageFileGetSubresourceData(const ImageFile *image, const ImageFileSubresource subresource);
 
