@@ -100,6 +100,7 @@ VkResult GraphicsPipeline::Create(const DeviceContext& device_context, const Mes
   dynamic_state_ci.dynamicStateCount = (uint32_t)dynamic_states.size();
   dynamic_state_ci.pDynamicStates = dynamic_states.data();
 
+  // TODO(cort): support passing a NULL mesh_format?
   ci = {};
   ci.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
   ci.flags = 0;  // TODO(cort): pass these in?

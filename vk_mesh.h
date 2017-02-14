@@ -7,12 +7,15 @@
 namespace spokk {
 
 struct MeshFormat {
+  // Fill in these arrays manually...
   std::vector<VkVertexInputBindingDescription> vertex_buffer_bindings;
   std::vector<VkVertexInputAttributeDescription> vertex_attributes;
-  static const MeshFormat* GetEmpty(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart = VK_FALSE);
-  // Call me after filling in attributes and bindings.
+  // ...and all me after filling in attributes and bindings.
   void Finalize(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart = VK_FALSE);
+  // Or use one of these functions to get a pre-populated, pre-Finalized format with common settings.
+  static const MeshFormat* GetEmpty(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart = VK_FALSE);
 
+  // These are filled in during Finalize(), and should not be modified manually.
   VkPipelineVertexInputStateCreateInfo vertex_input_state_ci;  // used for graphics pipeline creation
   VkPipelineInputAssemblyStateCreateInfo input_assembly_state_ci;  // used for graphics pipeline creation
 };
