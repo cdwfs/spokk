@@ -35,3 +35,6 @@ Release/
 
 CMakeLists.txt.user*
 build
+
+# RenderDoc capture settings
+*.cap
