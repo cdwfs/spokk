@@ -51,6 +51,10 @@ inline VkViewport Rect2DToViewport(VkRect2D rect, float z_min = 0.0f, float z_ma
   };
 }
 
+// Determine the number of mip levels for a given base image extent. This includes the base level;
+// for valid extents (w/h/d all >= 1), the result will also be >= 1.
+uint32_t GetMaxMipLevels(VkExtent3D base_extent);
+
 //
 // Helpers for configuring device features. Passed in Application::CreateInfo.
 // First parameter is the features supported by the device.

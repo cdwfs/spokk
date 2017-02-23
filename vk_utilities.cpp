@@ -1,10 +1,26 @@
 #include "vk_utilities.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cfloat>
 #include <cstring>
 
 namespace spokk {
+
+uint32_t GetMaxMipLevels(VkExtent3D base_extent) {
+  if (base_extent.width == 0 && base_extent.height == 0 && base_extent.depth == 0) {
+    return 0;
+  }
+  uint32_t count = 1;
+  while(base_extent.width > 1 || base_extent.height > 1 || base_extent.depth > 1) {
+    count += 1;
+    base_extent.width = std::max(base_extent.width / 2, 1U);
+    base_extent.height = std::max(base_extent.height / 2, 1U);
+    base_extent.depth = std::max(base_extent.depth / 2, 1U);
+  }
+  return count;
+}
+
 
 VkImageAspectFlags GetImageAspectFlags(VkFormat format) {
   switch(format) {
