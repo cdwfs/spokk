@@ -30,15 +30,22 @@ public:
       nullptr;
   }
   uint32_t Depth() const { return depth_; }
+  VkDeviceSize BytesPerPframe() const { return bytes_per_pframe_; }
   // TODO(cort): this is dangerous, and should be revisited.
   // - No indication whether the allocation is for one buffer or N.
   const DeviceMemoryAllocation& Memory() const { return memory_; }
   // Invalidate the specified pframe's data in the host's caches, to ensure GPU writes to its range are visible by the host.
   // If this allocation is not mapped, this function has no effect.
-  void InvalidatePframeHostCache(uint32_t pframe) const;
+  void InvalidatePframeHostCache(uint32_t pframe) const {
+    return InvalidatePframeHostCache(pframe, 0, bytes_per_pframe_);
+  }
+  void InvalidatePframeHostCache(uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const;
   // Flush the specified pframe's data from the host's caches, to ensure host writes to its range are visible by the GPU.
   // If this allocation is not mapped, this function has no effect.
-  void FlushPframeHostCache(uint32_t pframe) const;
+  void FlushPframeHostCache(uint32_t pframe) const {
+    return FlushPframeHostCache(pframe, 0, bytes_per_pframe_);
+  }
+  void FlushPframeHostCache(uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const;
 
 protected:
   std::vector<VkBuffer> handles_;

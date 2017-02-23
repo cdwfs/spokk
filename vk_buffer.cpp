@@ -133,21 +133,21 @@ void PipelinedBuffer::Destroy(const DeviceContext& device_context) {
   depth_ = 0;
 }
 
-void PipelinedBuffer::InvalidatePframeHostCache(uint32_t pframe) const {
+void PipelinedBuffer::InvalidatePframeHostCache(uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const {
   VkMappedMemoryRange range = {};
   range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
   range.memory = memory_.block->Handle();
-  range.offset = memory_.offset + pframe * bytes_per_pframe_;
-  range.size = bytes_per_pframe_;
+  range.offset = memory_.offset + pframe * bytes_per_pframe_ + offset;
+  range.size = nbytes;
   return memory_.block->InvalidateHostCache(range);
 }
 
-void PipelinedBuffer::FlushPframeHostCache(uint32_t pframe) const {
+void PipelinedBuffer::FlushPframeHostCache(uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const {
   VkMappedMemoryRange range = {};
   range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
   range.memory = memory_.block->Handle();
-  range.offset = memory_.offset + pframe * bytes_per_pframe_;
-  range.size = bytes_per_pframe_;
+  range.offset = memory_.offset + pframe * bytes_per_pframe_ + offset;
+  range.size = nbytes;
   return memory_.block->FlushHostCache(range);
 }
 
