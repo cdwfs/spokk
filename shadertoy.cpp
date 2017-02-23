@@ -66,12 +66,13 @@ public:
     for(auto& sampler : samplers_) {
       SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler));
     }
-    image_loader_ = my_make_unique<ImageLoader>(device_context_);
+    const VkDeviceSize blit_buffer_nbytes = 4*1024*1024;
+    SPOKK_VK_CHECK(blitter_.Create(device_context_, PFRAME_COUNT, blit_buffer_nbytes));
     // TODO(cort): replace with some actual ShaderToy textures
-    SPOKK_VK_CHECK(textures_[0].CreateAndLoad(device_context_, *image_loader_.get(), "trevor/noise.dds"));
-    SPOKK_VK_CHECK(textures_[1].CreateAndLoad(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
-    SPOKK_VK_CHECK(textures_[2].CreateAndLoad(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
-    SPOKK_VK_CHECK(textures_[3].CreateAndLoad(device_context_, *image_loader_.get(), "trevor/redf.ktx"));
+    textures_[0].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "trevor/noise.dds");
+    textures_[1].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "trevor/redf.ktx");
+    textures_[2].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "trevor/redf.ktx");
+    textures_[3].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "trevor/redf.ktx");
 
     // Load shader pipelines
     SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_context_, "fullscreen.vert.spv"));
@@ -138,7 +139,7 @@ public:
       for(auto sampler : samplers_) {
         vkDestroySampler(device_, sampler, host_allocator_);
       }
-      image_loader_.reset();
+      blitter_.Destroy(device_context_);
     }
   }
 
@@ -200,6 +201,7 @@ public:
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+    blitter_.NextPframe();
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     VkRenderPassBeginInfo render_pass_begin_info = {};
     render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -306,7 +308,7 @@ private:
   ShaderCompiler shader_compiler_;
   shaderc::CompileOptions compiler_options_;
 
-  std::unique_ptr<ImageLoader> image_loader_;
+  ImageBlitter blitter_;
   std::array<Image,4> textures_;
   std::array<VkSampler,4> samplers_;
 
