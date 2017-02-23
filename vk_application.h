@@ -160,6 +160,9 @@ protected:
   // handles refer to this application's device_, queues_, etc.
   DeviceContext device_context_;
 
+  // Queue used by the framework for primary graphics/command buffer submission.
+  const DeviceQueue* graphics_and_present_queue_;
+
   uint32_t frame_index_;  // Frame number since launch
   uint32_t pframe_index_;  // current pframe (pipelined frame) index; cycles from 0 to PFRAME_COUNT-1, then back to 0.
 
@@ -168,8 +171,6 @@ protected:
 private:
   bool init_successful = false;
 
-  // TODO(cort): Do apps need to know the graphics/present queue, so they can transition resources to it if necessary?
-  const DeviceQueue* graphics_and_present_queue_;
   VkCommandPool primary_cpool_;
   std::array<VkCommandBuffer, PFRAME_COUNT> primary_command_buffers_;
   VkSemaphore image_acquire_semaphore_;
