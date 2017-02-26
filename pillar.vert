@@ -7,7 +7,7 @@ layout (location = 0) out vec2 texcoord;
 layout (location = 1) out vec3 norm;
 layout (location = 2) out vec3 fromEye;
 
-layout (set = 0, binding = 0) uniform MeshUniforms {
+layout (set = 0, binding = 0) uniform SceneUniforms {
   vec4 time_and_res;
   vec4 eye;
   mat4 viewproj;

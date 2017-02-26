@@ -6,7 +6,7 @@ layout (location = 2) in vec3 fromEye;
 layout (location = 0) out vec4 out_fragColor;
 in vec4 gl_FragCoord;
 
-layout (set = 0, binding = 0) uniform MeshUniforms {
+layout (set = 0, binding = 0) uniform SceneUniforms {
     vec4 time_and_res;
     vec4 eye;
     mat4 viewproj;

@@ -14,7 +14,7 @@ using namespace spokk;
 #include <memory>
 
 namespace {
-struct MeshUniforms {
+struct SceneUniforms {
   mathfu::vec4_packed time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
   mathfu::vec4_packed eye;  // xyz: eye position
   mathfu::mat4 viewproj;
@@ -61,7 +61,7 @@ private:
 
   MeshFormat mesh_format_;
   Mesh mesh_;
-  PipelinedBuffer mesh_uniforms_;
+  PipelinedBuffer scene_uniforms_;
   PipelinedBuffer heightfield_buffer_;
   PipelinedBuffer visible_cells_buffer_;
 
@@ -182,10 +182,10 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   // Create pipelined buffer of shader uniforms
   VkBufferCreateInfo uniform_buffer_ci = {};
   uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  uniform_buffer_ci.size = sizeof(MeshUniforms);
+  uniform_buffer_ci.size = sizeof(SceneUniforms);
   uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(mesh_uniforms_.Create(device_context_, PFRAME_COUNT, uniform_buffer_ci,
+  SPOKK_VK_CHECK(scene_uniforms_.Create(device_context_, PFRAME_COUNT, uniform_buffer_ci,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
   // Create buffer of per-cell "height" values
@@ -224,7 +224,7 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
     // TODO(cort): allocate_pipelined_set()?
     dsets_[pframe] = dpool_.AllocateSet(device_context_, pillar_shader_pipeline_.dset_layouts[0]);
-    dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), 0);
+    dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), 0);
     dset_writer.BindTexelBuffer(visible_cells_buffer_.View(pframe), 2);
     dset_writer.BindTexelBuffer(heightfield_buffer_.View(pframe), 3);
     dset_writer.WriteAll(device_context_, dsets_[pframe]);
@@ -237,7 +237,7 @@ PillarsApp::~PillarsApp() {
 
     dpool_.Destroy(device_context_);
 
-    mesh_uniforms_.Destroy(device_context_);
+    scene_uniforms_.Destroy(device_context_);
     visible_cells_buffer_.Destroy(device_context_);
     heightfield_buffer_.Destroy(device_context_);
 
@@ -306,7 +306,7 @@ void PillarsApp::Update(double dt) {
   dolly_->Update((float)dt);
 
   // Update uniforms
-  MeshUniforms* uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
+  SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
   uniforms->time_and_res = mathfu::vec4(
     (float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
   uniforms->eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
@@ -318,7 +318,7 @@ void PillarsApp::Update(double dt) {
     +0.0f, +0.0f, +0.5f, +0.5f,
     +0.0f, +0.0f, +0.0f, +1.0f);
   uniforms->viewproj = clip_fixup * proj * w2v;
-  mesh_uniforms_.FlushPframeHostCache(pframe_index_);
+  scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
   // Update visible cells
   // - Add a cell as visible the first time it gets within N units of the camera.
