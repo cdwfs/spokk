@@ -290,6 +290,7 @@ public:
   ~CameraDolly() = default;
   CameraDolly& operator=(const CameraDolly&) = delete;
 
+  // If SetBounds() isn't called, the default bounds are +/-FLT_MAX.
   void SetBounds(mathfu::vec3 aabb_min, mathfu::vec3 aabb_max) {
     pos_min_ = aabb_min;
     pos_max_ = aabb_max;
