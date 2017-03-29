@@ -56,6 +56,7 @@ add_subdirectory(third_party/SPIRV-Cross)
 set(SPIRV_CROSS_TARGETS
 	spirv-cross-core
 	spirv-cross-glsl
+	spirv-cross-hlsl
 	spirv-cross-cpp
 	spirv-cross-msl
 	spirv-cross
@@ -96,6 +97,7 @@ IF(${SPOKK_ENABLE_SHADERC})
         SPIRV-Tools
         spirv-tools-build-version
         spirv-tools-cpp-example
+        spirv-tools-vimsyntax
         SPIRV-Tools-opt
         spirv-val
     )
