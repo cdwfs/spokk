@@ -308,50 +308,50 @@ namespace {
   }
   u8x4 Convert4_F32toU8(const f32x4 in) {
     return {{
-        (uint8_t)( my_clamp(in.elem[0], 0.0f, 1.0f) + 0.5f ),
-        (uint8_t)( my_clamp(in.elem[1], 0.0f, 1.0f) + 0.5f ),
-        (uint8_t)( my_clamp(in.elem[2], 0.0f, 1.0f) + 0.5f ),
-        (uint8_t)( my_clamp(in.elem[3], 0.0f, 1.0f) + 0.5f ),
+        (uint8_t)( my_clamp(in.elem[0], 0.0f, (float)UINT8_MAX) ),
+        (uint8_t)( my_clamp(in.elem[1], 0.0f, (float)UINT8_MAX) ),
+        (uint8_t)( my_clamp(in.elem[2], 0.0f, (float)UINT8_MAX) ),
+        (uint8_t)( my_clamp(in.elem[3], 0.0f, (float)UINT8_MAX) ),
       }};
   }
   s8x4 Convert4_F32toS8(const f32x4 in) {
     return {{
-        (int8_t)floorf( my_clamp(in.elem[0], -1.0f, 1.0f) + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
-        (int8_t)floorf( my_clamp(in.elem[1], -1.0f, 1.0f) + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
-        (int8_t)floorf( my_clamp(in.elem[2], -1.0f, 1.0f) + ((in.elem[2] >= 0) ? 0.5f : -0.5f) ),
-        (int8_t)floorf( my_clamp(in.elem[3], -1.0f, 1.0f) + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
+        (int8_t)my_clamp(in.elem[0], (float)INT8_MIN, (float)INT8_MAX),
+        (int8_t)my_clamp(in.elem[1], (float)INT8_MIN, (float)INT8_MAX),
+        (int8_t)my_clamp(in.elem[2], (float)INT8_MIN, (float)INT8_MAX),
+        (int8_t)my_clamp(in.elem[3], (float)INT8_MIN, (float)INT8_MAX),
       }};
   }
   u16x4 Convert4_F32toU16N(const f32x4 in) {
     return {{
-        (uint16_t)( my_clamp(in.elem[0], 0.0f, 1.0f) * 65535.0f + 0.5f ),
-        (uint16_t)( my_clamp(in.elem[1], 0.0f, 1.0f) * 65535.0f + 0.5f ),
-        (uint16_t)( my_clamp(in.elem[2], 0.0f, 1.0f) * 65535.0f + 0.5f ),
-        (uint16_t)( my_clamp(in.elem[3], 0.0f, 1.0f) * 65535.0f + 0.5f ),
+        (uint16_t)( my_clamp(in.elem[0], 0.0f, 1.0f) * (float)UINT16_MAX + 0.5f ),
+        (uint16_t)( my_clamp(in.elem[1], 0.0f, 1.0f) * (float)UINT16_MAX + 0.5f ),
+        (uint16_t)( my_clamp(in.elem[2], 0.0f, 1.0f) * (float)UINT16_MAX + 0.5f ),
+        (uint16_t)( my_clamp(in.elem[3], 0.0f, 1.0f) * (float)UINT16_MAX + 0.5f ),
       }};
   }
   s16x4 Convert4_F32toS16N(const f32x4 in) {
     return {{
-        (int16_t)floorf( my_clamp(in.elem[0], -1.0f, 1.0f) * 32767.0f + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
-        (int16_t)floorf( my_clamp(in.elem[1], -1.0f, 1.0f) * 32767.0f + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
-        (int16_t)floorf( my_clamp(in.elem[2], -1.0f, 1.0f) * 32767.0f + ((in.elem[2] >= 0) ? 0.5f : -0.5f) ),
-        (int16_t)floorf( my_clamp(in.elem[3], -1.0f, 1.0f) * 32767.0f + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
+        (int16_t)floorf( my_clamp(in.elem[0], -1.0f, 1.0f) * (float)INT16_MAX + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
+        (int16_t)floorf( my_clamp(in.elem[1], -1.0f, 1.0f) * (float)INT16_MAX + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
+        (int16_t)floorf( my_clamp(in.elem[2], -1.0f, 1.0f) * (float)INT16_MAX + ((in.elem[2] >= 0) ? 0.5f : -0.5f) ),
+        (int16_t)floorf( my_clamp(in.elem[3], -1.0f, 1.0f) * (float)INT16_MAX + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
       }};
   }
   u16x4 Convert4_F32toU16(const f32x4 in) {
     return {{
-        (uint16_t)( my_clamp(in.elem[0], 0.0f, 1.0f) + 0.5f ),
-        (uint16_t)( my_clamp(in.elem[1], 0.0f, 1.0f) + 0.5f ),
-        (uint16_t)( my_clamp(in.elem[2], 0.0f, 1.0f) + 0.5f ),
-        (uint16_t)( my_clamp(in.elem[3], 0.0f, 1.0f) + 0.5f ),
+        (uint16_t)( my_clamp(in.elem[0], 0.0f, (float)UINT16_MAX) ),
+        (uint16_t)( my_clamp(in.elem[1], 0.0f, (float)UINT16_MAX) ),
+        (uint16_t)( my_clamp(in.elem[2], 0.0f, (float)UINT16_MAX) ),
+        (uint16_t)( my_clamp(in.elem[3], 0.0f, (float)UINT16_MAX) ),
       }};
   }
   s16x4 Convert4_F32toS16(const f32x4 in) {
     return {{
-        (int16_t)floorf( my_clamp(in.elem[0], -1.0f, 1.0f) + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
-        (int16_t)floorf( my_clamp(in.elem[1], -1.0f, 1.0f) + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
-        (int16_t)floorf( my_clamp(in.elem[2], -1.0f, 1.0f) + ((in.elem[2] >= 0) ? 0.5f : -0.5f) ),
-        (int16_t)floorf( my_clamp(in.elem[3], -1.0f, 1.0f) + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
+        (int16_t)my_clamp(in.elem[0], (float)INT16_MIN, (float)INT16_MAX),
+        (int16_t)my_clamp(in.elem[1], (float)INT16_MIN, (float)INT16_MAX),
+        (int16_t)my_clamp(in.elem[2], (float)INT16_MIN, (float)INT16_MAX),
+        (int16_t)my_clamp(in.elem[3], (float)INT16_MIN, (float)INT16_MAX),
       }};
   }
   u16x4 Convert4_F32toF16(const f32x4 in) {
@@ -364,18 +364,18 @@ namespace {
   }
   u32x4 Convert4_F32toU32(const f32x4 in) {
     return {{
-        (uint32_t)( my_max(in.elem[0], 0.0f) + 0.5f ),
-        (uint32_t)( my_max(in.elem[1], 0.0f) + 0.5f ),
-        (uint32_t)( my_max(in.elem[2], 0.0f) + 0.5f ),
-        (uint32_t)( my_max(in.elem[3], 0.0f) + 0.5f ),
+        (uint32_t)( my_clamp(in.elem[0], 0.0f, (float)UINT32_MAX) ),
+        (uint32_t)( my_clamp(in.elem[1], 0.0f, (float)UINT32_MAX) ),
+        (uint32_t)( my_clamp(in.elem[2], 0.0f, (float)UINT32_MAX) ),
+        (uint32_t)( my_clamp(in.elem[3], 0.0f, (float)UINT32_MAX) ),
       }};
   }
   s32x4 Convert4_F32toS32(const f32x4 in) {
     return {{
-        (int32_t)floorf( in.elem[0] + ((in.elem[0] >= 0) ? 0.5f : -0.5f) ),
-        (int32_t)floorf( in.elem[1] + ((in.elem[1] >= 0) ? 0.5f : -0.5f) ),
-        (int32_t)floorf( in.elem[2] + ((in.elem[2] >= 0) ? 0.5f : -0.5f) ),
-        (int32_t)floorf( in.elem[3] + ((in.elem[3] >= 0) ? 0.5f : -0.5f) ),
+        (int32_t)my_clamp(in.elem[0], (float)INT32_MIN, (float)INT32_MAX),
+        (int32_t)my_clamp(in.elem[1], (float)INT32_MIN, (float)INT32_MAX),
+        (int32_t)my_clamp(in.elem[2], (float)INT32_MIN, (float)INT32_MAX),
+        (int32_t)my_clamp(in.elem[3], (float)INT32_MIN, (float)INT32_MAX),
       }};
   }
 
