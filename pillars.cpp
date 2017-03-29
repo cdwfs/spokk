@@ -325,8 +325,8 @@ void PillarsApp::Update(double dt) {
   // - Adjust a cell's height depending on its distance from the camera. There must
   //   be a barrier at least one cell thick that is close enough to be visible but
   //   too far away to be height-adjusted.
-  float eye_x = camera_->getEyePoint().x();
-  float eye_y = camera_->getEyePoint().z();
+  float eye_x = camera_->getEyePoint().x;
+  float eye_y = camera_->getEyePoint().z;
   int32_t cell_x = uint32_t(eye_x);
   int32_t cell_y = uint32_t(eye_y);
   int32_t min_x = my_max(0, cell_x-VISIBLE_RADIUS);

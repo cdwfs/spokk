@@ -63,6 +63,8 @@ set(SPIRV_CROSS_TARGETS
 )
 set_target_properties(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
 
+# fplutil (dependency of mathfu)
+set(dependencies_fplutil_dir ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fplutil CACHE PATH "base directory of fplutil repository" FORCE)
 # Mathfu
 set(mathfu_build_benchmarks OFF CACHE BOOL "")
 set(mathfu_build_tests OFF CACHE BOOL "")

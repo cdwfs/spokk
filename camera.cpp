@@ -48,12 +48,12 @@ mathfu::vec3 Camera::getEulersYPR() const {
   // Compute yaw
   const mathfu::vec2 vy(dot(f_out, -Z), dot(f_out, -X));
   float yaw = (vy.LengthSquared() > 0)
-    ? atan2f(vy.y(), vy.x())
-    : 0; // straight up/down. Need more info. TODO(cort): use sign of f_out.y() and atan2 of r_out or u_out.
+    ? atan2f(vy.y, vy.x)
+    : 0; // straight up/down. Need more info. TODO(cort): use sign of f_out.y and atan2 of r_out or u_out.
           // Compute pitch
-  const mathfu::vec2 vp(dot(f_out, mathfu::vec3(f_out.x(), 0.0f, f_out.z()).Normalized()), dot(f_out, Y));
+  const mathfu::vec2 vp(dot(f_out, mathfu::vec3(f_out.x, 0.0f, f_out.z).Normalized()), dot(f_out, Y));
   float pitch = (vp.LengthSquared() > 0)
-    ? atan2f(vp.y(), vp.x())
+    ? atan2f(vp.y, vp.x)
     : 0;
   float roll = 0;
   mathfu::vec3 camera_eulers(pitch, yaw, roll);
@@ -165,29 +165,29 @@ vec2 Camera::worldToScreen( const vec3 &worldCoord, float screenWidth, float scr
 {
     vec4 eyeCoord = getViewMatrix() * vec4( worldCoord, 1 );
     vec4 ndc = getProjectionMatrix() * eyeCoord;
-    ndc[0] /= ndc.w();
-    ndc[1] /= ndc.w();
-    //ndc[2] /= ndc.w();
+    ndc.x /= ndc.w;
+    ndc.y /= ndc.w;
+    //ndc.z /= ndc.w;
 
-    return vec2( ( ndc.x() + 1.0f ) / 2.0f * screenWidth, ( 1.0f - ( ndc.y() + 1.0f ) / 2.0f ) * screenHeight );
+    return vec2( ( ndc.x + 1.0f ) / 2.0f * screenWidth, ( 1.0f - ( ndc.y + 1.0f ) / 2.0f ) * screenHeight );
 }
 
 vec2 Camera::eyeToScreen( const vec3 &eyeCoord, const vec2 &screenSizePixels ) const
 {
     vec4 ndc = getProjectionMatrix() * vec4( eyeCoord, 1 );
-    ndc[0] /= ndc.w();
-    ndc[1] /= ndc.w();
-    //ndc[2] /= ndc.w();
+    ndc[0] /= ndc.w;
+    ndc[1] /= ndc.w;
+    //ndc[2] /= ndc.w;
 
-    return vec2( ( ndc.x() + 1.0f ) / 2.0f * screenSizePixels.x(), ( 1.0f - ( ndc.y() + 1.0f ) / 2.0f ) * screenSizePixels.y() );
+    return vec2( ( ndc.x + 1.0f ) / 2.0f * screenSizePixels.x, ( 1.0f - ( ndc.y + 1.0f ) / 2.0f ) * screenSizePixels.y );
 }
 
 float Camera::worldToEyeDepth( const vec3 &worldCoord ) const
 {
     const mat4 &m = getViewMatrix();
-    return	m(2,0) * worldCoord.x() +
-            m(2,1) * worldCoord.y() +
-            m(2,2) * worldCoord.z() +
+    return	m(2,0) * worldCoord.x +
+            m(2,1) * worldCoord.y +
+            m(2,2) * worldCoord.z +
             m(2,3);
 }
 
@@ -196,7 +196,7 @@ vec3 Camera::worldToNdc( const vec3 &worldCoord ) const
 {
     vec4 eye = getViewMatrix() * vec4( worldCoord, 1 );
     vec4 unproj = getProjectionMatrix() * eye;
-    return unproj.xyz() / unproj.w();
+    return unproj.xyz() / unproj.w;
 }
 
 /*
@@ -243,10 +243,10 @@ void Camera::calcViewMatrix() const
     vec3 d( - dot( mEyePoint, mU ), - dot( mEyePoint, mV ), - dot( mEyePoint, mW ) );
 
     mat4 &m = mViewMatrix;
-    m(0,0) = mU.x(); m(1,0) = mV.x(); m(2,0) = mW.x(); m(3,0) = 0.0f;
-    m(0,1) = mU.y(); m(1,1) = mV.y(); m(2,1) = mW.y(); m(3,1) = 0.0f;
-    m(0,2) = mU.z(); m(1,2) = mV.z(); m(2,2) = mW.z(); m(3,2) = 0.0f;
-    m(0,3) =  d.x(); m(1,3) =  d.y(); m(2,3) =  d.z(); m(3,3) = 1.0f;
+    m(0,0) = mU.x; m(1,0) = mV.x; m(2,0) = mW.x; m(3,0) = 0.0f;
+    m(0,1) = mU.y; m(1,1) = mV.y; m(2,1) = mW.y; m(3,1) = 0.0f;
+    m(0,2) = mU.z; m(1,2) = mV.z; m(2,2) = mW.z; m(3,2) = 0.0f;
+    m(0,3) =  d.x; m(1,3) =  d.y; m(2,3) =  d.z; m(3,3) = 1.0f;
 
     mModelViewCached = true;
     mInverseModelViewCached = false;
@@ -347,14 +347,14 @@ void CameraPersp::calcProjection() const
     mFrustumLeft	= -mFrustumRight;
 
     // perform lens shift
-    if( mLensShift.y() != 0.0f ) {
-        mFrustumTop = Lerp(0.0f, 2.0f * mFrustumTop, 0.5f + 0.5f * mLensShift.y());
-        mFrustumBottom = Lerp(2.0f * mFrustumBottom, 0.0f, 0.5f + 0.5f * mLensShift.y());
+    if( mLensShift.y != 0.0f ) {
+        mFrustumTop = Lerp(0.0f, 2.0f * mFrustumTop, 0.5f + 0.5f * mLensShift.y);
+        mFrustumBottom = Lerp(2.0f * mFrustumBottom, 0.0f, 0.5f + 0.5f * mLensShift.y);
     }
 
-    if( mLensShift.x() != 0.0f ) {
-        mFrustumRight = Lerp(2.0f * mFrustumRight, 0.0f, 0.5f - 0.5f * mLensShift.x());
-        mFrustumLeft = Lerp(0.0f, 2.0f * mFrustumLeft, 0.5f - 0.5f * mLensShift.x());
+    if( mLensShift.x != 0.0f ) {
+        mFrustumRight = Lerp(2.0f * mFrustumRight, 0.0f, 0.5f - 0.5f * mLensShift.x);
+        mFrustumLeft = Lerp(0.0f, 2.0f * mFrustumLeft, 0.5f - 0.5f * mLensShift.x);
     }
 
     mat4 &p = mProjectionMatrix;
@@ -617,17 +617,17 @@ void CameraStereo::calcViewMatrix() const
     vec3 eye = mEyePoint - ( mOrientation * kRight ) * ( 0.5f * mEyeSeparation );
     vec3 d = vec3( - dot( eye, mU ), - dot( eye, mV ), - dot( eye, mW ) );
 
-    mViewMatrixLeft(0,3) = d.x();
-    mViewMatrixLeft(1,3) = d.y();
-    mViewMatrixLeft(2,3) = d.z();
+    mViewMatrixLeft(0,3) = d.x;
+    mViewMatrixLeft(1,3) = d.y;
+    mViewMatrixLeft(2,3) = d.z;
 
     // calculate right matrix
     eye = mEyePoint + ( mOrientation * kRight ) * ( 0.5f * mEyeSeparation );
     d = vec3( - dot( eye, mU ), - dot( eye, mV ), - dot( eye, mW ) );
 
-    mViewMatrixRight(0,3) = d.x();
-    mViewMatrixRight(1,3) = d.y();
-    mViewMatrixRight(2,3) = d.z();
+    mViewMatrixRight(0,3) = d.x;
+    mViewMatrixRight(1,3) = d.y;
+    mViewMatrixRight(2,3) = d.z;
 
     mModelViewCached = true;
     mInverseModelViewCached = false;

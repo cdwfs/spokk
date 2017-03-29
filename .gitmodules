@@ -22,3 +22,6 @@
 [submodule "third_party/stb"]
 	path = third_party/stb
 	url = https://github.com/nothings/stb
+[submodule "third_party/fplutil"]
+	path = third_party/fplutil
+	url = https://github.com/google/fplutil.git

@@ -163,7 +163,7 @@ class CameraPersp : public Camera {
     /** Returns both the horizontal and vertical lens shift.
         A horizontal lens shift of 1 (-1) will shift the view right (left) by half the width of the viewport.
         A vertical lens shift of 1 (-1) will shift the view up (down) by half the height of the viewport. */
-    void	getLensShift( float *horizontal, float *vertical ) const { *horizontal = mLensShift.x(); *vertical = mLensShift.y(); }
+    void	getLensShift( float *horizontal, float *vertical ) const { *horizontal = mLensShift.x; *vertical = mLensShift.y; }
     /** Returns both the horizontal and vertical lens shift.
         A horizontal lens shift of 1 (-1) will shift the view right (left) by half the width of the viewport.
         A vertical lens shift of 1 (-1) will shift the view up (down) by half the height of the viewport. */
@@ -175,17 +175,17 @@ class CameraPersp : public Camera {
     /** Sets both the horizontal and vertical lens shift.
         A horizontal lens shift of 1 (-1) will shift the view right (left) by half the width of the viewport.
         A vertical lens shift of 1 (-1) will shift the view up (down) by half the height of the viewport. */
-    void	setLensShift( const mathfu::vec2 &shift ) { setLensShift( shift.x(), shift.y() ); }
+    void	setLensShift( const mathfu::vec2 &shift ) { setLensShift( shift.x, shift.y ); }
     //! Returns the horizontal lens shift. A horizontal lens shift of 1 (-1) will shift the view right (left) by half the width of the viewport.
-    float	getLensShiftHorizontal() const { return mLensShift.x(); }
+    float	getLensShiftHorizontal() const { return mLensShift.x; }
     /** Sets the horizontal lens shift.
         A horizontal lens shift of 1 (-1) will shift the view right (left) by half the width of the viewport. */
-    void	setLensShiftHorizontal( float horizontal ) { setLensShift( horizontal, mLensShift.y() ); }
+    void	setLensShiftHorizontal( float horizontal ) { setLensShift( horizontal, mLensShift.y ); }
     //! Returns the vertical lens shift. A vertical lens shift of 1 (-1) will shift the view up (down) by half the height of the viewport.
-    float	getLensShiftVertical() const { return mLensShift.y(); }
+    float	getLensShiftVertical() const { return mLensShift.y; }
     /** Sets the vertical lens shift.
         A vertical lens shift of 1 (-1) will shift the view up (down) by half the height of the viewport. */
-    void	setLensShiftVertical( float vertical ) { setLensShift( mLensShift.x(), vertical ); }
+    void	setLensShiftVertical( float vertical ) { setLensShift( mLensShift.x, vertical ); }
 
     bool	isPersp() const override { return true; }
 
