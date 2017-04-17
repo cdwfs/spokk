@@ -113,11 +113,24 @@ VkResult OneShotCommandPool::EndSubmitAndFree(VkCommandBuffer *cb) const {
   return result;
 }
 
+#define SPOKK_ENABLE_REQUIRED_FEATURE(feature) \
+  if (!supported_features.feature) return VK_FALSE; \
+  enabled_features->feature = VK_TRUE
+#define SPOKK_ENABLE_OPTIONAL_FEATURE(feature) \
+  enabled_features->feature = supported_features.feature
+VkBool32 EnableMinimumDeviceFeatures(const VkPhysicalDeviceFeatures& supported_features,
+    VkPhysicalDeviceFeatures* enabled_features) {
+  SPOKK_ENABLE_REQUIRED_FEATURE(samplerAnisotropy);
+  SPOKK_ENABLE_REQUIRED_FEATURE(textureCompressionBC);
+  return VK_TRUE;
+}
 VkBool32 EnableAllSupportedDeviceFeatures(const VkPhysicalDeviceFeatures& supported_features,
     VkPhysicalDeviceFeatures* enabled_features) {
   *enabled_features = supported_features;
   return VK_TRUE;
 }
+#undef SPOKK_ENABLE_REQUIRED_FEATURE
+#undef SPOKK_ENABLE_OPTIONAL_FEATURE
 
 VkResult GetSupportedInstanceLayers(const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
     std::vector<VkLayerProperties>* out_supported_layers, std::vector<const char*>* out_supported_layer_names) {

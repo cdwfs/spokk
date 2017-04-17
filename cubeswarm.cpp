@@ -375,6 +375,7 @@ int main(int argc, char *argv[]) {
   };
   Application::CreateInfo app_ci = {};
   app_ci.queue_family_requests = queue_requests;
+  app_ci.pfn_set_device_features = EnableMinimumDeviceFeatures;
 
   CubeSwarmApp app(app_ci);
   int run_error = app.Run();

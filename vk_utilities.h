@@ -66,6 +66,9 @@ uint32_t GetMaxMipLevels(VkExtent3D base_extent);
 //
 typedef VkBool32 (*SetDeviceFeaturesFunc)(const VkPhysicalDeviceFeatures& supported_features,
   VkPhysicalDeviceFeatures* enabled_features);
+// Shortcut: enable features used by the spokk framework
+VkBool32 EnableMinimumDeviceFeatures(const VkPhysicalDeviceFeatures& supported_features,
+  VkPhysicalDeviceFeatures* enabled_features);
 // Shortcut: enable all supported features.
 VkBool32 EnableAllSupportedDeviceFeatures(const VkPhysicalDeviceFeatures& supported_features,
   VkPhysicalDeviceFeatures* enabled_features);

@@ -343,6 +343,7 @@ int main(int argc, char *argv[]) {
   Application::CreateInfo app_ci = {};
   app_ci.debug_report_flags |= VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
   app_ci.queue_family_requests = queue_requests;
+  app_ci.pfn_set_device_features = EnableMinimumDeviceFeatures;
 
   ShaderToyApp app(app_ci);
   int run_error = app.Run();
