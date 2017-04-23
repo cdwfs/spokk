@@ -19,6 +19,9 @@ struct SceneUniforms {
   mathfu::vec4_packed eye;  // xyz: eye position
   mathfu::mat4 viewproj;
 };
+constexpr float FOV_DEGREES = 45.0f;
+constexpr float Z_NEAR = 0.01f;
+constexpr float Z_FAR = 100.0f;
 }  // namespace
 
 #define HEIGHTFIELD_DIMX 256
@@ -40,7 +43,12 @@ public:
   void Update(double dt) override;
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override;
 
+protected:
+  void HandleWindowResize(VkExtent2D new_window_extent) override;
+
 private:
+  void CreateRenderBuffers(VkExtent2D extent);
+
   double seconds_elapsed_;
 
   Image depth_image_;
@@ -78,10 +86,7 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
 
   seconds_elapsed_ = 0;
 
-  const float fovDegrees = 45.0f;
-  const float zNear = 0.01f;
-  const float zFar = 100.0f;
-  camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, fovDegrees, zNear, zFar);
+  camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
   const mathfu::vec3 initial_camera_pos(HEIGHTFIELD_DIMX/2, 2.0f, HEIGHTFIELD_DIMY/2);
   const mathfu::vec3 initial_camera_target(0, 0, 0);
   const mathfu::vec3 initial_camera_up(0,1,0);
@@ -93,25 +98,6 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   // Create render pass
   render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
   SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
-
-  // Create depth buffer
-  VkImageCreateInfo depth_image_ci = render_pass_.GetAttachmentImageCreateInfo(1, swapchain_extent_);
-  depth_image_ = {};
-  SPOKK_VK_CHECK(depth_image_.Create(device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-    DEVICE_ALLOCATION_SCOPE_DEVICE));
-
-  // Create VkFramebuffers
-  std::vector<VkImageView> attachment_views = {
-    VK_NULL_HANDLE, // filled in below
-    depth_image_.view,
-  };
-  VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(swapchain_extent_);
-  framebuffer_ci.pAttachments = attachment_views.data();
-  framebuffers_.resize(swapchain_image_views_.size());
-  for(size_t i=0; i<swapchain_image_views_.size(); ++i) {
-    attachment_views.at(0) = swapchain_image_views_[i];
-    SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
-  }
 
   // Load textures and samplers
   VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR,
@@ -218,6 +204,9 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
     dpool_.Add(dset_layout_ci, PFRAME_COUNT);
   }
   SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
+
+  // Create swapchain-sized buffers
+  CreateRenderBuffers(swapchain_extent_);
 
   DescriptorSetWriter dset_writer(pillar_shader_pipeline_.dset_layout_cis[0]);
   dset_writer.BindImage(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 1);
@@ -400,6 +389,46 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
   vkCmdDrawIndexed(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size(), 0,0,0);
   vkCmdEndRenderPass(primary_cb);
 }
+
+void PillarsApp::HandleWindowResize(VkExtent2D new_window_extent) {
+  Application::HandleWindowResize(new_window_extent);
+
+  // Destroy existing objects before re-creating them.
+  for(auto fb : framebuffers_) {
+    if (fb != VK_NULL_HANDLE) {
+      vkDestroyFramebuffer(device_, fb, host_allocator_);
+    }
+  }
+  framebuffers_.clear();
+  depth_image_.Destroy(device_context_);
+
+  float aspect_ratio = (float)new_window_extent.width / (float)new_window_extent.height;
+  camera_->setPerspective(FOV_DEGREES, aspect_ratio, Z_NEAR, Z_FAR);
+
+  CreateRenderBuffers(new_window_extent);
+}
+
+void PillarsApp::CreateRenderBuffers(VkExtent2D extent) {
+  // Create depth buffer
+  VkImageCreateInfo depth_image_ci = render_pass_.GetAttachmentImageCreateInfo(1, extent);
+  depth_image_ = {};
+  SPOKK_VK_CHECK(depth_image_.Create(device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    DEVICE_ALLOCATION_SCOPE_DEVICE));
+
+  // Create VkFramebuffers
+  std::vector<VkImageView> attachment_views = {
+    VK_NULL_HANDLE, // filled in below
+    depth_image_.view,
+  };
+  VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(extent);
+  framebuffer_ci.pAttachments = attachment_views.data();
+  framebuffers_.resize(swapchain_image_views_.size());
+  for(size_t i=0; i<swapchain_image_views_.size(); ++i) {
+    attachment_views.at(0) = swapchain_image_views_[i];
+    SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
+  }
+}
+
 
 int main(int argc, char *argv[]) {
   (void)argc;

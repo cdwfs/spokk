@@ -49,18 +49,6 @@ public:
     render_pass_.attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
 
-    // Create VkFramebuffers
-    std::vector<VkImageView> attachment_views = {
-      VK_NULL_HANDLE, // filled in below
-    };
-    VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(swapchain_extent_);
-    framebuffer_ci.pAttachments = attachment_views.data();
-    framebuffers_.resize(swapchain_image_views_.size());
-    for(size_t i=0; i<swapchain_image_views_.size(); ++i) {
-      attachment_views[0] = swapchain_image_views_[i];
-      SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
-    }
-
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     for(auto& sampler : samplers_) {
@@ -96,6 +84,10 @@ public:
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
     SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
+    
+    // Create swapchain-sized resources.
+    CreateRenderBuffers(swapchain_extent_);
+    
     DescriptorSetWriter dset_writer(shader_pipeline_.dset_layout_cis[0]);
     for(uint32_t iTex = 0; iTex < (uint32_t)textures_.size(); ++iTex) {
       dset_writer.BindImage(textures_[iTex].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], iTex);
@@ -222,7 +214,35 @@ public:
     vkCmdEndRenderPass(primary_cb);
   }
 
+protected:
+  void HandleWindowResize(VkExtent2D new_window_extent) override {
+    Application::HandleWindowResize(new_window_extent);
+
+    for(auto fb : framebuffers_) {
+      if (fb != VK_NULL_HANDLE) {
+        vkDestroyFramebuffer(device_, fb, host_allocator_);
+      }
+    }
+    framebuffers_.clear();
+
+    CreateRenderBuffers(new_window_extent);
+  }
+
 private:
+  void CreateRenderBuffers(VkExtent2D extent) {
+    // Create VkFramebuffers
+    std::vector<VkImageView> attachment_views = {
+      VK_NULL_HANDLE, // filled in below
+    };
+    VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(extent);
+    framebuffer_ci.pAttachments = attachment_views.data();
+    framebuffers_.resize(swapchain_image_views_.size());
+    for(size_t i=0; i<swapchain_image_views_.size(); ++i) {
+      attachment_views[0] = swapchain_image_views_[i];
+      SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
+    }
+  }
+
   void ReloadShader() {
     shaderc::SpvCompilationResult compile_result = shader_compiler_.CompileGlslFile(frag_shader_path);
     if (compile_result.GetCompilationStatus() == shaderc_compilation_status_success) {

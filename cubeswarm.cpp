@@ -14,6 +14,9 @@ using namespace spokk;
 
 namespace {
 constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
+constexpr float FOV_DEGREES = 45.0f;
+constexpr float Z_NEAR = 0.01f;
+constexpr float Z_FAR = 100.0f;
 }  // namespace
 
 class CubeSwarmApp : public spokk::Application {
@@ -24,10 +27,7 @@ public:
 
     seconds_elapsed_ = 0;
 
-    const float fovDegrees = 45.0f;
-    const float zNear = 0.01f;
-    const float zFar = 100.0f;
-    camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, fovDegrees, zNear, zFar);
+    camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
     const mathfu::vec3 initial_camera_pos(-1, 0, 6);
     const mathfu::vec3 initial_camera_target(0, 0, 0);
     const mathfu::vec3 initial_camera_up(0,1,0);
@@ -37,31 +37,6 @@ public:
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH_POST, swapchain_surface_format_.format);
     SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
-
-    // Create depth buffer
-    VkImageCreateInfo depth_image_ci = render_pass_.GetAttachmentImageCreateInfo(1, swapchain_extent_);
-    depth_image_ = {};
-    SPOKK_VK_CHECK(depth_image_.Create(device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-      DEVICE_ALLOCATION_SCOPE_DEVICE));
-
-    // Create intermediate color buffer
-    VkImageCreateInfo offscreen_image_ci = render_pass_.GetAttachmentImageCreateInfo(0, swapchain_extent_);
-    SPOKK_VK_CHECK(offscreen_image_.Create(device_context_, offscreen_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-      DEVICE_ALLOCATION_SCOPE_DEVICE));
-
-    // Create VkFramebuffers
-    std::vector<VkImageView> attachment_views = {
-      offscreen_image_.view,
-      depth_image_.view,
-      VK_NULL_HANDLE, // filled in below
-    };
-    VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(swapchain_extent_);
-    framebuffer_ci.pAttachments = attachment_views.data();
-    framebuffers_.resize(swapchain_image_views_.size());
-    for(size_t i=0; i<swapchain_image_views_.size(); ++i) {
-      attachment_views[2] = swapchain_image_views_[i];
-      SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
-    }
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
@@ -148,16 +123,13 @@ public:
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
     SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
-
-    DescriptorSetWriter dset_writer(mesh_shader_pipeline_.dset_layout_cis[0]);
-    dset_writer.BindImage(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 1);
-    dset_writer.BindImage(offscreen_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, 2, 0);
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
       // TODO(cort): allocate_pipelined_set()?
       dsets_[pframe] = dpool_.AllocateSet(device_context_, mesh_shader_pipeline_.dset_layouts[0]);
-      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), 0);
-      dset_writer.WriteAll(device_context_, dsets_[pframe]);
     }
+
+    // Create swapchain-sized buffers
+    CreateRenderBuffers(swapchain_extent_);
   }
   virtual ~CubeSwarmApp() {
     if (device_) {
@@ -269,7 +241,7 @@ public:
     // actually bad? What if attachments 0 and 2 must be cleared but not 1?
     // Easy enough to work around in this case, just hard-code the array size.
     //std::vector<VkClearValue> clear_values(render_pass_.attachment_descs.size());
-    std::vector<VkClearValue> clear_values(2);
+    std::array<VkClearValue, 2> clear_values;
     clear_values[0].color.float32[0] = 0.2f;
     clear_values[0].color.float32[1] = 0.2f;
     clear_values[0].color.float32[2] = 0.3f;
@@ -324,7 +296,6 @@ public:
     const VkDeviceSize index_buffer_offset = 0;
     vkCmdBindIndexBuffer(primary_cb, mesh_.index_buffer.Handle(), index_buffer_offset, mesh_.index_type);
     vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0,0,0);
-
     // post-processing subpass
     vkCmdNextSubpass(primary_cb, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, fullscreen_pipeline_.handle);
@@ -334,7 +305,63 @@ public:
     vkCmdEndRenderPass(primary_cb);
   }
 
+protected:
+  void HandleWindowResize(VkExtent2D new_window_extent) override {
+    Application::HandleWindowResize(new_window_extent);
+
+    // Destroy existing objects before re-creating them.
+    for(auto fb : framebuffers_) {
+      if (fb != VK_NULL_HANDLE) {
+        vkDestroyFramebuffer(device_, fb, host_allocator_);
+      }
+    }
+    framebuffers_.clear();
+    depth_image_.Destroy(device_context_);
+    offscreen_image_.Destroy(device_context_);
+
+    float aspect_ratio = (float)new_window_extent.width / (float)new_window_extent.height;
+    camera_->setPerspective(FOV_DEGREES, aspect_ratio, Z_NEAR, Z_FAR);
+
+    CreateRenderBuffers(new_window_extent);
+  }
+
 private:
+  void CreateRenderBuffers(VkExtent2D extent) {
+    // Create depth buffer
+    VkImageCreateInfo depth_image_ci = render_pass_.GetAttachmentImageCreateInfo(1, extent);
+    depth_image_ = {};
+    SPOKK_VK_CHECK(depth_image_.Create(device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      DEVICE_ALLOCATION_SCOPE_DEVICE));
+
+    // Create intermediate color buffer
+    VkImageCreateInfo offscreen_image_ci = render_pass_.GetAttachmentImageCreateInfo(0, extent);
+    SPOKK_VK_CHECK(offscreen_image_.Create(device_context_, offscreen_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      DEVICE_ALLOCATION_SCOPE_DEVICE));
+
+    // Create VkFramebuffers
+    std::vector<VkImageView> attachment_views = {
+      offscreen_image_.view,
+      depth_image_.view,
+      VK_NULL_HANDLE, // filled in below
+    };
+    VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(extent);
+    framebuffer_ci.pAttachments = attachment_views.data();
+    framebuffers_.resize(swapchain_image_views_.size());
+    for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
+      attachment_views[2] = swapchain_image_views_[i];
+      SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
+    }
+
+    // Re-write descriptor sets, since they refer to the offscreen image.
+    DescriptorSetWriter dset_writer(mesh_shader_pipeline_.dset_layout_cis[0]);
+    dset_writer.BindImage(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 1);
+    dset_writer.BindImage(offscreen_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, 2, 0);
+    for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
+      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), 0);
+      dset_writer.WriteAll(device_context_, dsets_[pframe]);
+    }
+  }
+
   double seconds_elapsed_;
 
   Image depth_image_;

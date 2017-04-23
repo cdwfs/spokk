@@ -132,6 +132,11 @@ protected:
   bool IsInstanceExtensionEnabled(const std::string& layer_name) const;
   bool IsDeviceExtensionEnabled(const std::string& layer_name) const;
 
+  // Overloads must call the base class resize method before performing their own work.
+  // The first thing it does is call vkDeviceWaitIdle(), so subclasses can safely assume that
+  // no resources are in use on the GPU and can be safely destroyed/recreated.
+  virtual void HandleWindowResize(VkExtent2D new_window_extent);
+
   const VkAllocationCallbacks *host_allocator_ = nullptr;
   const DeviceAllocationCallbacks *device_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
@@ -169,6 +174,8 @@ protected:
   bool force_exit_ = false;  // Application can set this to true to exit at the next available chance.
 
 private:
+  VkResult CreateSwapchain(VkExtent2D extent);
+
   bool init_successful = false;
 
   VkCommandPool primary_cpool_;
