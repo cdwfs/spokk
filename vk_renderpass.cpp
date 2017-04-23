@@ -303,8 +303,15 @@ VkFramebufferCreateInfo RenderPass::GetFramebufferCreateInfo(const VkExtent2D& r
 }
 
 void RenderPass::Destroy(const DeviceContext& device_context) {
-  vkDestroyRenderPass(device_context.Device(), handle, device_context.HostAllocator());
-  handle = VK_NULL_HANDLE;
+  if (handle != VK_NULL_HANDLE) {
+    vkDestroyRenderPass(device_context.Device(), handle, device_context.HostAllocator());
+    handle = VK_NULL_HANDLE;
+  }
+  attachment_descs.clear();
+  subpass_attachments.clear();
+  subpass_dependencies.clear();
+  subpass_descs.clear();
+  subpass_multisample_state_cis.clear();
 }
 
 }  // namespace spokk

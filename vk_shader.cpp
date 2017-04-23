@@ -521,7 +521,9 @@ VkResult ShaderPipeline::Finalize(const DeviceContext& device_context) {
 }
 void ShaderPipeline::Destroy(const DeviceContext& device_context) {
   for(auto dset_layout : dset_layouts) {
-    vkDestroyDescriptorSetLayout(device_context.Device(), dset_layout, device_context.HostAllocator());
+    if (dset_layout != VK_NULL_HANDLE) {
+      vkDestroyDescriptorSetLayout(device_context.Device(), dset_layout, device_context.HostAllocator());
+    }
   }
   dset_layouts.clear();
   dset_layout_cis.clear();

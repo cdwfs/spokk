@@ -135,6 +135,9 @@ void GraphicsPipeline::Destroy(const DeviceContext& device_context) {
     vkDestroyPipeline(device_context.Device(), handle, device_context.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
+  dynamic_states.clear();
+  viewports.clear();
+  scissor_rects.clear();
   mesh_format = nullptr;
   shader_pipeline = nullptr;
   render_pass = nullptr;

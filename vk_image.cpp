@@ -294,10 +294,14 @@ int Image::CreateFromFile(const DeviceContext& device_context, ImageBlitter& bli
 void Image::Destroy(const DeviceContext& device_context) {
   device_context.DeviceFree(memory);
   memory.block = nullptr;
-  vkDestroyImageView(device_context.Device(), view, device_context.HostAllocator());
-  view = VK_NULL_HANDLE;
-  vkDestroyImage(device_context.Device(), handle, device_context.HostAllocator());
-  handle = VK_NULL_HANDLE;
+  if (view != VK_NULL_HANDLE) {
+    vkDestroyImageView(device_context.Device(), view, device_context.HostAllocator());
+    view = VK_NULL_HANDLE;
+  }
+  if (handle != VK_NULL_HANDLE) {
+    vkDestroyImage(device_context.Device(), handle, device_context.HostAllocator());
+    handle = VK_NULL_HANDLE;
+  }
 }
 
 int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, ImageBlitter& blitter, const DeviceQueue *queue,
