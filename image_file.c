@@ -1237,7 +1237,7 @@ size_t ImageFileGetSubresourceSize(const ImageFile *image, const ImageFileSubres
             {
                 // For non-array cubemaps, the imageSize field stores the unpadded size of one cube face.
                 // Otherwise, it's the unpadded size of all data in this mip level.
-                // TODO(cort): this needs to be tested; I'm pretty sure it's wrong.
+                // TODO(cort): this needs to be tested; I'm pretty sure it's wrong. Requires some "known good" cubemap KTX files.
                 image_size *= 6;
                 image_size = (image_size + 3) & ~3;
             }
