@@ -22,8 +22,39 @@ using namespace spokk;
 namespace {
 
 const std::string frag_shader_path = "../shadertoy.frag";
+// This block of code is inserted in front of every shadertoy fragment shader; it defines the
+// uniform variables and invokes the shader's mainImage() function on every pixel.
+const std::string frag_shader_preamble = R"glsl(#version 450
+#pragma shader_stage(fragment)
+layout (location = 0) out vec4 out_fragColor;
+in vec4 gl_FragCoord;
 
-// TODO(cort): finish supporting all uniforms
+// input channel.
+layout (set = 0, binding = 0) uniform sampler%s iChannel0;
+layout (set = 0, binding = 1) uniform sampler%s iChannel1;
+layout (set = 0, binding = 2) uniform sampler%s iChannel2;
+layout (set = 0, binding = 3) uniform sampler%s iChannel3;
+layout (set = 0, binding = 4) uniform ShaderToyUniforms {
+  vec3      iResolution;           // viewport resolution (in pixels)
+  float     iChannelTime[4];       // channel playback time (in seconds)
+  vec3      iChannelResolution[4]; // channel resolution (in pixels)
+  vec4      iMouse;                // mouse pixel coords. xy: current (if MLB down), zw: click
+  vec4      iDate;                 // (year, month, day, time in seconds)
+  float     iGlobalTime;           // shader playback time (in seconds)
+  float     iTimeDelta;            // render time (in seconds)
+  int       iFrame;                // shader playback frame
+  float     iSampleRate;           // sound sample rate (i.e., 44100
+};
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord);
+void main() {
+	mainImage(out_fragColor, gl_FragCoord.xy);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+)glsl";
+
 struct ShaderToyUniforms {
   mathfu::vec4_packed iResolution; // xyz: viewport resolution (in pixels), w: unused
   mathfu::vec4_packed iChannelTime[4];       // x: channel playback time (in seconds), yzw: unused
@@ -77,10 +108,10 @@ public:
 
     // Load shader pipelines
     SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_context_, "fullscreen.vert.spv"));
-    SPOKK_VK_CHECK(shadertoy_fs_.CreateAndLoadSpirvFile(device_context_, "shadertoy.frag.spv"));
-    SPOKK_VK_CHECK(shader_pipeline_.AddShader(&fullscreen_tri_vs_));
-    SPOKK_VK_CHECK(shader_pipeline_.AddShader(&shadertoy_fs_));
-    SPOKK_VK_CHECK(shader_pipeline_.Finalize(device_context_));
+
+    active_pipeline_index_ = 0;
+    ReloadShader();  // force a reload of of the shadertoy shader into slot 1
+    active_pipeline_index_ = 1 - active_pipeline_index_;
 
     // Create uniform buffer
     VkBufferCreateInfo uniform_buffer_ci = {};
@@ -90,10 +121,7 @@ public:
     uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(uniform_buffer_.Create(device_context_, PFRAME_COUNT, uniform_buffer_ci));
 
-    SPOKK_VK_CHECK(pipeline_.Create(device_context_,
-      MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-      &shader_pipeline_, &render_pass_, 0));
-    for(const auto& dset_layout_ci : shader_pipeline_.dset_layout_cis) {
+    for(const auto& dset_layout_ci : shader_pipelines_[active_pipeline_index_].dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
     SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
@@ -101,12 +129,12 @@ public:
     // Create swapchain-sized resources.
     CreateRenderBuffers(swapchain_extent_);
     
-    DescriptorSetWriter dset_writer(shader_pipeline_.dset_layout_cis[0]);
+    DescriptorSetWriter dset_writer(shader_pipelines_[active_pipeline_index_].dset_layout_cis[0]);
     for(uint32_t iTex = 0; iTex < (uint32_t)textures_.size(); ++iTex) {
       dset_writer.BindImage(textures_[iTex].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], iTex);
     }
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      dsets_[pframe] = dpool_.AllocateSet(device_context_, shader_pipeline_.dset_layouts[0]);
+      dsets_[pframe] = dpool_.AllocateSet(device_context_, shader_pipelines_[active_pipeline_index_].dset_layouts[0]);
       dset_writer.BindBuffer(uniform_buffer_.Handle(pframe), 4);
       dset_writer.WriteAll(device_context_, dsets_[pframe]);
     }
@@ -127,11 +155,14 @@ public:
 
       uniform_buffer_.Destroy(device_context_);
 
-      pipeline_.Destroy(device_context_);
+      pipelines_[0].Destroy(device_context_);
+      pipelines_[1].Destroy(device_context_);
 
-      shader_pipeline_.Destroy(device_context_);
+      shader_pipelines_[0].Destroy(device_context_);
+      shader_pipelines_[1].Destroy(device_context_);
       fullscreen_tri_vs_.Destroy(device_context_);
-      shadertoy_fs_.Destroy(device_context_);
+      fragment_shaders_[0].Destroy(device_context_);
+      fragment_shaders_[1].Destroy(device_context_);
 
       for(const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
@@ -161,14 +192,10 @@ public:
     if (reload) {
       // If we get this far, it's time to replace the existing pipeline
       vkDeviceWaitIdle(device_);
-      pipeline_.Destroy(device_context_);
-      shader_pipeline_.Destroy(device_context_);
-      shadertoy_fs_.Destroy(device_context_);
-      shadertoy_fs_ = staging_fs_;
-      shader_pipeline_ = staging_shader_pipeline_;
-      pipeline_ = staging_pipeline_;
-      pipeline_.shader_pipeline = &shader_pipeline_;
-
+      pipelines_[active_pipeline_index_].Destroy(device_context_);
+      shader_pipelines_[active_pipeline_index_].Destroy(device_context_);
+      fragment_shaders_[active_pipeline_index_].Destroy(device_context_);
+      active_pipeline_index_ = 1 - active_pipeline_index_;
       swap_shader_.store(false);
     }
 
@@ -212,11 +239,11 @@ public:
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
     vkCmdBeginRenderPass(primary_cb, &render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_.handle);
+    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_[active_pipeline_index_].handle);
     vkCmdSetViewport(primary_cb, 0,1, &viewport_);
     vkCmdSetScissor(primary_cb, 0,1, &scissor_rect_);
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      pipeline_.shader_pipeline->pipeline_layout,
+      pipelines_[active_pipeline_index_].shader_pipeline->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
     vkCmdDraw(primary_cb, 3, 1,0,0);
     vkCmdEndRenderPass(primary_cb);
@@ -252,23 +279,40 @@ private:
   }
 
   void ReloadShader() {
-    shaderc::SpvCompilationResult compile_result = shader_compiler_.CompileGlslFile(frag_shader_path);
+    int preamble_len = snprintf(nullptr, 0, frag_shader_preamble.c_str(), "2D", "2D", "2D", "2D");
+    FILE *frag_file = zomboFopen(frag_shader_path.c_str(), "rb");
+    if (!frag_file) {
+      // Load failed -- try again in a moment?
+      zomboSleepMsec(1);
+      return;
+    }
+    fseek(frag_file, 0, SEEK_END);
+    size_t frag_file_bytes = ftell(frag_file);
+    // TODO(cort): potential race condition here, if the file is modified between fteel and fread()
+    std::vector<char> final_frag_source(preamble_len + frag_file_bytes);
+    snprintf(final_frag_source.data(), preamble_len, frag_shader_preamble.c_str(), "2D", "2D", "2D", "2D");
+    fseek(frag_file, 0, SEEK_SET);
+    size_t bytes_read = fread(final_frag_source.data() + preamble_len - 1, 1, frag_file_bytes, frag_file);
+    fclose(frag_file);
+    if (bytes_read != frag_file_bytes) {
+      // let's assume this means the file has changed
+      printf("Shader file changed in mid-reload; save again to be safe.\n");
+      return;
+    }
+    final_frag_source[final_frag_source.size()-1] = 0;
+    shaderc::SpvCompilationResult compile_result = shader_compiler_.CompileGlslString(final_frag_source.data(),
+      frag_shader_path, "main", VK_SHADER_STAGE_FRAGMENT_BIT);
     if (compile_result.GetCompilationStatus() == shaderc_compilation_status_success) {
-      Shader new_fs;
+      Shader& new_fs = fragment_shaders_[1 - active_pipeline_index_];
       SPOKK_VK_CHECK(new_fs.CreateAndLoadCompileResult(device_context_, compile_result));
-      ShaderPipeline new_shader_pipeline;
+      ShaderPipeline& new_shader_pipeline = shader_pipelines_[1 - active_pipeline_index_];
       SPOKK_VK_CHECK(new_shader_pipeline.AddShader(&fullscreen_tri_vs_));
       SPOKK_VK_CHECK(new_shader_pipeline.AddShader(&new_fs));
       SPOKK_VK_CHECK(new_shader_pipeline.Finalize(device_context_));
-      GraphicsPipeline new_pipeline;
+      GraphicsPipeline& new_pipeline = pipelines_[1 - active_pipeline_index_];
       SPOKK_VK_CHECK(new_pipeline.Create(device_context_,
         MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
         &new_shader_pipeline, &render_pass_, 0));
-      // Success!
-      staging_fs_ = new_fs;
-      staging_shader_pipeline_ = new_shader_pipeline;
-      staging_pipeline_ = new_pipeline;
-      staging_pipeline_.shader_pipeline = &staging_shader_pipeline_;
       swap_shader_.store(true);
     } else {
       printf("%s\n", compile_result.GetErrorMessage().c_str());
@@ -343,13 +387,13 @@ private:
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
 
-  Shader fullscreen_tri_vs_, shadertoy_fs_;
-  ShaderPipeline shader_pipeline_;
-  GraphicsPipeline pipeline_;
+  Shader fullscreen_tri_vs_;
 
-  Shader staging_fs_;
-  ShaderPipeline staging_shader_pipeline_;
-  GraphicsPipeline staging_pipeline_;
+  // Two copies of all this stuff, so we can ping-pong between them during reloads.
+  uint32_t active_pipeline_index_;
+  std::array<Shader, 2> fragment_shaders_;
+  std::array<ShaderPipeline, 2> shader_pipelines_;
+  std::array<GraphicsPipeline, 2> pipelines_;
 
   VkViewport viewport_;
   VkRect2D scissor_rect_;

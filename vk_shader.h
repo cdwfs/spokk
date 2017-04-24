@@ -83,6 +83,9 @@ struct ShaderPipeline {
     entry_point_names{}, pipeline_layout(VK_NULL_HANDLE), dset_layouts{}, active_stages(0) {
   }
 
+  ShaderPipeline(const ShaderPipeline& rhs) = delete;
+  ShaderPipeline& operator=(const ShaderPipeline& rhs) = delete;
+
   VkResult AddShader(const Shader *shader, const char *entry_point = "main");
   static VkResult ForceCompatibleLayoutsAndFinalize(const DeviceContext& device_context,
     const std::vector<ShaderPipeline*> pipelines);

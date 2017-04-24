@@ -10,6 +10,8 @@ namespace spokk {
 
 struct ComputePipeline {
   ComputePipeline();
+  ComputePipeline(const ComputePipeline& rhs) = delete;
+  ComputePipeline& operator=(const ComputePipeline& rhs) = delete;
 
   VkResult Create(const DeviceContext& device_context, const ShaderPipeline *shader_pipeline, bool defer_pipeline_creation = false);
   void Destroy(const DeviceContext& device_context);
@@ -21,6 +23,8 @@ struct ComputePipeline {
 
 struct GraphicsPipeline {
   GraphicsPipeline();
+  GraphicsPipeline(const GraphicsPipeline& rhs) = delete;
+  GraphicsPipeline& operator=(const GraphicsPipeline& rhs) = delete;
 
   VkResult Create(const DeviceContext& device_context, const MeshFormat *mesh_format, const ShaderPipeline *shader_pipeline, const RenderPass *render_pass, uint32_t subpass,
     const std::vector<VkDynamicState> dynamic_states = {VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_VIEWPORT},

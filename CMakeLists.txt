@@ -222,8 +222,8 @@ SPOKK_APP(spokk-pillars PILLARS_SOURCES PILLARS_HEADERS PILLARS_SHADERS)
 
 # spokk-shadertoy
 SET(SHADERTOY_SOURCES shadertoy.cpp)
-SET(SHADERTOY_HEADERS)
-SET(SHADERTOY_SHADERS fullscreen.vert shadertoy.frag)
+SET(SHADERTOY_HEADERS shadertoy.frag) # this shader is special; it's loaded at runtime, not built offline.
+SET(SHADERTOY_SHADERS fullscreen.vert)
 SPOKK_APP(spokk-shadertoy SHADERTOY_SOURCES SHADERTOY_HEADERS SHADERTOY_SHADERS)
 
 # Copy assets directory into build dir.

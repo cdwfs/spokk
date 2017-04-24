@@ -1,32 +1,3 @@
-#version 450
-#pragma shader_stage(fragment)
-layout (location = 0) out vec4 out_fragColor;
-in vec4 gl_FragCoord;
-
-// input channel.  // TODO: cubemaps?
-layout (set = 0, binding = 0) uniform sampler2D iChannel0;
-layout (set = 0, binding = 1) uniform sampler2D iChannel1;
-layout (set = 0, binding = 2) uniform sampler2D iChannel2;
-layout (set = 0, binding = 3) uniform sampler2D iChannel3;
-layout (set = 0, binding = 4) uniform ShaderToyUniforms {
-  vec3      iResolution;           // viewport resolution (in pixels)
-  float     iChannelTime[4];       // channel playback time (in seconds)
-  vec3      iChannelResolution[4]; // channel resolution (in pixels)
-  vec4      iMouse;                // mouse pixel coords. xy: current (if MLB down), zw: click
-  vec4      iDate;                 // (year, month, day, time in seconds)
-  float     iGlobalTime;           // shader playback time (in seconds)
-  float     iTimeDelta;            // render time (in seconds)
-  int       iFrame;                // shader playback frame
-  float     iSampleRate;           // sound sample rate (i.e., 44100
-};
-
-void mainImage(out vec4 fragColor, in vec2 fragCoord);
-void main() {
-	mainImage(out_fragColor, gl_FragCoord.xy);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
 vec3 translate(in vec3 pos, in vec3 offset)
 {
 	return pos - offset;
@@ -194,7 +165,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
 
 	vec3 rayDir = normalize( p.x*cameraRight + p.y*cameraUp + 2.1*cameraForward ); // ray direction
 
-    vec3 pixelColor = vec3(0.1, 0.1 ,0.1); // background
+    vec3 pixelColor = vec3(0.1, 0.1, 0.1); // background
 	float t = raymarch(rayOrigin, rayDir);
     if(t > 0)
 	{
