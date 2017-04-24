@@ -36,6 +36,15 @@ struct ShaderToyUniforms {
   float     iSampleRate;           // sound sample rate (i.e., 44100
 };
 
+mathfu::vec2 click_pos(0,0);
+void MyGlfwMouseButtonCallback(GLFWwindow* window, int button, int action, int /*mods*/) {
+  if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+    double mouse_x, mouse_y;
+    glfwGetCursorPos(window, &mouse_x, &mouse_y);
+    click_pos = mathfu::vec2( (float)mouse_x, (float)mouse_y );
+  }
+}
+
 }  // namespace
 
 class ShaderToyApp : public spokk::Application {
@@ -43,6 +52,9 @@ public:
   explicit ShaderToyApp(Application::CreateInfo &ci) :
       Application(ci) {
     seconds_elapsed_ = 0;
+
+    mouse_pos_ = mathfu::vec2(0,0);
+    glfwSetMouseButtonCallback(window_.get(), MyGlfwMouseButtonCallback);
 
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR, swapchain_surface_format_.format);
@@ -161,10 +173,11 @@ public:
     }
 
     // Update uniforms
-    // TODO(cort): track mouse events. Update position while button is down, and keep track of most recent
-    // click position. If button is up, keep the most recent values.
     double mouse_x = 0, mouse_y = 0;
     glfwGetCursorPos(window_.get(), &mouse_x, &mouse_y);
+    if (glfwGetMouseButton(window_.get(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+      mouse_pos_ = mathfu::vec2((float)mouse_x, (float)mouse_y);
+    }
 
     std::time_t now = std::time(nullptr);
     const std::tm* cal = std::localtime(&now);
@@ -187,7 +200,7 @@ public:
     uniforms_.iGlobalTime = (float)seconds_elapsed_;
     uniforms_.iTimeDelta = (float)dt;
     uniforms_.iFrame = frame_index_;
-    uniforms_.iMouse = mathfu::vec4((float)mouse_x, (float)mouse_y, 0.0f, 0.0f);  // TODO(cort): mouse click tracking is TBI
+    uniforms_.iMouse = mathfu::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
     uniforms_.iDate = mathfu::vec4(year, month, mday, dsec);
     uniforms_.iSampleRate = 44100.0f;
     uniform_buffer_.Load(device_context_, pframe_index_, &uniforms_, sizeof(uniforms_));
@@ -345,6 +358,7 @@ private:
   std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
   ShaderToyUniforms uniforms_;
+  mathfu::vec2 mouse_pos_;
   PipelinedBuffer uniform_buffer_;
 };
 
