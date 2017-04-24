@@ -175,12 +175,6 @@ void RenderPass::InitFromPreset(Preset preset, VkFormat output_color_format) {
 VkResult RenderPass::Finalize(const DeviceContext& device_context,
   VkPipelineBindPoint bind_point, VkSubpassDescriptionFlags flags) {
   subpass_descs.resize(subpass_attachments.size());
-  for(const auto& dep : subpass_dependencies) {
-    // This is probably unnecessary; a mismatch would be caught by the validation layers at creation time.
-    (void)dep;
-    assert(dep.srcSubpass == VK_SUBPASS_EXTERNAL || dep.srcSubpass < subpass_descs.size());
-    assert(dep.dstSubpass == VK_SUBPASS_EXTERNAL || dep.dstSubpass < subpass_descs.size());
-  }
   subpass_multisample_state_cis.resize(subpass_attachments.size());
   for(size_t i=0; i<subpass_attachments.size(); ++i) {
     subpass_descs[i].flags = flags;
@@ -225,10 +219,31 @@ VkResult RenderPass::Finalize(const DeviceContext& device_context,
   render_pass_ci.pSubpasses = subpass_descs.data();;
   render_pass_ci.dependencyCount = (uint32_t)subpass_dependencies.size();
   render_pass_ci.pDependencies = subpass_dependencies.data();
-  return vkCreateRenderPass(device_context.Device(), &render_pass_ci, device_context.HostAllocator(), &handle);
+  VkResult create_result = vkCreateRenderPass(device_context.Device(), &render_pass_ci, device_context.HostAllocator(), &handle);
+
+  // vkBeginRenderPass layers will warn if clearValueCount includes entries that will never be used.
+  // So, find the last attachment that's cleared, and only store enough clear values to handle that one.
+  clear_values.clear();
+  for(size_t i = attachment_descs.size(); i > 0; --i) {
+    if (attachment_descs[i-1].loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR ||
+        attachment_descs[i-1].stencilLoadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) {
+      clear_values.resize(i);
+      break;
+    }
+  }
+  begin_info = {};
+  begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+  begin_info.renderPass = handle;
+  begin_info.framebuffer = VK_NULL_HANDLE;  // must be filled in every frame
+  begin_info.renderArea.offset = {0,0};
+  begin_info.renderArea.extent = {0,0};  // must be filled in every frame
+  begin_info.clearValueCount = (uint32_t)clear_values.size();
+  begin_info.pClearValues = clear_values.data();
+
+  return create_result;
 }
 
-VkImageCreateInfo RenderPass::GetAttachmentImageCreateInfo(uint32_t attachment_index, const VkExtent2D& render_area) const {
+VkImageCreateInfo RenderPass::GetAttachmentImageCreateInfo(uint32_t attachment_index, VkExtent2D render_area) const {
   VkImageCreateInfo ci = {};
   if (handle != VK_NULL_HANDLE && attachment_index < (uint32_t)attachment_descs.size()) {
     ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -288,7 +303,7 @@ VkImageViewCreateInfo RenderPass::GetAttachmentImageViewCreateInfo(uint32_t atta
   }
   return ci;
 }
-VkFramebufferCreateInfo RenderPass::GetFramebufferCreateInfo(const VkExtent2D& render_area) const {
+VkFramebufferCreateInfo RenderPass::GetFramebufferCreateInfo(VkExtent2D render_area) const {
   VkFramebufferCreateInfo ci = {};
   if (handle != VK_NULL_HANDLE) {
     ci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -310,6 +325,7 @@ void RenderPass::Destroy(const DeviceContext& device_context) {
   attachment_descs.clear();
   subpass_attachments.clear();
   subpass_dependencies.clear();
+  clear_values.clear();
   subpass_descs.clear();
   subpass_multisample_state_cis.clear();
 }

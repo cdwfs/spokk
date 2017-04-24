@@ -35,13 +35,16 @@ struct RenderPass {
   VkResult Finalize(const DeviceContext& device_context, VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS,
     VkSubpassDescriptionFlags flags = 0);
 
-  VkImageCreateInfo GetAttachmentImageCreateInfo(uint32_t attachment_index, const VkExtent2D& render_area) const;
+  VkImageCreateInfo GetAttachmentImageCreateInfo(uint32_t attachment_index, VkExtent2D render_area) const;
   VkImageViewCreateInfo GetAttachmentImageViewCreateInfo(uint32_t attachment_index, VkImage image) const;
-  VkFramebufferCreateInfo GetFramebufferCreateInfo(const VkExtent2D& render_area) const;
+  VkFramebufferCreateInfo GetFramebufferCreateInfo(VkExtent2D render_area) const;
+  
   void Destroy(const DeviceContext& device_context);
 
   // These are created during finalization
   VkRenderPass handle;
+  std::vector<VkClearValue> clear_values;
+  VkRenderPassBeginInfo begin_info;  // Caller must fill in framebuffer and renderArea.extent!
   std::vector<VkSubpassDescription> subpass_descs;
   std::vector<VkPipelineMultisampleStateCreateInfo> subpass_multisample_state_cis;
 };

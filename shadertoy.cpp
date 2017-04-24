@@ -23,6 +23,7 @@ namespace {
 
 const std::string frag_shader_path = "../shadertoy.frag";
 
+// TODO(cort): finish supporting all uniforms
 struct ShaderToyUniforms {
   mathfu::vec3_packed iResolution; // viewport resolution (in pixels)
   float     iGlobalTime;           // shader playback time (in seconds)
@@ -195,15 +196,9 @@ public:
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
     blitter_.NextPframe();
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
-    VkRenderPassBeginInfo render_pass_begin_info = {};
-    render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    render_pass_begin_info.renderPass = render_pass_.handle;
-    render_pass_begin_info.framebuffer = framebuffer;
-    render_pass_begin_info.renderArea.offset.x = 0;
-    render_pass_begin_info.renderArea.offset.y = 0;
-    render_pass_begin_info.renderArea.extent = swapchain_extent_;
-
-    vkCmdBeginRenderPass(primary_cb, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    render_pass_.begin_info.framebuffer = framebuffer;
+    render_pass_.begin_info.renderArea.extent = swapchain_extent_;
+    vkCmdBeginRenderPass(primary_cb, &render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_.handle);
     vkCmdSetViewport(primary_cb, 0,1, &viewport_);
     vkCmdSetScissor(primary_cb, 0,1, &scissor_rect_);

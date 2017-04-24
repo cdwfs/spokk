@@ -37,6 +37,12 @@ public:
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH_POST, swapchain_surface_format_.format);
     SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
+    render_pass_.clear_values[0].color.float32[0] = 0.2f;
+    render_pass_.clear_values[0].color.float32[1] = 0.2f;
+    render_pass_.clear_values[0].color.float32[2] = 0.3f;
+    render_pass_.clear_values[0].color.float32[3] = 0.0f;
+    render_pass_.clear_values[1].depthStencil.depth = 1.0f;
+    render_pass_.clear_values[1].depthStencil.stencil = 0;
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
@@ -237,30 +243,11 @@ public:
     blitter_.NextPframe();
 
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
-    // TODO(cort): spurious validation warning for unused clear value? Is that
-    // actually bad? What if attachments 0 and 2 must be cleared but not 1?
-    // Easy enough to work around in this case, just hard-code the array size.
-    //std::vector<VkClearValue> clear_values(render_pass_.attachment_descs.size());
-    std::array<VkClearValue, 2> clear_values;
-    clear_values[0].color.float32[0] = 0.2f;
-    clear_values[0].color.float32[1] = 0.2f;
-    clear_values[0].color.float32[2] = 0.3f;
-    clear_values[0].color.float32[3] = 0.0f;
-    clear_values[1].depthStencil.depth = 1.0f;
-    clear_values[1].depthStencil.stencil = 0;
-    VkRenderPassBeginInfo render_pass_begin_info = {};
-    render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    render_pass_begin_info.renderPass = render_pass_.handle;
-    render_pass_begin_info.framebuffer = framebuffer;
-    render_pass_begin_info.renderArea.offset.x = 0;
-    render_pass_begin_info.renderArea.offset.y = 0;
-    render_pass_begin_info.renderArea.extent = swapchain_extent_;
-    render_pass_begin_info.clearValueCount = (uint32_t)clear_values.size();
-    render_pass_begin_info.pClearValues = clear_values.data();
-
-    vkCmdBeginRenderPass(primary_cb, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    render_pass_.begin_info.framebuffer = framebuffer;
+    render_pass_.begin_info.renderArea.extent = swapchain_extent_;
+    vkCmdBeginRenderPass(primary_cb, &render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
-    VkRect2D scissor_rect = render_pass_begin_info.renderArea;
+    VkRect2D scissor_rect = render_pass_.begin_info.renderArea;
     VkViewport viewport = Rect2DToViewport(scissor_rect);
     vkCmdSetViewport(primary_cb, 0,1, &viewport);
     vkCmdSetScissor(primary_cb, 0,1, &scissor_rect);
