@@ -48,7 +48,8 @@ layout (set = 0, binding = 4) uniform ShaderToyUniforms {
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord);
 void main() {
-	mainImage(out_fragColor, gl_FragCoord.xy);
+  mainImage(out_fragColor, gl_FragCoord.xy);
+  out_fragColor.w = 1.0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -98,13 +99,24 @@ public:
     for(auto& sampler : samplers_) {
       SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler));
     }
-    const VkDeviceSize blit_buffer_nbytes = 4*1024*1024;
+    const VkDeviceSize blit_buffer_nbytes = 16*1024*1024;
     SPOKK_VK_CHECK(blitter_.Create(device_context_, PFRAME_COUNT, blit_buffer_nbytes));
-    // TODO(cort): replace with some actual ShaderToy textures
-    textures_[0].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "trevor/noise.dds");
-    textures_[1].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "trevor/redf.ktx");
-    textures_[2].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "trevor/redf.ktx");
-    textures_[3].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "trevor/redf.ktx");
+    for(size_t i=0; i<textures_.size(); ++i) {
+      char filename[17];
+      zomboSnprintf(filename, 17, "trevor/tex%02u.ktx", (uint32_t)i);
+      ZOMBO_ASSERT(0 == textures_[i].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, filename, VK_FALSE),
+        "Failed to load %s", filename);
+    }
+    for(size_t i=0; i<cubemaps_.size(); ++i) {
+      char filename[18];
+      zomboSnprintf(filename, 18, "trevor/cube%02u.ktx", (uint32_t)i);
+      ZOMBO_ASSERT(0 == cubemaps_[i].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, filename, VK_FALSE),
+        "Failed to load %s", filename);
+    }
+    active_images_[0] = &textures_[15];
+    active_images_[1] = &cubemaps_[2];
+    active_images_[2] = &textures_[2];
+    active_images_[3] = &textures_[3];
 
     // Load shader pipelines
     SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_context_, "fullscreen.vert.spv"));
@@ -130,8 +142,8 @@ public:
     CreateRenderBuffers(swapchain_extent_);
     
     DescriptorSetWriter dset_writer(shader_pipelines_[active_pipeline_index_].dset_layout_cis[0]);
-    for(uint32_t iTex = 0; iTex < (uint32_t)textures_.size(); ++iTex) {
-      dset_writer.BindImage(textures_[iTex].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], iTex);
+    for(size_t iTex = 0; iTex < active_images_.size(); ++iTex) {
+      dset_writer.BindImage(active_images_[iTex]->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], (uint32_t)iTex);
     }
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dsets_[pframe] = dpool_.AllocateSet(device_context_, shader_pipelines_[active_pipeline_index_].dset_layouts[0]);
@@ -171,6 +183,9 @@ public:
 
       for(auto& image : textures_) {
         image.Destroy(device_context_);
+      }
+      for(auto& cube : cubemaps_) {
+        cube.Destroy(device_context_);
       }
       for(auto sampler : samplers_) {
         vkDestroySampler(device_, sampler, host_allocator_);
@@ -220,10 +235,22 @@ public:
     uniforms_.iChannelTime[1] = mathfu::vec4(1.0f, 0.0f, 0.0f, 0.0f);
     uniforms_.iChannelTime[2] = mathfu::vec4(2.0f, 0.0f, 0.0f, 0.0f);
     uniforms_.iChannelTime[3] = mathfu::vec4(3.0f, 0.0f, 0.0f, 0.0f);
-    uniforms_.iChannelResolution[0] = mathfu::vec4(1.1f, 1.0f, 1.0f, 0.0f);  // TODO(cort): insert texture dimensions
-    uniforms_.iChannelResolution[1] = mathfu::vec4(2.2f, 1.0f, 1.0f, 0.0f);
-    uniforms_.iChannelResolution[2] = mathfu::vec4(3.3f, 1.0f, 1.0f, 0.0f);
-    uniforms_.iChannelResolution[3] = mathfu::vec4(4.4f, 1.0f, 1.0f, 0.0f);
+    uniforms_.iChannelResolution[0] = mathfu::vec4(
+      (float)active_images_[0]->image_ci.extent.width,
+      (float)active_images_[0]->image_ci.extent.height,
+      (float)active_images_[0]->image_ci.extent.depth, 0.0f);
+    uniforms_.iChannelResolution[1] = mathfu::vec4(
+      (float)active_images_[1]->image_ci.extent.width,
+      (float)active_images_[1]->image_ci.extent.height,
+      (float)active_images_[1]->image_ci.extent.depth, 0.0f);
+    uniforms_.iChannelResolution[2] = mathfu::vec4(
+      (float)active_images_[2]->image_ci.extent.width,
+      (float)active_images_[2]->image_ci.extent.height,
+      (float)active_images_[2]->image_ci.extent.depth, 0.0f);
+    uniforms_.iChannelResolution[3] = mathfu::vec4(
+      (float)active_images_[3]->image_ci.extent.width,
+      (float)active_images_[3]->image_ci.extent.height,
+      (float)active_images_[3]->image_ci.extent.depth, 0.0f);
     uniforms_.iGlobalTime = (float)seconds_elapsed_;
     uniforms_.iTimeDelta = (float)dt;
     uniforms_.iFrame = frame_index_;
@@ -279,7 +306,14 @@ private:
   }
 
   void ReloadShader() {
-    int preamble_len = snprintf(nullptr, 0, frag_shader_preamble.c_str(), "2D", "2D", "2D", "2D");
+    const char* image_types[4] = {
+      (active_images_[0]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
+      (active_images_[1]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
+      (active_images_[2]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
+      (active_images_[3]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
+    };
+    int preamble_len = snprintf(nullptr, 0, frag_shader_preamble.c_str(),
+      image_types[0], image_types[1], image_types[2], image_types[3]);
     FILE *frag_file = zomboFopen(frag_shader_path.c_str(), "rb");
     if (!frag_file) {
       // Load failed -- try again in a moment?
@@ -290,7 +324,8 @@ private:
     size_t frag_file_bytes = ftell(frag_file);
     // TODO(cort): potential race condition here, if the file is modified between fteel and fread()
     std::vector<char> final_frag_source(preamble_len + frag_file_bytes);
-    snprintf(final_frag_source.data(), preamble_len, frag_shader_preamble.c_str(), "2D", "2D", "2D", "2D");
+    zomboSnprintf(final_frag_source.data(), preamble_len, frag_shader_preamble.c_str(),
+      image_types[0], image_types[1], image_types[2], image_types[3]);
     fseek(frag_file, 0, SEEK_SET);
     size_t bytes_read = fread(final_frag_source.data() + preamble_len - 1, 1, frag_file_bytes, frag_file);
     fclose(frag_file);
@@ -381,7 +416,9 @@ private:
   shaderc::CompileOptions compiler_options_;
 
   ImageBlitter blitter_;
-  std::array<Image,4> textures_;
+  std::array<Image, 16> textures_;
+  std::array<Image, 6> cubemaps_;
+  std::array<Image*, 4> active_images_;
   std::array<VkSampler,4> samplers_;
 
   RenderPass render_pass_;
