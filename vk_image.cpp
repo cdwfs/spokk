@@ -263,7 +263,13 @@ int Image::CreateFromFile(const DeviceContext& device_context, ImageBlitter& bli
       copy_region.imageExtent.width  = AlignTo(GetMipDimension(image_file.width, i_mip), texel_block_width);
       copy_region.imageExtent.height = AlignTo(GetMipDimension(image_file.height, i_mip), texel_block_height);
       copy_region.imageExtent.depth  = GetMipDimension(image_file.depth, i_mip);
-      blitter.CopyMemoryToImage(cb, handle, subresource_data, image_ci.format, copy_region);
+      int copy_error = blitter.CopyMemoryToImage(cb, handle, subresource_data, image_ci.format, copy_region);
+      if (copy_error) {
+        cpool.EndAbortAndFree(&cb);
+        ImageFileDestroy(&image_file);
+        Destroy(device_context);
+        return -2;
+      }
     }
   }
 
@@ -606,6 +612,7 @@ int ImageBlitter::CopyMemoryToImage(VkCommandBuffer cb, VkImage dst_image, const
 
     copy_final.bufferOffset = current_offset_;
     current_offset_ += src_nbytes;
+    current_offset_ = (current_offset_ + 15) & ~15;  // round up to valid offset for next copy
   }
   staging_buffer_.InvalidatePframeHostCache(current_pframe_, current_offset_, src_nbytes);
 

@@ -86,6 +86,16 @@ VkCommandBuffer OneShotCommandPool::AllocateAndBegin(void) const {
   return cb;
 }
 
+VkResult OneShotCommandPool::EndAbortAndFree(VkCommandBuffer *cb) const {
+  VkResult result = vkEndCommandBuffer(*cb);
+  {
+    std::lock_guard<std::mutex> lock(pool_mutex_);
+    vkFreeCommandBuffers(device_, pool_, 1, cb);
+  }
+  *cb = VK_NULL_HANDLE;
+  return result;
+}
+
 VkResult OneShotCommandPool::EndSubmitAndFree(VkCommandBuffer *cb) const {
   VkResult result = vkEndCommandBuffer(*cb);
   if (result == VK_SUCCESS) {

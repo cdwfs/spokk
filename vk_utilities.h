@@ -88,6 +88,8 @@ public:
   // Ends recording on the command buffer, submits it, waits for it to complete, and returns
   // the command buffer to the pool.
   VkResult EndSubmitAndFree(VkCommandBuffer *cb) const;
+  // In the event of an error, this variant skips submission and simply returns the CB to the pool.
+  VkResult OneShotCommandPool::EndAbortAndFree(VkCommandBuffer *cb) const;
 
 private:
   VkCommandPool pool_ = VK_NULL_HANDLE;
