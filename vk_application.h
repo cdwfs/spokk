@@ -102,8 +102,6 @@ public:
     std::string app_name = "Spokk Application";
     uint32_t window_width = 1280, window_height = 720;
     bool enable_graphics = true;
-    bool enable_fullscreen = false;
-    bool enable_vsync = true;
     VkDebugReportFlagsEXT debug_report_flags = 
 #ifdef NDEBUG
       0;

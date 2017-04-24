@@ -652,8 +652,8 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
     present_mode_supported[mode] = true;
   }
   VkPresentModeKHR present_mode;
-  // TODO(cort): figure out how an application should request present modes
-  if (present_mode_supported[VK_PRESENT_MODE_IMMEDIATE_KHR]) {  // TODO(cort): if (ci.enable_vsync && ) {
+  // TODO(cort): figure out how an application should request present modes.
+  if (present_mode_supported[VK_PRESENT_MODE_IMMEDIATE_KHR]) {
     present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
   } else if (present_mode_supported[VK_PRESENT_MODE_MAILBOX_KHR]) {
     present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
