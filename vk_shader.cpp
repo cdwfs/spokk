@@ -278,6 +278,7 @@ void Shader::Destroy(const DeviceContext& device_context) {
     vkDestroyShaderModule(device_context.Device(), handle, device_context.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
+  dset_layout_infos.clear();
   UnloadSpirv();
   stage = (VkShaderStageFlagBits)0;
 }
@@ -533,6 +534,7 @@ void ShaderPipeline::Destroy(const DeviceContext& device_context) {
   entry_point_names.clear();
   vkDestroyPipelineLayout(device_context.Device(), pipeline_layout, device_context.HostAllocator());
   pipeline_layout = VK_NULL_HANDLE;
+  active_stages = 0;
 }
 
 //
