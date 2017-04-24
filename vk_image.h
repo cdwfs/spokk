@@ -57,7 +57,7 @@ struct Image {
     VkMemoryPropertyFlags memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
     DeviceAllocationScope allocation_scope = DEVICE_ALLOCATION_SCOPE_DEVICE);
 
-  // synchronous
+  // synchronous. Returns 0 on success, non-zero on failure.
   int CreateFromFile(const DeviceContext& device_context, ImageBlitter& blitter, const DeviceQueue *queue,
     const std::string& filename, VkBool32 generate_mipmaps = VK_TRUE,
     VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,

@@ -41,6 +41,11 @@ uint32_t ImageFileGetBytesPerTexelBlock(ImageFileDataFormat format)
     case IMAGE_FILE_DATA_FORMAT_B8G8R8A8_UNORM:     return 4;
     case IMAGE_FILE_DATA_FORMAT_R4G4B4A4_UNORM:     return 2;
     case IMAGE_FILE_DATA_FORMAT_B4G4R4A4_UNORM:     return 2;
+    case IMAGE_FILE_DATA_FORMAT_R5G6B5_UNORM:       return 2;
+    case IMAGE_FILE_DATA_FORMAT_B5G6R5_UNORM:       return 2;
+    case IMAGE_FILE_DATA_FORMAT_R5G5B5A1_UNORM:     return 2;
+    case IMAGE_FILE_DATA_FORMAT_B5G5R5A1_UNORM:     return 2;
+    case IMAGE_FILE_DATA_FORMAT_A1R5G5B5_UNORM:     return 2;
     case IMAGE_FILE_DATA_FORMAT_R32G32B32A32_FLOAT: return 16;
     case IMAGE_FILE_DATA_FORMAT_R32G32B32_FLOAT:    return 12;
     case IMAGE_FILE_DATA_FORMAT_R32G32_FLOAT:       return 8;
@@ -390,6 +395,11 @@ static int DdsContainsCompressedTexture(ImageFileDataFormat format)
     case IMAGE_FILE_DATA_FORMAT_B8G8R8A8_UNORM:
     case IMAGE_FILE_DATA_FORMAT_R4G4B4A4_UNORM:
     case IMAGE_FILE_DATA_FORMAT_B4G4R4A4_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_R5G6B5_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_B5G6R5_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_R5G5B5A1_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_B5G5R5A1_UNORM:
+    case IMAGE_FILE_DATA_FORMAT_A1R5G5B5_UNORM:
     case IMAGE_FILE_DATA_FORMAT_R32G32B32A32_FLOAT:
     case IMAGE_FILE_DATA_FORMAT_R32G32B32_FLOAT:
     case IMAGE_FILE_DATA_FORMAT_R32G32_FLOAT:
@@ -451,6 +461,11 @@ static ImageFileDataFormat DdsParsePixelFormat(const DdsPixelFormat pf)
                 return IMAGE_FILE_DATA_FORMAT_R4G4B4A4_UNORM;
             else if( DdsIsPfMask(pf, 0x00000f00,0x000000f0,0x0000000f,0x00000000) )
                 return IMAGE_FILE_DATA_FORMAT_B4G4R4A4_UNORM;
+            else if ( DdsIsPfMask(pf, 0x0000f800, 0x000007e0, 0x0000001f, 0x00000000) )
+                return IMAGE_FILE_DATA_FORMAT_R5G6B5_UNORM;
+            else if ( DdsIsPfMask(pf, 0x0000001f, 0x000007e0, 0x000f800, 0x00000000) )
+                return IMAGE_FILE_DATA_FORMAT_B5G6R5_UNORM;
+            // TODO(cort): see what 5551 turns into
             break;
 
         case 8:
@@ -579,6 +594,10 @@ static ImageFileDataFormat DdsParseDxFormat(DxFormat dx_format)
     case DX_FORMAT_B8G8R8A8_UNORM:
     case DX_FORMAT_B8G8R8X8_UNORM:
         return IMAGE_FILE_DATA_FORMAT_B8G8R8A8_UNORM;
+    case DX_FORMAT_B5G6R5_UNORM:
+      return IMAGE_FILE_DATA_FORMAT_B5G6R5_UNORM;
+    case DX_FORMAT_B5G5R5A1_UNORM:
+      return IMAGE_FILE_DATA_FORMAT_B5G5R5A1_UNORM;
     case DX_FORMAT_UNKNOWN:
     case DX_FORMAT_R32G32B32A32_TYPELESS:
     case DX_FORMAT_R32G32B32_TYPELESS:
@@ -640,8 +659,6 @@ static ImageFileDataFormat DdsParseDxFormat(DxFormat dx_format)
     case DX_FORMAT_R8_UINT:
     case DX_FORMAT_R8_SNORM:
     case DX_FORMAT_R8_SINT:
-    case DX_FORMAT_B5G6R5_UNORM:
-    case DX_FORMAT_B5G5R5A1_UNORM:
     case DX_FORMAT_B8G8R8A8_UNORM_SRGB:
     case DX_FORMAT_B8G8R8X8_UNORM_SRGB:
         return IMAGE_FILE_DATA_FORMAT_UNKNOWN;
