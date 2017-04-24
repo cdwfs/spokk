@@ -50,7 +50,7 @@ mathfu::vec3 Camera::getEulersYPR() const {
   float yaw = (vy.LengthSquared() > 0)
     ? atan2f(vy.y, vy.x)
     : 0; // straight up/down. Need more info. TODO(cort): use sign of f_out.y and atan2 of r_out or u_out.
-          // Compute pitch
+  // Compute pitch
   const mathfu::vec2 vp(dot(f_out, mathfu::vec3(f_out.x, 0.0f, f_out.z).Normalized()), dot(f_out, Y));
   float pitch = (vp.LengthSquared() > 0)
     ? atan2f(vp.y, vp.x)

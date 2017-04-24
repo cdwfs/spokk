@@ -167,7 +167,8 @@ VkResult Image::Create(const DeviceContext& device_context, const VkImageCreateI
 int Image::CreateFromFile(const DeviceContext& device_context, ImageBlitter& blitter, const DeviceQueue *queue,
   const std::string& filename, VkBool32 generate_mipmaps, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
   assert(handle == VK_NULL_HANDLE);  // can't re-create an existing image!
-                                     // Load image file. TODO(cort): ideally, we'd load directly into the staging buffer here to save a memcpy.
+
+  // Load image file. TODO(cort): ideally, we'd load directly into the staging buffer here to save a memcpy.
   ImageFile image_file = {};
   int load_error = ImageFileCreate(&image_file, filename.c_str());
   if (load_error != 0) {
@@ -418,11 +419,6 @@ int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& d
   VkImageAspectFlags aspect_flags = GetImageAspectFlags(image_ci.format);
 
   // transition mip 0 to TRANSFER_READ, mip 1 to TRANSFER_WRITE
-  // TODO(cort):
-  // - transition src_level from dst_barrier.srcAccessMask to TRANSFER_READ_BIT
-  // - transition src_level from dst_barrier.oldLayout to TRANSFER_SRC
-  // - transition the next mips_to_gen levels from UNDEFINED to TRANSFER_DST
-  // - transition the next mips_to_gen levels from 0 to TRANSFER_WRITE_BIT
   std::array<VkImageMemoryBarrier,2> image_barriers = {};
   image_barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
   image_barriers[0].srcAccessMask = dst_barrier.srcAccessMask;
