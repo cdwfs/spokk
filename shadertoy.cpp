@@ -25,14 +25,14 @@ const std::string frag_shader_path = "../shadertoy.frag";
 
 // TODO(cort): finish supporting all uniforms
 struct ShaderToyUniforms {
-  mathfu::vec3_packed iResolution; // viewport resolution (in pixels)
+  mathfu::vec4_packed iResolution; // xyz: viewport resolution (in pixels), w: unused
+  mathfu::vec4_packed iChannelTime[4];       // x: channel playback time (in seconds), yzw: unused
+  mathfu::vec4_packed iChannelResolution[4]; // xyz: channel resolution (in pixels)
+  mathfu::vec4_packed iMouse;      // mouse pixel coords. xy: current (if MLB down), zw: click
+  mathfu::vec4_packed iDate;       // (year, month, day, time in seconds)
   float     iGlobalTime;           // shader playback time (in seconds)
   float     iTimeDelta;            // render time (in seconds)
   int       iFrame;                // shader playback frame
-  float     iChannelTime[4];       // channel playback time (in seconds)
-  mathfu::vec3_packed iChannelResolution[4]; // channel resolution (in pixels)
-  mathfu::vec4_packed iMouse;      // mouse pixel coords. xy: current (if MLB down), zw: click
-  mathfu::vec4_packed iDate;       // (year, month, day, time in seconds)
   float     iSampleRate;           // sound sample rate (i.e., 44100
 };
 
@@ -175,18 +175,18 @@ public:
 
     viewport_ = ExtentToViewport(swapchain_extent_);
     scissor_rect_ = ExtentToRect2D(swapchain_extent_);
-    uniforms_.iResolution = mathfu::vec3(viewport_.width, viewport_.height, 1.0f);
+    uniforms_.iResolution = mathfu::vec4(viewport_.width, viewport_.height, 1.0f, 0.0f);
+    uniforms_.iChannelTime[0] = mathfu::vec4(0.0f, 0.0f, 0.0f, 0.0f);  // TODO(cort): audio/video channels are TBI
+    uniforms_.iChannelTime[1] = mathfu::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+    uniforms_.iChannelTime[2] = mathfu::vec4(2.0f, 0.0f, 0.0f, 0.0f);
+    uniforms_.iChannelTime[3] = mathfu::vec4(3.0f, 0.0f, 0.0f, 0.0f);
+    uniforms_.iChannelResolution[0] = mathfu::vec4(1.1f, 1.0f, 1.0f, 0.0f);  // TODO(cort): insert texture dimensions
+    uniforms_.iChannelResolution[1] = mathfu::vec4(2.2f, 1.0f, 1.0f, 0.0f);
+    uniforms_.iChannelResolution[2] = mathfu::vec4(3.3f, 1.0f, 1.0f, 0.0f);
+    uniforms_.iChannelResolution[3] = mathfu::vec4(4.4f, 1.0f, 1.0f, 0.0f);
     uniforms_.iGlobalTime = (float)seconds_elapsed_;
     uniforms_.iTimeDelta = (float)dt;
     uniforms_.iFrame = frame_index_;
-    uniforms_.iChannelTime[0] = 0.0f;  // TODO(cort): audio/video channels are TBI
-    uniforms_.iChannelTime[1] = 0.0f;
-    uniforms_.iChannelTime[2] = 0.0f;
-    uniforms_.iChannelTime[3] = 0.0f;
-    uniforms_.iChannelResolution[0] = mathfu::vec3(1.0f, 1.0f, 1.0f);
-    uniforms_.iChannelResolution[1] = mathfu::vec3(1.0f, 1.0f, 1.0f);
-    uniforms_.iChannelResolution[2] = mathfu::vec3(1.0f, 1.0f, 1.0f);
-    uniforms_.iChannelResolution[3] = mathfu::vec3(1.0f, 1.0f, 1.0f);
     uniforms_.iMouse = mathfu::vec4((float)mouse_x, (float)mouse_y, 0.0f, 0.0f);  // TODO(cort): mouse click tracking is TBI
     uniforms_.iDate = mathfu::vec4(year, month, mday, dsec);
     uniforms_.iSampleRate = 44100.0f;

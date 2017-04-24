@@ -10,13 +10,13 @@ layout (set = 0, binding = 2) uniform sampler2D iChannel2;
 layout (set = 0, binding = 3) uniform sampler2D iChannel3;
 layout (set = 0, binding = 4) uniform ShaderToyUniforms {
   vec3      iResolution;           // viewport resolution (in pixels)
-  float     iGlobalTime;           // shader playback time (in seconds)
-  float     iTimeDelta;            // render time (in seconds)
-  int       iFrame;                // shader playback frame
   float     iChannelTime[4];       // channel playback time (in seconds)
   vec3      iChannelResolution[4]; // channel resolution (in pixels)
   vec4      iMouse;                // mouse pixel coords. xy: current (if MLB down), zw: click
   vec4      iDate;                 // (year, month, day, time in seconds)
+  float     iGlobalTime;           // shader playback time (in seconds)
+  float     iTimeDelta;            // render time (in seconds)
+  int       iFrame;                // shader playback frame
   float     iSampleRate;           // sound sample rate (i.e., 44100
 };
 
