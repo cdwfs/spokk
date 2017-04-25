@@ -924,6 +924,7 @@ typedef struct KtxHeader {
 } KtxHeader;
 
 typedef enum GlInternalFormat {
+    GL__RGBA8                                  = 0x8058,
     GL__COMPRESSED_RGB_S3TC_DXT1_EXT           = 0x83F0, // BC1 (no alpha)
     GL__COMPRESSED_RGBA_S3TC_DXT1_EXT          = 0x83F1, // BC1 (alpha)
     GL__COMPRESSED_RGBA_S3TC_DXT5_EXT          = 0x83F3, // BC3
@@ -1062,12 +1063,13 @@ static int LoadImageFromKtx(ImageFile *out_image, const char *image_path)
     }
     if (header->endianness == 0x01020304)
     {
+        // byte-swap everything. This needs to be tested.
         uint8_t *surface_start = surface_data;
         for(uint32_t iMip=0; iMip < header->numberOfMipmapLevels; ++iMip)
         {
             uint32_t *image_size = (uint32_t*)surface_start;
             *image_size = byte_swap_u32(*image_size);
-            uint32_t padded_image_size = (*image_size + 3) & ~3; // TODO: this is different for non-array cubemaps. Test it.
+            uint32_t padded_image_size = (*image_size + 3) & ~3; // TODO(cort): this is different for non-array cubemaps. Test it.
             uint8_t *image_start = (uint8_t*)(image_size+1);
             uint8_t *image_end = image_start + padded_image_size;
             if (header->glTypeSize != 1)
@@ -1084,7 +1086,7 @@ static int LoadImageFromKtx(ImageFile *out_image, const char *image_path)
     }
     out_image->width = header->pixelWidth;
     out_image->height = IMAGEFILE__MAX(1, header->pixelHeight); // will be 0 for 1D textures
-    out_image->depth = IMAGEFILE__MAX(1, header->pixelDepth); // will be 0 for 1D/2D textures
+    out_image->depth = IMAGEFILE__MAX(1, header->pixelDepth); // will be 0 for 1D/2D/cube textures
     out_image->mip_levels = IMAGEFILE__MAX(1, header->numberOfMipmapLevels); // 0 is a request to generate the full mip chain.
     // For basic (non-array/cubemap) textures, arrayElements=0 and faces=1.
     // For non-array cubemaps: arrayElements=0 and faces=6.
@@ -1094,7 +1096,11 @@ static int LoadImageFromKtx(ImageFile *out_image, const char *image_path)
     out_image->file_type = IMAGE_FILE_TYPE_KTX;
     uint32_t block_dim_x = 1;
     int is_compressed = 0;
-    if      (header->glInternalFormat == GL__COMPRESSED_RGB_S3TC_DXT1_EXT) {
+    if      (header->glInternalFormat == GL__RGBA8) {
+        out_image->data_format = IMAGE_FILE_DATA_FORMAT_R8G8B8A8_UNORM;
+        is_compressed = 0;
+        block_dim_x = 1;
+    } else if (header->glInternalFormat == GL__COMPRESSED_RGB_S3TC_DXT1_EXT) {
         out_image->data_format = IMAGE_FILE_DATA_FORMAT_BC1_UNORM;
         is_compressed = 1;
         block_dim_x = 4;
@@ -1111,6 +1117,7 @@ static int LoadImageFromKtx(ImageFile *out_image, const char *image_path)
         is_compressed = 1;
         block_dim_x = 4;
     } else {
+        // TODO(cort): support additional formats here
         free(ktx_bytes);
         return -6;
     }
@@ -1246,21 +1253,26 @@ size_t ImageFileGetSubresourceSize(const ImageFile *image, const ImageFileSubres
         const KtxHeader *header = (const KtxHeader*)image->file_contents;
         uintptr_t next_mip = (uintptr_t)(header) + sizeof(*header) + header->bytesOfKeyValueData;
         uint32_t image_size = 0;
+        uint32_t total_mip_size = 0;
         for(uint32_t i = 0; i <= subresource.mip_level; ++i)
         {
+            // For non-array cubemaps, the imageSize field stores the unpadded size of one cube face.
+            // In this case, padding is inserted after each face so that subsequent faces start at
+            // file offsets divisible by 4.
+            // Otherwise, image_size is the unpadded size of all data in this mip level.
+            // In either case, padding is inserted at the end of each mip so that subsequent mips
+            // start at file offsets divisible by 4.
             image_size = *(const uint32_t*)(next_mip);
-            image_size = (image_size + 3) & ~3;
+            total_mip_size = image_size;
             if ((image->flags & IMAGE_FILE_FLAG_CUBE_BIT) && image->array_layers == 1)
             {
-                // For non-array cubemaps, the imageSize field stores the unpadded size of one cube face.
-                // Otherwise, it's the unpadded size of all data in this mip level.
-                // TODO(cort): this needs to be tested; I'm pretty sure it's wrong. Requires some "known good" cubemap KTX files.
-                image_size *= 6;
-                image_size = (image_size + 3) & ~3;
+                total_mip_size = (total_mip_size + 3) & ~3;
+                total_mip_size *= 6;
             }
-            next_mip += sizeof(image_size) + image_size;
+            total_mip_size = (total_mip_size + 3) & ~3;
+            next_mip += sizeof(image_size) + total_mip_size;
         }
-        return image_size / image->array_layers;
+        return total_mip_size / image->array_layers;
     }
     case IMAGE_FILE_TYPE_UNKNOWN:
         break;
@@ -1310,22 +1322,33 @@ void *ImageFileGetSubresourceData(const ImageFile *image, const ImageFileSubreso
         const KtxHeader *header = (const KtxHeader*)image->file_contents;
         uintptr_t next_mip = (uintptr_t)(header) + sizeof(*header) + header->bytesOfKeyValueData;
         uint32_t image_size = 0;
+        uint32_t total_mip_size = 0;
         for(uint32_t i = 0; i < subresource.mip_level; ++i)
         {
+            // For non-array cubemaps, the imageSize field stores the unpadded size of one cube face.
+            // In this case, padding is inserted after each face so that subsequent faces start at
+            // file offsets divisible by 4.
+            // Otherwise, image_size is the unpadded size of all data in this mip level.
+            // In either case, padding is inserted at the end of each mip so that subsequent mips
+            // start at file offsets divisible by 4.
             image_size = *(const uint32_t*)(next_mip);
-            image_size = (image_size + 3) & ~3;
-            if ((image->flags & IMAGE_FILE_FLAG_CUBE_BIT) && image->array_layers == 1)
+            total_mip_size = image_size;
+            if ((image->flags & IMAGE_FILE_FLAG_CUBE_BIT) && image->array_layers == 6)
             {
-                // For non-array cubemaps, the imageSize field stores the unpadded size of one cube face.
-                // Otherwise, it's the unpadded size of all data in this mip level.
-                // TODO(cort): this needs to be tested; I'm pretty sure it's wrong.
-                image_size *= 6;
-                image_size = (image_size + 3) & ~3;
+                total_mip_size = (total_mip_size + 3) & ~3;
+                total_mip_size *= 6;
             }
-            next_mip += sizeof(image_size) + image_size;
+            total_mip_size = (total_mip_size + 3) & ~3;
+            next_mip += sizeof(image_size) + total_mip_size;
         }
         image_size = *(const uint32_t*)(next_mip);
-        return (void*)( next_mip + sizeof(image_size) + (image_size / image->array_layers) * subresource.array_layer );
+        total_mip_size = image_size;
+        if ((image->flags & IMAGE_FILE_FLAG_CUBE_BIT) && image->array_layers == 6)
+        {
+            total_mip_size = (total_mip_size + 3) & ~3;
+            total_mip_size *= 6;
+        }
+        return (void*)( next_mip + sizeof(image_size) + (total_mip_size / image->array_layers) * subresource.array_layer );
     }
     case IMAGE_FILE_TYPE_UNKNOWN:
         break;
