@@ -13,6 +13,11 @@ using namespace spokk;
 #include <memory>
 
 namespace {
+struct SceneUniforms {
+  mathfu::vec4_packed time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
+  mathfu::vec4_packed eye;  // xyz: eye position
+  mathfu::mat4 viewproj;
+};
 constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
@@ -119,6 +124,15 @@ public:
     o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(mesh_uniforms_.Create(device_context_, PFRAME_COUNT, o2w_buffer_ci));
 
+    // Create pipelined buffer of shader uniforms
+    VkBufferCreateInfo scene_uniforms_ci = {};
+    scene_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    scene_uniforms_ci.size = sizeof(SceneUniforms);
+    scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(scene_uniforms_.Create(device_context_, PFRAME_COUNT, scene_uniforms_ci,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+
     SPOKK_VK_CHECK(mesh_pipeline_.Create(device_context_, mesh_.mesh_format, &mesh_shader_pipeline_, &render_pass_, 0));
 
     SPOKK_VK_CHECK(fullscreen_pipeline_.Create(device_context_,
@@ -144,6 +158,7 @@ public:
       dpool_.Destroy(device_context_);
 
       mesh_uniforms_.Destroy(device_context_);
+      scene_uniforms_.Destroy(device_context_);
 
       // TODO(cort): automate!
       mesh_.index_buffer.Destroy(device_context_);
@@ -218,6 +233,21 @@ public:
     dolly_->Impulse(impulse);
     dolly_->Update((float)dt);
 
+    // Update uniforms
+    SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
+    uniforms->time_and_res = mathfu::vec4(
+      (float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+    uniforms->eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
+    mathfu::mat4 w2v = camera_->getViewMatrix();
+    const mathfu::mat4 proj = camera_->getProjectionMatrix();
+    const mathfu::mat4 clip_fixup(
+      +1.0f, +0.0f, +0.0f, +0.0f,
+      +0.0f, -1.0f, +0.0f, +0.0f,
+      +0.0f, +0.0f, +0.5f, +0.5f,
+      +0.0f, +0.0f, +0.0f, +1.0f);
+    uniforms->viewproj = clip_fixup * proj * w2v;
+    scene_uniforms_.FlushPframeHostCache(pframe_index_);
+
     // Update object-to-world matrices.
     const float secs = (float)seconds_elapsed_;
     std::array<mathfu::mat4, MESH_INSTANCE_COUNT*4> o2w_matrices;
@@ -255,28 +285,6 @@ public:
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
       mesh_pipeline_.shader_pipeline->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
-    struct {
-      mathfu::vec4_packed time_and_res;
-      mathfu::vec4_packed eye;
-      mathfu::mat4 viewproj;
-    } push_constants = {};
-    push_constants.time_and_res = mathfu::vec4((float)seconds_elapsed_,
-      viewport.width, viewport.height, 0);
-    push_constants.eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-    mathfu::mat4 w2v = camera_->getViewMatrix();
-    const mathfu::mat4 proj = camera_->getProjectionMatrix();
-    const mathfu::mat4 clip_fixup(
-      +1.0f, +0.0f, +0.0f, +0.0f,
-      +0.0f, -1.0f, +0.0f, +0.0f,
-      +0.0f, +0.0f, +0.5f, +0.5f,
-      +0.0f, +0.0f, +0.0f, +1.0f);
-    const mathfu::mat4 viewproj = clip_fixup * proj * w2v;
-    push_constants.viewproj = viewproj;
-    vkCmdPushConstants(primary_cb, mesh_pipeline_.shader_pipeline->pipeline_layout,
-      mesh_pipeline_.shader_pipeline->push_constant_ranges[0].stageFlags,
-      mesh_pipeline_.shader_pipeline->push_constant_ranges[0].offset,
-      mesh_pipeline_.shader_pipeline->push_constant_ranges[0].size,
-      &push_constants);
     const VkDeviceSize vertex_buffer_offsets[1] = {}; // TODO(cort): mesh::bind()
     VkBuffer vertex_buffer = mesh_.vertex_buffers[0].Handle();
     vkCmdBindVertexBuffers(primary_cb, 0,1, &vertex_buffer, vertex_buffer_offsets);
@@ -341,10 +349,11 @@ private:
 
     // Re-write descriptor sets, since they refer to the offscreen image.
     DescriptorSetWriter dset_writer(mesh_shader_pipeline_.dset_layout_cis[0]);
-    dset_writer.BindImage(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 1);
-    dset_writer.BindImage(offscreen_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, 2, 0);
+    dset_writer.BindImage(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 2);
+    dset_writer.BindImage(offscreen_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, 3, 0);
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
-      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), 0);
+      dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), 0);
+      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), 1);
       dset_writer.WriteAll(device_context_, dsets_[pframe]);
     }
   }
@@ -375,6 +384,7 @@ private:
   MeshFormat mesh_format_;
   Mesh mesh_;
   PipelinedBuffer mesh_uniforms_;
+  PipelinedBuffer scene_uniforms_;
 
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDolly> dolly_;

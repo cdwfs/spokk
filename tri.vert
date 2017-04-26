@@ -7,15 +7,15 @@ layout (location = 0) out vec2 texcoord;
 layout (location = 1) out vec3 norm;
 layout (location = 2) out vec3 fromEye;
 
-layout (set = 0, binding = 0) uniform ObjectToWorld {
-    vec4 matrix_columns[4*1024];
-};
-
-layout (push_constant) uniform PushConsts {
+layout (set = 0, binding = 0) uniform SceneUniforms {
     vec4 time_and_res;
     vec4 eye;
     mat4 viewproj;
-} pushConsts;
+};
+layout (set = 0, binding = 1) uniform ObjectToWorld {
+    vec4 matrix_columns[4*1024];
+};
+
 
 void main() {
     texcoord = attr;
@@ -30,8 +30,8 @@ void main() {
     norm = n2w * normal;
     
     vec4 posw = o2w * vec4(pos,1);
-    fromEye = posw.xyz - pushConsts.eye.xyz;
-    vec4 outpos = pushConsts.viewproj * posw;
+    fromEye = posw.xyz - eye.xyz;
+    vec4 outpos = viewproj * posw;
     gl_Position = outpos;
 
 }

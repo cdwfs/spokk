@@ -202,7 +202,7 @@ FUNCTION (SPOKK_APP APP_NAME APP_SOURCES_LIST APP_HEADERS_LIST APP_SHADERS_LIST)
     mathfu_configure_flags(${APP_NAME})
 ENDFUNCTION(SPOKK_APP APP_NAME APP_SOURCES APP_HEADERS APP_SHADERS)
 
-# spokk-cubeswarm sample
+# spokk-cubeswarm
 SET(CUBESWARM_SOURCES camera.cpp cubeswarm.cpp)
 SET(CUBESWARM_HEADERS camera.h)
 SET(CUBESWARM_SHADERS tri.vert tri.frag fullscreen.vert subpass_post.frag)
