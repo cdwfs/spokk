@@ -256,9 +256,9 @@ public:
       mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(0,1,0));
       mathfu::mat4 o2w = mathfu::mat4::Identity()
         * mathfu::mat4::FromTranslationVector(mathfu::vec3(
-          40.0f * cosf((1.0f+0.001f*iMesh) * 0.2f * secs + float(149*iMesh) + 0.0f) + swarm_center[0],
-          20.5f * sinf(0.3f * secs + float(13*iMesh) + 5.0f) + swarm_center[1],
-          30.0f * sinf(0.05f * secs + float(51*iMesh) + 2.0f) + swarm_center[2]
+          40.0f * cosf(0.2f * secs + float(9*iMesh) + 0.4f) + swarm_center[0],
+          20.5f * sinf(0.3f * secs + float(11*iMesh) + 5.0f) + swarm_center[1],
+          30.0f * sinf(0.5f * secs + float(13*iMesh) + 2.0f) + swarm_center[2]
         ))
         * q.ToMatrix4()
         * mathfu::mat4::FromScaleVector( mathfu::vec3(1.0f, 1.0f, 1.0f) )
