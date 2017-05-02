@@ -40,7 +40,7 @@ public:
     dolly_ = my_make_unique<CameraDolly>(*camera_);
 
     // Create render pass
-    render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH_POST, swapchain_surface_format_.format);
+    render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
     SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
     render_pass_.clear_values[0].color.float32[0] = 0.2f;
     render_pass_.clear_values[0].color.float32[1] = 0.2f;
@@ -61,14 +61,7 @@ public:
     SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_context_, "rigid_mesh.frag.spv"));
     SPOKK_VK_CHECK(mesh_shader_pipeline_.AddShader(&mesh_vs_));
     SPOKK_VK_CHECK(mesh_shader_pipeline_.AddShader(&mesh_fs_));
-
-    SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_context_, "fullscreen.vert.spv"));
-    SPOKK_VK_CHECK(post_filmgrain_fs_.CreateAndLoadSpirvFile(device_context_, "subpass_post.frag.spv"));
-    SPOKK_VK_CHECK(post_shader_pipeline_.AddShader(&fullscreen_tri_vs_));
-    SPOKK_VK_CHECK(post_shader_pipeline_.AddShader(&post_filmgrain_fs_));
-
-    SPOKK_VK_CHECK(ShaderPipeline::ForceCompatibleLayoutsAndFinalize(device_context_,
-      {&mesh_shader_pipeline_, &post_shader_pipeline_}));
+    SPOKK_VK_CHECK(mesh_shader_pipeline_.Finalize(device_context_));
 
     // Populate Mesh object
     mesh_.index_type = (sizeof(cube_indices[0]) == sizeof(uint32_t)) ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
@@ -135,10 +128,6 @@ public:
 
     SPOKK_VK_CHECK(mesh_pipeline_.Create(device_context_, mesh_.mesh_format, &mesh_shader_pipeline_, &render_pass_, 0));
 
-    SPOKK_VK_CHECK(fullscreen_pipeline_.Create(device_context_,
-      MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-      &post_shader_pipeline_, &render_pass_, 1));
-    // because the pipelines use a compatible layout, we can just add room for one full layout.
     for(const auto& dset_layout_ci : mesh_shader_pipeline_.dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
@@ -146,6 +135,13 @@ public:
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
       // TODO(cort): allocate_pipelined_set()?
       dsets_[pframe] = dpool_.AllocateSet(device_context_, mesh_shader_pipeline_.dset_layouts[0]);
+    }
+    DescriptorSetWriter dset_writer(mesh_shader_pipeline_.dset_layout_cis[0]);
+    dset_writer.BindImage(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 2);
+    for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
+      dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), 0);
+      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), 1);
+      dset_writer.WriteAll(device_context_, dsets_[pframe]);
     }
 
     // Create swapchain-sized buffers
@@ -164,16 +160,10 @@ public:
       mesh_.index_buffer.Destroy(device_context_);
       mesh_.vertex_buffers[0].Destroy(device_context_);
 
-      fullscreen_pipeline_.Destroy(device_context_);
-
       mesh_vs_.Destroy(device_context_);
       mesh_fs_.Destroy(device_context_);
       mesh_shader_pipeline_.Destroy(device_context_);
       mesh_pipeline_.Destroy(device_context_);
-
-      post_shader_pipeline_.Destroy(device_context_);
-      fullscreen_tri_vs_.Destroy(device_context_);
-      post_filmgrain_fs_.Destroy(device_context_);
 
       vkDestroySampler(device_, sampler_, host_allocator_);
       albedo_tex_.Destroy(device_context_);
@@ -184,7 +174,6 @@ public:
       }
       render_pass_.Destroy(device_context_);
 
-      offscreen_image_.Destroy(device_context_);
       depth_image_.Destroy(device_context_);
     }
   }
@@ -291,12 +280,6 @@ public:
     const VkDeviceSize index_buffer_offset = 0;
     vkCmdBindIndexBuffer(primary_cb, mesh_.index_buffer.Handle(), index_buffer_offset, mesh_.index_type);
     vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0,0,0);
-    // post-processing subpass
-    vkCmdNextSubpass(primary_cb, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, fullscreen_pipeline_.handle);
-    vkCmdSetViewport(primary_cb, 0,1, &viewport);
-    vkCmdSetScissor(primary_cb, 0,1, &scissor_rect);
-    vkCmdDraw(primary_cb, 3, 1,0,0);
     vkCmdEndRenderPass(primary_cb);
   }
 
@@ -312,7 +295,6 @@ protected:
     }
     framebuffers_.clear();
     depth_image_.Destroy(device_context_);
-    offscreen_image_.Destroy(device_context_);
 
     float aspect_ratio = (float)new_window_extent.width / (float)new_window_extent.height;
     camera_->setPerspective(FOV_DEGREES, aspect_ratio, Z_NEAR, Z_FAR);
@@ -328,40 +310,23 @@ private:
     SPOKK_VK_CHECK(depth_image_.Create(device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DEVICE_ALLOCATION_SCOPE_DEVICE));
 
-    // Create intermediate color buffer
-    VkImageCreateInfo offscreen_image_ci = render_pass_.GetAttachmentImageCreateInfo(0, extent);
-    SPOKK_VK_CHECK(offscreen_image_.Create(device_context_, offscreen_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-      DEVICE_ALLOCATION_SCOPE_DEVICE));
-
     // Create VkFramebuffers
     std::vector<VkImageView> attachment_views = {
-      offscreen_image_.view,
-      depth_image_.view,
       VK_NULL_HANDLE, // filled in below
+      depth_image_.view,
     };
     VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(extent);
     framebuffer_ci.pAttachments = attachment_views.data();
     framebuffers_.resize(swapchain_image_views_.size());
     for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
-      attachment_views[2] = swapchain_image_views_[i];
+      attachment_views[0] = swapchain_image_views_[i];
       SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
-    }
-
-    // Re-write descriptor sets, since they refer to the offscreen image.
-    DescriptorSetWriter dset_writer(mesh_shader_pipeline_.dset_layout_cis[0]);
-    dset_writer.BindImage(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 2);
-    dset_writer.BindImage(offscreen_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, 3, 0);
-    for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
-      dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), 0);
-      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), 1);
-      dset_writer.WriteAll(device_context_, dsets_[pframe]);
     }
   }
 
   double seconds_elapsed_;
 
   Image depth_image_;
-  Image offscreen_image_;
 
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
@@ -373,10 +338,6 @@ private:
   Shader mesh_vs_, mesh_fs_;
   ShaderPipeline mesh_shader_pipeline_;
   GraphicsPipeline mesh_pipeline_;
-
-  Shader fullscreen_tri_vs_, post_filmgrain_fs_;
-  ShaderPipeline post_shader_pipeline_;
-  GraphicsPipeline fullscreen_pipeline_;
 
   DescriptorPool dpool_;
   std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;

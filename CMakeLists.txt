@@ -205,7 +205,7 @@ ENDFUNCTION(SPOKK_APP APP_NAME APP_SOURCES APP_HEADERS APP_SHADERS)
 # spokk-cubeswarm
 SET(CUBESWARM_SOURCES camera.cpp cubeswarm.cpp)
 SET(CUBESWARM_HEADERS camera.h)
-SET(CUBESWARM_SHADERS rigid_mesh.vert rigid_mesh.frag fullscreen.vert subpass_post.frag)
+SET(CUBESWARM_SHADERS rigid_mesh.vert rigid_mesh.frag)
 SPOKK_APP(spokk-cubeswarm CUBESWARM_SOURCES CUBESWARM_HEADERS CUBESWARM_SHADERS)
 
 # spokk-compute
