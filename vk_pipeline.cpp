@@ -116,7 +116,7 @@ VkResult GraphicsPipeline::Create(const DeviceContext& device_context, const Mes
   ci.pMultisampleState = &(render_pass->subpass_multisample_state_cis[subpass]);
   ci.pDepthStencilState = &depth_stencil_state_ci;
   ci.pColorBlendState = &color_blend_state_ci;
-  ci.pDynamicState = &dynamic_state_ci;
+  ci.pDynamicState = (dynamic_state_ci.dynamicStateCount > 0) ? &dynamic_state_ci : nullptr;
   ci.layout = shader_pipeline->pipeline_layout;
   ci.renderPass = render_pass->handle;
   ci.subpass = subpass;
