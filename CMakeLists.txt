@@ -249,3 +249,9 @@ SET(SHADERTOY_SOURCES shadertoy.cpp)
 SET(SHADERTOY_HEADERS shadertoy.frag) # this shader is special; it's loaded at runtime, not built offline.
 SET(SHADERTOY_SHADERS fullscreen.vert)
 SPOKK_APP(spokk-shadertoy SHADERTOY_SOURCES SHADERTOY_HEADERS SHADERTOY_SHADERS)
+
+# spokk-textfield
+SET(TEXTFIELD_SOURCES camera.cpp textfield.cpp)
+SET(TEXTFIELD_HEADERS camera.h)
+SET(TEXTFIELD_SHADERS textmesh.vert textmesh.frag)
+SPOKK_APP(spokk-textfield TEXTFIELD_SOURCES TEXTFIELD_HEADERS TEXTFIELD_SHADERS)
