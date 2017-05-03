@@ -231,6 +231,18 @@ VkResult RenderPass::Finalize(const DeviceContext& device_context,
       break;
     }
   }
+  for(size_t i=0; i<clear_values.size(); ++i) {
+    if (IsDepthFormat(attachment_descs[i].format)) {
+      clear_values[i].depthStencil.depth = 1.0f;
+      clear_values[i].depthStencil.stencil = 0;
+    } else {
+      // TODO(cort): SINT/UINT formats should use int32/uint32? I guess zero works for them too.
+      clear_values[i].color.float32[0] = 0.0f;
+      clear_values[i].color.float32[1] = 0.0f;
+      clear_values[i].color.float32[2] = 0.0f;
+      clear_values[i].color.float32[3] = 0.0f;
+    }
+  }
   begin_info = {};
   begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
   begin_info.renderPass = handle;
