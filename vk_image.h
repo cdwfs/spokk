@@ -17,6 +17,8 @@ struct DeviceMemoryAllocation;
 
 // This class manages copying pixel data to and from device-local memory, moving data through an internal staging buffer
 // where necessary.
+// TODO(cort): I need to revisit this class. The pipelined staging buffer is fine for steady-state work, but init-time
+// blits are large and bursty. Allocating enough memory for PFRAME_COUNT * MAX_BURST_SIZE seems wasteful.
 class ImageBlitter {
 public:
   ImageBlitter();
