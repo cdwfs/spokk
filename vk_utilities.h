@@ -51,6 +51,15 @@ inline VkViewport Rect2DToViewport(VkRect2D rect, float z_min = 0.0f, float z_ma
   };
 }
 
+inline VkBool32 IsDepthFormat(VkFormat format) {
+  return (format == VK_FORMAT_X8_D24_UNORM_PACK32 ||
+      format == VK_FORMAT_D16_UNORM ||
+      format == VK_FORMAT_D16_UNORM_S8_UINT ||
+      format == VK_FORMAT_D24_UNORM_S8_UINT ||
+      format == VK_FORMAT_D32_SFLOAT ||
+      format == VK_FORMAT_D32_SFLOAT_S8_UINT);
+}
+
 // Determine the number of mip levels for a given base image extent. This includes the base level;
 // for valid extents (w/h/d all >= 1), the result will also be >= 1.
 uint32_t GetMaxMipLevels(VkExtent3D base_extent);
