@@ -285,6 +285,11 @@ VkImageCreateInfo RenderPass::GetAttachmentImageCreateInfo(uint32_t attachment_i
           ci.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
         }
       }
+      for(const auto& resolve_ref : subpass.resolve_refs) {
+        if (resolve_ref.attachment == attachment_index) {
+          ci.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        }
+      }
     }
     // TODO(cort): do resolve images need a special usage flag (TRANSFER_DST)?
     if (attachment_descs[attachment_index].loadOp != VK_ATTACHMENT_LOAD_OP_LOAD &&
