@@ -499,7 +499,7 @@ int Application::Run() {
     VkResult acquire_result = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX,
       image_acquire_semaphore_, image_acquire_fence, &swapchain_image_index);
     if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) {
-      assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
+      assert(0); // TODO(cort): swapchain is out of date and must be recreated.
     } else if (acquire_result == VK_SUBOPTIMAL_KHR) {
       // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
     } else {
@@ -540,7 +540,7 @@ int Application::Run() {
     present_info.pWaitSemaphores = &submit_complete_semaphore_;
     VkResult present_result = vkQueuePresentKHR(graphics_and_present_queue_->handle, &present_info);
     if (present_result == VK_ERROR_OUT_OF_DATE_KHR) {
-      assert(0); // TODO(cort): swapchain is out of date (e.g. resized window) and must be recreated.
+      assert(0); // TODO(cort): swapchain is out of date and must be recreated.
     } else if (present_result == VK_SUBOPTIMAL_KHR) {
       // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
     } else {
