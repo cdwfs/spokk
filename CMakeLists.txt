@@ -186,6 +186,18 @@ IF(${SPOKK_ENABLE_SHADERC})
 ENDIF()
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC "third_party/stb")
 
+# Copy assets directory into build dir.
+# TODO(cort): Copying all assets whenever any sample is built doesn't really scale.
+# Ideally, every sample would know what assets it depends on, and only the
+# necessary assets get copied.
+ADD_CUSTOM_TARGET(spokk-assets
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/assets
+        ${CMAKE_BINARY_DIR}/data
+    COMMENT "Copying assets from ${CMAKE_SOURCE_DIR}/assets to to ${CMAKE_BINARY_DIR}/data"
+)
+
+
 FUNCTION (SPOKK_APP APP_NAME APP_SOURCES_LIST APP_HEADERS_LIST APP_SHADERS_LIST)
     # TODO(cort): ...really?
     SET(APP_HEADERS ${${APP_HEADERS_LIST}})
@@ -199,6 +211,7 @@ FUNCTION (SPOKK_APP APP_NAME APP_SOURCES_LIST APP_HEADERS_LIST APP_SHADERS_LIST)
     cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${APP_HEADERS}" "${APP_SOURCES}")
     add_executable(${APP_NAME} ${APP_SOURCES} ${APP_SHADERS} ${APP_HEADERS})
     target_link_libraries(${APP_NAME} ${SPOKK_LIB_NAME})
+	add_dependencies(${APP_NAME} spokk-assets)
     mathfu_configure_flags(${APP_NAME})
 ENDFUNCTION(SPOKK_APP APP_NAME APP_SOURCES APP_HEADERS APP_SHADERS)
 
@@ -225,14 +238,3 @@ SET(SHADERTOY_SOURCES shadertoy.cpp)
 SET(SHADERTOY_HEADERS shadertoy.frag) # this shader is special; it's loaded at runtime, not built offline.
 SET(SHADERTOY_SHADERS fullscreen.vert)
 SPOKK_APP(spokk-shadertoy SHADERTOY_SOURCES SHADERTOY_HEADERS SHADERTOY_SHADERS)
-
-# Copy assets directory into build dir.
-# TODO(cort): Which target should this be attached to? Or hey, what if every sample knows what assets
-#             it uses, and copies them in?
-ADD_CUSTOM_COMMAND(
-    TARGET spokk-cubeswarm POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/trevor
-        ${CMAKE_BINARY_DIR}/trevor
-    COMMENT "Copying assets to build directory"
-)

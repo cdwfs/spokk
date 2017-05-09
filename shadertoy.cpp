@@ -103,13 +103,13 @@ public:
     SPOKK_VK_CHECK(blitter_.Create(device_context_, PFRAME_COUNT, blit_buffer_nbytes));
     for(size_t i=0; i<textures_.size(); ++i) {
       char filename[17];
-      zomboSnprintf(filename, 17, "trevor/tex%02u.ktx", (uint32_t)i);
+      zomboSnprintf(filename, 17, "data/tex%02u.ktx", (uint32_t)i);
       ZOMBO_ASSERT(0 == textures_[i].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, filename, VK_FALSE),
         "Failed to load %s", filename);
     }
     for(size_t i=0; i<cubemaps_.size(); ++i) {
       char filename[18];
-      zomboSnprintf(filename, 18, "trevor/cube%02u.ktx", (uint32_t)i);
+      zomboSnprintf(filename, 18, "data/cube%02u.ktx", (uint32_t)i);
       ZOMBO_ASSERT(0 == cubemaps_[i].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, filename, VK_FALSE),
         "Failed to load %s", filename);
     }

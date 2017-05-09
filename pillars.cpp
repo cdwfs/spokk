@@ -111,7 +111,7 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
   const VkDeviceSize blit_buffer_nbytes = 4*1024*1024;
   SPOKK_VK_CHECK(blitter_.Create(device_context_, PFRAME_COUNT, blit_buffer_nbytes));
-  albedo_tex_.CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "trevor/redf.ktx");
+  albedo_tex_.CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "data/redf.ktx");
 
   // Load shader pipelines
   SPOKK_VK_CHECK(pillar_vs_.CreateAndLoadSpirvFile(device_context_, "pillar.vert.spv"));
