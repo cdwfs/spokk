@@ -80,7 +80,8 @@ VkResult GraphicsPipeline::Create(const DeviceContext& device_context, const Mes
   depth_stencil_state_ci = {};
   depth_stencil_state_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
   depth_stencil_state_ci.depthTestEnable = subpass_has_depth_attachment;
-  depth_stencil_state_ci.depthWriteEnable = subpass_has_depth_attachment;
+  depth_stencil_state_ci.depthWriteEnable = subpass_has_depth_attachment &&
+    render_pass->subpass_descs[subpass].pDepthStencilAttachment->layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
   depth_stencil_state_ci.depthCompareOp = VK_COMPARE_OP_LESS;
 
   color_blend_attachment_states.resize(render_pass->subpass_descs[subpass].colorAttachmentCount);
