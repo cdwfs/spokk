@@ -135,7 +135,7 @@ static void add_shader_resource_to_dset_layouts(std::vector<DescriptorSetLayoutI
 }
 
 static void parse_shader_resources(std::vector<DescriptorSetLayoutInfo>& dset_layout_infos,
-  VkPushConstantRange& push_constant_range, const spirv_cross::CompilerGLSL& glsl, VkShaderStageFlagBits stage) {
+    VkPushConstantRange& push_constant_range, const spirv_cross::CompilerGLSL& glsl, VkShaderStageFlagBits stage) {
   spirv_cross::ShaderResources resources = glsl.get_shader_resources();
   // handle shader resources
   for (auto &resource : resources.uniform_buffers) {

@@ -25,6 +25,7 @@ public:
   ShaderCompiler();
   ~ShaderCompiler();
 
+  // TODO(cort): enable HLSL compilation
   shaderc::SpvCompilationResult CompileGlslString(const char *glsl_source,
     const std::string& logging_name, const std::string& entry_point = "main",
     VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
