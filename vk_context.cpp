@@ -1,7 +1,11 @@
 #include "vk_context.h"
 
-#include <cassert>
-#include <cstdlib>
+#include <assert.h>
+#include <stdlib.h>
+
+#ifdef _MSC_VER
+#include <malloc.h>
+#endif
 
 namespace spokk {
 
@@ -138,7 +142,7 @@ void *DeviceContext::HostAlloc(size_t size, size_t alignment, VkSystemAllocation
       size, alignment, scope);
   } else {
 #if defined(_MSC_VER)
-    return _mm_malloc(size, alignment);
+    return _aligned_malloc(size, alignment);
 #else
     void *ptr = nullptr;
     int ret = posix_memalign(&ptr, alignment, size);
@@ -151,7 +155,7 @@ void DeviceContext::HostFree(void *ptr) const {
     return host_allocator_->pfnFree(host_allocator_->pUserData, ptr);
   } else {
 #if defined(_MSC_VER)
-    return _mm_free(ptr);
+    return _aligned_free(ptr);
 #else
     return free(ptr);
 #endif
