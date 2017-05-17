@@ -257,6 +257,7 @@ VkResult RenderPass::Finalize(const DeviceContext& device_context,
 
 VkImageCreateInfo RenderPass::GetAttachmentImageCreateInfo(uint32_t attachment_index, VkExtent2D render_area) const {
   VkImageCreateInfo ci = {};
+  assert(attachment_index < (uint32_t)attachment_descs.size());
   if (handle != VK_NULL_HANDLE && attachment_index < (uint32_t)attachment_descs.size()) {
     ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     ci.imageType = VK_IMAGE_TYPE_2D;
