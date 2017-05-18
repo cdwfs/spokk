@@ -215,13 +215,14 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   CreateRenderBuffers(swapchain_extent_);
 
   DescriptorSetWriter dset_writer(pillar_shader_pipeline_.dset_layout_cis[0]);
-  dset_writer.BindImage(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 1);
+  dset_writer.BindImage(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 3);
+  dset_writer.BindSampler(sampler_, 4);
   for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
     // TODO(cort): allocate_pipelined_set()?
     dsets_[pframe] = dpool_.AllocateSet(device_context_, pillar_shader_pipeline_.dset_layouts[0]);
     dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), 0);
-    dset_writer.BindTexelBuffer(visible_cells_buffer_.View(pframe), 2);
-    dset_writer.BindTexelBuffer(heightfield_buffer_.View(pframe), 3);
+    dset_writer.BindTexelBuffer(visible_cells_buffer_.View(pframe), 1);
+    dset_writer.BindTexelBuffer(heightfield_buffer_.View(pframe), 2);
     dset_writer.WriteAll(device_context_, dsets_[pframe]);
   }
 }

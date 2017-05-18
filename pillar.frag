@@ -11,12 +11,13 @@ layout (set = 0, binding = 0) uniform SceneUniforms {
     vec4 eye;
     mat4 viewproj;
 };
-layout (set = 0, binding = 1) uniform sampler2D tex;
+layout (set = 0, binding = 3) uniform texture2D tex;
+layout (set = 0, binding = 4) uniform sampler samp;
 
 
 void main() {
     //out_fragColor = texture(tex, reflect(normalize(fromEye), normalize(norm)));
     vec4 head_light = dot(normalize(-fromEye), normalize(norm)) * vec4(1,1,1,1);
-    out_fragColor = head_light * texture(tex, texcoord);
+    out_fragColor = head_light * texture(sampler2D(tex, samp), texcoord);
     //out_fragColor = vec4(1,1,0,1);
 }

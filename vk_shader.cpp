@@ -666,7 +666,7 @@ DescriptorSetWriter::DescriptorSetWriter(const VkDescriptorSetLayoutCreateInfo &
   assert(next_buffer_info == buffer_infos.size());
   assert(next_image_info == image_infos.size());
 }
-void DescriptorSetWriter::BindImage(VkImageView view, VkImageLayout layout, VkSampler sampler, uint32_t binding, uint32_t array_element) {
+void DescriptorSetWriter::BindCombinedImageSampler(VkImageView view, VkImageLayout layout, VkSampler sampler, uint32_t binding, uint32_t array_element) {
   // TODO(cort): make this search more efficient!
   VkWriteDescriptorSet *write = nullptr;
   for(size_t iWrite=0; iWrite<binding_writes.size(); ++iWrite) {

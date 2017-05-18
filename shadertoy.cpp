@@ -43,7 +43,7 @@ layout (set = 0, binding = 4) uniform ShaderToyUniforms {
   float     iGlobalTime;           // shader playback time (in seconds)
   float     iTimeDelta;            // render time (in seconds)
   int       iFrame;                // shader playback frame
-  float     iSampleRate;           // sound sample rate (i.e., 44100
+  float     iSampleRate;           // sound sample rate (i.e., 44100)
 };
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord);
@@ -143,7 +143,8 @@ public:
     
     DescriptorSetWriter dset_writer(shader_pipelines_[active_pipeline_index_].dset_layout_cis[0]);
     for(size_t iTex = 0; iTex < active_images_.size(); ++iTex) {
-      dset_writer.BindImage(active_images_[iTex]->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], (uint32_t)iTex);
+      dset_writer.BindCombinedImageSampler(active_images_[iTex]->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        samplers_[iTex], (uint32_t)iTex);
     }
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dsets_[pframe] = dpool_.AllocateSet(device_context_, shader_pipelines_[active_pipeline_index_].dset_layouts[0]);

@@ -12,8 +12,8 @@ layout (set = 0, binding = 0) uniform SceneUniforms {
   vec4 eye;
   mat4 viewproj;
 };
-layout (set = 0, binding = 2) uniform isamplerBuffer visible_cells;
-layout (set = 0, binding = 3) uniform samplerBuffer cell_heights;
+layout (set = 0, binding = 1) uniform isamplerBuffer visible_cells;
+layout (set = 0, binding = 2) uniform samplerBuffer cell_heights;
 
 void main() {
   int cell = texelFetch(visible_cells, gl_InstanceIndex).x;
