@@ -96,11 +96,11 @@ extern "C"
         __pragma(warning(disable:4127)) \
         do { \
             if (!(cond)) { \
-                char *buffer = (char*)malloc(1024); \
-                _snprintf_s(buffer, 1024, 1023, msg ## "\n", __VA_ARGS__); \
-                buffer[1023] = 0; \
-                OutputDebugStringA(buffer); \
-                free(buffer); \
+                char *zombo_assert_msg_buffer = (char*)malloc(1024); \
+                _snprintf_s(zombo_assert_msg_buffer, 1024, 1023, msg ## "\n", __VA_ARGS__); \
+                zombo_assert_msg_buffer[1023] = 0; \
+                OutputDebugStringA(zombo_assert_msg_buffer); \
+                free(zombo_assert_msg_buffer); \
                 IsDebuggerPresent() ? __debugbreak() : assert(cond); \
             } \
         } while(0,0) \
@@ -110,11 +110,11 @@ extern "C"
         __pragma(warning(disable:4127)) \
         do { \
             if (!(cond)) { \
-                char *buffer = (char*)malloc(1024); \
-                _snprintf_s(buffer, 1024, 1023, msg ## "\n", __VA_ARGS__); \
-                buffer[1023] = 0; \
-                OutputDebugStringA(buffer); \
-                free(buffer); \
+                char *zombo_assert_msg_buffer = (char*)malloc(1024); \
+                _snprintf_s(zombo_assert_msg_buffer, 1024, 1023, msg ## "\n", __VA_ARGS__); \
+                zombo_assert_msg_buffer[1023] = 0; \
+                OutputDebugStringA(zombo_assert_msg_buffer); \
+                free(zombo_assert_msg_buffer); \
                 IsDebuggerPresent() ? __debugbreak() : assert(cond); \
                 return (retval); \
             } \
