@@ -1,3 +1,4 @@
+#include "platform.h"
 #include "vk_context.h"
 #include "vk_shader.h"
 
@@ -5,7 +6,6 @@
 
 #include <spirv_glsl.hpp>
 
-#include <cassert>
 #include <cstdint>
 
 namespace {
@@ -111,8 +111,10 @@ static void add_shader_resource_to_dset_layouts(std::vector<DescriptorSetLayoutI
   for(uint32_t iBinding=0; iBinding<layout_info.bindings.size(); ++iBinding) {
     auto& binding = layout_info.bindings[iBinding];
     if (binding.binding == binding_index) {
-      assert(binding.descriptorType == desc_type);  // same binding appears twice with different types
-      assert(binding.descriptorCount == array_size);  // same binding appears twice with different array sizes
+      ZOMBO_ASSERT(binding.descriptorType == desc_type,
+        "binding %u appears twice with different types in shader", binding_index);
+      ZOMBO_ASSERT(binding.descriptorCount == array_size,
+        "binding %u appears twice with different array sizes in shader", binding_index);
       binding.stageFlags |= stage;
       auto& binding_info = layout_info.binding_infos[iBinding];
       binding_info.stage_names.push_back(std::make_tuple(stage, glsl.get_name(resource.id)));
@@ -216,7 +218,8 @@ VkResult Shader::CreateAndLoadSpirvFile(const DeviceContext& device_context, con
   return result;
 }
 VkResult Shader::CreateAndLoadSpirvFp(const DeviceContext& device_context, FILE *fp, int len_bytes) {
-  assert((len_bytes % sizeof(uint32_t)) == 0);
+  ZOMBO_ASSERT_RETURN((len_bytes % sizeof(uint32_t)) == 0, VK_ERROR_INITIALIZATION_FAILED,
+    "len_bytes (%d) must be divisible by 4", len_bytes);
   spirv.resize(len_bytes/sizeof(uint32_t));
   size_t bytes_read = fread(spirv.data(), 1, len_bytes, fp);
   if ( (int)bytes_read != len_bytes) {
@@ -225,7 +228,8 @@ VkResult Shader::CreateAndLoadSpirvFp(const DeviceContext& device_context, FILE 
   return ParseSpirvAndCreate(device_context);
 }
 VkResult Shader::CreateAndLoadSpirvMem(const DeviceContext& device_context, const void *buffer, int len_bytes) {
-  assert((len_bytes % sizeof(uint32_t)) == 0);
+  ZOMBO_ASSERT_RETURN((len_bytes % sizeof(uint32_t)) == 0, VK_ERROR_INITIALIZATION_FAILED,
+    "len_bytes (%d) must be divisible by 4", len_bytes);
   spirv.reserve(len_bytes/sizeof(uint32_t));
   const uint32_t *buffer_as_u32 = (const uint32_t*)buffer;
   spirv.insert(spirv.begin(), buffer_as_u32, buffer_as_u32+(len_bytes/sizeof(uint32_t)));
@@ -250,7 +254,7 @@ VkResult Shader::ParseSpirvAndCreate(const DeviceContext& device_context) {
   } else if (execution_model == spv::ExecutionModelGLCompute) {
     stage = VK_SHADER_STAGE_COMPUTE_BIT;
   }
-  assert(stage != 0);
+  ZOMBO_ASSERT_RETURN(stage != 0, VK_ERROR_INITIALIZATION_FAILED, "invalid shader stage %d", stage);
 
   parse_shader_resources(dset_layout_infos, push_constant_range, glsl, stage);
 
@@ -273,6 +277,24 @@ void Shader::OverrideDescriptorType(uint32_t dset, uint32_t binding, VkDescripto
     b.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
   }
 }
+
+DescriptorBindPoint Shader::GetDescriptorBindPoint(const std::string& name) const {
+  for(size_t i_set = 0; i_set < dset_layout_infos.size(); ++i_set) {
+    const auto& dset_info = dset_layout_infos[i_set];
+    for(size_t i_binding = 0; i_binding < dset_info.bindings.size(); ++i_binding) {
+      for(const auto& stage_name : dset_info.binding_infos[i_binding].stage_names) {
+        if ((std::get<0>(stage_name) & stage) && (std::get<1>(stage_name) == name)) {
+          return {(uint32_t)i_set, dset_info.bindings[i_binding].binding};
+        }
+      }
+    }
+  }
+  ZOMBO_ERROR("Desriptor %s not found in shader", name.c_str());
+  return {UINT32_MAX, UINT32_MAX};  // TODO(cort): better "not found" error?
+}
+
+
+
 void Shader::Destroy(const DeviceContext& device_context) {
   if (handle) {
     vkDestroyShaderModule(device_context.Device(), handle, device_context.HostAllocator());
@@ -306,7 +328,7 @@ VkResult ShaderPipeline::AddShader(const Shader *shader, const char *entry_point
   }
   // Add shader stage info
   size_t index = entry_point_names.size();
-  assert(index == shader_stage_cis.size());
+  ZOMBO_ASSERT(index == shader_stage_cis.size(), "invariant failure: shader stage array size mismatch");
   entry_point_names.push_back(entry_point);
   VkPipelineShaderStageCreateInfo new_stage_ci = {};
   new_stage_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -327,22 +349,25 @@ VkResult ShaderPipeline::AddShader(const Shader *shader, const char *entry_point
   // Merge descriptor set layouts
   for(size_t iDS = 0; iDS < shader->dset_layout_infos.size(); ++iDS) {
     const DescriptorSetLayoutInfo& src_dset_layout_info = shader->dset_layout_infos[iDS];
-    assert(src_dset_layout_info.bindings.size() == src_dset_layout_info.binding_infos.size());
+    ZOMBO_ASSERT(src_dset_layout_info.bindings.size() == src_dset_layout_info.binding_infos.size(),
+      "invariant failure: binding array size mismatch");
     DescriptorSetLayoutInfo& dst_dset_layout_info = dset_layout_infos[iDS];
     for(size_t iSB = 0; iSB < src_dset_layout_info.bindings.size(); ++iSB) {
       const auto& src_binding = src_dset_layout_info.bindings[iSB];
       const auto& src_binding_info = src_dset_layout_info.binding_infos[iSB];
-      assert(src_binding_info.stage_names.size() == 1);  // bindings in the source shader should only know about one stage, right?
+      ZOMBO_ASSERT(src_binding_info.stage_names.size() == 1, "invariant failure: multi-stage binding in a single shader?");
       bool found_binding = false;
       for(size_t iDB = 0; iDB < dst_dset_layout_info.bindings.size(); ++iDB) {
         auto& dst_binding = dst_dset_layout_info.bindings[iDB];
         auto& dst_binding_info = dst_dset_layout_info.binding_infos[iDB];
         if (src_binding.binding == dst_binding.binding) {
           // TODO(cort): these asserts may not be valid; it may be possible for types/counts to differ in compatible ways
-          assert(src_binding.descriptorType == dst_binding.descriptorType);  // same binding used with different types in two stages
-          assert(src_binding.descriptorCount == dst_binding.descriptorCount);  // same binding used with different array sizes in two stages
-                                                                               // Found a match!
-          assert(0 == (dst_binding.stageFlags & shader->stage));  // Of course we haven't processed this stage yet, right?
+          ZOMBO_ASSERT(src_binding.descriptorType == dst_binding.descriptorType,
+            "binding (%u) used with different types in two stages", src_binding.binding);
+          ZOMBO_ASSERT(src_binding.descriptorCount == dst_binding.descriptorCount,
+            "binding %u used with different array sizes in two stages", src_binding.binding);
+          // Found a match!
+          ZOMBO_ASSERT(0 == (dst_binding.stageFlags & shader->stage), "invariant failure: duplicate shader stage");
           dst_binding.stageFlags |= src_binding.stageFlags;
           dst_binding_info.stage_names.push_back(src_binding_info.stage_names[0]);
           found_binding = true;
@@ -388,7 +413,8 @@ VkResult ShaderPipeline::ForceCompatibleLayoutsAndFinalize(const DeviceContext& 
     // Merge descriptor set layouts
     for(size_t iDS = 0; iDS < src_pipeline.dset_layout_infos.size(); ++iDS) {
       const DescriptorSetLayoutInfo& src_dset_layout_info = src_pipeline.dset_layout_infos[iDS];
-      assert(src_dset_layout_info.bindings.size() == src_dset_layout_info.binding_infos.size());
+      ZOMBO_ASSERT(src_dset_layout_info.bindings.size() == src_dset_layout_info.binding_infos.size(),
+        "invariant failure: binding array size mismatch");
       DescriptorSetLayoutInfo& dst_dset_layout_info = dst_pipeline.dset_layout_infos[iDS];
       for(size_t iSB = 0; iSB < src_dset_layout_info.bindings.size(); ++iSB) {
         const auto& src_binding = src_dset_layout_info.bindings[iSB];
@@ -399,9 +425,11 @@ VkResult ShaderPipeline::ForceCompatibleLayoutsAndFinalize(const DeviceContext& 
           auto& dst_binding_info = dst_dset_layout_info.binding_infos[iDB];
           if (src_binding.binding == dst_binding.binding) {
             // TODO(cort): these asserts may not be valid; it may be possible for types/counts to differ in compatible ways
-            assert(src_binding.descriptorType == dst_binding.descriptorType);  // same binding used with different types in two stages
-            assert(src_binding.descriptorCount == dst_binding.descriptorCount);  // same binding used with different array sizes in two stages
-                                                                                 // Found a match!
+            ZOMBO_ASSERT(src_binding.descriptorType == dst_binding.descriptorType,
+              "binding (%u) used with different types in two stages", src_binding.binding);
+            ZOMBO_ASSERT(src_binding.descriptorCount == dst_binding.descriptorCount,
+              "binding %u used with different array sizes in two stages", src_binding.binding);
+            // Found a match!
             dst_binding.stageFlags |= src_binding.stageFlags;
             dst_binding_info.stage_names.push_back(src_binding_info.stage_names[0]);  // TODO(cort): this may invalidate the whole idea of saving these names; they can vary across pipelines.
             found_binding = true;
@@ -493,7 +521,8 @@ VkResult ShaderPipeline::Finalize(const DeviceContext& device_context) {
   for(uint32_t iLayout = 0; iLayout < dset_layouts.size(); ++iLayout) {
     VkDescriptorSetLayoutCreateInfo& layout_ci = dset_layout_cis[iLayout];
     const DescriptorSetLayoutInfo& layout_info = dset_layout_infos[iLayout];
-    assert(layout_info.bindings.size() == layout_info.binding_infos.size());
+    ZOMBO_ASSERT(layout_info.bindings.size() == layout_info.binding_infos.size(),
+      "invariant failure: binding array size mismatch");
     layout_ci = {};
     layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layout_ci.bindingCount = (uint32_t)layout_info.bindings.size();
@@ -662,9 +691,9 @@ DescriptorSetWriter::DescriptorSetWriter(const VkDescriptorSetLayoutCreateInfo &
       next_image_info += write.descriptorCount;
     }
   }
-  assert(next_texel_buffer_view == texel_buffer_views.size());
-  assert(next_buffer_info == buffer_infos.size());
-  assert(next_image_info == image_infos.size());
+  ZOMBO_ASSERT(next_texel_buffer_view == texel_buffer_views.size(), "invariant failure: texel buffer count mismatch");
+  ZOMBO_ASSERT(next_buffer_info == buffer_infos.size(), "invariant failure: buffer count mismatch");
+  ZOMBO_ASSERT(next_image_info == image_infos.size(), "invariant failure: image count mismatch");
 }
 void DescriptorSetWriter::BindCombinedImageSampler(VkImageView view, VkImageLayout layout, VkSampler sampler, uint32_t binding, uint32_t array_element) {
   // TODO(cort): make this search more efficient!
@@ -675,9 +704,9 @@ void DescriptorSetWriter::BindCombinedImageSampler(VkImageView view, VkImageLayo
       break;
     }
   }
-  assert(write != nullptr);
-  assert(array_element < write->descriptorCount);
-  assert(write->pImageInfo != nullptr); // is this binding really an image-type descriptor?
+  ZOMBO_ASSERT(write != nullptr, "binding %u not found in dset", binding);
+  ZOMBO_ASSERT(array_element < write->descriptorCount, "array_element %u out of range [0..%u]", array_element, write->descriptorCount);
+  ZOMBO_ASSERT(write->pImageInfo != nullptr, "binding %u is not an image/sampler descriptor", binding);
   auto *pImageInfo = const_cast<VkDescriptorImageInfo*>(write->pImageInfo);
   pImageInfo->imageView = view;
   pImageInfo->imageLayout = layout;
@@ -692,9 +721,9 @@ void DescriptorSetWriter::BindBuffer(VkBuffer buffer, uint32_t binding, VkDevice
       break;
     }
   }
-  assert(write != nullptr);
-  assert(array_element < write->descriptorCount);
-  assert(write->pBufferInfo != nullptr); // is this binding really a buffer-type descriptor?
+  ZOMBO_ASSERT(write != nullptr, "binding %u not found in dset", binding);
+  ZOMBO_ASSERT(array_element < write->descriptorCount, "array_element %u out of range [0..%u]", array_element, write->descriptorCount);
+  ZOMBO_ASSERT(write->pBufferInfo != nullptr, "binding %u is not a buffer descriptor", binding);
   auto *pBufferInfo = const_cast<VkDescriptorBufferInfo*>(write->pBufferInfo);
   pBufferInfo->buffer = buffer;
   pBufferInfo->offset = offset;
@@ -709,9 +738,9 @@ void DescriptorSetWriter::BindTexelBuffer(VkBufferView view, uint32_t binding, u
       break;
     }
   }
-  assert(write != nullptr);
-  assert(array_element < write->descriptorCount);
-  assert(write->pTexelBufferView != nullptr); // is this binding really a texel buffer descriptor?
+  ZOMBO_ASSERT(write != nullptr, "binding %u not found in dset", binding);
+  ZOMBO_ASSERT(array_element < write->descriptorCount, "array_element %u out of range [0..%u]", array_element, write->descriptorCount);
+  ZOMBO_ASSERT(write->pTexelBufferView != nullptr, "binding %u is not a texel buffer descriptor", binding);
   auto *pTexelBufferView = const_cast<VkBufferView*>(write->pTexelBufferView);
   *pTexelBufferView = view;
 }
@@ -724,9 +753,8 @@ void DescriptorSetWriter::WriteAll(const DeviceContext& device_context, VkDescri
 }
 void DescriptorSetWriter::WriteOne(const DeviceContext& device_context, VkDescriptorSet dest_set,
     uint32_t binding, uint32_t array_element) {
-  assert(binding < binding_writes.size());
+  ZOMBO_ASSERT(binding < binding_writes.size(), "binding %u out of range [0..%u]", binding, (uint32_t)binding_writes.size());
   VkWriteDescriptorSet writeCopy = binding_writes[binding];
-  assert(array_element < writeCopy.dstArrayElement);
   writeCopy.dstSet = dest_set;
   writeCopy.dstArrayElement = array_element;
   if (writeCopy.pImageInfo != nullptr) {

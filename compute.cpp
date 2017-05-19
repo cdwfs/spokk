@@ -68,8 +68,8 @@ public:
     VkDescriptorSet dset = VK_NULL_HANDLE;
     dset = dpool.AllocateSet(device_context_, compute_shader_pipeline.dset_layouts[0]);
     DescriptorSetWriter dset_writer(compute_shader_pipeline.dset_layout_cis[0]);
-    dset_writer.BindBuffer(in_buffer.Handle(), 0);
-    dset_writer.BindBuffer(out_buffer.Handle(), 1);
+    dset_writer.BindBuffer(in_buffer.Handle(), double_ints_cs.GetDescriptorBindPoint("innie").binding);
+    dset_writer.BindBuffer(out_buffer.Handle(), double_ints_cs.GetDescriptorBindPoint("outie").binding);
     dset_writer.WriteAll(device_context_, dset);
 
     VkFenceCreateInfo fence_ci = {};

@@ -18,6 +18,10 @@ struct DescriptorSetLayoutInfo {
   std::vector<VkDescriptorSetLayoutBinding> bindings;
   std::vector<DescriptorSetLayoutBindingInfo> binding_infos;  // one per binding
 };
+struct DescriptorBindPoint {
+  uint32_t set;
+  uint32_t binding;
+};
 
 #if defined(SPOKK_ENABLE_SHADERC)
 class ShaderCompiler {
@@ -67,6 +71,13 @@ struct Shader {
   // So for now, you have to force individual buffers to be dynamic.
   // TODO(cort): would it be better to do this at the ShaderPipeline level?
   void OverrideDescriptorType(uint32_t dset, uint32_t binding, VkDescriptorType new_type);
+
+  // Look up the bind point for a descriptor, by name. This is not fast; if you need the results more than once,
+  // avoid multiple calls and cache the return value yourself.
+  // The stage_mask parameter can optionally be used to limit the search to particular shader stages, to disambiguate
+  // in cases where the same name is used for different bind points in different stages within a single pipeline.
+  DescriptorBindPoint GetDescriptorBindPoint(const std::string& name) const;
+
   void Destroy(const DeviceContext& device_context);
 
   VkShaderModule handle;
