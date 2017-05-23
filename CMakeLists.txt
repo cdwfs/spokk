@@ -236,6 +236,12 @@ SET(COMPUTE_HEADERS)
 SET(COMPUTE_SHADERS double_ints.comp)
 SPOKK_APP(spokk-compute COMPUTE_SOURCES COMPUTE_HEADERS COMPUTE_SHADERS)
 
+# spokk-lights
+SET(LIGHTS_SOURCES camera.cpp lights.cpp)
+SET(LIGHTS_HEADERS camera.h)
+SET(LIGHTS_SHADERS skybox_vs.hlsl skybox_ps.hlsl)
+SPOKK_APP(spokk-lights LIGHTS_SOURCES LIGHTS_HEADERS LIGHTS_SHADERS)
+
 # spokk-pillars
 SET(PILLARS_SOURCES camera.cpp pillars.cpp)
 SET(PILLARS_HEADERS camera.h)
