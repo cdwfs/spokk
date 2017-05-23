@@ -90,15 +90,22 @@ IF(${SPOKK_ENABLE_SHADERC})
         SPIRV
         spirv-remap
         SPVRemapper
+        Continuous
+        Experimental
+        Nightly
+        NightlyMemoryCheck
+
     )
     SET(SPIRV_TOOLS_TARGETS
         spirv-as
         spirv-cfg
         spirv-dis
         spirv-opt
+        spirv-stats
         SPIRV-Tools
         spirv-tools-build-version
         spirv-tools-cpp-example
+        spirv-tools-spv-amd-gcn-shader
         spirv-tools-vimsyntax
         SPIRV-Tools-opt
         spirv-val
