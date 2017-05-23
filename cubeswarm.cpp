@@ -126,7 +126,8 @@ public:
     SPOKK_VK_CHECK(scene_uniforms_.Create(device_context_, PFRAME_COUNT, scene_uniforms_ci,
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
-    SPOKK_VK_CHECK(mesh_pipeline_.Create(device_context_, mesh_.mesh_format, &mesh_shader_pipeline_, &render_pass_, 0));
+    mesh_pipeline_.Init(mesh_.mesh_format, &mesh_shader_pipeline_, &render_pass_, 0);
+    SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_context_));
 
     for(const auto& dset_layout_ci : mesh_shader_pipeline_.dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);

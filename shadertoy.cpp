@@ -346,9 +346,9 @@ private:
       SPOKK_VK_CHECK(new_shader_pipeline.AddShader(&new_fs));
       SPOKK_VK_CHECK(new_shader_pipeline.Finalize(device_context_));
       GraphicsPipeline& new_pipeline = pipelines_[1 - active_pipeline_index_];
-      SPOKK_VK_CHECK(new_pipeline.Create(device_context_,
-        MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-        &new_shader_pipeline, &render_pass_, 0));
+      new_pipeline.Init(MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+        &new_shader_pipeline, &render_pass_, 0);
+      SPOKK_VK_CHECK(new_pipeline.Finalize(device_context_));
       swap_shader_.store(true);
     } else {
       printf("%s\n", compile_result.GetErrorMessage().c_str());

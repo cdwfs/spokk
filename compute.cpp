@@ -60,7 +60,8 @@ public:
     SPOKK_VK_CHECK(compute_shader_pipeline.Finalize(device_context_));
 
     ComputePipeline compute_pipeline = {};
-    compute_pipeline.Create(device_context_, &compute_shader_pipeline);
+    compute_pipeline.Init(&compute_shader_pipeline);
+    SPOKK_VK_CHECK(compute_pipeline.Finalize(device_context_));
 
     DescriptorPool dpool = {};
     dpool.Add((uint32_t)compute_shader_pipeline.dset_layout_cis.size(), compute_shader_pipeline.dset_layout_cis.data());

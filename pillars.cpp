@@ -133,7 +133,8 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   mesh_.mesh_format = &mesh_format_;
 
   // Create graphics pipelines
-  SPOKK_VK_CHECK(pillar_pipeline_.Create(device_context_, mesh_.mesh_format, &pillar_shader_pipeline_, &render_pass_, 0));
+  pillar_pipeline_.Init(mesh_.mesh_format, &pillar_shader_pipeline_, &render_pass_, 0);
+  SPOKK_VK_CHECK(pillar_pipeline_.Finalize(device_context_));
 
   // Populate Mesh object
   mesh_.index_type = (sizeof(cube_indices[0]) == sizeof(uint32_t))
