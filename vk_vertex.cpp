@@ -39,6 +39,7 @@ namespace {
       { VK_FORMAT_R8G8B8A8_SNORM      , 4,  4, },
       { VK_FORMAT_R8G8B8A8_UINT       , 4,  4, },
       { VK_FORMAT_R8G8B8A8_SINT       , 4,  4, },
+      // TODO(cort): 2-10-10-10 formats go here
       { VK_FORMAT_R16_UNORM           , 1,  2, },
       { VK_FORMAT_R16_SNORM           , 1,  2, },
       { VK_FORMAT_R16_UINT            , 1,  2, },
@@ -82,9 +83,9 @@ namespace {
       } else if (low == high) {
         break;  // not found
       } else if (format < format_info_lut[mid].format) {
-        high = mid;
+        high = mid-1;
       } else if (format > format_info_lut[mid].format) {
-        low = mid;
+        low = mid+1;
       }
     }
     // Not found! Return the UNDEFINED entry.
