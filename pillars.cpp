@@ -122,12 +122,12 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
 
   // Describe the mesh format.
   mesh_format_.vertex_buffer_bindings = {
-    {0, 3+3+2, VK_VERTEX_INPUT_RATE_VERTEX},
+    {0, 4+4+2, VK_VERTEX_INPUT_RATE_VERTEX},
   };
   mesh_format_.vertex_attributes = {
-    {0, 0, VK_FORMAT_R8G8B8_SNORM, 0},
-    {1, 0, VK_FORMAT_R8G8B8_SNORM, 3},
-    {2, 0, VK_FORMAT_R8G8_UNORM, 6},
+    {0, 0, VK_FORMAT_R8G8B8A8_SNORM, 0},
+    {1, 0, VK_FORMAT_R8G8B8A8_SNORM, 4},
+    {2, 0, VK_FORMAT_R8G8_UNORM, 8},
   };
   mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
   mesh_.mesh_format = &mesh_format_;

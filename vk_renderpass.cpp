@@ -46,7 +46,7 @@ void RenderPass::InitFromPreset(Preset preset, VkFormat output_color_format) {
     attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    attachment_descs[1].format = VK_FORMAT_D24_UNORM_S8_UINT;
+    attachment_descs[1].format = VK_FORMAT_D32_SFLOAT;
     attachment_descs[1].samples = VK_SAMPLE_COUNT_1_BIT;
     attachment_descs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachment_descs[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -126,7 +126,7 @@ void RenderPass::InitFromPreset(Preset preset, VkFormat output_color_format) {
     attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachment_descs[1].format = VK_FORMAT_D24_UNORM_S8_UINT;
+    attachment_descs[1].format = VK_FORMAT_D32_SFLOAT;
     attachment_descs[1].samples = VK_SAMPLE_COUNT_1_BIT;
     attachment_descs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachment_descs[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
