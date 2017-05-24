@@ -17,6 +17,8 @@ struct SceneUniforms {
   mathfu::vec4_packed time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
   mathfu::vec4_packed eye;  // xyz: eye position
   mathfu::mat4 viewproj;
+  mathfu::mat4 view;
+  mathfu::mat4 proj;
 };
 constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
 constexpr float FOV_DEGREES = 45.0f;
@@ -244,6 +246,8 @@ public:
       +0.0f, +0.0f, +0.5f, +0.5f,
       +0.0f, +0.0f, +0.0f, +1.0f);
     uniforms->viewproj = clip_fixup * proj * w2v;
+    uniforms->view = w2v;
+    uniforms->proj = clip_fixup * proj;
     scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
     // Update object-to-world matrices.

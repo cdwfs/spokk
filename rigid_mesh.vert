@@ -11,6 +11,8 @@ layout (set = 0, binding = 0) uniform SceneUniforms {
   vec4 time_and_res;
   vec4 eye;
   mat4 viewproj;
+  mat4 view;
+  mat4 proj;
 } scene_consts;
 layout (set = 0, binding = 1) uniform MeshUniforms {
   vec4 matrix_columns[4*1024];
