@@ -55,13 +55,15 @@ public:
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-    const VkDeviceSize blit_buffer_nbytes = 4*1024*1024;
+    const VkDeviceSize blit_buffer_nbytes = 64*1024*1024;
     SPOKK_VK_CHECK(blitter_.Create(device_context_, PFRAME_COUNT, blit_buffer_nbytes));
-    skybox_tex_.CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "data/testcube.ktx");
+    int load_error = skybox_tex_.CreateFromFile(device_context_, blitter_,
+      graphics_and_present_queue_, "data/testcube.ktx");
+    ZOMBO_ASSERT(load_error == 0, "texture load error (%d)", load_error);
 
     // Load shader pipelines
-    SPOKK_VK_CHECK(skybox_vs_.CreateAndLoadSpirvFile(device_context_, "skybox_vs.spv"));
-    SPOKK_VK_CHECK(skybox_fs_.CreateAndLoadSpirvFile(device_context_, "skybox_ps.spv"));
+    SPOKK_VK_CHECK(skybox_vs_.CreateAndLoadSpirvFile(device_context_, "skybox.vert.spv"));
+    SPOKK_VK_CHECK(skybox_fs_.CreateAndLoadSpirvFile(device_context_, "skybox.frag.spv"));
     SPOKK_VK_CHECK(skybox_shader_pipeline_.AddShader(&skybox_vs_));
     SPOKK_VK_CHECK(skybox_shader_pipeline_.AddShader(&skybox_fs_));
     SPOKK_VK_CHECK(skybox_shader_pipeline_.Finalize(device_context_));
@@ -131,6 +133,8 @@ public:
 
     skybox_pipeline_.Init(MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
       &skybox_shader_pipeline_, &render_pass_, 0);
+    skybox_pipeline_.rasterization_state_ci.cullMode = VK_CULL_MODE_NONE;
+    skybox_pipeline_.depth_stencil_state_ci.depthWriteEnable = VK_FALSE;
     SPOKK_VK_CHECK(skybox_pipeline_.Finalize(device_context_));
 
     for(const auto& dset_layout_ci : skybox_shader_pipeline_.dset_layout_cis) {
@@ -148,8 +152,6 @@ public:
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dset_writer.BindBuffer(scene_uniforms_.Handle(pframe),
         skybox_vs_.GetDescriptorBindPoint("scene_consts").binding);
-      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe),
-        skybox_vs_.GetDescriptorBindPoint("mesh_consts").binding);
       dset_writer.WriteAll(device_context_, dsets_[pframe]);
     }
 
@@ -245,7 +247,7 @@ public:
       +0.0f, +0.0f, +0.0f, +1.0f);
     uniforms->viewproj = clip_fixup * proj * w2v;
     uniforms->view = w2v;
-    uniforms->proj = proj;
+    uniforms->proj = clip_fixup * proj;
     uniforms->zrange = mathfu::vec4(Z_NEAR, Z_FAR, 0, 0);
     scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
