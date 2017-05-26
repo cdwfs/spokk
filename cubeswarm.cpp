@@ -247,7 +247,7 @@ public:
     std::array<mathfu::mat4, MESH_INSTANCE_COUNT*4> o2w_matrices;
     const mathfu::vec3 swarm_center(0, 0, -2);
     for(int iMesh=0; iMesh<MESH_INSTANCE_COUNT; ++iMesh) {
-      mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(0,1,0));
+      mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(1,2,3).Normalized());
       mathfu::mat4 o2w = mathfu::mat4::Identity()
         * mathfu::mat4::FromTranslationVector(mathfu::vec3(
           40.0f * cosf(0.2f * secs + float(9*iMesh) + 0.4f) + swarm_center[0],
