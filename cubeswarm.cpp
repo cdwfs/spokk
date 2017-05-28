@@ -207,6 +207,10 @@ public:
       mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1,0,0);
       impulse += viewRight * MOVE_SPEED;
     }
+    if (input_state_.GetDigital(InputState::DIGITAL_RPAD_LEFT)) {
+      mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0,1,0);
+      impulse -= viewUp * MOVE_SPEED;
+    }
     if (input_state_.GetDigital(InputState::DIGITAL_RPAD_DOWN)) {
       mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0,1,0);
       impulse += viewUp * MOVE_SPEED;
