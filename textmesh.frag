@@ -8,6 +8,6 @@ layout (location = 0) out vec4 out_fragColor;
 in vec4 gl_FragCoord;
 
 void main() {
-  float t = texture(sampler2D(atlas_tex,samp), texcoord).x;
+  float t = texture(sampler2D(atlas_tex,samp), texcoord).x + 0.05;
   out_fragColor = vec4(tint * t, t);
 }

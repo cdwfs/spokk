@@ -21,8 +21,13 @@ constexpr float Z_FAR = 100.0f;
 const std::string string_text("Watson, come here. I need you.");
 
 struct GlyphVertex {
+#if 0
   int16_t pos_x0, pos_y0;
   uint16_t tex_x0, tex_y0;
+#else
+  float pos_x0, pos_y0;
+  float tex_x0, tex_y0;
+#endif
 };
 
 template<typename T>
@@ -119,7 +124,7 @@ TextfieldApp::TextfieldApp(Application::CreateInfo &ci) :
 
   // Create sampler
   VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR,
-    VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
   SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
 
   // Image blitter
@@ -212,12 +217,21 @@ TextfieldApp::TextfieldApp(Application::CreateInfo &ci) :
   GlyphVertex *verts = (GlyphVertex*)string_vb_.Mapped();
   for(uint32_t i = 0; i<quads.size(); ++i) {
     const auto& q = quads[i];
+#if 0
     verts[6*i+0] = { F32toS16(q.x0), F32toS16(q.y0), F32toU16N(q.s0), F32toU16N(q.t0) };
     verts[6*i+1] = { F32toS16(q.x0), F32toS16(q.y1), F32toU16N(q.s0), F32toU16N(q.t1) };
     verts[6*i+2] = { F32toS16(q.x1), F32toS16(q.y0), F32toU16N(q.s1), F32toU16N(q.t0) };
     verts[6*i+3] = { F32toS16(q.x1), F32toS16(q.y0), F32toU16N(q.s1), F32toU16N(q.t0) };
     verts[6*i+4] = { F32toS16(q.x0), F32toS16(q.y1), F32toU16N(q.s0), F32toU16N(q.t1) };
     verts[6*i+5] = { F32toS16(q.x1), F32toS16(q.y1), F32toU16N(q.s1), F32toU16N(q.t1) };
+#else
+    verts[6*i+0] = { q.x0, q.y0, q.s0, q.t0 };
+    verts[6*i+1] = { q.x0, q.y1, q.s0, q.t1 };
+    verts[6*i+2] = { q.x1, q.y0, q.s1, q.t0 };
+    verts[6*i+3] = { q.x1, q.y0, q.s1, q.t0 };
+    verts[6*i+4] = { q.x0, q.y1, q.s0, q.t1 };
+    verts[6*i+5] = { q.x1, q.y1, q.s1, q.t1 };
+#endif
   }
   string_vb_.FlushHostCache();
   // Mesh format
@@ -225,8 +239,13 @@ TextfieldApp::TextfieldApp(Application::CreateInfo &ci) :
     {0, sizeof(GlyphVertex), VK_VERTEX_INPUT_RATE_VERTEX},
   };
   string_mesh_format_.vertex_attributes = {
+#if 0
     {0, 0, VK_FORMAT_R16G16_SINT, 0},
     {1, 0, VK_FORMAT_R16G16_UNORM, 4},
+#else
+    {0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
+    {1, 0, VK_FORMAT_R32G32_SFLOAT, 8},
+#endif
   };
   string_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
