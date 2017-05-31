@@ -9,10 +9,10 @@ layout (set = 0, binding = 0) uniform SceneUniforms {
   vec4 time_and_res;
   vec4 eye;
   mat4 viewproj;
-};
-layout (set = 0, binding = 2) uniform StringUniforms {
+} scene_consts;
+layout (set = 0, binding = 1) uniform StringUniforms {
   mat4 o2w;
-};
+} string_consts;
 
 // pos = origin + velocity * (time - spawn_time)
 
@@ -20,6 +20,6 @@ void main() {
   texcoord.xy = attr.xy;
   tint = vec3(1, 0.5, 1);
 
-  vec4 posw = o2w * vec4(float(poso.x), -float(poso.y), 0, 1);
-  gl_Position = viewproj * posw;
+  vec4 posw = string_consts.o2w * vec4(float(poso.x), -float(poso.y), 0, 1);
+  gl_Position = scene_consts.viewproj * posw;
 }

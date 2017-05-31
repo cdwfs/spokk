@@ -226,7 +226,8 @@ int FontAtlas::Create(const FontAtlasCreateInfo& ci, uint8_t* out_bitmap) {
 
   char_data_.resize(codepoint_count_);
   const int font_index = 0;
-  err = stbtt_PackFontRange(&pack_context, ci.font->ttf_.data(), font_index, ci.font_size,
+  // TODO(cort): this const-cast will be unnecessary if https://github.com/nothings/stb/pull/438 is approved
+  err = stbtt_PackFontRange(&pack_context, const_cast<uint8_t*>(ci.font->ttf_.data()), font_index, ci.font_size,
     codepoint_first_, codepoint_count_, char_data_.data());
   ZOMBO_ASSERT(err != 0, "stbtt_PackFontRange() error: %d", err);
 

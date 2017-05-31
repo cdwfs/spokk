@@ -18,7 +18,7 @@ constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
 
-const std::string str("Watson, come here. I need you.");
+const std::string string_text("Watson, come here. I need you.");
 
 struct GlyphVertex {
   int16_t pos_x0, pos_y0;
@@ -86,7 +86,7 @@ private:
   std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
   PipelinedBuffer scene_uniforms_;
-  Buffer string_uniforms_;
+  PipelinedBuffer string_uniforms_;
   Buffer string_vb_;
   MeshFormat string_mesh_format_;
 
@@ -126,7 +126,7 @@ TextfieldApp::TextfieldApp(Application::CreateInfo &ci) :
   const VkDeviceSize blit_buffer_nbytes = 4*1024*1024;
   SPOKK_VK_CHECK(blitter_.Create(device_context_, PFRAME_COUNT, blit_buffer_nbytes));
   // Load font
-  int font_create_error = font_.Create("data/Molle-Regular.ttf");
+  int font_create_error = font_.Create("data/SourceCodePro-Semibold.ttf");
   ZOMBO_ASSERT(font_create_error == 0, "Font loading error: %d", font_create_error);
   // Test CPU string rastering
   Font::StringRenderInfo string_info = {};
@@ -200,14 +200,14 @@ TextfieldApp::TextfieldApp(Application::CreateInfo &ci) :
   // Create vertex buffer
   VkBufferCreateInfo vb_ci = {};
   vb_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  vb_ci.size = sizeof(GlyphVertex) * 6 * str.length();
+  vb_ci.size = sizeof(GlyphVertex) * 6 * string_text.length();
   vb_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
   vb_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(string_vb_.Create(device_context_, vb_ci,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
   // Generate quads for a string
-  std::vector<FontAtlas::Quad> quads(str.size());
-  font_atlas_.GetStringQuads(str.c_str(), str.size(), quads.data());
+  std::vector<FontAtlas::Quad> quads(string_text.size());
+  font_atlas_.GetStringQuads(string_text.c_str(), string_text.size(), quads.data());
   // Convert raw quads into a compressed vertex buffer
   GlyphVertex *verts = (GlyphVertex*)string_vb_.Mapped();
   for(uint32_t i = 0; i<quads.size(); ++i) {
@@ -238,9 +238,7 @@ TextfieldApp::TextfieldApp(Application::CreateInfo &ci) :
   SPOKK_VK_CHECK(textmesh_shader_pipeline_.Finalize(device_context_));
 
   // Create graphics pipelines
-  SPOKK_VK_CHECK(textmesh_pipeline_.Create(device_context_,
-    &string_mesh_format_, &textmesh_shader_pipeline_, &render_pass_, 0,
-    {VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_VIEWPORT}, {}, {}, true));
+  textmesh_pipeline_.Init(&string_mesh_format_, &textmesh_shader_pipeline_, &render_pass_, 0);
   textmesh_pipeline_.rasterization_state_ci.cullMode = VK_CULL_MODE_NONE;
   textmesh_pipeline_.depth_stencil_state_ci.depthTestEnable = VK_FALSE;
   textmesh_pipeline_.color_blend_attachment_states[0].blendEnable = VK_TRUE;
@@ -248,8 +246,7 @@ TextfieldApp::TextfieldApp(Application::CreateInfo &ci) :
   textmesh_pipeline_.color_blend_attachment_states[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
   textmesh_pipeline_.color_blend_attachment_states[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
   //pipeline_.color_blend_state_ci.blendConstants
-  SPOKK_VK_CHECK(vkCreateGraphicsPipelines(device_context_.Device(), device_context_.PipelineCache(), 1,
-    &textmesh_pipeline_.ci, device_context_.HostAllocator(), &textmesh_pipeline_.handle));
+  SPOKK_VK_CHECK(textmesh_pipeline_.Finalize(device_context_));
 
   // Create pipelined buffer of shader uniforms
   VkBufferCreateInfo uniform_buffer_ci = {};
@@ -259,13 +256,10 @@ TextfieldApp::TextfieldApp(Application::CreateInfo &ci) :
   uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(scene_uniforms_.Create(device_context_, PFRAME_COUNT, uniform_buffer_ci,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-  // And for strings
+  // ...and for strings
   uniform_buffer_ci.size = sizeof(StringUniforms);
-  SPOKK_VK_CHECK(string_uniforms_.Create(device_context_, uniform_buffer_ci,
+  SPOKK_VK_CHECK(string_uniforms_.Create(device_context_, PFRAME_COUNT, uniform_buffer_ci,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-  StringUniforms *string_uniforms = (StringUniforms*)string_uniforms_.Mapped();
-  string_uniforms->o2w = mathfu::mat4::Identity() * 0.001f;
-  string_uniforms_.FlushHostCache();
 
   // Descriptor sets
   for(const auto& dset_layout_ci : textmesh_shader_pipeline_.dset_layout_cis) {
@@ -277,12 +271,14 @@ TextfieldApp::TextfieldApp(Application::CreateInfo &ci) :
   CreateRenderBuffers(swapchain_extent_);
 
   DescriptorSetWriter dset_writer(textmesh_shader_pipeline_.dset_layout_cis[0]);
-  dset_writer.BindImage(font_atlas_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler_, 1);
-  dset_writer.BindBuffer(string_uniforms_.Handle(), 2);
+  dset_writer.BindImage(font_atlas_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    textmesh_fs_.GetDescriptorBindPoint("atlas_tex").binding);
+  dset_writer.BindSampler(sampler_, textmesh_fs_.GetDescriptorBindPoint("samp").binding);
   for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
     // TODO(cort): allocate_pipelined_set()?
     dsets_[pframe] = dpool_.AllocateSet(device_context_, textmesh_shader_pipeline_.dset_layouts[0]);
-    dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), 0);
+    dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), textmesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
+    dset_writer.BindBuffer(string_uniforms_.Handle(pframe), textmesh_vs_.GetDescriptorBindPoint("string_consts").binding);
     dset_writer.WriteAll(device_context_, dsets_[pframe]);
   }
 }
@@ -373,6 +369,10 @@ void TextfieldApp::Update(double dt) {
     +0.0f, +0.0f, +0.0f, +1.0f);
   uniforms->viewproj = clip_fixup * proj * w2v;
   scene_uniforms_.FlushPframeHostCache(pframe_index_);
+
+  StringUniforms *string_uniforms = (StringUniforms*)string_uniforms_.Mapped(pframe_index_);
+  string_uniforms->o2w = mathfu::mat4::Identity() * 0.001f;
+  string_uniforms_.FlushPframeHostCache(pframe_index_);
 }
 
 void TextfieldApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
@@ -394,7 +394,7 @@ void TextfieldApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_i
   VkDeviceSize vb_offsets[1] = {0};
   VkBuffer vb_handles[1] = {string_vb_.Handle()};
   vkCmdBindVertexBuffers(primary_cb, 0, 1, vb_handles, vb_offsets);
-  vkCmdDraw(primary_cb, 6*(uint32_t)str.length(), 1,0,0);
+  vkCmdDraw(primary_cb, 6*(uint32_t)string_text.length(), 1,0,0);
 
   vkCmdEndRenderPass(primary_cb);
 }
