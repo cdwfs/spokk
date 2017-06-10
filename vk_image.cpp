@@ -250,8 +250,8 @@ int Image::CreateFromFile(const DeviceContext& device_context, ImageBlitter& bli
       copy_region.bufferOffset = 0;
       // copy region dimensions are specified in pixels (not texel blocks or bytes), but must be
       // an even integer multiple of the texel block dimensions for compressed formats.
-      // It must also respect the minImageTransferGranularity, but I don't have a good way of testing
-      // that right now.  ...Wait, yes I do! It's in the DeviceQueue!
+      // It must also respect the minImageTransferGranularity, but in practice that just means we
+      // need to transfer whole mips here, which we are.
       copy_region.bufferRowLength = GetMipDimension(image_file.row_pitch_bytes * texel_block_width / texel_block_bytes, i_mip);
       copy_region.bufferImageHeight = GetMipDimension(image_file.height, i_mip);
       copy_region.bufferRowLength   = AlignTo(copy_region.bufferRowLength, texel_block_width);
@@ -291,6 +291,7 @@ int Image::CreateFromFile(const DeviceContext& device_context, ImageBlitter& bli
   }
 
   cpool.EndSubmitAndFree(&cb);
+  // TODO(cort): advance blitter's PFRAME here? we know no transfers are outstanding, right?
   ImageFileDestroy(&image_file);
 
   VkImageViewCreateInfo view_ci = GetImageViewCreateInfo(handle, image_ci);
@@ -549,10 +550,11 @@ VkResult ImageBlitter::Create(const DeviceContext& device_context, uint32_t pfra
   staging_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
   staging_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   VkResult result = staging_buffer_.Create(device_context, pframe_count, staging_buffer_ci,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);  // NOTE: not coherent! writes from the host must be invalidated!
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);  // NOTE: not coherent! writes from the host must be flushed!
   if (result != VK_SUCCESS) {
     return result;
   }
+  // TODO(cort): do we need a pipeline barrier here to put the staging buffer into the expected usage state?
 
   staging_ranges_.resize(pframe_count);
   for(uint32_t i = 0; i < pframe_count; ++i) {
@@ -614,10 +616,11 @@ int ImageBlitter::CopyMemoryToImage(VkCommandBuffer cb, VkImage dst_image, const
     current_offset_ += src_nbytes;
     current_offset_ = (current_offset_ + 15) & ~15;  // round up to valid offset for next copy
   }
-  staging_buffer_.InvalidatePframeHostCache(current_pframe_, current_offset_, src_nbytes);
+  staging_buffer_.FlushPframeHostCache(current_pframe_, current_offset_, src_nbytes);
 
   // Assume dst_image is already in TRANSFER_DST layout, TRANSFER_READ access, and owned by the appropriate queue family.
-  // The staging buffer must be transferred from HOST_WRITE to TRANSFER_SRC
+  // The staging buffer must be transferred from HOST_READ/WRITE to TRANSFER_SRC
+  // TODO(cort): HOST_READ is probably undesirable, read/write access to the staging buffer might ruin write-combined performance.
   VkBufferMemoryBarrier buffer_barrier = {};
   buffer_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
   buffer_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_HOST_READ_BIT;

@@ -133,7 +133,7 @@ public:
     uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(uniform_buffer_.Create(device_context_, PFRAME_COUNT, uniform_buffer_ci));
 
-    for(const auto& dset_layout_ci : shader_pipelines_[active_pipeline_index_].dset_layout_cis) {
+    for(const auto& dset_layout_ci : shader_programs_[active_pipeline_index_].dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
     SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
@@ -141,13 +141,13 @@ public:
     // Create swapchain-sized resources.
     CreateRenderBuffers(swapchain_extent_);
     
-    DescriptorSetWriter dset_writer(shader_pipelines_[active_pipeline_index_].dset_layout_cis[0]);
+    DescriptorSetWriter dset_writer(shader_programs_[active_pipeline_index_].dset_layout_cis[0]);
     for(size_t iTex = 0; iTex < active_images_.size(); ++iTex) {
       dset_writer.BindCombinedImageSampler(active_images_[iTex]->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         samplers_[iTex], (uint32_t)iTex);
     }
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      dsets_[pframe] = dpool_.AllocateSet(device_context_, shader_pipelines_[active_pipeline_index_].dset_layouts[0]);
+      dsets_[pframe] = dpool_.AllocateSet(device_context_, shader_programs_[active_pipeline_index_].dset_layouts[0]);
       dset_writer.BindBuffer(uniform_buffer_.Handle(pframe), 4);
       dset_writer.WriteAll(device_context_, dsets_[pframe]);
     }
@@ -171,8 +171,8 @@ public:
       pipelines_[0].Destroy(device_context_);
       pipelines_[1].Destroy(device_context_);
 
-      shader_pipelines_[0].Destroy(device_context_);
-      shader_pipelines_[1].Destroy(device_context_);
+      shader_programs_[0].Destroy(device_context_);
+      shader_programs_[1].Destroy(device_context_);
       fullscreen_tri_vs_.Destroy(device_context_);
       fragment_shaders_[0].Destroy(device_context_);
       fragment_shaders_[1].Destroy(device_context_);
@@ -209,7 +209,7 @@ public:
       // If we get this far, it's time to replace the existing pipeline
       vkDeviceWaitIdle(device_);
       pipelines_[active_pipeline_index_].Destroy(device_context_);
-      shader_pipelines_[active_pipeline_index_].Destroy(device_context_);
+      shader_programs_[active_pipeline_index_].Destroy(device_context_);
       fragment_shaders_[active_pipeline_index_].Destroy(device_context_);
       active_pipeline_index_ = 1 - active_pipeline_index_;
       swap_shader_.store(false);
@@ -271,7 +271,7 @@ public:
     vkCmdSetViewport(primary_cb, 0,1, &viewport_);
     vkCmdSetScissor(primary_cb, 0,1, &scissor_rect_);
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      pipelines_[active_pipeline_index_].shader_pipeline->pipeline_layout,
+      pipelines_[active_pipeline_index_].shader_program->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
     vkCmdDraw(primary_cb, 3, 1,0,0);
     vkCmdEndRenderPass(primary_cb);
@@ -341,13 +341,13 @@ private:
     if (compile_result.GetCompilationStatus() == shaderc_compilation_status_success) {
       Shader& new_fs = fragment_shaders_[1 - active_pipeline_index_];
       SPOKK_VK_CHECK(new_fs.CreateAndLoadCompileResult(device_context_, compile_result));
-      ShaderPipeline& new_shader_pipeline = shader_pipelines_[1 - active_pipeline_index_];
-      SPOKK_VK_CHECK(new_shader_pipeline.AddShader(&fullscreen_tri_vs_));
-      SPOKK_VK_CHECK(new_shader_pipeline.AddShader(&new_fs));
-      SPOKK_VK_CHECK(new_shader_pipeline.Finalize(device_context_));
+      ShaderProgram& new_shader_program = shader_programs_[1 - active_pipeline_index_];
+      SPOKK_VK_CHECK(new_shader_program.AddShader(&fullscreen_tri_vs_));
+      SPOKK_VK_CHECK(new_shader_program.AddShader(&new_fs));
+      SPOKK_VK_CHECK(new_shader_program.Finalize(device_context_));
       GraphicsPipeline& new_pipeline = pipelines_[1 - active_pipeline_index_];
       new_pipeline.Init(MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-        &new_shader_pipeline, &render_pass_, 0);
+        &new_shader_program, &render_pass_, 0);
       SPOKK_VK_CHECK(new_pipeline.Finalize(device_context_));
       swap_shader_.store(true);
     } else {
@@ -430,7 +430,7 @@ private:
   // Two copies of all this stuff, so we can ping-pong between them during reloads.
   uint32_t active_pipeline_index_;
   std::array<Shader, 2> fragment_shaders_;
-  std::array<ShaderPipeline, 2> shader_pipelines_;
+  std::array<ShaderProgram, 2> shader_programs_;
   std::array<GraphicsPipeline, 2> pipelines_;
 
   VkViewport viewport_;

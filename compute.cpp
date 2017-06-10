@@ -54,21 +54,21 @@ public:
 
     // Load shaders
     Shader double_ints_cs = {};
-    ShaderPipeline compute_shader_pipeline = {};
+    ShaderProgram compute_shader_program = {};
     SPOKK_VK_CHECK(double_ints_cs.CreateAndLoadSpirvFile(device_context_, "double_ints.comp.spv"));
-    SPOKK_VK_CHECK(compute_shader_pipeline.AddShader(&double_ints_cs, "main"));
-    SPOKK_VK_CHECK(compute_shader_pipeline.Finalize(device_context_));
+    SPOKK_VK_CHECK(compute_shader_program.AddShader(&double_ints_cs, "main"));
+    SPOKK_VK_CHECK(compute_shader_program.Finalize(device_context_));
 
     ComputePipeline compute_pipeline = {};
-    compute_pipeline.Init(&compute_shader_pipeline);
+    compute_pipeline.Init(&compute_shader_program);
     SPOKK_VK_CHECK(compute_pipeline.Finalize(device_context_));
 
     DescriptorPool dpool = {};
-    dpool.Add((uint32_t)compute_shader_pipeline.dset_layout_cis.size(), compute_shader_pipeline.dset_layout_cis.data());
+    dpool.Add((uint32_t)compute_shader_program.dset_layout_cis.size(), compute_shader_program.dset_layout_cis.data());
     SPOKK_VK_CHECK(dpool.Finalize(device_context_));
     VkDescriptorSet dset = VK_NULL_HANDLE;
-    dset = dpool.AllocateSet(device_context_, compute_shader_pipeline.dset_layouts[0]);
-    DescriptorSetWriter dset_writer(compute_shader_pipeline.dset_layout_cis[0]);
+    dset = dpool.AllocateSet(device_context_, compute_shader_program.dset_layouts[0]);
+    DescriptorSetWriter dset_writer(compute_shader_program.dset_layout_cis[0]);
     dset_writer.BindBuffer(in_buffer.Handle(), double_ints_cs.GetDescriptorBindPoint("innie").binding);
     dset_writer.BindBuffer(out_buffer.Handle(), double_ints_cs.GetDescriptorBindPoint("outie").binding);
     dset_writer.WriteAll(device_context_, dset);
@@ -105,7 +105,7 @@ public:
 
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline.handle);
     // TODO(cort): leaving these unbound did not trigger a validation warning...
-    vkCmdBindDescriptorSets (cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_shader_pipeline.pipeline_layout,
+    vkCmdBindDescriptorSets (cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_shader_program.pipeline_layout,
       0, 1, &dset, 0,nullptr);
     vkCmdDispatch(cb, BUXEL_COUNT,1,1);
 
@@ -142,7 +142,7 @@ public:
     in_buffer.Destroy(device_context_);
     out_buffer.Destroy(device_context_);
     compute_pipeline.Destroy(device_context_);
-    compute_shader_pipeline.Destroy(device_context_);
+    compute_shader_program.Destroy(device_context_);
     double_ints_cs.Destroy(device_context_);
     vkDestroyFence(device_, compute_done_fence, host_allocator_);
     vkDestroyCommandPool(device_, cpool, host_allocator_);

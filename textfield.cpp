@@ -84,7 +84,7 @@ private:
   VkSampler sampler_;
 
   Shader textmesh_vs_, textmesh_fs_;
-  ShaderPipeline textmesh_shader_pipeline_;
+  ShaderProgram textmesh_shader_program_;
   GraphicsPipeline textmesh_pipeline_;
 
   DescriptorPool dpool_;
@@ -252,12 +252,12 @@ TextfieldApp::TextfieldApp(Application::CreateInfo &ci) :
   // Load shader pipelines
   SPOKK_VK_CHECK(textmesh_vs_.CreateAndLoadSpirvFile(device_context_, "textmesh.vert.spv"));
   SPOKK_VK_CHECK(textmesh_fs_.CreateAndLoadSpirvFile(device_context_, "textmesh.frag.spv"));
-  SPOKK_VK_CHECK(textmesh_shader_pipeline_.AddShader(&textmesh_vs_));
-  SPOKK_VK_CHECK(textmesh_shader_pipeline_.AddShader(&textmesh_fs_));
-  SPOKK_VK_CHECK(textmesh_shader_pipeline_.Finalize(device_context_));
+  SPOKK_VK_CHECK(textmesh_shader_program_.AddShader(&textmesh_vs_));
+  SPOKK_VK_CHECK(textmesh_shader_program_.AddShader(&textmesh_fs_));
+  SPOKK_VK_CHECK(textmesh_shader_program_.Finalize(device_context_));
 
   // Create graphics pipelines
-  textmesh_pipeline_.Init(&string_mesh_format_, &textmesh_shader_pipeline_, &render_pass_, 0);
+  textmesh_pipeline_.Init(&string_mesh_format_, &textmesh_shader_program_, &render_pass_, 0);
   textmesh_pipeline_.rasterization_state_ci.cullMode = VK_CULL_MODE_NONE;
   textmesh_pipeline_.depth_stencil_state_ci.depthTestEnable = VK_FALSE;
   textmesh_pipeline_.color_blend_attachment_states[0].blendEnable = VK_TRUE;
@@ -281,7 +281,7 @@ TextfieldApp::TextfieldApp(Application::CreateInfo &ci) :
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
   // Descriptor sets
-  for(const auto& dset_layout_ci : textmesh_shader_pipeline_.dset_layout_cis) {
+  for(const auto& dset_layout_ci : textmesh_shader_program_.dset_layout_cis) {
     dpool_.Add(dset_layout_ci, PFRAME_COUNT);
   }
   SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
@@ -289,13 +289,13 @@ TextfieldApp::TextfieldApp(Application::CreateInfo &ci) :
   // Create swapchain-sized resources.
   CreateRenderBuffers(swapchain_extent_);
 
-  DescriptorSetWriter dset_writer(textmesh_shader_pipeline_.dset_layout_cis[0]);
+  DescriptorSetWriter dset_writer(textmesh_shader_program_.dset_layout_cis[0]);
   dset_writer.BindImage(font_atlas_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     textmesh_fs_.GetDescriptorBindPoint("atlas_tex").binding);
   dset_writer.BindSampler(sampler_, textmesh_fs_.GetDescriptorBindPoint("samp").binding);
   for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
     // TODO(cort): allocate_pipelined_set()?
-    dsets_[pframe] = dpool_.AllocateSet(device_context_, textmesh_shader_pipeline_.dset_layouts[0]);
+    dsets_[pframe] = dpool_.AllocateSet(device_context_, textmesh_shader_program_.dset_layouts[0]);
     dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), textmesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
     dset_writer.BindBuffer(string_uniforms_.Handle(pframe), textmesh_vs_.GetDescriptorBindPoint("string_consts").binding);
     dset_writer.WriteAll(device_context_, dsets_[pframe]);
@@ -314,7 +314,7 @@ TextfieldApp::~TextfieldApp() {
 
     textmesh_vs_.Destroy(device_context_);
     textmesh_fs_.Destroy(device_context_);
-    textmesh_shader_pipeline_.Destroy(device_context_);
+    textmesh_shader_program_.Destroy(device_context_);
     textmesh_pipeline_.Destroy(device_context_);
 
     vkDestroySampler(device_, sampler_, host_allocator_);
@@ -353,6 +353,10 @@ void TextfieldApp::Update(double dt) {
   if (input_state_.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
     mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1,0,0);
     impulse += viewRight * MOVE_SPEED;
+  }
+  if (input_state_.GetDigital(InputState::DIGITAL_RPAD_LEFT)) {
+    mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0,1,0);
+    impulse -= viewUp * MOVE_SPEED;
   }
   if (input_state_.GetDigital(InputState::DIGITAL_RPAD_DOWN)) {
     mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0,1,0);
@@ -408,7 +412,7 @@ void TextfieldApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_i
   vkCmdSetScissor(primary_cb, 0,1, &scissor_rect);
   // TODO(cort): leaving these unbound did not trigger a validation warning...
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-    textmesh_pipeline_.shader_pipeline->pipeline_layout,
+    textmesh_pipeline_.shader_program->pipeline_layout,
     0, 1, &dsets_[pframe_index_], 0, nullptr);
   VkDeviceSize vb_offsets[1] = {0};
   VkBuffer vb_handles[1] = {string_vb_.Handle()};
