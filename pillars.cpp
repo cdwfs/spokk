@@ -61,7 +61,7 @@ private:
   VkSampler sampler_;
 
   Shader pillar_vs_, pillar_fs_;
-  ShaderPipeline pillar_shader_pipeline_;
+  ShaderProgram pillar_shader_program_;
   GraphicsPipeline pillar_pipeline_;
 
   DescriptorPool dpool_;
@@ -116,9 +116,9 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   // Load shader pipelines
   SPOKK_VK_CHECK(pillar_vs_.CreateAndLoadSpirvFile(device_context_, "pillar.vert.spv"));
   SPOKK_VK_CHECK(pillar_fs_.CreateAndLoadSpirvFile(device_context_, "pillar.frag.spv"));
-  SPOKK_VK_CHECK(pillar_shader_pipeline_.AddShader(&pillar_vs_));
-  SPOKK_VK_CHECK(pillar_shader_pipeline_.AddShader(&pillar_fs_));
-  SPOKK_VK_CHECK(pillar_shader_pipeline_.Finalize(device_context_));
+  SPOKK_VK_CHECK(pillar_shader_program_.AddShader(&pillar_vs_));
+  SPOKK_VK_CHECK(pillar_shader_program_.AddShader(&pillar_fs_));
+  SPOKK_VK_CHECK(pillar_shader_program_.Finalize(device_context_));
 
   // Describe the mesh format.
   mesh_format_.vertex_buffer_bindings = {
@@ -133,7 +133,7 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   mesh_.mesh_format = &mesh_format_;
 
   // Create graphics pipelines
-  pillar_pipeline_.Init(mesh_.mesh_format, &pillar_shader_pipeline_, &render_pass_, 0);
+  pillar_pipeline_.Init(mesh_.mesh_format, &pillar_shader_program_, &render_pass_, 0);
   SPOKK_VK_CHECK(pillar_pipeline_.Finalize(device_context_));
 
   // Populate Mesh object
@@ -207,7 +207,7 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
   SPOKK_VK_CHECK(visible_cells_buffer_.CreateViews(device_context_, VK_FORMAT_R32_SINT));
 
-  for(const auto& dset_layout_ci : pillar_shader_pipeline_.dset_layout_cis) {
+  for(const auto& dset_layout_ci : pillar_shader_program_.dset_layout_cis) {
     dpool_.Add(dset_layout_ci, PFRAME_COUNT);
   }
   SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
@@ -215,13 +215,13 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   // Create swapchain-sized buffers
   CreateRenderBuffers(swapchain_extent_);
 
-  DescriptorSetWriter dset_writer(pillar_shader_pipeline_.dset_layout_cis[0]);
+  DescriptorSetWriter dset_writer(pillar_shader_program_.dset_layout_cis[0]);
   dset_writer.BindImage(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     pillar_fs_.GetDescriptorBindPoint("tex").binding);
   dset_writer.BindSampler(sampler_, pillar_fs_.GetDescriptorBindPoint("samp").binding);
   for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
     // TODO(cort): allocate_pipelined_set()?
-    dsets_[pframe] = dpool_.AllocateSet(device_context_, pillar_shader_pipeline_.dset_layouts[0]);
+    dsets_[pframe] = dpool_.AllocateSet(device_context_, pillar_shader_program_.dset_layouts[0]);
     dset_writer.BindBuffer(scene_uniforms_.Handle(pframe),
       pillar_vs_.GetDescriptorBindPoint("scene_consts").binding);
     dset_writer.BindTexelBuffer(visible_cells_buffer_.View(pframe),
@@ -248,7 +248,7 @@ PillarsApp::~PillarsApp() {
 
     pillar_vs_.Destroy(device_context_);
     pillar_fs_.Destroy(device_context_);
-    pillar_shader_pipeline_.Destroy(device_context_);
+    pillar_shader_program_.Destroy(device_context_);
     pillar_pipeline_.Destroy(device_context_);
 
     vkDestroySampler(device_, sampler_, host_allocator_);
@@ -372,7 +372,7 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
   vkCmdSetScissor(primary_cb, 0,1, &scissor_rect);
   // TODO(cort): leaving these unbound did not trigger a validation warning...
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-    pillar_pipeline_.shader_pipeline->pipeline_layout,
+    pillar_pipeline_.shader_program->pipeline_layout,
     0, 1, &dsets_[pframe_index_], 0, nullptr);
   const VkDeviceSize vertex_buffer_offsets[1] = {}; // TODO(cort): mesh::bind()
   VkBuffer vertex_buffer = mesh_.vertex_buffers[0].Handle();

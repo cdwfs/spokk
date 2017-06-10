@@ -64,9 +64,9 @@ public:
     // Load shader pipelines
     SPOKK_VK_CHECK(skybox_vs_.CreateAndLoadSpirvFile(device_context_, "skybox.vert.spv"));
     SPOKK_VK_CHECK(skybox_fs_.CreateAndLoadSpirvFile(device_context_, "skybox.frag.spv"));
-    SPOKK_VK_CHECK(skybox_shader_pipeline_.AddShader(&skybox_vs_));
-    SPOKK_VK_CHECK(skybox_shader_pipeline_.AddShader(&skybox_fs_));
-    SPOKK_VK_CHECK(skybox_shader_pipeline_.Finalize(device_context_));
+    SPOKK_VK_CHECK(skybox_shader_program_.AddShader(&skybox_vs_));
+    SPOKK_VK_CHECK(skybox_shader_program_.AddShader(&skybox_fs_));
+    SPOKK_VK_CHECK(skybox_shader_program_.Finalize(device_context_));
 
     // Populate Mesh object
     mesh_.index_type = (sizeof(cube_indices[0]) == sizeof(uint32_t)) ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
@@ -132,20 +132,20 @@ public:
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     skybox_pipeline_.Init(MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-      &skybox_shader_pipeline_, &render_pass_, 0);
+      &skybox_shader_program_, &render_pass_, 0);
     skybox_pipeline_.rasterization_state_ci.cullMode = VK_CULL_MODE_NONE;
     skybox_pipeline_.depth_stencil_state_ci.depthWriteEnable = VK_FALSE;
     SPOKK_VK_CHECK(skybox_pipeline_.Finalize(device_context_));
 
-    for(const auto& dset_layout_ci : skybox_shader_pipeline_.dset_layout_cis) {
+    for(const auto& dset_layout_ci : skybox_shader_program_.dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
     SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
       // TODO(cort): allocate_pipelined_set()?
-      dsets_[pframe] = dpool_.AllocateSet(device_context_, skybox_shader_pipeline_.dset_layouts[0]);
+      dsets_[pframe] = dpool_.AllocateSet(device_context_, skybox_shader_program_.dset_layouts[0]);
     }
-    DescriptorSetWriter dset_writer(skybox_shader_pipeline_.dset_layout_cis[0]);
+    DescriptorSetWriter dset_writer(skybox_shader_program_.dset_layout_cis[0]);
     dset_writer.BindImage(skybox_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
       skybox_fs_.GetDescriptorBindPoint("tex").binding);
     dset_writer.BindSampler(sampler_, skybox_fs_.GetDescriptorBindPoint("samp").binding);
@@ -173,7 +173,7 @@ public:
 
       skybox_vs_.Destroy(device_context_);
       skybox_fs_.Destroy(device_context_);
-      skybox_shader_pipeline_.Destroy(device_context_);
+      skybox_shader_program_.Destroy(device_context_);
       skybox_pipeline_.Destroy(device_context_);
 
       vkDestroySampler(device_, sampler_, host_allocator_);
@@ -286,7 +286,7 @@ public:
     vkCmdSetScissor(primary_cb, 0,1, &scissor_rect);
     // TODO(cort): leaving these unbound did not trigger a validation warning...
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      skybox_pipeline_.shader_pipeline->pipeline_layout,
+      skybox_pipeline_.shader_program->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
     vkCmdDraw(primary_cb, 36, 1, 0, 0);
     /*
@@ -353,7 +353,7 @@ private:
   VkSampler sampler_;
 
   Shader skybox_vs_, skybox_fs_;
-  ShaderPipeline skybox_shader_pipeline_;
+  ShaderProgram skybox_shader_program_;
   GraphicsPipeline skybox_pipeline_;
 
   DescriptorPool dpool_;
