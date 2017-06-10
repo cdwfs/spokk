@@ -69,13 +69,13 @@ struct Shader {
   }
   // Dynamic buffers need a different descriptor type, but there's no way to express it in the shader language.
   // So for now, you have to force individual buffers to be dynamic.
-  // TODO(cort): would it be better to do this at the ShaderPipeline level?
+  // TODO(cort): would it be better to do this at the ShaderProgram level?
   void OverrideDescriptorType(uint32_t dset, uint32_t binding, VkDescriptorType new_type);
 
   // Look up the bind point for a descriptor, by name. This is not fast; if you need the results more than once,
   // avoid multiple calls and cache the return value yourself.
   // The stage_mask parameter can optionally be used to limit the search to particular shader stages, to disambiguate
-  // in cases where the same name is used for different bind points in different stages within a single pipeline.
+  // in cases where the same name is used for different bind points in different stages within a single ShaderProgram.
   DescriptorBindPoint GetDescriptorBindPoint(const std::string& name) const;
 
   void Destroy(const DeviceContext& device_context);
@@ -90,17 +90,17 @@ private:
   VkResult ParseSpirvAndCreate(const DeviceContext& device_context);
 };
 
-struct ShaderPipeline {
-  ShaderPipeline() : dset_layout_cis{}, dset_layout_infos{}, push_constant_ranges{}, shader_stage_cis{},
+struct ShaderProgram {
+  ShaderProgram() : dset_layout_cis{}, dset_layout_infos{}, push_constant_ranges{}, shader_stage_cis{},
     entry_point_names{}, pipeline_layout(VK_NULL_HANDLE), dset_layouts{}, active_stages(0) {
   }
 
-  ShaderPipeline(const ShaderPipeline& rhs) = delete;
-  ShaderPipeline& operator=(const ShaderPipeline& rhs) = delete;
+  ShaderProgram(const ShaderProgram& rhs) = delete;
+  ShaderProgram& operator=(const ShaderProgram& rhs) = delete;
 
   VkResult AddShader(const Shader *shader, const char *entry_point = "main");
   static VkResult ForceCompatibleLayoutsAndFinalize(const DeviceContext& device_context,
-    const std::vector<ShaderPipeline*> pipelines);
+    const std::vector<ShaderProgram*> programs);
   VkResult Finalize(const DeviceContext& device_context);
   void Destroy(const DeviceContext& device_context);
 
@@ -120,7 +120,7 @@ struct ShaderPipeline {
 struct DescriptorPool {
   DescriptorPool();
 
-  // Adds a number of instances of each type of dset in the array. This would be pretty easy to call on a ShaderPipeline.
+  // Adds a number of instances of each type of dset in the array. This would be pretty easy to call on a ShaderProgram.
   // if dsets_per_layout is nullptr, assume one of each layout.
   // TODO(cort): add() really needs a better name.
   void Add(uint32_t layout_count, const VkDescriptorSetLayoutCreateInfo* dset_layout_cis, const uint32_t* dsets_per_layout = nullptr);

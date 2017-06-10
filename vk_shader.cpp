@@ -306,11 +306,11 @@ void Shader::Destroy(const DeviceContext& device_context) {
 }
 
 //
-// ShaderPipeline
+// ShaderProgram
 //
-VkResult ShaderPipeline::AddShader(const Shader *shader, const char *entry_point) {
+VkResult ShaderProgram::AddShader(const Shader *shader, const char *entry_point) {
   if (pipeline_layout != VK_NULL_HANDLE) {
-    return VK_ERROR_INITIALIZATION_FAILED; // pipeline is already finalized; can't add more shaders
+    return VK_ERROR_INITIALIZATION_FAILED; // program is already finalized; can't add more shaders
   }
   if (shader == nullptr) {
     return VK_ERROR_INITIALIZATION_FAILED;
@@ -337,7 +337,7 @@ VkResult ShaderPipeline::AddShader(const Shader *shader, const char *entry_point
   new_stage_ci.pName = nullptr; // set this in finalize() to avoid stale pointers.
   new_stage_ci.pSpecializationInfo = nullptr;  // TODO(cort): fill in at VkPipeline creation time
   shader_stage_cis.push_back(new_stage_ci);
-  // Merge shader bindings with existing pipeline bindings
+  // Merge shader bindings with existing program bindings
   // Grow descriptor set layout array if needed
   if (shader->dset_layout_infos.size() > dset_layout_infos.size()) {
     dset_layout_infos.resize(shader->dset_layout_infos.size());
@@ -385,37 +385,37 @@ VkResult ShaderPipeline::AddShader(const Shader *shader, const char *entry_point
   return VK_SUCCESS;
 }
 
-VkResult ShaderPipeline::ForceCompatibleLayoutsAndFinalize(const DeviceContext& device_context,
-  const std::vector<ShaderPipeline*> pipelines) {
-  if (pipelines.empty()) {
+VkResult ShaderProgram::ForceCompatibleLayoutsAndFinalize(const DeviceContext& device_context,
+  const std::vector<ShaderProgram*> programs) {
+  if (programs.empty()) {
     return VK_SUCCESS;
   }
-  for(auto pipeline : pipelines) {
-    if (pipeline == nullptr) {
+  for(auto program : programs) {
+    if (program == nullptr) {
       return VK_ERROR_INITIALIZATION_FAILED;
     }
-    if (pipeline->pipeline_layout != VK_NULL_HANDLE) {
-      return VK_ERROR_INITIALIZATION_FAILED; // pipeline is already finalized; can't add more shaders
+    if (program->pipeline_layout != VK_NULL_HANDLE) {
+      return VK_ERROR_INITIALIZATION_FAILED; // program is already finalized; can't add more shaders
     }
   }
-  // Merge pipelines 1..N into pipeline 0, then copy pipeline 0's layouts to 1..N.
-  ShaderPipeline &dst_pipeline = *pipelines[0];
-  for(size_t iPipeline = 1; iPipeline < pipelines.size(); ++iPipeline) {
-    const ShaderPipeline &src_pipeline = *pipelines[iPipeline];
-    // Merge shader bindings with existing pipeline bindings
+  // Merge programs 1..N into program 0, then copy program 0's layouts to 1..N.
+  ShaderProgram &dst_program = *programs[0];
+  for(size_t iProgram = 1; iProgram < programs.size(); ++iProgram) {
+    const ShaderProgram &src_program = *programs[iProgram];
+    // Merge shader bindings with existing program bindings
     // Grow descriptor set layout array if needed
-    if (src_pipeline.dset_layout_infos.size() > dst_pipeline.dset_layout_infos.size()) {
-      dst_pipeline.dset_layout_infos.resize(src_pipeline.dset_layout_infos.size());
+    if (src_program.dset_layout_infos.size() > dst_program.dset_layout_infos.size()) {
+      dst_program.dset_layout_infos.resize(src_program.dset_layout_infos.size());
     }
     // Add push constant range. We'll merge them later.
-    dst_pipeline.push_constant_ranges.insert(dst_pipeline.push_constant_ranges.end(),
-      src_pipeline.push_constant_ranges.begin(), src_pipeline.push_constant_ranges.end());
+    dst_program.push_constant_ranges.insert(dst_program.push_constant_ranges.end(),
+      src_program.push_constant_ranges.begin(), src_program.push_constant_ranges.end());
     // Merge descriptor set layouts
-    for(size_t iDS = 0; iDS < src_pipeline.dset_layout_infos.size(); ++iDS) {
-      const DescriptorSetLayoutInfo& src_dset_layout_info = src_pipeline.dset_layout_infos[iDS];
+    for(size_t iDS = 0; iDS < src_program.dset_layout_infos.size(); ++iDS) {
+      const DescriptorSetLayoutInfo& src_dset_layout_info = src_program.dset_layout_infos[iDS];
       ZOMBO_ASSERT(src_dset_layout_info.bindings.size() == src_dset_layout_info.binding_infos.size(),
         "invariant failure: binding array size mismatch");
-      DescriptorSetLayoutInfo& dst_dset_layout_info = dst_pipeline.dset_layout_infos[iDS];
+      DescriptorSetLayoutInfo& dst_dset_layout_info = dst_program.dset_layout_infos[iDS];
       for(size_t iSB = 0; iSB < src_dset_layout_info.bindings.size(); ++iSB) {
         const auto& src_binding = src_dset_layout_info.bindings[iSB];
         const auto& src_binding_info = src_dset_layout_info.binding_infos[iSB];
@@ -431,7 +431,7 @@ VkResult ShaderPipeline::ForceCompatibleLayoutsAndFinalize(const DeviceContext& 
               "binding %u used with different array sizes in two stages", src_binding.binding);
             // Found a match!
             dst_binding.stageFlags |= src_binding.stageFlags;
-            dst_binding_info.stage_names.push_back(src_binding_info.stage_names[0]);  // TODO(cort): this may invalidate the whole idea of saving these names; they can vary across pipelines.
+            dst_binding_info.stage_names.push_back(src_binding_info.stage_names[0]);  // TODO(cort): this may invalidate the whole idea of saving these names; they can vary across programs.
             found_binding = true;
             break;
           }
@@ -449,13 +449,13 @@ VkResult ShaderPipeline::ForceCompatibleLayoutsAndFinalize(const DeviceContext& 
   // Merge all the push constants into the minimal representation of the same ranges.
   // For now, we just union everything together into a single range. It's possible to be more conservative
   // and produce separate ranges for each shader stage if necessary, but I'm not sure that's necessary yet.
-  if (!pipelines[0]->push_constant_ranges.empty()) {
+  if (!programs[0]->push_constant_ranges.empty()) {
     bool valid_range = false;
     std::vector<VkPushConstantRange> merged_range = {
       {VkShaderStageFlags(0), 0, 0} 
     };
     uint32_t merged_range_end = 0;
-    for(const auto& range : pipelines[0]->push_constant_ranges) {
+    for(const auto& range : programs[0]->push_constant_ranges) {
       if (range.size != 0) {
         if (!valid_range) {
           merged_range[0] = range;
@@ -471,22 +471,22 @@ VkResult ShaderPipeline::ForceCompatibleLayoutsAndFinalize(const DeviceContext& 
     if (valid_range) {
       merged_range[0].size = merged_range_end - merged_range[0].offset;
     }
-    pipelines[0]->push_constant_ranges.swap(merged_range);
+    programs[0]->push_constant_ranges.swap(merged_range);
   }
 
-  // Broadcast final merged layouts back to remaining pipelines
-  for(size_t iPipeline = 1; iPipeline < pipelines.size(); ++iPipeline) {
-    pipelines[iPipeline]->dset_layout_infos = pipelines[0]->dset_layout_infos;
-    pipelines[iPipeline]->push_constant_ranges = pipelines[0]->push_constant_ranges;
+  // Broadcast final merged layouts back to remaining programs
+  for(size_t iProgram = 1; iProgram < programs.size(); ++iProgram) {
+    programs[iProgram]->dset_layout_infos = programs[0]->dset_layout_infos;
+    programs[iProgram]->push_constant_ranges = programs[0]->push_constant_ranges;
   }
 
-  for(auto pipeline : pipelines) {
-    pipeline->Finalize(device_context);
+  for(auto program : programs) {
+    program->Finalize(device_context);
   }
   return VK_SUCCESS;
 }
 
-VkResult ShaderPipeline::Finalize(const DeviceContext& device_context) {
+VkResult ShaderProgram::Finalize(const DeviceContext& device_context) {
   // Determine active shader stages
   active_stages = 0;
   for(const auto& stage_ci : shader_stage_cis) {
@@ -549,7 +549,7 @@ VkResult ShaderPipeline::Finalize(const DeviceContext& device_context) {
 
   return result;
 }
-void ShaderPipeline::Destroy(const DeviceContext& device_context) {
+void ShaderProgram::Destroy(const DeviceContext& device_context) {
   for(auto dset_layout : dset_layouts) {
     if (dset_layout != VK_NULL_HANDLE) {
       vkDestroyDescriptorSetLayout(device_context.Device(), dset_layout, device_context.HostAllocator());

@@ -59,9 +59,9 @@ public:
     // Load shader pipelines
     SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_context_, "rigid_mesh.vert.spv"));
     SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_context_, "rigid_mesh.frag.spv"));
-    SPOKK_VK_CHECK(mesh_shader_pipeline_.AddShader(&mesh_vs_));
-    SPOKK_VK_CHECK(mesh_shader_pipeline_.AddShader(&mesh_fs_));
-    SPOKK_VK_CHECK(mesh_shader_pipeline_.Finalize(device_context_));
+    SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_vs_));
+    SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_fs_));
+    SPOKK_VK_CHECK(mesh_shader_program_.Finalize(device_context_));
 
     // Populate Mesh object
     mesh_.index_type = (sizeof(cube_indices[0]) == sizeof(uint32_t)) ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
@@ -126,18 +126,18 @@ public:
     SPOKK_VK_CHECK(scene_uniforms_.Create(device_context_, PFRAME_COUNT, scene_uniforms_ci,
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
-    mesh_pipeline_.Init(mesh_.mesh_format, &mesh_shader_pipeline_, &render_pass_, 0);
+    mesh_pipeline_.Init(mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_context_));
 
-    for(const auto& dset_layout_ci : mesh_shader_pipeline_.dset_layout_cis) {
+    for(const auto& dset_layout_ci : mesh_shader_program_.dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
     SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) { 
       // TODO(cort): allocate_pipelined_set()?
-      dsets_[pframe] = dpool_.AllocateSet(device_context_, mesh_shader_pipeline_.dset_layouts[0]);
+      dsets_[pframe] = dpool_.AllocateSet(device_context_, mesh_shader_program_.dset_layouts[0]);
     }
-    DescriptorSetWriter dset_writer(mesh_shader_pipeline_.dset_layout_cis[0]);
+    DescriptorSetWriter dset_writer(mesh_shader_program_.dset_layout_cis[0]);
     dset_writer.BindImage(albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
       mesh_fs_.GetDescriptorBindPoint("tex").binding);
     dset_writer.BindSampler(sampler_, mesh_fs_.GetDescriptorBindPoint("samp").binding);
@@ -167,7 +167,7 @@ public:
 
       mesh_vs_.Destroy(device_context_);
       mesh_fs_.Destroy(device_context_);
-      mesh_shader_pipeline_.Destroy(device_context_);
+      mesh_shader_program_.Destroy(device_context_);
       mesh_pipeline_.Destroy(device_context_);
 
       vkDestroySampler(device_, sampler_, host_allocator_);
@@ -281,7 +281,7 @@ public:
     vkCmdSetScissor(primary_cb, 0,1, &scissor_rect);
     // TODO(cort): leaving these unbound did not trigger a validation warning...
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      mesh_pipeline_.shader_pipeline->pipeline_layout,
+      mesh_pipeline_.shader_program->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
     const VkDeviceSize vertex_buffer_offsets[1] = {}; // TODO(cort): mesh::bind()
     VkBuffer vertex_buffer = mesh_.vertex_buffers[0].Handle();
@@ -345,7 +345,7 @@ private:
   VkSampler sampler_;
 
   Shader mesh_vs_, mesh_fs_;
-  ShaderPipeline mesh_shader_pipeline_;
+  ShaderProgram mesh_shader_program_;
   GraphicsPipeline mesh_pipeline_;
 
   DescriptorPool dpool_;

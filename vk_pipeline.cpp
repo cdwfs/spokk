@@ -7,18 +7,18 @@ namespace spokk {
 //
 // ComputePipeline
 //
-ComputePipeline::ComputePipeline() : handle(VK_NULL_HANDLE), shader_pipeline(nullptr), ci{} {
+ComputePipeline::ComputePipeline() : handle(VK_NULL_HANDLE), shader_program(nullptr), ci{} {
 }
-void ComputePipeline::Init(const ShaderPipeline *shader_pipeline_in) {
-  this->shader_pipeline = shader_pipeline_in;
-  assert(shader_pipeline->shader_stage_cis.size() == 1);
-  assert(shader_pipeline->shader_stage_cis[0].stage == VK_SHADER_STAGE_COMPUTE_BIT);
+void ComputePipeline::Init(const ShaderProgram *shader_program_in) {
+  this->shader_program = shader_program_in;
+  assert(shader_program->shader_stage_cis.size() == 1);
+  assert(shader_program->shader_stage_cis[0].stage == VK_SHADER_STAGE_COMPUTE_BIT);
 
   ci = {};
   ci.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   ci.flags = 0;  // TODO(cort): pass these in?
-  ci.stage = shader_pipeline->shader_stage_cis[0];
-  ci.layout = shader_pipeline->pipeline_layout;
+  ci.stage = shader_program->shader_stage_cis[0];
+  ci.layout = shader_program->pipeline_layout;
   ci.basePipelineHandle = VK_NULL_HANDLE;
   ci.basePipelineIndex = 0;
 }
@@ -31,22 +31,22 @@ void ComputePipeline::Destroy(const DeviceContext& device_context) {
     vkDestroyPipeline(device_context.Device(), handle, device_context.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
-  shader_pipeline = nullptr;
+  shader_program = nullptr;
 }
 
 //
 // GraphicsPipeline
 //
 GraphicsPipeline::GraphicsPipeline() :
-  handle(VK_NULL_HANDLE), mesh_format(nullptr), shader_pipeline(nullptr), render_pass(nullptr), subpass(0), dynamic_states{},
+  handle(VK_NULL_HANDLE), mesh_format(nullptr), shader_program(nullptr), render_pass(nullptr), subpass(0), dynamic_states{},
   ci{}, tessellation_state_ci{}, viewport_state_ci{}, viewports{}, scissor_rects{}, rasterization_state_ci{},
   depth_stencil_state_ci{}, color_blend_state_ci{}, color_blend_attachment_states{}, dynamic_state_ci{} {
 }
-void GraphicsPipeline::Init(const MeshFormat *mesh_format_in, const ShaderPipeline *shader_pipeline_in,
+void GraphicsPipeline::Init(const MeshFormat *mesh_format_in, const ShaderProgram *shader_program_in,
     const RenderPass *render_pass_in, uint32_t subpass_in,
     const std::vector<VkDynamicState> dynamic_states_in, const VkViewport viewport, const VkRect2D scissor_rect) {
   this->mesh_format = mesh_format_in;
-  this->shader_pipeline = shader_pipeline_in;
+  this->shader_program = shader_program_in;
   this->render_pass = render_pass_in;
   this->subpass = subpass_in;
   this->dynamic_states = std::move(dynamic_states_in);
@@ -101,12 +101,12 @@ void GraphicsPipeline::Init(const MeshFormat *mesh_format_in, const ShaderPipeli
   ci = {};
   ci.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
   ci.flags = 0;  // TODO(cort): pass these in?
-  ci.stageCount = (uint32_t)shader_pipeline->shader_stage_cis.size();
-  ci.pStages = shader_pipeline->shader_stage_cis.data();
+  ci.stageCount = (uint32_t)shader_program->shader_stage_cis.size();
+  ci.pStages = shader_program->shader_stage_cis.data();
   ci.pVertexInputState = &(mesh_format->vertex_input_state_ci);
   ci.pInputAssemblyState = &(mesh_format->input_assembly_state_ci);
   ci.pTessellationState =
-    (shader_pipeline->active_stages & (VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT))
+    (shader_program->active_stages & (VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT))
     ? &tessellation_state_ci : nullptr;
   ci.pViewportState = &viewport_state_ci;
   ci.pRasterizationState = &rasterization_state_ci;
@@ -114,7 +114,7 @@ void GraphicsPipeline::Init(const MeshFormat *mesh_format_in, const ShaderPipeli
   ci.pDepthStencilState = &depth_stencil_state_ci;
   ci.pColorBlendState = &color_blend_state_ci;
   ci.pDynamicState = (dynamic_state_ci.dynamicStateCount > 0) ? &dynamic_state_ci : nullptr;
-  ci.layout = shader_pipeline->pipeline_layout;
+  ci.layout = shader_program->pipeline_layout;
   ci.renderPass = render_pass->handle;
   ci.subpass = subpass;
   ci.basePipelineHandle = VK_NULL_HANDLE;
@@ -133,7 +133,7 @@ void GraphicsPipeline::Destroy(const DeviceContext& device_context) {
   viewports.clear();
   scissor_rects.clear();
   mesh_format = nullptr;
-  shader_pipeline = nullptr;
+  shader_program = nullptr;
   render_pass = nullptr;
   subpass = 0;
 }
