@@ -148,6 +148,7 @@ FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)
 ENDFUNCTION(SHADER_BUILD_RULE SHADER_FILE SPV_FILE)
 
 # Mysterious macro to remove default VS "Source Files" and "Header Files" filters.
+# TODO(https://github.com/cdwfs/spokk/issues/10): Figure out why this works and refactor if necessary.
 MACRO (cmp_IDE_SOURCE_PROPERTIES SOURCE_PATH HEADERS SOURCES)
     STRING(REPLACE "/" "\\\\" source_group_path ${SOURCE_PATH}  )
     source_group(${source_group_path} FILES ${HEADERS} ${SOURCES})
@@ -194,9 +195,7 @@ ENDIF()
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC "third_party/stb")
 
 # Copy assets directory into build dir.
-# TODO(cort): Copying all assets whenever any sample is built doesn't really scale.
-# Ideally, every sample would know what assets it depends on, and only the
-# necessary assets get copied.
+# TODO(https://github.com/cdwfs/spokk/issues/11): only copy assets required by a particular sample
 ADD_CUSTOM_TARGET(spokk-assets
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/assets
@@ -206,7 +205,6 @@ ADD_CUSTOM_TARGET(spokk-assets
 
 
 FUNCTION (SPOKK_APP APP_NAME APP_SOURCES_LIST APP_HEADERS_LIST APP_SHADERS_LIST)
-    # TODO(cort): ...really?
     SET(APP_HEADERS ${${APP_HEADERS_LIST}})
     SET(APP_SOURCES ${${APP_SOURCES_LIST}})
     SET(APP_SHADERS ${${APP_SHADERS_LIST}})

@@ -69,7 +69,6 @@ struct Shader {
   }
   // Dynamic buffers need a different descriptor type, but there's no way to express it in the shader language.
   // So for now, you have to force individual buffers to be dynamic.
-  // TODO(cort): would it be better to do this at the ShaderProgram level?
   void OverrideDescriptorType(uint32_t dset, uint32_t binding, VkDescriptorType new_type);
 
   // Look up the bind point for a descriptor, by name. This is not fast; if you need the results more than once,

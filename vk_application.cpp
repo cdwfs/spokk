@@ -185,7 +185,7 @@ void InputState::Update(void) {
 
   prev_ = current_;
 
-  // TODO(cort): custom key bindings
+  // TODO(https://github.com/cdwfs/spokk/issues/8): custom key bindings
   current_.digital[DIGITAL_LPAD_UP] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_W)) ? 1 : 0;
   current_.digital[DIGITAL_LPAD_LEFT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_A)) ? 1 : 0;
   current_.digital[DIGITAL_LPAD_RIGHT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_D)) ? 1 : 0;
@@ -483,8 +483,6 @@ int Application::Run() {
     }
 
     // Wait for the command buffer previously used to generate this swapchain image to be submitted.
-    // TODO(cort): this does not guarantee memory accesses from this submission will be visible on the host;
-    // there'd need to be a memory barrier for that.
     vkWaitForFences(device_, 1, &submit_complete_fences_[pframe_index_], VK_TRUE, UINT64_MAX);
     vkResetFences(device_, 1, &submit_complete_fences_[pframe_index_]);
 
@@ -498,9 +496,9 @@ int Application::Run() {
     VkResult acquire_result = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX,
       image_acquire_semaphore_, image_acquire_fence, &swapchain_image_index);
     if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) {
-      assert(0); // TODO(cort): swapchain is out of date and must be recreated.
+      assert(0); // TODO(https://github.com/cdwfs/spokk/issues/9): force a window resize
     } else if (acquire_result == VK_SUBOPTIMAL_KHR) {
-      // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
+      // TODO(https://github.com/cdwfs/spokk/issues/9): force a window resize
     } else {
       SPOKK_VK_CHECK(acquire_result);
     }
@@ -539,9 +537,9 @@ int Application::Run() {
     present_info.pWaitSemaphores = &submit_complete_semaphore_;
     VkResult present_result = vkQueuePresentKHR(graphics_and_present_queue_->handle, &present_info);
     if (present_result == VK_ERROR_OUT_OF_DATE_KHR) {
-      assert(0); // TODO(cort): swapchain is out of date and must be recreated.
+      assert(0); // TODO(https://github.com/cdwfs/spokk/issues/9): force a window resize
     } else if (present_result == VK_SUBOPTIMAL_KHR) {
-      // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
+      // TODO(https://github.com/cdwfs/spokk/issues/9): force a window resize
     } else {
       SPOKK_VK_CHECK(present_result);
     }
@@ -651,7 +649,7 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
     present_mode_supported[mode] = true;
   }
   VkPresentModeKHR present_mode;
-  // TODO(cort): figure out how an application should request present modes.
+  // TODO(https://github.com/cdwfs/spokk/issues/12): Put this logic under application control
   if (present_mode_supported[VK_PRESENT_MODE_IMMEDIATE_KHR]) {
     present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
   } else if (present_mode_supported[VK_PRESENT_MODE_MAILBOX_KHR]) {

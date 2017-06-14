@@ -434,6 +434,7 @@ static int DdsIsPfMask(const DdsPixelFormat pf, uint32_t r, uint32_t g, uint32_t
 }
 static ImageFileDataFormat DdsParsePixelFormat(const DdsPixelFormat pf)
 {
+    // TODO(https://github.com/cdwfs/spokk/issues/2): verify bit layouts for all supported formats
     if( pf.flags & PF_FLAGS_RGBA )
     {
         switch (pf.numBitsRGB)
@@ -465,7 +466,7 @@ static ImageFileDataFormat DdsParsePixelFormat(const DdsPixelFormat pf)
                 return IMAGE_FILE_DATA_FORMAT_R5G6B5_UNORM;
             else if ( DdsIsPfMask(pf, 0x0000001f, 0x000007e0, 0x000f800, 0x00000000) )
                 return IMAGE_FILE_DATA_FORMAT_B5G6R5_UNORM;
-            // TODO(cort): see what 5551 turns into
+            // TODO(https://github.com/cdwfs/spokk/issues/2): see what 5551 turns into
             break;
 
         case 8:
@@ -778,6 +779,7 @@ static int LoadImageFromDds(ImageFile *out_image, const char *image_path)
     }
 
     uint32_t bytes_per_texel_block = (uint32_t)ImageFileGetBytesPerTexelBlock(data_format);
+    // TODO(https://github.com/cdwfs/spokk/issues/6): replace with PACKED_FORMAT_BIT
     int is_compressed = DdsContainsCompressedTexture(data_format);
 
     out_image->width = header->width;
@@ -876,9 +878,9 @@ static int LoadImageFromAstc(ImageFile *out_image, const char *image_path)
     int is_srgb = 0; // TODO(cort): where would this come from?
 #define ELSE_IF_BLOCKDIM_THEN_SET_DATA_FORMAT(dimx, dimy) \
     if (header->blockdim_x == (dimx) && header->blockdim_y == (dimy)) \
-    out_image->data_format = is_srgb ? \
-        IMAGE_FILE_DATA_FORMAT_ASTC_ ## dimx ## x ## dimy ## _SRGB : \
-        IMAGE_FILE_DATA_FORMAT_ASTC_ ## dimx ## x ## dimy ## _UNORM
+        out_image->data_format = is_srgb ? \
+            IMAGE_FILE_DATA_FORMAT_ASTC_ ## dimx ## x ## dimy ## _SRGB : \
+            IMAGE_FILE_DATA_FORMAT_ASTC_ ## dimx ## x ## dimy ## _UNORM
 
     if (header->blockdim_x == 0 && header->blockdim_y == 0)
         out_image->data_format = IMAGE_FILE_DATA_FORMAT_UNKNOWN;
@@ -1020,11 +1022,13 @@ static int LoadImageFromKtx(ImageFile *out_image, const char *image_path)
         free(ktx_bytes);
         return -3;
     }
+    // TODO(https://github.com/cdwfs/spokk/issues/4): Find/create a big-endian KTX file to make sure it loads correctly
     assert(byte_swap_contents == 0);
 
     // Read key/value pairs.
     if (header->bytesOfKeyValueData != 0)
     {
+        // TODO(https://github.com/cdwfs/spokk/issues/3): find/create a KTX file to exercise this code
         uint8_t *key_value_bytes = ktx_bytes + sizeof(*header);
         const uint8_t *key_value_bytes_end = key_value_bytes + header->bytesOfKeyValueData;
         read_size = fread(key_value_bytes, header->bytesOfKeyValueData, 1, ktx_file);
@@ -1045,7 +1049,6 @@ static int LoadImageFromKtx(ImageFile *out_image, const char *image_path)
 
             const uint8_t *key_utf8 = key_and_value;
             const uint8_t *value = (const uint8_t*)memchr(key_and_value, 0, final_pair_size);
-            // TODO(cort): what to look for here?
             (void)key_utf8;
             (void)value;
         }
@@ -1067,9 +1070,10 @@ static int LoadImageFromKtx(ImageFile *out_image, const char *image_path)
         uint8_t *surface_start = surface_data;
         for(uint32_t iMip=0; iMip < header->numberOfMipmapLevels; ++iMip)
         {
+            // TODO(https://github.com/cdwfs/spokk/issues/4): confirm both cubemap and cubemap array files are handled correctly here; they are paded differently.
             uint32_t *image_size = (uint32_t*)surface_start;
             *image_size = byte_swap_u32(*image_size);
-            uint32_t padded_image_size = (*image_size + 3) & ~3; // TODO(cort): this is different for non-array cubemaps. Test it.
+            uint32_t padded_image_size = (*image_size + 3) & ~3;
             uint8_t *image_start = (uint8_t*)(image_size+1);
             uint8_t *image_end = image_start + padded_image_size;
             if (header->glTypeSize != 1)
@@ -1095,7 +1099,7 @@ static int LoadImageFromKtx(ImageFile *out_image, const char *image_path)
     out_image->array_layers = IMAGEFILE__MAX(1, header->numberOfArrayElements) * header->numberOfFaces;
     out_image->file_type = IMAGE_FILE_TYPE_KTX;
     uint32_t block_dim_x = 1;
-    int is_compressed = 0;
+    int is_compressed = 0;  // TODO(https://github.com/cdwfs/spokk/issues/6): replace with PACKED_FORMAT bit
     if      (header->glInternalFormat == GL__RGBA8) {
         out_image->data_format = IMAGE_FILE_DATA_FORMAT_R8G8B8A8_UNORM;
         is_compressed = 0;
@@ -1117,7 +1121,7 @@ static int LoadImageFromKtx(ImageFile *out_image, const char *image_path)
         is_compressed = 1;
         block_dim_x = 4;
     } else {
-        // TODO(cort): support additional formats here
+        // TODO(https://github.com/cdwfs/spokk/issues/5): Flesh out the list of supported KTX surface formats
         free(ktx_bytes);
         return -6;
     }
@@ -1237,6 +1241,7 @@ size_t ImageFileGetSubresourceSize(const ImageFile *image, const ImageFileSubres
         return image->depth_pitch_bytes * image->depth;
     case IMAGE_FILE_TYPE_DDS:
     {
+        // TODO(https://github.com/cdwfs/spokk/issues/6): replace with PACKED_FORMAT_BIT
         int is_compressed = DdsContainsCompressedTexture(image->data_format);
         uint32_t bytes_per_texel_block = (uint32_t)ImageFileGetBytesPerTexelBlock(image->data_format);
         uint32_t mip_width  = IMAGEFILE__MAX(image->width  >> subresource.mip_level, 1U);

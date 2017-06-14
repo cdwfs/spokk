@@ -282,6 +282,7 @@ DescriptorBindPoint Shader::GetDescriptorBindPoint(const std::string& name) cons
   for(size_t i_set = 0; i_set < dset_layout_infos.size(); ++i_set) {
     const auto& dset_info = dset_layout_infos[i_set];
     for(size_t i_binding = 0; i_binding < dset_info.bindings.size(); ++i_binding) {
+      // TODO(https://github.com/cdwfs/spokk/issues/14): confirm that this works with multiple names for a single stage
       for(const auto& stage_name : dset_info.binding_infos[i_binding].stage_names) {
         if ((std::get<0>(stage_name) & stage) && (std::get<1>(stage_name) == name)) {
           return {(uint32_t)i_set, dset_info.bindings[i_binding].binding};
@@ -335,7 +336,7 @@ VkResult ShaderProgram::AddShader(const Shader *shader, const char *entry_point)
   new_stage_ci.stage = shader->stage;
   new_stage_ci.module = shader->handle;
   new_stage_ci.pName = nullptr; // set this in finalize() to avoid stale pointers.
-  new_stage_ci.pSpecializationInfo = nullptr;  // TODO(cort): fill in at VkPipeline creation time
+  new_stage_ci.pSpecializationInfo = nullptr;  // Specialization constants are not currently supported.
   shader_stage_cis.push_back(new_stage_ci);
   // Merge shader bindings with existing program bindings
   // Grow descriptor set layout array if needed
@@ -347,6 +348,7 @@ VkResult ShaderProgram::AddShader(const Shader *shader, const char *entry_point)
     push_constant_ranges.push_back(shader->push_constant_range);
   }
   // Merge descriptor set layouts
+  // TODO(https://github.com/cdwfs/spokk/issues/1): extract into common function
   for(size_t iDS = 0; iDS < shader->dset_layout_infos.size(); ++iDS) {
     const DescriptorSetLayoutInfo& src_dset_layout_info = shader->dset_layout_infos[iDS];
     ZOMBO_ASSERT(src_dset_layout_info.bindings.size() == src_dset_layout_info.binding_infos.size(),
@@ -360,8 +362,9 @@ VkResult ShaderProgram::AddShader(const Shader *shader, const char *entry_point)
       for(size_t iDB = 0; iDB < dst_dset_layout_info.bindings.size(); ++iDB) {
         auto& dst_binding = dst_dset_layout_info.bindings[iDB];
         auto& dst_binding_info = dst_dset_layout_info.binding_infos[iDB];
+        // TODO(https://github.com/cdwfs/spokk/issues/13): need to also compare against arrays starting at lower bindings that intersect this binding.
         if (src_binding.binding == dst_binding.binding) {
-          // TODO(cort): these asserts may not be valid; it may be possible for types/counts to differ in compatible ways
+          // TODO(https://github.com/cdwfs/spokk/issues/13): validate these asserts with some test cases.
           ZOMBO_ASSERT(src_binding.descriptorType == dst_binding.descriptorType,
             "binding (%u) used with different types in two stages", src_binding.binding);
           ZOMBO_ASSERT(src_binding.descriptorCount == dst_binding.descriptorCount,
@@ -399,6 +402,7 @@ VkResult ShaderProgram::ForceCompatibleLayoutsAndFinalize(const DeviceContext& d
     }
   }
   // Merge programs 1..N into program 0, then copy program 0's layouts to 1..N.
+  // TODO(https://github.com/cdwfs/spokk/issues/1): extract into common function
   ShaderProgram &dst_program = *programs[0];
   for(size_t iProgram = 1; iProgram < programs.size(); ++iProgram) {
     const ShaderProgram &src_program = *programs[iProgram];
@@ -501,7 +505,7 @@ VkResult ShaderProgram::Finalize(const DeviceContext& device_context) {
       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT,
       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-      // TODO(cort): tessellation? Or, hey, not.
+      // Look at me, refusing to acknowledge the existence of tessellation shaders.
     }};
   bool stages_are_valid = false;
   for(auto combo : valid_stage_combos) {
@@ -694,9 +698,11 @@ DescriptorSetWriter::DescriptorSetWriter(const VkDescriptorSetLayoutCreateInfo &
   ZOMBO_ASSERT(next_texel_buffer_view == texel_buffer_views.size(), "invariant failure: texel buffer count mismatch");
   ZOMBO_ASSERT(next_buffer_info == buffer_infos.size(), "invariant failure: buffer count mismatch");
   ZOMBO_ASSERT(next_image_info == image_infos.size(), "invariant failure: image count mismatch");
+
+  // TODO(https://github.com/cdwfs/spokk/issues/16): sort binding_writes by their dstBinding field to allow binary searches later
 }
 void DescriptorSetWriter::BindCombinedImageSampler(VkImageView view, VkImageLayout layout, VkSampler sampler, uint32_t binding, uint32_t array_element) {
-  // TODO(cort): make this search more efficient!
+  // TODO(https://github.com/cdwfs/spokk/issues/16): replace with a binary search after sorting binding_writes in constructor
   VkWriteDescriptorSet *write = nullptr;
   for(size_t iWrite=0; iWrite<binding_writes.size(); ++iWrite) {
     if (binding_writes[iWrite].dstBinding == binding) {
@@ -713,7 +719,7 @@ void DescriptorSetWriter::BindCombinedImageSampler(VkImageView view, VkImageLayo
   pImageInfo->sampler = sampler;
 }
 void DescriptorSetWriter::BindBuffer(VkBuffer buffer, uint32_t binding, VkDeviceSize offset, VkDeviceSize range, uint32_t array_element) {
-  // TODO(cort): make this search more efficient!
+  // TODO(https://github.com/cdwfs/spokk/issues/16): replace with a binary search after sorting binding_writes in constructor
   VkWriteDescriptorSet *write = nullptr;
   for(size_t iWrite=0; iWrite<binding_writes.size(); ++iWrite) {
     if (binding_writes[iWrite].dstBinding == binding) {
@@ -730,7 +736,7 @@ void DescriptorSetWriter::BindBuffer(VkBuffer buffer, uint32_t binding, VkDevice
   pBufferInfo->range = range;
 }
 void DescriptorSetWriter::BindTexelBuffer(VkBufferView view, uint32_t binding, uint32_t array_element) {
-  // TODO(cort): make this search more efficient!
+  // TODO(https://github.com/cdwfs/spokk/issues/16): replace with a binary search after sorting binding_writes in constructor
   VkWriteDescriptorSet *write = nullptr;
   for(size_t iWrite=0; iWrite<binding_writes.size(); ++iWrite) {
     if (binding_writes[iWrite].dstBinding == binding) {

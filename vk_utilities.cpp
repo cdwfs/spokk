@@ -177,8 +177,6 @@ VkResult GetSupportedInstanceLayers(const std::vector<const char*>& required_nam
       }
     }
   }
-  // TODO(cort): we could just blindly pass these in, and let
-  // vkCreateInstance fail if they're not supported.
   for(const auto &layer_name : required_names) {
     bool found = false;
     for(auto& layer : all_instance_layers) {
@@ -260,8 +258,6 @@ VkResult GetSupportedInstanceExtensions(const std::vector<VkLayerProperties>& en
       }
     }
   }
-  // TODO(cort): we could just blindly pass these in, and let
-  // vkCreateInstance fail if they're not supported.
   for(const auto &extension_name : required_names) {
     bool found = false;
     for(auto& extension : all_instance_extensions) {
@@ -340,8 +336,6 @@ VkResult GetSupportedDeviceExtensions(VkPhysicalDevice physical_device, const st
       }
     }
   }
-  // TODO(cort): we could just blindly pass these in, and let
-  // vkCreateDevice fail if they're not supported.
   for(const auto &extension_name : required_names) {
     bool found = false;
     for(auto& extension : all_device_extensions) {
