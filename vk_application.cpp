@@ -42,7 +42,7 @@ void MyGlfwErrorCallback(int error, const char *description) {
   fprintf( stderr, "GLFW Error %d: %s\n", error, description);
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkFlags msgFlags,
+static VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkFlags msgFlags,
     VkDebugReportObjectTypeEXT /*objType*/, uint64_t /*srcObject*/, size_t /*location*/, int32_t msgCode,
     const char *pLayerPrefix, const char *pMsg, void * /*pUserData*/) {
   char *message = (char*)malloc(strlen(pMsg)+100);
