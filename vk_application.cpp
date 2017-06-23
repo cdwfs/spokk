@@ -155,8 +155,6 @@ VkResult FindPhysicalDevice(const std::vector<Application::QueueFamilyRequest>& 
   return VK_ERROR_INITIALIZATION_FAILED;
 }
 
-const uint32_t kWindowWidthDefault = 1280;
-const uint32_t kWindowHeightDefault = 720;
 }  // namespace
 
 //
@@ -219,7 +217,7 @@ Application::Application(const CreateInfo &ci)
     }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     window_ = std::shared_ptr<GLFWwindow>(
-      glfwCreateWindow(kWindowWidthDefault, kWindowHeightDefault, ci.app_name.c_str(), NULL, NULL),
+      glfwCreateWindow(ci.window_width, ci.window_height, ci.app_name.c_str(), NULL, NULL),
       [](GLFWwindow *w){ glfwDestroyWindow(w); });
     glfwSetInputMode(window_.get(), GLFW_STICKY_KEYS, 1);
     glfwPollEvents(); // dummy poll for first loop iteration
@@ -376,7 +374,7 @@ Application::Application(const CreateInfo &ci)
     (uint32_t)queues_.size(), enabled_device_features_, host_allocator_, device_allocator_);
 
   if (ci.enable_graphics) {
-    VkExtent2D default_extent = {kWindowWidthDefault, kWindowHeightDefault};
+    VkExtent2D default_extent = {ci.window_width, ci.window_height};
     CreateSwapchain(default_extent);
   }
 
