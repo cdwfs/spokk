@@ -29,19 +29,43 @@ public:
   ShaderCompiler();
   ~ShaderCompiler();
 
-  // TODO(cort): enable HLSL compilation
   shaderc::SpvCompilationResult CompileGlslString(const char *glsl_source,
-    const std::string& logging_name, const std::string& entry_point = "main",
-    VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
-    const shaderc::CompileOptions& options = shaderc::CompileOptions()) const;
+      const std::string& logging_name, const std::string& entry_point = "main",
+      VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
+      const shaderc::CompileOptions& options = shaderc::CompileOptions()) const;
   shaderc::SpvCompilationResult CompileGlslFp(FILE *fp, int len_bytes,
-    const std::string& logging_name, const std::string& entry_point = "main",
-    VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
-    const shaderc::CompileOptions& options = shaderc::CompileOptions()) const;
+      const std::string& logging_name, const std::string& entry_point = "main",
+      VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
+      const shaderc::CompileOptions& options = shaderc::CompileOptions()) const;
   shaderc::SpvCompilationResult CompileGlslFile(const std::string& filename,
-    const std::string& entry_point = "main",
-    VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
-    const shaderc::CompileOptions& = shaderc::CompileOptions()) const;
+      const std::string& entry_point = "main",
+      VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
+      const shaderc::CompileOptions& = shaderc::CompileOptions()) const;
+
+  shaderc::SpvCompilationResult CompileHlslString(const char *hlsl_source,
+      const std::string& logging_name, const std::string& entry_point = "main",
+      VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
+      const shaderc::CompileOptions& options = shaderc::CompileOptions()) const {
+    shaderc::CompileOptions final_options = options;
+    final_options.SetSourceLanguage(shaderc_source_language_hlsl);
+    return CompileGlslString(hlsl_source, logging_name, entry_point, target_stage, final_options);
+  }
+  shaderc::SpvCompilationResult CompileHlslFp(FILE *fp, int len_bytes,
+      const std::string& logging_name, const std::string& entry_point = "main",
+      VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
+      const shaderc::CompileOptions& options = shaderc::CompileOptions()) const {
+    shaderc::CompileOptions final_options = options;
+    final_options.SetSourceLanguage(shaderc_source_language_hlsl);
+    return CompileGlslFp(fp, len_bytes, logging_name, entry_point, target_stage, final_options);
+  }
+  shaderc::SpvCompilationResult CompileHlslFile(const std::string& filename,
+      const std::string& entry_point = "main",
+      VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
+      const shaderc::CompileOptions& options = shaderc::CompileOptions()) const {
+    shaderc::CompileOptions final_options = options;
+    final_options.SetSourceLanguage(shaderc_source_language_hlsl);
+    return CompileGlslFile(filename, entry_point, target_stage, final_options);
+  }
 
 protected:
   shaderc::Compiler compiler_;
