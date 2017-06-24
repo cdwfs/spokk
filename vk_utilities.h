@@ -60,6 +60,22 @@ inline VkBool32 IsDepthFormat(VkFormat format) {
       format == VK_FORMAT_D32_SFLOAT_S8_UINT);
 }
 
+// Initializing VkClearValue objects is a pain. Let's fix that.
+inline VkClearValue CreateColorClearValue(float r, float g, float b, float a = 1.0f) {
+  VkClearValue clear;
+  clear.color.float32[0] = r;
+  clear.color.float32[1] = g;
+  clear.color.float32[2] = b;
+  clear.color.float32[3] = a;
+  return clear;
+}
+inline VkClearValue CreateDepthClearValue(float depth, uint32_t stencil) {
+  VkClearValue clear;
+  clear.depthStencil.depth = depth;
+  clear.depthStencil.stencil = stencil;
+  return clear;
+}
+
 // Determine the number of mip levels for a given base image extent. This includes the base level;
 // for valid extents (w/h/d all >= 1), the result will also be >= 1.
 uint32_t GetMaxMipLevels(VkExtent3D base_extent);

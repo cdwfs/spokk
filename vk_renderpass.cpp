@@ -233,15 +233,11 @@ VkResult RenderPass::Finalize(const DeviceContext& device_context,
   }
   for(size_t i=0; i<clear_values.size(); ++i) {
     if (IsDepthFormat(attachment_descs[i].format)) {
-      clear_values[i].depthStencil.depth = 1.0f;
-      clear_values[i].depthStencil.stencil = 0;
+      clear_values[i] = CreateDepthClearValue(1.0f, 0);
     } else {
       // Technically SINT/UINT formats should use int32/uint32, but clearing the float fields to zero has the same
       // effect either way.
-      clear_values[i].color.float32[0] = 0.0f;
-      clear_values[i].color.float32[1] = 0.0f;
-      clear_values[i].color.float32[2] = 0.0f;
-      clear_values[i].color.float32[3] = 0.0f;
+      clear_values[i] = CreateColorClearValue(0,0,0,0);
     }
   }
   begin_info = {};
