@@ -66,7 +66,6 @@ VkResult PipelinedBuffer::Load(const DeviceContext& device_context, uint32_t pfr
     std::unique_ptr<OneShotCommandPool> one_shot_cpool = my_make_unique<OneShotCommandPool>(device_context.Device(),
       transfer_queue->handle, transfer_queue->family, device_context.HostAllocator());
     VkCommandBuffer cb = one_shot_cpool->AllocateAndBegin();
-    // TODO(cort): I think I need barriers before & after this update.
     VkBufferMemoryBarrier barrier = {};
     barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
     barrier.srcAccessMask = VK_ACCESS_UNIFORM_READ_BIT;  // TODO(cort): no....

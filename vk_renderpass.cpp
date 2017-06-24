@@ -233,14 +233,11 @@ VkResult RenderPass::Finalize(const DeviceContext& device_context,
   }
   for(size_t i=0; i<clear_values.size(); ++i) {
     if (IsDepthFormat(attachment_descs[i].format)) {
-      clear_values[i].depthStencil.depth = 1.0f;
-      clear_values[i].depthStencil.stencil = 0;
+      clear_values[i] = CreateDepthClearValue(1.0f, 0);
     } else {
-      // TODO(cort): SINT/UINT formats should use int32/uint32? I guess zero works for them too.
-      clear_values[i].color.float32[0] = 0.0f;
-      clear_values[i].color.float32[1] = 0.0f;
-      clear_values[i].color.float32[2] = 0.0f;
-      clear_values[i].color.float32[3] = 0.0f;
+      // Technically SINT/UINT formats should use int32/uint32, but clearing the float fields to zero has the same
+      // effect either way.
+      clear_values[i] = CreateColorClearValue(0,0,0,0);
     }
   }
   begin_info = {};
@@ -292,7 +289,6 @@ VkImageCreateInfo RenderPass::GetAttachmentImageCreateInfo(uint32_t attachment_i
         }
       }
     }
-    // TODO(cort): do resolve images need a special usage flag (TRANSFER_DST)?
     if (attachment_descs[attachment_index].loadOp != VK_ATTACHMENT_LOAD_OP_LOAD &&
       attachment_descs[attachment_index].storeOp != VK_ATTACHMENT_STORE_OP_STORE &&
       attachment_descs[attachment_index].stencilLoadOp != VK_ATTACHMENT_LOAD_OP_LOAD &&

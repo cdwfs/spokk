@@ -104,7 +104,6 @@ public:
       0,nullptr, 2,buffer_barriers, 0,nullptr);
 
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline.handle);
-    // TODO(cort): leaving these unbound did not trigger a validation warning...
     vkCmdBindDescriptorSets (cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_shader_program.pipeline_layout,
       0, 1, &dset, 0,nullptr);
     vkCmdDispatch(cb, BUXEL_COUNT,1,1);

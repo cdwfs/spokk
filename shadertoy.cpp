@@ -160,7 +160,7 @@ public:
   }
   virtual ~ShaderToyApp() {
     if (device_) {
-      shader_reloader_thread_.detach();  // TODO(cort): graceful exit; I'm getting occasional crashes in here
+      shader_reloader_thread_.detach();  // TODO(https://github.com/cdwfs/spokk/issues/15) Getting occasional crahes here; graceful exit?
 
       vkDeviceWaitIdle(device_);
 
@@ -323,7 +323,7 @@ private:
     }
     fseek(frag_file, 0, SEEK_END);
     size_t frag_file_bytes = ftell(frag_file);
-    // TODO(cort): potential race condition here, if the file is modified between fteel and fread()
+    // TODO(https://github.com/cdwfs/spokk/issues/15): potential race condition here, if the file is modified between ftell and fread()
     std::vector<char> final_frag_source(preamble_len + frag_file_bytes);
     zomboSnprintf(final_frag_source.data(), preamble_len, frag_shader_preamble.c_str(),
       image_types[0], image_types[1], image_types[2], image_types[3]);
@@ -380,7 +380,8 @@ private:
     int wd = inotify_add_watch(fd, dir_path.c_str(), IN_MODIFY | IN_MOVED_TO);
     ZOMBO_ASSERT(wd != -1, "inotify_add_watch() failed (errno=%d)", errno);
     for(;;) {
-      // TODO(cort): Many text editors will "modify" a file as a write to a temp file (IN_MODIFY), followed by
+      // TODO(https://github.com/cdwfs/spokk/issues/15): Potential race condition here.
+      // Many text editors will "modify" a file as a write to a temp file (IN_MODIFY), followed by
       // a rename to the original file (IN_MOVED_TO). We shouldn't reload a shader until the rename. I think this
       // is currently handled by the zomboSleepMsec() below, but it seems janky.
       uint8_t event_buffer[sizeof(inotify_event) + NAME_MAX + 1] = {};

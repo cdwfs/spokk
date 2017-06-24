@@ -42,7 +42,7 @@ void MyGlfwErrorCallback(int error, const char *description) {
   fprintf( stderr, "GLFW Error %d: %s\n", error, description);
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkFlags msgFlags,
+static VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkFlags msgFlags,
     VkDebugReportObjectTypeEXT /*objType*/, uint64_t /*srcObject*/, size_t /*location*/, int32_t msgCode,
     const char *pLayerPrefix, const char *pMsg, void * /*pUserData*/) {
   char *message = (char*)malloc(strlen(pMsg)+100);
@@ -155,8 +155,6 @@ VkResult FindPhysicalDevice(const std::vector<Application::QueueFamilyRequest>& 
   return VK_ERROR_INITIALIZATION_FAILED;
 }
 
-const uint32_t kWindowWidthDefault = 1280;
-const uint32_t kWindowHeightDefault = 720;
 }  // namespace
 
 //
@@ -187,7 +185,7 @@ void InputState::Update(void) {
 
   prev_ = current_;
 
-  // TODO(cort): custom key bindings
+  // TODO(https://github.com/cdwfs/spokk/issues/8): custom key bindings
   current_.digital[DIGITAL_LPAD_UP] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_W)) ? 1 : 0;
   current_.digital[DIGITAL_LPAD_LEFT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_A)) ? 1 : 0;
   current_.digital[DIGITAL_LPAD_RIGHT] = (GLFW_PRESS == glfwGetKey(pw, GLFW_KEY_D)) ? 1 : 0;
@@ -219,7 +217,7 @@ Application::Application(const CreateInfo &ci)
     }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     window_ = std::shared_ptr<GLFWwindow>(
-      glfwCreateWindow(kWindowWidthDefault, kWindowHeightDefault, ci.app_name.c_str(), NULL, NULL),
+      glfwCreateWindow(ci.window_width, ci.window_height, ci.app_name.c_str(), NULL, NULL),
       [](GLFWwindow *w){ glfwDestroyWindow(w); });
     glfwSetInputMode(window_.get(), GLFW_STICKY_KEYS, 1);
     glfwPollEvents(); // dummy poll for first loop iteration
@@ -376,7 +374,7 @@ Application::Application(const CreateInfo &ci)
     (uint32_t)queues_.size(), enabled_device_features_, host_allocator_, device_allocator_);
 
   if (ci.enable_graphics) {
-    VkExtent2D default_extent = {kWindowWidthDefault, kWindowHeightDefault};
+    VkExtent2D default_extent = {ci.window_width, ci.window_height};
     CreateSwapchain(default_extent);
   }
 
@@ -485,8 +483,6 @@ int Application::Run() {
     }
 
     // Wait for the command buffer previously used to generate this swapchain image to be submitted.
-    // TODO(cort): this does not guarantee memory accesses from this submission will be visible on the host;
-    // there'd need to be a memory barrier for that.
     vkWaitForFences(device_, 1, &submit_complete_fences_[pframe_index_], VK_TRUE, UINT64_MAX);
     vkResetFences(device_, 1, &submit_complete_fences_[pframe_index_]);
 
@@ -500,9 +496,9 @@ int Application::Run() {
     VkResult acquire_result = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX,
       image_acquire_semaphore_, image_acquire_fence, &swapchain_image_index);
     if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) {
-      assert(0); // TODO(cort): swapchain is out of date and must be recreated.
+      assert(0); // TODO(https://github.com/cdwfs/spokk/issues/9): force a window resize
     } else if (acquire_result == VK_SUBOPTIMAL_KHR) {
-      // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
+      // TODO(https://github.com/cdwfs/spokk/issues/9): force a window resize
     } else {
       SPOKK_VK_CHECK(acquire_result);
     }
@@ -541,9 +537,9 @@ int Application::Run() {
     present_info.pWaitSemaphores = &submit_complete_semaphore_;
     VkResult present_result = vkQueuePresentKHR(graphics_and_present_queue_->handle, &present_info);
     if (present_result == VK_ERROR_OUT_OF_DATE_KHR) {
-      assert(0); // TODO(cort): swapchain is out of date and must be recreated.
+      assert(0); // TODO(https://github.com/cdwfs/spokk/issues/9): force a window resize
     } else if (present_result == VK_SUBOPTIMAL_KHR) {
-      // TODO(cort): swapchain is not as optimal as it could be, but it'll work. Just an FYI condition.
+      // TODO(https://github.com/cdwfs/spokk/issues/9): force a window resize
     } else {
       SPOKK_VK_CHECK(present_result);
     }
@@ -653,7 +649,7 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
     present_mode_supported[mode] = true;
   }
   VkPresentModeKHR present_mode;
-  // TODO(cort): figure out how an application should request present modes.
+  // TODO(https://github.com/cdwfs/spokk/issues/12): Put this logic under application control
   if (present_mode_supported[VK_PRESENT_MODE_IMMEDIATE_KHR]) {
     present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
   } else if (present_mode_supported[VK_PRESENT_MODE_MAILBOX_KHR]) {

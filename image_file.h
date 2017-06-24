@@ -11,7 +11,7 @@ extern "C" {
 typedef enum ImageFileFlagBits
 {
 	IMAGE_FILE_FLAG_CUBE_BIT = 1,
-    // TODO(cort): COMPRESSED bit? (more accurately, MULTI_TEXEL_BLOCK?)
+    // TODO(https://github.com/cdwfs/spokk/issues/6): PACKED_FORMAT bit, to indicate >1 pixel per element?
 } ImageFileFlagBits;
 typedef uint32_t ImageFileFlags;
 

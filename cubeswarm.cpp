@@ -283,7 +283,6 @@ public:
     VkViewport viewport = Rect2DToViewport(scissor_rect);
     vkCmdSetViewport(primary_cb, 0,1, &viewport);
     vkCmdSetScissor(primary_cb, 0,1, &scissor_rect);
-    // TODO(cort): leaving these unbound did not trigger a validation warning...
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
       mesh_pipeline_.shader_program->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
