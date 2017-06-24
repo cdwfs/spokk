@@ -406,8 +406,9 @@ int Image::GenerateMipmaps(const DeviceContext& device_context, const DeviceQueu
 
 int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& dst_barrier,
     uint32_t layer, uint32_t src_mip_level, uint32_t mips_to_gen) {
-  assert(mips_to_gen > 0);  // TODO(cort): graceful no-op?
-
+  if (mips_to_gen == 0) {
+    return 0;  // nothing to do
+  }
   if (src_mip_level >= image_ci.mipLevels) {
     return -5;  // invalid src mip level
   } else if (src_mip_level == image_ci.mipLevels - 1) {
@@ -597,15 +598,16 @@ int ImageBlitter::CopyMemoryToImage(VkCommandBuffer cb, VkImage dst_image, const
   // bufferRowLength=0 or imageHeight=0 means those dimensions are tightly packed according to the image extent.
   const uint32_t row_length_pixels = (copy.bufferRowLength != 0) ? copy.bufferRowLength : copy.imageExtent.width;
   const uint32_t num_pixels = row_length_pixels * (copy.imageExtent.height-1) + copy.imageExtent.width;
+  const VkDeviceSize texel_block_bytes = (VkDeviceSize)GetVkFormatInfo(format).texel_block_bytes;
   const VkDeviceSize src_nbytes = (num_pixels / (format_attr.texel_block_width * format_attr.texel_block_height))
-    * GetVkFormatInfo(format).texel_block_bytes;
+    * texel_block_bytes;
 
   VkBufferImageCopy copy_final = copy;
   if (!copy_src_to_staging) {  // source data is already in the staging buffer.
     copy_final.bufferOffset = uintptr_t(src_data) - uintptr_t(staging_ranges_[current_pframe_].start);
   } else {  // Copy source data to staging buffer.
     // Allocate space from the staging buffer for the src data.
-    // TODO(cort): align base address?  test with current_offset_ = 1.
+    current_offset_ = (current_offset_ + texel_block_bytes - 1) & ~(texel_block_bytes - 1);
     if (current_offset_ + src_nbytes >= staging_buffer_.BytesPerPframe()) {
       return -2;  // Not enough room in the staging buffer; make it larger!
     }
