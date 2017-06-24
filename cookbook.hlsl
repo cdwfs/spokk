@@ -36,7 +36,7 @@ float3 ApplyDirLight(float3 pos_ws, float3 eye_pos_ws,
         float3 to_eye_wsn = normalize(eye_pos_ws - pos_ws);
         float3 halfway_wsn = normalize(to_eye_wsn + light.to_light_wsn);
         float n_dot_h = saturate(dot(halfway_wsn, mat.normal_wsn));
-        spec_color += light.color.rgb * pow(n_dot_h, mat.spec_intensity);
+        spec_color += light.color.rgb * pow(n_dot_h, mat.spec_exp) * mat.spec_intensity;
     }
     return (dif_color + spec_color) * mat.albedo.rgb;
 }
