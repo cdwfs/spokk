@@ -45,9 +45,26 @@ float3 ApplyDirLight(float3 pos_ws, float3 eye_pos_ws,
 struct PointLight {
     float3 pos_ws;
     float inverse_range;
+    float3 color;
 };
 
 float3 ApplyPointLight(float3 pos_ws, float3 eye_pos_ws, Material mat, PointLight light) {
-    float3 to_light_ws = light.pos_ws - pos_ws;
-    float3 to_eye = eye_pos_ws - pos_ws;
+    float3 to_light = light.pos_ws - pos_ws;
+    float to_light_len = length(to_light);
+    float3 to_light_wsn = to_light / to_light_len;
+    float n_dot_l = dot(to_light_wsn, mat.normal_wsn);
+    float3 dif_color = light.color * saturate(n_dot_l);
+
+    float3 spec_color = float3(0,0,0);
+    if (mat.spec_exp != 1.0) {
+      float3 to_eye_wsn = normalize(eye_pos_ws - pos_ws);
+      float3 halfway_wsn = normalize(to_eye_wsn + to_light_wsn);
+      float n_dot_h = saturate(dot(halfway_wsn, mat.normal_wsn));
+      spec_color += light.color.rgb * pow(n_dot_h, mat.spec_exp) * mat.spec_intensity;
+    }
+
+    float attenuation = 1.0 - saturate(to_light_len * light.inverse_range);
+    attentuation *= attenuation;
+
+    return (dif_color + spec_color) * attenuation;
 }

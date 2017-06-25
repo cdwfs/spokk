@@ -39,7 +39,7 @@ public:
     seconds_elapsed_ = 0;
 
     camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
-    const mathfu::vec3 initial_camera_pos(-1, 0, 6);
+    const mathfu::vec3 initial_camera_pos(0, 0, 0);
     const mathfu::vec3 initial_camera_target(0, 0, 0);
     const mathfu::vec3 initial_camera_up(0,1,0);
     camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
@@ -262,7 +262,7 @@ public:
     // Update object-to-world matrices.
     const float secs = (float)seconds_elapsed_;
     std::array<mathfu::mat4, MESH_INSTANCE_COUNT*4> o2w_matrices;
-    const mathfu::vec3 swarm_center(0, 0, -2);
+    const mathfu::vec3 swarm_center(0, 0, 0);
     for(int iMesh=0; iMesh<MESH_INSTANCE_COUNT; ++iMesh) {
       mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(1,2,3).Normalized());
       mathfu::mat4 o2w = mathfu::mat4::Identity()

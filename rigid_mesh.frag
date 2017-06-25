@@ -36,6 +36,12 @@ void main() {
   dir_light.color = 0.5 * vec3(0,0,1);
   vec3 dir_color = ApplyDirLight(pos_ws, scene_consts.eye_pos_ws.xyz, mat, dir_light);
 
-  out_fragColor.xyz = (hemi_color + dir_color) * albedo;
+  PointLight point_light;
+  point_light.pos_ws = vec3(0,0,0);
+  point_light.inverse_range = 0.001f;
+  point_light.color = 0.25 * vec3(1,1,1);
+  vec3 point_color = ApplyPointLight(pos_ws, scene_consts.eye_pos_ws.xyz, mat, point_light);
+
+  out_fragColor.xyz = (hemi_color + dir_color + point_color) * albedo;
   out_fragColor.w = 1;
 }
