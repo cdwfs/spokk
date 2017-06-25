@@ -19,9 +19,10 @@ layout (set = 0, binding = 0) uniform SceneUniforms {
 #include "cookbook.glsl"
 
 void main() {
+  vec3 albedo = texture(sampler2D(tex, samp), texcoord).xyz;
+
   Material mat;
   mat.normal_wsn = normalize(norm_ws);
-  mat.albedo = texture(sampler2D(tex,samp), texcoord);
   mat.spec_exp = 1000.0;
   mat.spec_intensity = 1.0;
 
@@ -35,6 +36,6 @@ void main() {
   dir_light.color = 0.5 * vec3(0,0,1);
   vec3 dir_color = ApplyDirLight(pos_ws, scene_consts.eye_pos_ws.xyz, mat, dir_light);
 
-  out_fragColor.xyz = (hemi_color + dir_color) * texture(sampler2D(tex, samp), texcoord).xyz;
+  out_fragColor.xyz = (hemi_color + dir_color) * albedo;
   out_fragColor.w = 1;
 }

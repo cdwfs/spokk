@@ -1,6 +1,5 @@
 struct Material {
     vec3 normal_wsn;
-    vec4 albedo;
     float spec_exp;        // for matte, set to 1
     float spec_intensity;  // for matte, set to 0
 };
@@ -17,7 +16,7 @@ vec3 ApplyHemiLight(Material mat, HemiLight light) {
     float up = mat.normal_wsn.y * 0.5 + 0.5;  // TODO(cort): assumes hemisphere up axis is world-space +Y
     vec3 amb_color = mix(light.down_color, light.up_color, up);
     //vec3 amb_color = light.down_color + light.up_minus_down_color * up;
-    return amb_color * mat.albedo.rgb;
+    return amb_color;
 }
 
 ///////////////////////////
@@ -38,5 +37,5 @@ vec3 ApplyDirLight(vec3 pos_ws, vec3 eye_pos_ws, Material mat, DirLight light) {
         float n_dot_h = clamp(dot(halfway_wsn, mat.normal_wsn), 0.0, 1.0);
         spec_color += light.color.rgb * pow(n_dot_h, mat.spec_exp) * mat.spec_intensity;
     }
-    return (dif_color + spec_color) * mat.albedo.rgb;
+    return (dif_color + spec_color);
 }
