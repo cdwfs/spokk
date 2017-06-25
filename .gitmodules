@@ -25,3 +25,6 @@
 [submodule "third_party/fplutil"]
 	path = third_party/fplutil
 	url = https://github.com/google/fplutil.git
+[submodule "third_party/assimp"]
+	path = third_party/assimp
+	url = https://github.com/assimp/assimp.git

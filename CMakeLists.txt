@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 2.8)
 project(spokk)
 
 # Global build settings
+# TODO(cort): Disable /W4 for third_party projects
 IF(MSVC)
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GS- /GR- /W4 /wd4996 /wd4201 /we4003 /D _UNICODE /D UNICODE /D NOMINMAX /D _HAS_EXCEPTIONS=0" CACHE TYPE STRING FORCE)
@@ -39,6 +40,23 @@ option(GLFW_BUILD_DOCS "Build the GLFW documentation" OFF)
 option(GLFW_INSTALL "Generate installation target" OFF)
 option(USE_MSVC_RUNTIME_LIBRARY_DLL "Use MSVC runtime library DLL" ON)
 add_subdirectory(third_party/glfw)
+
+# assimp
+OPTION(ASSIMP_BUILD_ASSIMP_TOOLS "If the supplementary tools for Assimp are built in addition to the library." OFF)
+OPTION(ASSIMP_BUILD_TESTS "If the test suite for Assimp is built in addition to the library." OFF)
+OPTION(ASSIMP_NO_EXPORT "Disable Assimp's export functionality." ON)
+OPTION(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT "default value of all ASSIMP_BUILD_XXX_IMPORTER value" FALSE)
+OPTION(ASSIMP_BUILD_BLEND_IMPORTER "build the BLEND importer" ON)
+OPTION(ASSIMP_BUILD_FBX_IMPORTER "build the FBX importer" ON)
+OPTION(ASSIMP_BUILD_OBJ_IMPORTER "build the OBJ importer" ON)
+ADD_SUBDIRECTORY(third_party/assimp)
+set(ASSIMP_TARGETS
+    assimp
+    uninstall
+    UpdateAssimpLibsDebugSymbolsAndDLLs
+    zlibstatic
+)
+set_target_properties(${ASSIMP_TARGETS} PROPERTIES FOLDER "assimp")
 
 # Vulkan -- uses VULKAN_* variables defined by GLFW
 include_directories(${VULKAN_INCLUDE_DIR})
@@ -153,6 +171,18 @@ MACRO (cmp_IDE_SOURCE_PROPERTIES SOURCE_PATH HEADERS SOURCES)
     STRING(REPLACE "/" "\\\\" source_group_path ${SOURCE_PATH}  )
     source_group(${source_group_path} FILES ${HEADERS} ${SOURCES})
 ENDMACRO (cmp_IDE_SOURCE_PROPERTIES NAME HEADERS SOURCES INSTALL_FILES)
+
+# spokkle
+SET(SPOKKLE_SOURCES
+    spokkle.cpp
+    vk_vertex.cpp
+)
+SET(SPOKKLE_HEADERS
+)
+cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKKLE_HEADERS}" "${SPOKKLE_SOURCES}")
+ADD_EXECUTABLE(spokkle ${SPOKKLE_SOURCES} ${SPOKKLE_HEADERS})
+TARGET_LINK_LIBRARIES(spokkle assimp)
+TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE "third_party/assimp/include")
 
 # libspokk
 SET(SPOKK_HEADERS
