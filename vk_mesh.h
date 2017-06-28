@@ -2,6 +2,7 @@
 #define VK_MESH_H
 
 #include "vk_buffer.h"
+#include "vk_context.h"
 #include <vector>
 
 namespace spokk {
@@ -28,6 +29,9 @@ struct Mesh {
   VkIndexType index_type;
   uint32_t index_count;
 };
+
+int LoadMeshFromFile(const DeviceContext& device_context, const char* mesh_filename,
+  Mesh* out_mesh, MeshFormat* out_mesh_format);
 
 }  // namespace spokk
 
