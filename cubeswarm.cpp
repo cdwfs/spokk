@@ -62,50 +62,8 @@ public:
     SPOKK_VK_CHECK(mesh_shader_program_.Finalize(device_context_));
 
     // Populate Mesh object
-    mesh_.index_type = (sizeof(cube_indices[0]) == sizeof(uint32_t)) ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
-    mesh_.index_count = cube_index_count;
-
-    VkBufferCreateInfo index_buffer_ci = {};
-    index_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    index_buffer_ci.size = cube_index_count * sizeof(cube_indices[0]);
-    index_buffer_ci.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_.index_buffer.Create(device_context_, index_buffer_ci));
-    SPOKK_VK_CHECK(mesh_.index_buffer.Load(device_context_, cube_indices, index_buffer_ci.size));
-
-    // Describe the mesh format.
-    mesh_format_.vertex_buffer_bindings = {
-      {0, 4+4+4, VK_VERTEX_INPUT_RATE_VERTEX},
-    };
-    mesh_format_.vertex_attributes = {
-      {0, 0, VK_FORMAT_R8G8B8A8_SNORM, 0},
-      {1, 0, VK_FORMAT_R8G8B8A8_SNORM, 4},
-      {2, 0, VK_FORMAT_R16G16_SFLOAT, 8},
-    };
-    mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    mesh_.mesh_format = &mesh_format_;
-
-    VkBufferCreateInfo vertex_buffer_ci = {};
-    vertex_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    vertex_buffer_ci.size = cube_vertex_count * mesh_format_.vertex_buffer_bindings[0].stride;
-    vertex_buffer_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    mesh_.vertex_buffers.resize(1);
-    SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Create(device_context_, vertex_buffer_ci));
-    // Convert the vertex data from its original uncompressed format to its final format.
-    // In a real application, this conversion would happen at asset build time.
-    const VertexLayout src_vertex_layout = {
-      {0, VK_FORMAT_R32G32B32_SFLOAT, 0},
-      {1, VK_FORMAT_R32G32B32_SFLOAT, 12},
-      {2, VK_FORMAT_R32G32_SFLOAT, 24},
-    };
-    const VertexLayout final_vertex_layout(mesh_format_, 0);
-    std::vector<uint8_t> final_mesh_vertices(vertex_buffer_ci.size);
-    int convert_error = ConvertVertexBuffer(cube_vertices, src_vertex_layout,
-      final_mesh_vertices.data(), final_vertex_layout, cube_vertex_count);
-    assert(convert_error == 0);
-    (void)convert_error;
-    SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Load(device_context_, final_mesh_vertices.data(), vertex_buffer_ci.size));
+    int mesh_load_error = LoadMeshFromFile(device_context_, "data/teapot.mesh", &mesh_, &mesh_format_);
+    ZOMBO_ASSERT(!mesh_load_error, "load error: %d", mesh_load_error);
 
     // Create pipelined buffer of per-mesh object-to-world matrices.
     VkBufferCreateInfo o2w_buffer_ci = {};
@@ -256,7 +214,7 @@ public:
           30.0f * sinf(0.5f * secs + float(13*iMesh) + 2.0f) + swarm_center[2]
         ))
         * q.ToMatrix4()
-        * mathfu::mat4::FromScaleVector( mathfu::vec3(1.0f, 1.0f, 1.0f) )
+        * mathfu::mat4::FromScaleVector( mathfu::vec3(3.0f, 3.0f, 3.0f) )
         ;
       o2w_matrices[iMesh] = o2w;
     }

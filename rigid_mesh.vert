@@ -2,7 +2,7 @@
 #pragma shader_stage(vertex)
 layout (location = 0) in vec3 pos;
 layout (location = 1) in vec3 normal;
-layout (location = 2) in vec2 attr;
+layout (location = 10) in vec2 attr;
 layout (location = 0) out vec2 texcoord;
 layout (location = 1) out vec3 norm;
 layout (location = 2) out vec3 fromEye;
