@@ -46,7 +46,7 @@ VkResult PipelinedBuffer::Create(const DeviceContext& device_context, uint32_t d
 VkResult PipelinedBuffer::Load(const DeviceContext& device_context, uint32_t pframe, const void *src_data, size_t data_size,
     size_t src_offset, VkDeviceSize dst_offset) const {
   if (Handle(pframe) == VK_NULL_HANDLE) {
-    return VK_ERROR_INITIALIZATION_FAILED; // Call create() first!
+    return VK_ERROR_INITIALIZATION_FAILED; // Call Create() first!
   }
   VkResult result = VK_SUCCESS;
   if (memory_.Mapped()) {
@@ -68,7 +68,7 @@ VkResult PipelinedBuffer::Load(const DeviceContext& device_context, uint32_t pfr
     VkCommandBuffer cb = one_shot_cpool->AllocateAndBegin();
     VkBufferMemoryBarrier barrier = {};
     barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barrier.srcAccessMask = VK_ACCESS_UNIFORM_READ_BIT;  // TODO(cort): no....
+    barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;  // TODO(cort): pass in more specific access flags?
     barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -87,7 +87,7 @@ VkResult PipelinedBuffer::Load(const DeviceContext& device_context, uint32_t pfr
       assert(0); // TODO(cort): staging buffer? Multiple vkCmdUpdateBuffers? Ignore for now, buffers are small.
     }
     barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_UNIFORM_READ_BIT;
+    barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;  // TODO(cort): pass in more specific access flags
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
       0, nullptr, 1, &barrier, 0, nullptr);
     result = one_shot_cpool->EndSubmitAndFree(&cb);

@@ -151,7 +151,7 @@ namespace spokk {
 //
 VkResult Image::Create(const DeviceContext& device_context, const VkImageCreateInfo& ci,
     VkMemoryPropertyFlags memory_properties, DeviceAllocationScope allocation_scope) {
-  assert(handle == VK_NULL_HANDLE);  // can't re-create an existing image!
+  ZOMBO_ASSERT_RETURN(handle == VK_NULL_HANDLE, VK_ERROR_INITIALIZATION_FAILED, "Can't re-create an existing Image");
   VkResult result = vkCreateImage(device_context.Device(), &ci, device_context.HostAllocator(), &handle);
   if (result == VK_SUCCESS) {
     memory = device_context.DeviceAllocAndBindToImage(handle, memory_properties, allocation_scope);
@@ -169,7 +169,7 @@ VkResult Image::Create(const DeviceContext& device_context, const VkImageCreateI
 }
 int Image::CreateFromFile(const DeviceContext& device_context, ImageBlitter& blitter, const DeviceQueue *queue,
   const std::string& filename, VkBool32 generate_mipmaps, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
-  assert(handle == VK_NULL_HANDLE);  // can't re-create an existing image!
+  ZOMBO_ASSERT_RETURN(handle == VK_NULL_HANDLE, -1, "Can't re-create an existing Image");
 
   // Load image file. TODO(cort): ideally, we'd load directly into the staging buffer here to save a memcpy.
   ImageFile image_file = {};
@@ -257,7 +257,7 @@ int Image::CreateFromFile(const DeviceContext& device_context, ImageBlitter& bli
       copy_region.imageSubresource.aspectMask = aspect_flags;
       copy_region.imageSubresource.mipLevel = i_mip;
       copy_region.imageSubresource.baseArrayLayer = i_layer;
-      copy_region.imageSubresource.layerCount = 1;  // can only copy one layer at a time
+      copy_region.imageSubresource.layerCount = 1;  // TODO(cort): copy all layers from a single mip in one go?
       copy_region.imageExtent.width  = AlignTo(GetMipDimension(image_file.width, i_mip), texel_block_width);
       copy_region.imageExtent.height = AlignTo(GetMipDimension(image_file.height, i_mip), texel_block_height);
       copy_region.imageExtent.depth  = GetMipDimension(image_file.depth, i_mip);
@@ -318,7 +318,7 @@ void Image::Destroy(const DeviceContext& device_context) {
 int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, ImageBlitter& blitter, const DeviceQueue *queue,
     const void* src_data, uint32_t src_row_nbytes, uint32_t src_layer_height,
     const VkImageSubresource& dst_subresource, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
-  assert(handle != VK_NULL_HANDLE);  // must create image first
+  ZOMBO_ASSERT_RETURN(handle != VK_NULL_HANDLE, -1, "Call Create() first!");
 
   // Gimme a command buffer
   OneShotCommandPool cpool(device_context.Device(), queue->handle, queue->family, device_context.HostAllocator());
