@@ -56,7 +56,6 @@ private:
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
 
-  ImageBlitter blitter_;
   Image albedo_tex_;
   VkSampler sampler_;
 
@@ -109,9 +108,7 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR,
     VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
   SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-  const VkDeviceSize blit_buffer_nbytes = 4*1024*1024;
-  SPOKK_VK_CHECK(blitter_.Create(device_context_, PFRAME_COUNT, blit_buffer_nbytes));
-  albedo_tex_.CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "data/redf.ktx");
+  albedo_tex_.CreateFromFile(device_context_, graphics_and_present_queue_, "data/redf.ktx");
 
   // Load shader pipelines
   SPOKK_VK_CHECK(pillar_vs_.CreateAndLoadSpirvFile(device_context_, "pillar.vert.spv"));
@@ -253,7 +250,6 @@ PillarsApp::~PillarsApp() {
 
     vkDestroySampler(device_, sampler_, host_allocator_);
     albedo_tex_.Destroy(device_context_);
-    blitter_.Destroy(device_context_);
 
     for(const auto fb : framebuffers_) {
       vkDestroyFramebuffer(device_, fb, host_allocator_);
@@ -359,8 +355,6 @@ void PillarsApp::Update(double dt) {
 }
 
 void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
-  blitter_.NextPframe();
-
   VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
   render_pass_.begin_info.framebuffer = framebuffer;
   render_pass_.begin_info.renderArea.extent = swapchain_extent_;

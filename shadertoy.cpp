@@ -99,18 +99,16 @@ public:
     for(auto& sampler : samplers_) {
       SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler));
     }
-    const VkDeviceSize blit_buffer_nbytes = 16*1024*1024;
-    SPOKK_VK_CHECK(blitter_.Create(device_context_, PFRAME_COUNT, blit_buffer_nbytes));
     for(size_t i=0; i<textures_.size(); ++i) {
       char filename[17];
       zomboSnprintf(filename, 17, "data/tex%02u.ktx", (uint32_t)i);
-      ZOMBO_ASSERT(0 == textures_[i].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, filename, VK_FALSE),
+      ZOMBO_ASSERT(0 == textures_[i].CreateFromFile(device_context_, graphics_and_present_queue_, filename, VK_FALSE),
         "Failed to load %s", filename);
     }
     for(size_t i=0; i<cubemaps_.size(); ++i) {
       char filename[18];
       zomboSnprintf(filename, 18, "data/cube%02u.ktx", (uint32_t)i);
-      ZOMBO_ASSERT(0 == cubemaps_[i].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, filename, VK_FALSE),
+      ZOMBO_ASSERT(0 == cubemaps_[i].CreateFromFile(device_context_, graphics_and_present_queue_, filename, VK_FALSE),
         "Failed to load %s", filename);
     }
     active_images_[0] = &textures_[15];
@@ -191,7 +189,6 @@ public:
       for(auto sampler : samplers_) {
         vkDestroySampler(device_, sampler, host_allocator_);
       }
-      blitter_.Destroy(device_context_);
     }
   }
 
@@ -262,7 +259,6 @@ public:
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
-    blitter_.NextPframe();
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -417,7 +413,6 @@ private:
   ShaderCompiler shader_compiler_;
   shaderc::CompileOptions compiler_options_;
 
-  ImageBlitter blitter_;
   std::array<Image, 16> textures_;
   std::array<Image, 6> cubemaps_;
   std::array<Image*, 4> active_images_;

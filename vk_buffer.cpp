@@ -60,7 +60,6 @@ VkResult PipelinedBuffer::Load(const DeviceContext& device_context, uint32_t pfr
       reinterpret_cast<const uint8_t*>(src_data) + src_offset,data_size);
     SPOKK_VK_CHECK(vkFlushMappedMemoryRanges(device_context.Device(), 1, &pframe_range));
   } else {
-    // TODO(cort): Maybe it's time for a BufferLoader class?
     const DeviceQueue* transfer_queue = device_context.FindQueue(VK_QUEUE_TRANSFER_BIT);
     assert(transfer_queue != nullptr);
     std::unique_ptr<OneShotCommandPool> one_shot_cpool = my_make_unique<OneShotCommandPool>(device_context.Device(),
@@ -77,6 +76,7 @@ VkResult PipelinedBuffer::Load(const DeviceContext& device_context, uint32_t pfr
     barrier.size = data_size;
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
       0, nullptr, 1, &barrier, 0, nullptr);
+    Buffer staging_buffer = {};  // TODO(cort): staging buffer
     if (data_size <= 65536) {
       uintptr_t src_dwords = uintptr_t(src_data) + src_offset;
       ZOMBO_ASSERT((src_dwords % sizeof(uint32_t)) == 0, "src_data (%p) + src_offset (%d) must be 4-byte aligned.",
@@ -84,13 +84,45 @@ VkResult PipelinedBuffer::Load(const DeviceContext& device_context, uint32_t pfr
       vkCmdUpdateBuffer(cb, Handle(pframe), dst_offset, data_size,
         reinterpret_cast<const uint32_t*>(src_dwords));
     } else {
-      assert(0); // TODO(cort): staging buffer? Multiple vkCmdUpdateBuffers? Ignore for now, buffers are small.
+      // TODO(cort): this should be replaced with a dedicated Buffer in the DeviceContext
+      VkBufferCreateInfo staging_buffer_ci = {};
+      staging_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+      staging_buffer_ci.size = data_size;
+      staging_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+      staging_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      SPOKK_VK_CHECK(staging_buffer.Create(device_context, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+        spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
+      // barrier between host writes and transfer reads
+      VkBufferMemoryBarrier buffer_barrier = {};
+      buffer_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+      buffer_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+      buffer_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+      buffer_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      buffer_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      buffer_barrier.buffer = staging_buffer.Handle();
+      buffer_barrier.offset = 0;
+      buffer_barrier.size = VK_WHOLE_SIZE;
+      vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+        0,nullptr, 1,&buffer_barrier, 0,nullptr);
+      // End TODO
+      memcpy(staging_buffer.Mapped(), (uint8_t*)(src_data) + src_offset, data_size);
+      VkBufferCopy copy_region = {};
+      copy_region.srcOffset = 0;
+      copy_region.dstOffset = dst_offset;
+      copy_region.size = data_size;
+      vkCmdCopyBuffer(cb, staging_buffer.Handle(), Handle(pframe), 1, &copy_region);
     }
     barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;  // TODO(cort): pass in more specific access flags
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
       0, nullptr, 1, &barrier, 0, nullptr);
+    if (staging_buffer.Handle() != VK_NULL_HANDLE) {
+      staging_buffer.FlushHostCache();
+    }
     result = one_shot_cpool->EndSubmitAndFree(&cb);
+    if (staging_buffer.Handle() != VK_NULL_HANDLE) {
+      staging_buffer.Destroy(device_context);  // TODO(cort): staging buffer
+    }
   }
   return result;
 }
