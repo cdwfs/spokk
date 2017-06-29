@@ -1,11 +1,12 @@
 #if !defined(VK_BUFFER_H)
 #define VK_BUFFER_H
 
-#include "vk_context.h"
 #include "vk_memory.h"
 #include <vector>
 
 namespace spokk {
+
+class DeviceContext;
 
 class PipelinedBuffer {
 public:
