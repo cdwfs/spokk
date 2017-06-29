@@ -1269,12 +1269,12 @@ size_t ImageFileGetSubresourceSize(const ImageFile *image, const ImageFileSubres
             // start at file offsets divisible by 4.
             image_size = *(const uint32_t*)(next_mip);
             total_mip_size = image_size;
-            if ((image->flags & IMAGE_FILE_FLAG_CUBE_BIT) && image->array_layers == 1)
+            if ((image->flags & IMAGE_FILE_FLAG_CUBE_BIT) && image->array_layers == 6)
             {
-                total_mip_size = (total_mip_size + 3) & ~3;
+                total_mip_size = (total_mip_size + 3) & ~3;  // cube padding
                 total_mip_size *= 6;
             }
-            total_mip_size = (total_mip_size + 3) & ~3;
+            total_mip_size = (total_mip_size + 3) & ~3;  // mip padding
             next_mip += sizeof(image_size) + total_mip_size;
         }
         return total_mip_size / image->array_layers;
@@ -1340,17 +1340,17 @@ void *ImageFileGetSubresourceData(const ImageFile *image, const ImageFileSubreso
             total_mip_size = image_size;
             if ((image->flags & IMAGE_FILE_FLAG_CUBE_BIT) && image->array_layers == 6)
             {
-                total_mip_size = (total_mip_size + 3) & ~3;
+                total_mip_size = (total_mip_size + 3) & ~3;  // cube padding
                 total_mip_size *= 6;
             }
-            total_mip_size = (total_mip_size + 3) & ~3;
+            total_mip_size = (total_mip_size + 3) & ~3;  // mip padding
             next_mip += sizeof(image_size) + total_mip_size;
         }
         image_size = *(const uint32_t*)(next_mip);
         total_mip_size = image_size;
         if ((image->flags & IMAGE_FILE_FLAG_CUBE_BIT) && image->array_layers == 6)
         {
-            total_mip_size = (total_mip_size + 3) & ~3;
+            total_mip_size = (total_mip_size + 3) & ~3;  // cube padding
             total_mip_size *= 6;
         }
         return (void*)( next_mip + sizeof(image_size) + (total_mip_size / image->array_layers) * subresource.array_layer );
