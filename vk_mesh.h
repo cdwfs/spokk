@@ -31,6 +31,20 @@ struct Mesh {
   uint32_t index_count;
 };
 
+// These don't belong here; need a place for shared runtime/tools declarations.
+constexpr uint32_t MESH_FILE_MAGIC_NUMBER = 0x4853454D;
+struct MeshFileHeader {
+  uint32_t magic_number;
+  uint32_t vertex_buffer_count;
+  uint32_t attribute_count;
+  uint32_t bytes_per_index;
+  uint32_t vertex_count;
+  uint32_t index_count;
+  uint32_t topology; // currently ignored, assume triangles
+  float aabb_min[3];
+  float aabb_max[3];
+};
+
 int LoadMeshFromFile(const DeviceContext& device_context, const char* mesh_filename,
   Mesh* out_mesh, MeshFormat* out_mesh_format);
 

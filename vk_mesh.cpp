@@ -66,17 +66,9 @@ int LoadMeshFromFile(const DeviceContext& device_context, const char* mesh_filen
     return -1;
   }
 
-  struct {
-    uint32_t magic_number;
-    uint32_t vertex_buffer_count;
-    uint32_t attribute_count;
-    uint32_t bytes_per_index;
-    uint32_t vertex_count;
-    uint32_t index_count;
-    uint32_t topology; // currently ignored, assume triangles
-  } mesh_header = {};
+  MeshFileHeader mesh_header = {};
   size_t read_count = fread(&mesh_header, sizeof(mesh_header), 1, mesh_file);
-  if (mesh_header.magic_number != 0x12345678) {
+  if (mesh_header.magic_number != MESH_FILE_MAGIC_NUMBER) {
     fprintf(stderr, "Invalid magic number in %s\n", mesh_filename);
     fclose(mesh_file);
     return -1;

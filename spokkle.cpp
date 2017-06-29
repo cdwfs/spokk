@@ -1,6 +1,6 @@
 #include "platform.h"
 #include "vk_vertex.h"
-#include "vk_mesh.h"
+#include "vk_mesh.h"  // for MeshHeader
 
 #include "assimp/DefaultLogger.hpp"
 #include <assimp/Importer.hpp>
@@ -133,8 +133,22 @@ static int processScene(const aiScene *inScene, Scene *outScene)
     }
   }
 
-  // Build vertex buffer
+  // Compute bounding volume
+  aiVector3D aabb_min = {+FLT_MAX, +FLT_MAX, +FLT_MAX};
+  aiVector3D aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
   const uint32_t vertex_count = mesh->mNumVertices;
+  for(uint32_t i = 0; i < vertex_count; ++i) {
+    aiVector3D v = mesh->mVertices[i];
+    aabb_min.x = std::min(aabb_min.x, v.x);
+    aabb_min.y = std::min(aabb_min.y, v.y);
+    aabb_min.z = std::min(aabb_min.z, v.z);
+    aabb_max.x = std::max(aabb_max.x, v.x);
+    aabb_max.y = std::max(aabb_max.y, v.y);
+    aabb_max.z = std::max(aabb_max.z, v.z);
+  }
+
+
+  // Build vertex buffer
   const spokk::VertexLayout dst_layout = {
     {SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION, VK_FORMAT_R32G32B32_SFLOAT, 0},
     {SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL, VK_FORMAT_R32G32B32_SFLOAT, 12},
@@ -185,22 +199,20 @@ static int processScene(const aiScene *inScene, Scene *outScene)
 
   // Write mesh to disk
   {
-    struct {
-      uint32_t magic_number;
-      uint32_t vertex_buffer_count;
-      uint32_t attribute_count;
-      uint32_t bytes_per_index;
-      uint32_t vertex_count;
-      uint32_t index_count;
-      uint32_t topology; // currently ignored, assume triangles
-    } mesh_header = {};
-    mesh_header.magic_number = 0x12345678;
+    spokk::MeshFileHeader mesh_header = {};
+    mesh_header.magic_number = spokk::MESH_FILE_MAGIC_NUMBER;
     mesh_header.vertex_buffer_count = 1;
     mesh_header.attribute_count = (uint32_t)dst_layout.attributes.size();
     mesh_header.bytes_per_index = bytes_per_index;
     mesh_header.vertex_count = vertex_count;
     mesh_header.index_count = index_count;
     mesh_header.topology = 1;
+    mesh_header.aabb_min[0] = aabb_min.x;
+    mesh_header.aabb_min[1] = aabb_min.y;
+    mesh_header.aabb_min[2] = aabb_min.z;
+    mesh_header.aabb_max[0] = aabb_max.x;
+    mesh_header.aabb_max[1] = aabb_max.y;
+    mesh_header.aabb_max[2] = aabb_max.z;
     std::vector<VkVertexInputBindingDescription> vb_descs(mesh_header.vertex_buffer_count, {});
     {
       vb_descs[0].binding = 0;
@@ -241,7 +253,7 @@ int ImportFromFile( const std::string& filename )
   // Configure the importer properties
   importer.SetPropertyBool(AI_CONFIG_PP_FD_REMOVE, true); // Remove degenerate triangles entirely, rather than degrading them to points/lines.
   importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_LINE | aiPrimitiveType_POINT); // remove all points/lines from the scene
-                                                                                                      //importer.SetPropertyBool(AI_CONFIG_GLOB_MEASURE_TIME, true); // uncomment to log timings of various import stages
+  //importer.SetPropertyBool(AI_CONFIG_GLOB_MEASURE_TIME, true); // uncomment to log timings of various import stages
   importer.SetPropertyFloat(AI_CONFIG_PP_GSN_MAX_SMOOTHING_ANGLE, 80.0f); // Specify maximum angle between neighboring faces such that their
                                                                           // shared vertices will have their normals smoothed.
                                                                           // Default is 175.0; docs say 80.0 will give a good visual appearance
