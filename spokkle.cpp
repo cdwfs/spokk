@@ -17,11 +17,6 @@
 #include <string>
 #include <vector>
 
-struct Scene {
-  uint32_t mesh_count;
-  spokk::MeshFormat mesh_format;
-};
-
 constexpr uint32_t SPOKK_MAX_VERTEX_COLORS    = 4;
 constexpr uint32_t SPOKK_MAX_VERTEX_TEXCOORDS = 4;
 
@@ -54,17 +49,47 @@ static void handleReadFileError(const std::string &errorString)
   fprintf(stderr, "ERROR: %s\n", errorString.c_str());
 }
 
-static int processScene(const aiScene *inScene, Scene *outScene)
-{
+int ConvertSceneToMesh( const std::string& input_scene_filename, const std::string& output_mesh_filename) {
+  // Uncomment to enable importer logging (can be quite verbose!)
+  //Assimp::DefaultLogger::create("", Assimp::Logger::VERBOSE, aiDefaultLogStream_STDERR);
+
+  // Create an instance of the Importer class
+  Assimp::Importer importer;
+  // Configure the importer properties
+  importer.SetPropertyBool(AI_CONFIG_PP_FD_REMOVE, true); // Remove degenerate triangles entirely, rather than degrading them to points/lines.
+  importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_LINE | aiPrimitiveType_POINT); // remove all points/lines from the scene
+  //importer.SetPropertyBool(AI_CONFIG_GLOB_MEASURE_TIME, true); // uncomment to log timings of various import stages
+  importer.SetPropertyFloat(AI_CONFIG_PP_GSN_MAX_SMOOTHING_ANGLE, 80.0f); // Specify maximum angle between neighboring faces such that their
+                                                                          // shared vertices will have their normals smoothed.
+                                                                          // Default is 175.0; docs say 80.0 will give a good visual appearance
+                                                                          // And have it read the given file with some example postprocessing
+                                                                          // Usually - if speed is not the most important aspect for you - you'll
+                                                                          // probably to request more postprocessing than we do in this example.
+  const aiScene* scene = importer.ReadFile(input_scene_filename.c_str(), 0
+    | aiProcess_GenSmoothNormals       // Generate per-vertex normals, if none exist
+    | aiProcess_CalcTangentSpace       // Compute per-vertex tangent and bitangent vectors (if the mesh already has normals and UVs)
+    | aiProcess_Triangulate            // Convert faces with >3 vertices to 2 or more triangles
+    | aiProcess_JoinIdenticalVertices  // If this flag is not specified, each vertex is used by exactly one face; no index buffer is required.
+    | aiProcess_SortByPType            // Sort faces by primitive type -- one sub-mesh per primitive type.
+    | aiProcess_ImproveCacheLocality   // Reorder vertex and index buffers to improve post-transform cache locality.
+  //  | aiProcess_FlipUVs                // HACK -- the scene we're currently loading has its UVs flipped.
+  );
+  // If the import failed, report it
+  if( !scene)
+  {
+    handleReadFileError( importer.GetErrorString());
+    return -1;
+  }
+
   static_assert(sizeof(aiVector2D) == 2*sizeof(float), "aiVector2D sizes do not match!");
   static_assert(sizeof(aiVector3D) == 3*sizeof(float), "aiVector3D sizes do not match!");
   static_assert(sizeof(aiColor4D)  == 4*sizeof(float), "aiColor4D sizes do not match!");
 
-  outScene->mesh_count = inScene->mNumMeshes;
+  ZOMBO_ASSERT_RETURN(scene->mNumMeshes == 1, -1, "Currently, only one mesh per scene is supported.");
 
   std::vector<SourceAttribute> src_attributes = {{}};
   uint32_t iMesh = 0;
-  const aiMesh *mesh = inScene->mMeshes[iMesh];
+  const aiMesh *mesh = scene->mMeshes[iMesh];
 
   // Query available vertex attributes, and determine the mesh format
   ZOMBO_ASSERT(mesh->HasPositions(), "wtf sort of mesh doesn't include vertex positions?!?");
@@ -152,7 +177,6 @@ static int processScene(const aiScene *inScene, Scene *outScene)
     aabb_max.z = std::max(aabb_max.z, v.z);
   }
 
-
   // Build vertex buffer
   const spokk::VertexLayout dst_layout = {
     {SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION, VK_FORMAT_R32G32B32_SFLOAT, 0},
@@ -168,12 +192,7 @@ static int processScene(const aiScene *inScene, Scene *outScene)
   }
 
   // Load index buffer
-  if (!mesh->HasFaces())
-  {
-    fprintf(stderr, "ERROR: currently, only meshes with faces are supported.");
-    return -1;
-  }
-  // Extract face data into a flat array
+  ZOMBO_ASSERT_RETURN(mesh->HasFaces(), -1, "mesh has no faces! This is (currently) required.");
   uint32_t max_index_count = mesh->mNumFaces * 3;
   uint32_t bytes_per_index = (vertex_count <= 0x10000) ? sizeof(uint16_t) : sizeof(uint32_t);
   std::vector<uint8_t> indices(max_index_count * bytes_per_index, 0);
@@ -232,10 +251,9 @@ static int processScene(const aiScene *inScene, Scene *outScene)
       attr_descs[iAttr].offset = dst_layout.attributes[iAttr].offset;
     }
 
-    const std::string out_filename = "data/teapot.mesh";
-    FILE *out_file = fopen(out_filename.c_str(), "wb");
+    FILE *out_file = fopen(output_mesh_filename.c_str(), "wb");
     if (out_file == nullptr) {
-      fprintf(stderr, "Could not open %s for writing\n", out_filename.c_str());
+      fprintf(stderr, "Could not open %s for writing\n", output_mesh_filename.c_str());
       return -1;
     }
     fwrite(&mesh_header, sizeof(mesh_header), 1, out_file);
@@ -245,47 +263,10 @@ static int processScene(const aiScene *inScene, Scene *outScene)
     fwrite(indices.data(), bytes_per_index, index_count, out_file);
     fclose(out_file);
   }
-  return 0;
-}
 
-int ImportFromFile( const std::string& filename )
-{
-  // Uncomment to enable importer logging (can be quite verbose!)
-  //Assimp::DefaultLogger::create("", Assimp::Logger::VERBOSE, aiDefaultLogStream_STDERR);
-
-  // Create an instance of the Importer class
-  Assimp::Importer importer;
-  // Configure the importer properties
-  importer.SetPropertyBool(AI_CONFIG_PP_FD_REMOVE, true); // Remove degenerate triangles entirely, rather than degrading them to points/lines.
-  importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_LINE | aiPrimitiveType_POINT); // remove all points/lines from the scene
-  //importer.SetPropertyBool(AI_CONFIG_GLOB_MEASURE_TIME, true); // uncomment to log timings of various import stages
-  importer.SetPropertyFloat(AI_CONFIG_PP_GSN_MAX_SMOOTHING_ANGLE, 80.0f); // Specify maximum angle between neighboring faces such that their
-                                                                          // shared vertices will have their normals smoothed.
-                                                                          // Default is 175.0; docs say 80.0 will give a good visual appearance
-                                                                          // And have it read the given file with some example postprocessing
-                                                                          // Usually - if speed is not the most important aspect for you - you'll
-                                                                          // probably to request more postprocessing than we do in this example.
-  const aiScene* scene = importer.ReadFile( filename, 0
-    | aiProcess_GenSmoothNormals       // Generate per-vertex normals, if none exist
-    | aiProcess_CalcTangentSpace       // Compute per-vertex tangent and bitangent vectors (if the mesh already has normals and UVs)
-    | aiProcess_Triangulate            // Convert faces with >3 vertices to 2 or more triangles
-    | aiProcess_JoinIdenticalVertices  // If this flag is not specified, each vertex is used by exactly one face; no index buffer is required.
-    | aiProcess_SortByPType            // Sort faces by primitive type -- one sub-mesh per primitive type.
-    | aiProcess_ImproveCacheLocality   // Reorder vertex and index buffers to improve post-transform cache locality.
-  //  | aiProcess_FlipUVs                // HACK -- the scene we're currently loading has its UVs flipped.
-  );
-  // If the import failed, report it
-  if( !scene)
-  {
-    handleReadFileError( importer.GetErrorString());
-    return -1;
-  }
-  // Now we can access the file's contents.
-  Scene output_scene = {};
-  int error = processScene(scene, &output_scene);
   // We're done. Everything will be cleaned up by the importer destructor
   Assimp::DefaultLogger::kill();
-  return error;
+  return 0;
 }
 
 //////////////////////////
@@ -319,14 +300,19 @@ private:
   int ParseAssets(const json_value_s* val);
   int ParseAsset(const json_value_s* val);
 
+  int IsOutputOutOfDate(const json_string_s* input_path, const json_string_s* output_path, bool *out_result) const;
+  bool CopyAssetFile(const json_string_s* input_path, const json_string_s* output_path) const;
+
   int ProcessImage(const json_string_s* input_path, const json_string_s* output_path);
   int ProcessMesh(const json_string_s* input_path, const json_string_s* output_path);
 
   std::string manifest_filename_;
+  std::string output_root_;
 };
 
 AssetManifest::AssetManifest(const std::string& json5_filename)
-  : manifest_filename_(json5_filename) {
+  : manifest_filename_(json5_filename),
+    output_root_(".") {
   FILE *manifest_file = zomboFopen(manifest_filename_.c_str(), "rb");
   if (!manifest_file) {
     fprintf(stderr, "ERROR: Could not open %s\n", manifest_filename_.c_str());
@@ -523,7 +509,8 @@ int ConvertUtf8ToWide(const json_string_s* utf8, std::wstring* out_wide) {
   return nchars_final;
 }
 
-int AssetManifest::ProcessImage(const json_string_s* input_path, const json_string_s* output_path) {
+int AssetManifest::IsOutputOutOfDate(const json_string_s* input_path, const json_string_s* output_path, bool *out_result) const {
+#if defined(ZOMBO_PLATFORM_WINDOWS)
   // Convert UTF-8 paths to wide strings
   std::wstring input_wstr, output_wstr;
   int input_nchars = ConvertUtf8ToWide(input_path, &input_wstr);
@@ -540,7 +527,7 @@ int AssetManifest::ProcessImage(const json_string_s* input_path, const json_stri
   }
 
   // If both files exists, we compare last-write time
-  bool output_is_newer = false;
+  bool output_is_older = false;
   if (input_exists && output_exists) {
     // Query file attributes
     WIN32_FILE_ATTRIBUTE_DATA input_attrs = {}, output_attrs = {};
@@ -555,22 +542,79 @@ int AssetManifest::ProcessImage(const json_string_s* input_path, const json_stri
     output_write_time.HighPart = output_attrs.ftLastWriteTime.dwHighDateTime;
     output_write_time.LowPart  = output_attrs.ftLastWriteTime.dwLowDateTime;
     if (output_write_time.QuadPart < input_write_time.QuadPart) {
-      output_is_newer = true;
+      output_is_older = true;
     }
   }
 
-  if (!output_exists || output_is_newer) {
-    BOOL copy_success = CopyFile(input_wstr.data(), output_wstr.data(), FALSE);
-    ZOMBO_ASSERT_RETURN(copy_success, -5, "CopyFile() failed");
-    wprintf(L"Copied %s to %s\n", input_wstr.c_str(), output_wstr.c_str());
+  *out_result = (!output_exists || output_is_older);
+  return 0;
+#elif defined(ZOMBO_PLATFORM_POSIX)
+# error I haven't written POSIX support yet. Sorry!
+#else
+# error Unsupported platform! Sorry!
+#endif
+}
+
+BOOL CreateDirectoryAndParents(const std::wstring& dir) {
+  if (PathIsDirectory(dir.c_str())) {
+    return TRUE;
+  }
+  std::wstring parent = dir;
+  PathRemoveFileSpec(&parent[0]);
+  int create_success = CreateDirectoryAndParents(parent);
+  ZOMBO_ASSERT_RETURN(create_success, create_success, "CreateDirectory() failed");
+  return CreateDirectory(dir.c_str(), nullptr);
+}
+
+bool AssetManifest::CopyAssetFile(const json_string_s* input_path, const json_string_s* output_path) const {
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+  // Convert UTF-8 paths to wide strings
+  std::wstring input_wstr, output_wstr;
+  int input_nchars = ConvertUtf8ToWide(input_path, &input_wstr);
+  ZOMBO_ASSERT_RETURN(input_nchars > 0, false, "Failed to decode input_path");
+  int output_nchars = ConvertUtf8ToWide(output_path, &output_wstr);
+  ZOMBO_ASSERT_RETURN(output_nchars > 0, false, "Failed to decode output_path");
+  // Create any missing parent directories for the output file
+  std::wstring output_dir;
+  output_dir.resize(MAX_PATH);
+  DWORD path_nchars = GetFullPathName(output_wstr.c_str(), MAX_PATH, &output_dir[0], nullptr);
+  ZOMBO_ASSERT_RETURN(path_nchars != 0, false, "Failed to get full path for output file");
+  BOOL remove_success = PathRemoveFileSpec(&output_dir[0]);
+  ZOMBO_ASSERT_RETURN(remove_success, false, "Failed to remove filespec for output file");
+  BOOL create_dir_success = CreateDirectoryAndParents(output_dir);
+  ZOMBO_ASSERT_RETURN(create_dir_success, false, "Failed to create parent directories");
+  // Copy
+  BOOL copy_success = CopyFile(input_wstr.data(), output_wstr.data(), FALSE);
+  ZOMBO_ASSERT_RETURN(copy_success, false, "CopyFile() failed");
+  wprintf(L"Copied %s to %s\n", input_wstr.c_str(), output_wstr.c_str());
+  return true;
+#else
+# error Unsupported platform! Sorry!
+#endif
+}
+
+int AssetManifest::ProcessImage(const json_string_s* input_path, const json_string_s* output_path) {
+  bool build_output = false;
+  int query_error = IsOutputOutOfDate(input_path, output_path, &build_output);
+  ZOMBO_ASSERT_RETURN(query_error == 0, -1, "IsOutputOutOfDate failed");
+  if (build_output) {
+    bool copy_success = CopyAssetFile(input_path, output_path);
+    ZOMBO_ASSERT_RETURN(copy_success, -1, "CopyAssetFile() failed");
   } else {
-    wprintf(L"Skipped %s (%s is up to date)\n", input_wstr.c_str(), output_wstr.c_str());
+    //wprintf(L"Skipped %s (%s is up to date)\n", input_wstr.c_str(), output_wstr.c_str());
   }
   return 0;
 }
 int AssetManifest::ProcessMesh(const json_string_s* input_path, const json_string_s* output_path) {
-  (void)input_path;
-  (void)output_path;
+  bool build_output = false;
+  int query_error = IsOutputOutOfDate(input_path, output_path, &build_output);
+  ZOMBO_ASSERT_RETURN(query_error == 0, -1, "IsOutputOutOfDate failed");
+  if (build_output) {
+    int process_result = ConvertSceneToMesh(input_path->string, output_path->string);
+    ZOMBO_ASSERT_RETURN(process_result == 0, -1, "ConvertSceneToMesh() failed (%d)", process_result);
+  } else {
+    //wprintf(L"Skipped %s (%s is up to date)\n", input_wstr.c_str(), output_wstr.c_str());
+  }
   return 0;
 }
 

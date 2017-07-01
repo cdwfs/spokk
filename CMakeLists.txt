@@ -191,6 +191,9 @@ TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     "third_party/assimp/include"
     ${JSON_H_DIR}
     )
+IF(MSVC)
+    TARGET_LINK_LIBRARIES(spokkle shlwapi)
+ENDIF(MSVC)
 
 # libspokk
 SET(SPOKK_HEADERS
