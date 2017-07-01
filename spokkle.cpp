@@ -8,6 +8,10 @@
 #include <assimp/postprocess.h>
 #include <json.h>
 
+#ifdef _MSC_VER
+#include <Shlwapi.h>  // for PathFileExists
+#endif
+
 #include <array>
 #include <stdio.h>
 #include <string>
@@ -508,11 +512,12 @@ int AssetManifest::ParseAsset(const json_value_s* val) {
   return 0;
 }
 
-int ConvertUtf8ToWide(const json_string_s* utf8, std::vector<WCHAR>* out_wide) {
+int ConvertUtf8ToWide(const json_string_s* utf8, std::wstring* out_wide) {
+  static_assert(sizeof(wchar_t) == sizeof(WCHAR), "This code assume sizeof(wchar_t) == sizeof(WCHAR)");
   int nchars = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, nullptr, 0);
   ZOMBO_ASSERT_RETURN(nchars != 0, -1, "malformed UTF-8, I guess?");
   out_wide->resize(nchars+1);
-  int nchars_final = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, out_wide->data(), nchars+1);
+  int nchars_final = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, &(*out_wide)[0], nchars+1);
   ZOMBO_ASSERT_RETURN(nchars_final != 0, -2, "failed to decode UTF-8");
   (*out_wide)[nchars_final] = 0;
   return nchars_final;
@@ -520,28 +525,29 @@ int ConvertUtf8ToWide(const json_string_s* utf8, std::vector<WCHAR>* out_wide) {
 
 int AssetManifest::ProcessImage(const json_string_s* input_path, const json_string_s* output_path) {
   // Convert UTF-8 paths to wide strings
-  std::vector<WCHAR> input_wstr, output_wstr;
+  std::wstring input_wstr, output_wstr;
   int input_nchars = ConvertUtf8ToWide(input_path, &input_wstr);
   ZOMBO_ASSERT_RETURN(input_nchars > 0, -1, "Failed to decode input_path");
   int output_nchars = ConvertUtf8ToWide(output_path, &output_wstr);
   ZOMBO_ASSERT_RETURN(output_nchars > 0, -2, "Failed to decode output_path");
 
-  // Query file attributes
-  bool update_output_file = false;
-  WIN32_FILE_ATTRIBUTE_DATA input_attrs = {}, output_attrs = {};
-  BOOL input_attr_success = GetFileAttributesExW(input_wstr.data(), GetFileExInfoStandard, &input_attrs);
-  ZOMBO_ASSERT_RETURN(input_attr_success, -3, "Failed to read file attributes for input_path");
-  BOOL output_attr_success = GetFileAttributesExW(output_wstr.data(), GetFileExInfoStandard, &output_attrs);
-  if (!output_attr_success) {
-    // TODO(cort): this is a mess. query file existence before getting attributes?
-    if (GetLastError() == ERROR_FILE_NOT_FOUND) {
-      update_output_file = true;
-    } else {
-      ZOMBO_ERROR_RETURN(-4, "Failed to read file attributes for output_path");
-    }
+  // Do the files exist? Missing input = error! Missing output = automatic rebuild!
+  BOOL input_exists  = PathFileExists(input_wstr.c_str());
+  BOOL output_exists = PathFileExists(output_wstr.c_str());
+  if (!input_exists) {
+    fwprintf(stderr, L"ERROR: asset %s does not exist\n", input_wstr.c_str());
+    return -6;
   }
 
-  if (!update_output_file) {
+  // If both files exists, we compare last-write time
+  bool output_is_newer = false;
+  if (input_exists && output_exists) {
+    // Query file attributes
+    WIN32_FILE_ATTRIBUTE_DATA input_attrs = {}, output_attrs = {};
+    BOOL input_attr_success = GetFileAttributesExW(input_wstr.c_str(), GetFileExInfoStandard, &input_attrs);
+    ZOMBO_ASSERT_RETURN(input_attr_success, -3, "Failed to read file attributes for input_path");
+    BOOL output_attr_success = GetFileAttributesExW(output_wstr.c_str(), GetFileExInfoStandard, &output_attrs);
+    ZOMBO_ASSERT_RETURN(output_attr_success, -4, "Failed to read file attributes for output_path");
     // Compare file write times
     ULARGE_INTEGER input_write_time, output_write_time;
     input_write_time.HighPart  =  input_attrs.ftLastWriteTime.dwHighDateTime;
@@ -549,16 +555,16 @@ int AssetManifest::ProcessImage(const json_string_s* input_path, const json_stri
     output_write_time.HighPart = output_attrs.ftLastWriteTime.dwHighDateTime;
     output_write_time.LowPart  = output_attrs.ftLastWriteTime.dwLowDateTime;
     if (output_write_time.QuadPart < input_write_time.QuadPart) {
-      update_output_file = true;
+      output_is_newer = true;
     }
   }
 
-  if (update_output_file) {
+  if (!output_exists || output_is_newer) {
     BOOL copy_success = CopyFile(input_wstr.data(), output_wstr.data(), FALSE);
     ZOMBO_ASSERT_RETURN(copy_success, -5, "CopyFile() failed");
-    printf("Copied %s to %s\n", input_path->string, output_path->string);
+    wprintf(L"Copied %s to %s\n", input_wstr.c_str(), output_wstr.c_str());
   } else {
-    printf("Skipped %s (%s is up to date)\n", input_path->string, output_path->string);
+    wprintf(L"Skipped %s (%s is up to date)\n", input_wstr.c_str(), output_wstr.c_str());
   }
   return 0;
 }
