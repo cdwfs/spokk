@@ -58,6 +58,9 @@ set(ASSIMP_TARGETS
 )
 set_target_properties(${ASSIMP_TARGETS} PROPERTIES FOLDER "assimp")
 
+# json.h
+set(JSON_H_DIR third_party/json.h)
+
 # Vulkan -- uses VULKAN_* variables defined by GLFW
 include_directories(${VULKAN_INCLUDE_DIR})
 #link_directories(${VULKAN_SDK}/lib)
@@ -176,13 +179,18 @@ ENDMACRO (cmp_IDE_SOURCE_PROPERTIES NAME HEADERS SOURCES INSTALL_FILES)
 SET(SPOKKLE_SOURCES
     spokkle.cpp
     vk_vertex.cpp
+    ${JSON_H_DIR}/json.c
 )
 SET(SPOKKLE_HEADERS
+    ${JSON_H_DIR}/json.h
 )
 cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKKLE_HEADERS}" "${SPOKKLE_SOURCES}")
 ADD_EXECUTABLE(spokkle ${SPOKKLE_SOURCES} ${SPOKKLE_HEADERS})
 TARGET_LINK_LIBRARIES(spokkle assimp)
-TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE "third_party/assimp/include")
+TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
+    "third_party/assimp/include"
+    ${JSON_H_DIR}
+    )
 
 # libspokk
 SET(SPOKK_HEADERS

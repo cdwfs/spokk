@@ -2,10 +2,11 @@
 #include "vk_vertex.h"
 #include "vk_mesh.h"  // for MeshHeader
 
-#include "assimp/DefaultLogger.hpp"
+#include <assimp/DefaultLogger.hpp>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <json.h>
 
 #include <array>
 #include <stdio.h>
@@ -283,10 +284,297 @@ int ImportFromFile( const std::string& filename )
   return error;
 }
 
+//////////////////////////
+// manifest parsing
+//////////////////////////
+
+class AssetManifest {
+public:
+  explicit AssetManifest(const std::string& json5_filename);
+  ~AssetManifest();
+private:
+  AssetManifest(const AssetManifest& rhs) = delete;
+  AssetManifest& operator=(const AssetManifest& rhs) = delete;
+
+  // Converts a json_parse_error_e to a human-readable string
+  std::string JsonParseErrorStr(const json_parse_error_e error_code) const;
+  // Returns a human-readable location of the specified json_value_s.
+  // This assumes the manifest file was parsed with the
+  // 'json_parse_flags_allow_location_information' flag enabled.
+  std::string JsonValueLocationStr(const json_value_s* val) const;
+
+  enum AssetClass {
+    ASSET_CLASS_UNKNOWN = 0,
+    ASSET_CLASS_IMAGE   = 1,
+    ASSET_CLASS_MESH    = 2,
+  };
+  AssetClass AssetManifest::GetAssetClassFromInputPath(const json_value_s* input_path_val) const;
+
+  // Individual value parsers. Each returns 0 on success, non-zero on error.
+  int ParseRoot(const json_value_s* val);
+  int ParseAssets(const json_value_s* val);
+  int ParseAsset(const json_value_s* val);
+
+  int ProcessImage(const json_string_s* input_path, const json_string_s* output_path);
+  int ProcessMesh(const json_string_s* input_path, const json_string_s* output_path);
+
+  std::string manifest_filename_;
+};
+
+AssetManifest::AssetManifest(const std::string& json5_filename)
+  : manifest_filename_(json5_filename) {
+  FILE *manifest_file = zomboFopen(manifest_filename_.c_str(), "rb");
+  if (!manifest_file) {
+    fprintf(stderr, "ERROR: Could not open %s\n", manifest_filename_.c_str());
+    return;
+  }
+  fseek(manifest_file, 0, SEEK_END);
+  size_t manifest_nbytes = ftell(manifest_file);
+  std::vector<uint8_t> manifest_bytes(manifest_nbytes);
+  fseek(manifest_file, 0, SEEK_SET);
+  size_t read_nbytes = fread(manifest_bytes.data(), 1, manifest_nbytes, manifest_file);
+  fclose(manifest_file);
+  if (read_nbytes != manifest_nbytes) {
+    fprintf(stderr, "ERROR: file I/O error while reading from %s\n", manifest_filename_.c_str());
+    return;
+  }
+
+  json_parse_result_s parse_result = {};
+  json_value_s* manifest = json_parse_ex(manifest_bytes.data(), manifest_bytes.size(),
+    json_parse_flags_allow_json5 | json_parse_flags_allow_location_information,
+    NULL, NULL, &parse_result);
+  if (!manifest) {
+    fprintf(stderr, "%s(%u): error %u at column %u (%s)\n", manifest_filename_.c_str(),
+      (uint32_t)parse_result.error_line_no, (uint32_t)parse_result.error, (uint32_t)parse_result.error_row_no,
+      JsonParseErrorStr((json_parse_error_e)parse_result.error).c_str());
+    return;
+  }
+  int parse_error = ParseRoot(manifest);
+  ZOMBO_ASSERT(parse_error == 0, "ParseRoot() returned %d at %s", parse_error, JsonValueLocationStr(manifest).c_str());
+  free(manifest);
+}
+AssetManifest::~AssetManifest() {
+}
+
+std::string AssetManifest::JsonParseErrorStr(const json_parse_error_e error_code) const {
+  switch(error_code) {
+  case json_parse_error_none:
+    return "Success";
+  case json_parse_error_expected_comma_or_closing_bracket:
+    return "Expected comma or closing bracket";
+  case json_parse_error_expected_colon:
+    return "Expected colon separating name and value";
+  case json_parse_error_expected_opening_quote:
+    return "Expected string to begin with \"";
+  case json_parse_error_invalid_string_escape_sequence:
+    return "Invalid escape sequence in string";
+  case json_parse_error_invalid_number_format:
+    return "Invalid number format";
+  case json_parse_error_invalid_value:
+    return "Invalid value";
+  case json_parse_error_premature_end_of_buffer:
+    return "Unexpected end of input buffer in mid-object/array";
+  case json_parse_error_invalid_string:
+    return "Invalid/malformed string";
+  case json_parse_error_allocator_failed:
+    return "Memory allocation failure";
+  case json_parse_error_unexpected_trailing_characters:
+    return "Unexpected trailing characters after JSON data";
+  case json_parse_error_unknown:
+    return "Uncategorized error";
+  default:
+    return "Legitimately unrecognized error code (something messed up REAL bad)";
+  }
+}
+
+std::string AssetManifest::JsonValueLocationStr(const json_value_s* val) const {
+  const json_value_ex_s* val_ex = (const json_value_ex_s*)val;
+  return manifest_filename_
+    + "line " + std::to_string(val_ex->line_no)
+    + ", column " + std::to_string(val_ex->row_no);
+}
+
+AssetManifest::AssetClass AssetManifest::GetAssetClassFromInputPath(const json_value_s* input_path_val) const {
+  ZOMBO_ASSERT_RETURN(input_path_val->type == json_type_string, ASSET_CLASS_UNKNOWN, "input path at %s must be a string",
+    JsonValueLocationStr(input_path_val).c_str());
+  const json_string_s* input_path_str = (const json_string_s*)(input_path_val->payload);
+
+  // TODO(cort): totally not UTF-8 safe.
+  int i;
+  for(i = (int)input_path_str->string_size;
+      i >= 0 && input_path_str->string[i] != '.';
+      --i) {
+  }
+  if (i < 0) {
+    return ASSET_CLASS_UNKNOWN;
+  }
+
+  const char* suffix = input_path_str->string + i;
+  if (zomboStrcasecmp(suffix, ".ktx") == 0) {
+    return ASSET_CLASS_IMAGE;
+  } else if (zomboStrcasecmp(suffix, ".obj") == 0) {
+    return ASSET_CLASS_MESH;
+  } else {
+    ZOMBO_ERROR_RETURN(ASSET_CLASS_UNKNOWN, "Unrecognized asset suffix '%s' at %s", suffix,
+      JsonValueLocationStr(input_path_val).c_str());
+  }
+}
+
+
+int AssetManifest::ParseRoot(const json_value_s* val) {
+  if (val->type != json_type_object) {
+    fprintf(stderr, "ERROR: root payload (%s) must be an object\n", JsonValueLocationStr(val).c_str());
+    return -1;
+  }
+  json_object_s* root_obj = (json_object_s*)(val->payload);
+  size_t i_child = 0;
+  for(json_object_element_s* child_elem = root_obj->start;
+      i_child < root_obj->length;
+      ++i_child, child_elem = child_elem->next) {
+    if (strcmp(child_elem->name->string, "assets") == 0) {
+      int parse_error = ParseAssets(child_elem->value);
+      ZOMBO_ASSERT_RETURN(parse_error == 0, -2, "ParseAssets() returned %d at %s", parse_error, JsonValueLocationStr(val).c_str());
+    } else if (strcmp(child_elem->name->string, "globals") == 0) {
+      // TODO(cort): global asset settings go here
+    }
+  }
+  return 0;
+}
+
+int AssetManifest::ParseAssets(const json_value_s* val) {
+  if (val->type != json_type_array) {
+    fprintf(stderr, "ERROR: assets payload (%s) must be an array\n", JsonValueLocationStr(val).c_str());
+    return -1;
+  }
+  const json_array_s* assets_array = (const json_array_s*)(val->payload);
+  size_t i_child = 0;
+  for(json_array_element_s* child_elem = assets_array->start;
+      i_child < assets_array->length;
+      ++i_child, child_elem = child_elem->next) {
+    int parse_error = ParseAsset(child_elem->value);
+    ZOMBO_ASSERT_RETURN(parse_error == 0, -2, "ParseAsset() returned %d at %s", parse_error, JsonValueLocationStr(val).c_str());
+  }
+
+  return 0;
+}
+
+int AssetManifest::ParseAsset(const json_value_s* val) {
+  if (val->type != json_type_object) {
+    fprintf(stderr, "ERROR: asset payload (%s) must be an object\n", JsonValueLocationStr(val).c_str());
+    return -1;
+  }
+  AssetClass asset_class = ASSET_CLASS_UNKNOWN;
+  const json_string_s* input_path = nullptr;
+  const json_string_s* output_path = nullptr;
+  json_object_s* asset_obj = (json_object_s*)(val->payload);
+  size_t i_child = 0;
+  for(json_object_element_s* child_elem = asset_obj->start;
+      i_child < asset_obj->length;
+      ++i_child, child_elem = child_elem->next) {
+    if (strcmp(child_elem->name->string, "input") == 0) {
+      if (child_elem->value->type != json_type_string) {
+        fprintf(stderr, "ERROR: asset input payload (%s) must be a string\n", JsonValueLocationStr(child_elem->value).c_str());
+        return -1;
+      }
+      input_path = (const json_string_s*)child_elem->value->payload;
+      asset_class = GetAssetClassFromInputPath(child_elem->value);
+    } else if (strcmp(child_elem->name->string, "output") == 0) {
+      if (child_elem->value->type != json_type_string) {
+        fprintf(stderr, "ERROR: asset output payload (%s) must be a string\n", JsonValueLocationStr(child_elem->value).c_str());
+        return -1;
+      }
+      output_path = (const json_string_s*)child_elem->value->payload;
+    }
+  }
+  if (input_path == nullptr ||
+      output_path == nullptr) {
+    fprintf(stderr, "ERROR: incomplete asset at %s\n", JsonValueLocationStr(val).c_str());
+    return -2;
+  }
+  // For now, assets are processed right here.
+  // Longer-term, we can build up a list in the AssetManifest and process it later.
+  if (asset_class == ASSET_CLASS_IMAGE) {
+    int process_error = ProcessImage(input_path, output_path);
+    ZOMBO_ASSERT_RETURN(process_error == 0, -2, "ProcessImage() returned %d at %s",
+      process_error, JsonValueLocationStr(val).c_str());
+  } else if (asset_class == ASSET_CLASS_MESH) {
+    int process_error = ProcessMesh(input_path, output_path);
+    ZOMBO_ASSERT_RETURN(process_error == 0, -2, "ProcessImage() returned %d at %s",
+      process_error, JsonValueLocationStr(val).c_str());
+  } else {
+    // unknown asset class; skip it!
+    printf("WARNING: skipping asset at %s with unknown asset class\n", JsonValueLocationStr(val).c_str());
+  }
+  return 0;
+}
+
+int ConvertUtf8ToWide(const json_string_s* utf8, std::vector<WCHAR>* out_wide) {
+  int nchars = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, nullptr, 0);
+  ZOMBO_ASSERT_RETURN(nchars != 0, -1, "malformed UTF-8, I guess?");
+  out_wide->resize(nchars+1);
+  int nchars_final = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, out_wide->data(), nchars+1);
+  ZOMBO_ASSERT_RETURN(nchars_final != 0, -2, "failed to decode UTF-8");
+  (*out_wide)[nchars_final] = 0;
+  return nchars_final;
+}
+
+int AssetManifest::ProcessImage(const json_string_s* input_path, const json_string_s* output_path) {
+  // Convert UTF-8 paths to wide strings
+  std::vector<WCHAR> input_wstr, output_wstr;
+  int input_nchars = ConvertUtf8ToWide(input_path, &input_wstr);
+  ZOMBO_ASSERT_RETURN(input_nchars > 0, -1, "Failed to decode input_path");
+  int output_nchars = ConvertUtf8ToWide(output_path, &output_wstr);
+  ZOMBO_ASSERT_RETURN(output_nchars > 0, -2, "Failed to decode output_path");
+
+  // Query file attributes
+  bool update_output_file = false;
+  WIN32_FILE_ATTRIBUTE_DATA input_attrs = {}, output_attrs = {};
+  BOOL input_attr_success = GetFileAttributesExW(input_wstr.data(), GetFileExInfoStandard, &input_attrs);
+  ZOMBO_ASSERT_RETURN(input_attr_success, -3, "Failed to read file attributes for input_path");
+  BOOL output_attr_success = GetFileAttributesExW(output_wstr.data(), GetFileExInfoStandard, &output_attrs);
+  if (!output_attr_success) {
+    // TODO(cort): this is a mess. query file existence before getting attributes?
+    if (GetLastError() == ERROR_FILE_NOT_FOUND) {
+      update_output_file = true;
+    } else {
+      ZOMBO_ERROR_RETURN(-4, "Failed to read file attributes for output_path");
+    }
+  }
+
+  if (!update_output_file) {
+    // Compare file write times
+    ULARGE_INTEGER input_write_time, output_write_time;
+    input_write_time.HighPart  =  input_attrs.ftLastWriteTime.dwHighDateTime;
+    input_write_time.LowPart   =  input_attrs.ftLastWriteTime.dwLowDateTime;
+    output_write_time.HighPart = output_attrs.ftLastWriteTime.dwHighDateTime;
+    output_write_time.LowPart  = output_attrs.ftLastWriteTime.dwLowDateTime;
+    if (output_write_time.QuadPart < input_write_time.QuadPart) {
+      update_output_file = true;
+    }
+  }
+
+  if (update_output_file) {
+    BOOL copy_success = CopyFile(input_wstr.data(), output_wstr.data(), FALSE);
+    ZOMBO_ASSERT_RETURN(copy_success, -5, "CopyFile() failed");
+    printf("Copied %s to %s\n", input_path->string, output_path->string);
+  } else {
+    printf("Skipped %s (%s is up to date)\n", input_path->string, output_path->string);
+  }
+  return 0;
+}
+int AssetManifest::ProcessMesh(const json_string_s* input_path, const json_string_s* output_path) {
+  (void)input_path;
+  (void)output_path;
+  return 0;
+}
+
 int main(int argc, char *argv[]) {
   if (argc != 2) {
     return -1;
   }
-  const char *input_filename = argv[1];
-  ImportFromFile(input_filename);
+
+  const char *manifest_filename = argv[1];
+  AssetManifest manifest(manifest_filename);
+
+  //ImportFromFile(input_filename);
 }
