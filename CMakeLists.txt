@@ -209,6 +209,7 @@ SET(SPOKK_HEADERS
     vk_pipeline.h
     vk_renderpass.h
     vk_shader.h
+    vk_shader_interface.h
     vk_utilities.h
     vk_vertex.h
 )
