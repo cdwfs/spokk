@@ -235,15 +235,13 @@ IF(${SPOKK_ENABLE_SHADERC})
 ENDIF()
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC "third_party/stb")
 
-# Copy assets directory into build dir.
-# TODO(https://github.com/cdwfs/spokk/issues/11): only copy assets required by a particular sample
+# Build assets
 ADD_CUSTOM_TARGET(spokk-assets
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets
-        ${CMAKE_BINARY_DIR}/data
-    COMMENT "Copying assets from ${CMAKE_SOURCE_DIR}/assets to to ${CMAKE_BINARY_DIR}/data"
+    COMMAND $<TARGET_FILE:spokkle> assets.json5
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Bulding assets from ${CMAKE_SOURCE_DIR}/assets.json5"
 )
-
+ADD_DEPENDENCIES(spokk-assets spokkle)
 
 FUNCTION (SPOKK_APP APP_NAME APP_SOURCES_LIST APP_HEADERS_LIST APP_SHADERS_LIST)
     SET(APP_HEADERS ${${APP_HEADERS_LIST}})
