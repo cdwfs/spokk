@@ -62,7 +62,7 @@ public:
     SPOKK_VK_CHECK(mesh_shader_program_.Finalize(device_context_));
 
     // Populate Mesh object
-    int mesh_load_error = LoadMeshFromFile(device_context_, "data/teapot.mesh", &mesh_, &mesh_format_);
+    int mesh_load_error = mesh_.CreateFromFile(device_context_, "data/teapot.mesh");
     ZOMBO_ASSERT(!mesh_load_error, "load error: %d", mesh_load_error);
 
     // Create pipelined buffer of per-mesh object-to-world matrices.
@@ -82,7 +82,7 @@ public:
     SPOKK_VK_CHECK(scene_uniforms_.Create(device_context_, PFRAME_COUNT, scene_uniforms_ci,
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
-    mesh_pipeline_.Init(mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
+    mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_context_));
 
     for(const auto& dset_layout_ci : mesh_shader_program_.dset_layout_cis) {
@@ -117,9 +117,7 @@ public:
       mesh_uniforms_.Destroy(device_context_);
       scene_uniforms_.Destroy(device_context_);
 
-      // TODO(cort): automate!
-      mesh_.index_buffer.Destroy(device_context_);
-      mesh_.vertex_buffers[0].Destroy(device_context_);
+      mesh_.Destroy(device_context_);
 
       mesh_vs_.Destroy(device_context_);
       mesh_fs_.Destroy(device_context_);
@@ -302,7 +300,6 @@ private:
   DescriptorPool dpool_;
   std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
-  MeshFormat mesh_format_;
   Mesh mesh_;
   PipelinedBuffer mesh_uniforms_;
   PipelinedBuffer scene_uniforms_;

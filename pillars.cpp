@@ -66,7 +66,6 @@ private:
   DescriptorPool dpool_;
   std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
-  MeshFormat mesh_format_;
   Mesh mesh_;
   PipelinedBuffer scene_uniforms_;
   PipelinedBuffer heightfield_buffer_;
@@ -118,19 +117,18 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   SPOKK_VK_CHECK(pillar_shader_program_.Finalize(device_context_));
 
   // Describe the mesh format.
-  mesh_format_.vertex_buffer_bindings = {
+  mesh_.mesh_format.vertex_buffer_bindings = {
     {0, 4+4+2, VK_VERTEX_INPUT_RATE_VERTEX},
   };
-  mesh_format_.vertex_attributes = {
+  mesh_.mesh_format.vertex_attributes = {
     {0, 0, VK_FORMAT_R8G8B8A8_SNORM, 0},
     {1, 0, VK_FORMAT_R8G8B8A8_SNORM, 4},
     {2, 0, VK_FORMAT_R8G8_UNORM, 8},
   };
-  mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-  mesh_.mesh_format = &mesh_format_;
+  mesh_.mesh_format.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
   // Create graphics pipelines
-  pillar_pipeline_.Init(mesh_.mesh_format, &pillar_shader_program_, &render_pass_, 0);
+  pillar_pipeline_.Init(&(mesh_.mesh_format), &pillar_shader_program_, &render_pass_, 0);
   SPOKK_VK_CHECK(pillar_pipeline_.Finalize(device_context_));
 
   // Populate Mesh object
@@ -148,7 +146,7 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   // vertex buffer
   VkBufferCreateInfo vertex_buffer_ci = {};
   vertex_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  vertex_buffer_ci.size = cube_vertex_count * mesh_format_.vertex_buffer_bindings[0].stride;
+  vertex_buffer_ci.size = cube_vertex_count * mesh_.mesh_format.vertex_buffer_bindings[0].stride;
   vertex_buffer_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   mesh_.vertex_buffers.resize(1);
@@ -160,7 +158,7 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
     {1, VK_FORMAT_R32G32B32_SFLOAT, 12},
     {2, VK_FORMAT_R32G32_SFLOAT, 24},
   };
-  const VertexLayout final_vertex_layout(mesh_format_, 0);
+  const VertexLayout final_vertex_layout(mesh_.mesh_format, 0);
   std::vector<uint8_t> final_mesh_vertices(vertex_buffer_ci.size);
   int convert_error = ConvertVertexBuffer(cube_vertices, src_vertex_layout,
     final_mesh_vertices.data(), final_vertex_layout, cube_vertex_count);
@@ -239,9 +237,7 @@ PillarsApp::~PillarsApp() {
     visible_cells_buffer_.Destroy(device_context_);
     heightfield_buffer_.Destroy(device_context_);
 
-    // TODO(cort): automate!
-    mesh_.index_buffer.Destroy(device_context_);
-    mesh_.vertex_buffers[0].Destroy(device_context_);
+    mesh_.Destroy(device_context_);
 
     pillar_vs_.Destroy(device_context_);
     pillar_fs_.Destroy(device_context_);

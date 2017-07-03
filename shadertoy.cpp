@@ -88,6 +88,8 @@ public:
     mouse_pos_ = mathfu::vec2(0,0);
     glfwSetMouseButtonCallback(window_.get(), MyGlfwMouseButtonCallback);
 
+    empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR, swapchain_surface_format_.format);
     // Customize
@@ -342,8 +344,7 @@ private:
       SPOKK_VK_CHECK(new_shader_program.AddShader(&new_fs));
       SPOKK_VK_CHECK(new_shader_program.Finalize(device_context_));
       GraphicsPipeline& new_pipeline = pipelines_[1 - active_pipeline_index_];
-      new_pipeline.Init(MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-        &new_shader_program, &render_pass_, 0);
+      new_pipeline.Init(&empty_mesh_format_, &new_shader_program, &render_pass_, 0);
       SPOKK_VK_CHECK(new_pipeline.Finalize(device_context_));
       swap_shader_.store(true);
     } else {
@@ -417,6 +418,8 @@ private:
   std::array<Image, 6> cubemaps_;
   std::array<Image*, 4> active_images_;
   std::array<VkSampler,4> samplers_;
+
+  MeshFormat empty_mesh_format_;
 
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
