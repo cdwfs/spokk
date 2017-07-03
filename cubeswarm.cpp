@@ -233,12 +233,7 @@ public:
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
       mesh_pipeline_.shader_program->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
-    const VkDeviceSize vertex_buffer_offsets[1] = {}; // TODO(cort): mesh::bind()
-    VkBuffer vertex_buffer = mesh_.vertex_buffers[0].Handle();
-    vkCmdBindVertexBuffers(primary_cb, 0,1, &vertex_buffer, vertex_buffer_offsets);
-    const VkDeviceSize index_buffer_offset = 0;
-    vkCmdBindIndexBuffer(primary_cb, mesh_.index_buffer.Handle(), index_buffer_offset, mesh_.index_type);
-    vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0,0,0);
+    mesh_.BindBuffersAndDraw(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT);
     vkCmdEndRenderPass(primary_cb);
   }
 

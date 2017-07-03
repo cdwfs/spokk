@@ -29,11 +29,20 @@ struct Mesh {
   int CreateFromFile(const DeviceContext& device_context, const char* mesh_filename);
   void Destroy(const DeviceContext& device_context);
 
+  // Helper to bind all vertex buffers and index buffers, and draw all indices
+  void BindBuffersAndDraw(VkCommandBuffer cb, uint32_t index_cnt, uint32_t instance_cnt = 1,
+    uint32_t first_index = 0, uint32_t vertex_offset = 0, uint32_t first_instance = 0) const;
+
   std::vector<Buffer> vertex_buffers;
   MeshFormat mesh_format;
   Buffer index_buffer;
-  VkIndexType index_type;
+  uint32_t vertex_count;
   uint32_t index_count;
+  VkIndexType index_type;
+
+  // Handy arrays of buffer offsets, to avoid allocating them for every bind call
+  std::vector<VkDeviceSize> vertex_buffer_byte_offsets;
+  VkDeviceSize index_buffer_byte_offset;
 private:
   Mesh(const Mesh& rhs) = delete;
   Mesh& operator=(const Mesh& rhs) = delete;

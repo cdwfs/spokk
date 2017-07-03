@@ -47,8 +47,9 @@ Mesh::Mesh()
   : vertex_buffers{},
     mesh_format{},
     index_buffer{},
-    index_type(VK_INDEX_TYPE_MAX_ENUM),
-    index_count(0) {
+    vertex_count(0),
+    index_count(0),
+    index_type(VK_INDEX_TYPE_MAX_ENUM) {
 }
 
 int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_filename) {
@@ -91,6 +92,7 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
   } else {
     ZOMBO_ERROR_RETURN(-1, "Invalid index size %u in mesh %s", mesh_header.bytes_per_index, mesh_filename);
   }
+  vertex_count = mesh_header.vertex_count;
   index_count = mesh_header.index_count;
   // create and populate Buffer objects.
   VkBufferCreateInfo index_buffer_ci = {};
@@ -111,6 +113,13 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
     vertex_buffers[iVB].Load(device_context, vertices.data(), vertices.size());
   }
 
+  // Populate buffer offsets
+  vertex_buffer_byte_offsets.resize(vertex_buffers.size());
+  for(size_t i = 0; i < vertex_buffers.size(); ++i) {
+    vertex_buffer_byte_offsets[i] = 0;
+  }
+  index_buffer_byte_offset = 0;
+
   return 0;
 }
 
@@ -121,6 +130,19 @@ void Mesh::Destroy(const DeviceContext& device_context) {
   vertex_buffers.clear();
   index_buffer.Destroy(device_context);
   index_count = 0;
+}
+
+void Mesh::BindBuffersAndDraw(VkCommandBuffer cb, uint32_t index_cnt, uint32_t instance_cnt,
+    uint32_t first_index, uint32_t vertex_offset, uint32_t first_instance) const {
+  ZOMBO_ASSERT((uint32_t)vertex_buffers.size() == mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount,
+    "Mesh's vertex buffer count (%u) does not match count in MeshFormat (%u)", (uint32_t)vertex_buffers.size(),
+    mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount);
+  for(uint32_t i = 0; i < mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount; ++i) {
+    VkBuffer handle = vertex_buffers[i].Handle();
+    vkCmdBindVertexBuffers(cb, mesh_format.vertex_buffer_bindings[i].binding, 1, &handle, &vertex_buffer_byte_offsets[i]);
+  }
+  vkCmdBindIndexBuffer(cb, index_buffer.Handle(), index_buffer_byte_offset, index_type);
+  vkCmdDrawIndexed(cb, index_cnt, instance_cnt, first_index, vertex_offset, first_instance);
 }
 
 }  // namespace spokk
