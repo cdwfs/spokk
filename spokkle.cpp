@@ -212,7 +212,7 @@ int ConvertSceneToMesh( const std::string& input_scene_filename, const std::stri
     mesh_header.bytes_per_index = bytes_per_index;
     mesh_header.vertex_count = vertex_count;
     mesh_header.index_count = index_count;
-    mesh_header.topology = 1;
+    mesh_header.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     mesh_header.aabb_min[0] = aabb_min.x;
     mesh_header.aabb_min[1] = aabb_min.y;
     mesh_header.aabb_min[2] = aabb_min.z;
@@ -366,38 +366,9 @@ std::string AssetManifest::JsonValueLocationStr(const json_value_s* val) const {
     + ", column " + std::to_string(val_ex->row_no);
 }
 
-AssetManifest::AssetClass AssetManifest::GetAssetClassFromInputPath(const json_value_s* input_path_val) const {
-  ZOMBO_ASSERT_RETURN(input_path_val->type == json_type_string, ASSET_CLASS_UNKNOWN, "input path at %s must be a string",
-    JsonValueLocationStr(input_path_val).c_str());
-  const json_string_s* input_path_str = (const json_string_s*)(input_path_val->payload);
-
-  // TODO(cort): totally not UTF-8 safe.
-  int i;
-  for(i = (int)input_path_str->string_size;
-      i >= 0 && input_path_str->string[i] != '.';
-      --i) {
-  }
-  if (i < 0) {
-    return ASSET_CLASS_UNKNOWN;
-  }
-
-  const char* suffix = input_path_str->string + i;
-  if (zomboStrcasecmp(suffix, ".ktx") == 0) {
-    return ASSET_CLASS_IMAGE;
-  } else if (zomboStrcasecmp(suffix, ".obj") == 0) {
-    return ASSET_CLASS_MESH;
-  } else {
-    ZOMBO_ERROR_RETURN(ASSET_CLASS_UNKNOWN, "Unrecognized asset suffix '%s' at %s", suffix,
-      JsonValueLocationStr(input_path_val).c_str());
-  }
-}
-
-
 int AssetManifest::ParseRoot(const json_value_s* val) {
-  if (val->type != json_type_object) {
-    fprintf(stderr, "ERROR: root payload (%s) must be an object\n", JsonValueLocationStr(val).c_str());
-    return -1;
-  }
+  ZOMBO_ASSERT_RETURN(val->type == json_type_object, -1,
+    "ERROR: root payload (%s) must be an object", JsonValueLocationStr(val).c_str());
   json_object_s* root_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
   for(json_object_element_s* child_elem = root_obj->start;
@@ -414,10 +385,8 @@ int AssetManifest::ParseRoot(const json_value_s* val) {
 }
 
 int AssetManifest::ParseAssets(const json_value_s* val) {
-  if (val->type != json_type_array) {
-    fprintf(stderr, "ERROR: assets payload (%s) must be an array\n", JsonValueLocationStr(val).c_str());
-    return -1;
-  }
+  ZOMBO_ASSERT_RETURN(val->type == json_type_array, -1,
+    "ERROR: assets payload (%s) must be an array\n", JsonValueLocationStr(val).c_str());
   const json_array_s* assets_array = (const json_array_s*)(val->payload);
   size_t i_child = 0;
   for(json_array_element_s* child_elem = assets_array->start;
@@ -426,15 +395,12 @@ int AssetManifest::ParseAssets(const json_value_s* val) {
     int parse_error = ParseAsset(child_elem->value);
     ZOMBO_ASSERT_RETURN(parse_error == 0, -2, "ParseAsset() returned %d at %s", parse_error, JsonValueLocationStr(val).c_str());
   }
-
   return 0;
 }
 
 int AssetManifest::ParseAsset(const json_value_s* val) {
-  if (val->type != json_type_object) {
-    fprintf(stderr, "ERROR: asset payload (%s) must be an object\n", JsonValueLocationStr(val).c_str());
-    return -1;
-  }
+  ZOMBO_ASSERT_RETURN(val->type == json_type_object, -1,
+    "ERROR: asset payload (%s) must be an object", JsonValueLocationStr(val).c_str());
   AssetClass asset_class = ASSET_CLASS_UNKNOWN;
   const json_string_s* input_path = nullptr;
   const json_string_s* output_path = nullptr;
@@ -443,26 +409,30 @@ int AssetManifest::ParseAsset(const json_value_s* val) {
   for(json_object_element_s* child_elem = asset_obj->start;
       i_child < asset_obj->length;
       ++i_child, child_elem = child_elem->next) {
-    if (strcmp(child_elem->name->string, "input") == 0) {
-      if (child_elem->value->type != json_type_string) {
-        fprintf(stderr, "ERROR: asset input payload (%s) must be a string\n", JsonValueLocationStr(child_elem->value).c_str());
-        return -1;
+    if (strcmp(child_elem->name->string, "class") == 0) {
+      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
+        "ERROR: asset class payload (%s) must be a string", JsonValueLocationStr(child_elem->value).c_str());
+      const json_string_s* asset_class_str = (const json_string_s*)child_elem->value->payload;
+      if (strcmp(asset_class_str->string, "image") == 0) {
+        asset_class = ASSET_CLASS_IMAGE;
+      } else if (strcmp(asset_class_str->string, "mesh") == 0) {
+        asset_class = ASSET_CLASS_MESH;
+      } else {
+        ZOMBO_ERROR_RETURN(-2, "ERROR: unknown asset class '%s' at %s", asset_class_str->string,
+          JsonValueLocationStr(child_elem->value).c_str());
       }
+    } else if (strcmp(child_elem->name->string, "input") == 0) {
+      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -3,
+        "ERROR: asset input payload (%s) must be a string", JsonValueLocationStr(child_elem->value).c_str());
       input_path = (const json_string_s*)child_elem->value->payload;
-      asset_class = GetAssetClassFromInputPath(child_elem->value);
     } else if (strcmp(child_elem->name->string, "output") == 0) {
-      if (child_elem->value->type != json_type_string) {
-        fprintf(stderr, "ERROR: asset output payload (%s) must be a string\n", JsonValueLocationStr(child_elem->value).c_str());
-        return -1;
-      }
+      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -4,
+        "ERROR: asset output payload (%s) must be a string", JsonValueLocationStr(child_elem->value).c_str());
       output_path = (const json_string_s*)child_elem->value->payload;
     }
   }
-  if (input_path == nullptr ||
-      output_path == nullptr) {
-    fprintf(stderr, "ERROR: incomplete asset at %s\n", JsonValueLocationStr(val).c_str());
-    return -2;
-  }
+  ZOMBO_ASSERT_RETURN(input_path && output_path, -5, "ERROR: incomplete asset at %s",
+    JsonValueLocationStr(val).c_str());
   // For now, assets are processed right here.
   // Longer-term, we can build up a list in the AssetManifest and process it later.
   if (asset_class == ASSET_CLASS_IMAGE) {
@@ -471,7 +441,7 @@ int AssetManifest::ParseAsset(const json_value_s* val) {
       process_error, JsonValueLocationStr(val).c_str());
   } else if (asset_class == ASSET_CLASS_MESH) {
     int process_error = ProcessMesh(input_path, output_path);
-    ZOMBO_ASSERT_RETURN(process_error == 0, -2, "ProcessImage() returned %d at %s",
+    ZOMBO_ASSERT_RETURN(process_error == 0, -2, "ProcessMesh() returned %d at %s",
       process_error, JsonValueLocationStr(val).c_str());
   } else {
     // unknown asset class; skip it!
@@ -508,7 +478,7 @@ int AssetManifest::IsOutputOutOfDate(const json_string_s* input_path, const json
     return -6;
   }
 
-  // If both files exists, we compare last-write time
+  // If both files exists, we compare last-write time.
   bool output_is_older = false;
   if (input_exists && output_exists) {
     // Query file attributes
@@ -528,6 +498,14 @@ int AssetManifest::IsOutputOutOfDate(const json_string_s* input_path, const json
     }
   }
 
+  // TODO(cort): There's a problem here. If the manifest is changed to reference a different
+  // (preexisting) input file that's still older than the output, or if all that changes are
+  // asset metadata, the output will not be rebuilt.
+  // Not sure how often that will be an issue, but a few possible fixes included:
+  // - Track the input file that was used to build each output file (by name or hash)
+  // - Check the write time of the manifest itself. If it's newer than an output, rebuild it.
+  //   (This is the nuclear option, as any manifest change means a full rebuild. But I already
+  //   deal with that on the code side.
   *out_result = (!output_exists || output_is_older);
   return 0;
 #elif defined(ZOMBO_PLATFORM_POSIX)
@@ -568,7 +546,6 @@ bool AssetManifest::CopyAssetFile(const json_string_s* input_path, const json_st
   // Copy
   BOOL copy_success = CopyFile(input_wstr.data(), output_wstr.data(), FALSE);
   ZOMBO_ASSERT_RETURN(copy_success, false, "CopyFile() failed");
-  wprintf(L"Copied %s to %s\n", input_wstr.c_str(), output_wstr.c_str());
   return true;
 #else
 # error Unsupported platform! Sorry!
@@ -582,6 +559,7 @@ int AssetManifest::ProcessImage(const json_string_s* input_path, const json_stri
   if (build_output) {
     bool copy_success = CopyAssetFile(input_path, output_path);
     ZOMBO_ASSERT_RETURN(copy_success, -1, "CopyAssetFile() failed");
+    printf("%s -> %s\n", input_path->string, output_path->string);
   } else {
     //wprintf(L"Skipped %s (%s is up to date)\n", input_wstr.c_str(), output_wstr.c_str());
   }
@@ -594,6 +572,7 @@ int AssetManifest::ProcessMesh(const json_string_s* input_path, const json_strin
   if (build_output) {
     int process_result = ConvertSceneToMesh(input_path->string, output_path->string);
     ZOMBO_ASSERT_RETURN(process_result == 0, -1, "ConvertSceneToMesh() failed (%d)", process_result);
+    printf("%s -> %s\n", input_path->string, output_path->string);
   } else {
     //wprintf(L"Skipped %s (%s is up to date)\n", input_wstr.c_str(), output_wstr.c_str());
   }

@@ -48,7 +48,7 @@ struct MeshFileHeader {
   uint32_t bytes_per_index;
   uint32_t vertex_count;
   uint32_t index_count;
-  uint32_t topology; // currently ignored, assume triangles
+  VkPrimitiveTopology topology;
   float aabb_min[3];
   float aabb_max[3];
 };

@@ -65,7 +65,6 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
     fclose(mesh_file);
     return -1;
   }
-  ZOMBO_ASSERT(mesh_header.topology == 1, "topology is currently hard-coded to tri lists");
 
   mesh_format.vertex_buffer_bindings.resize(mesh_header.vertex_buffer_count);
   read_count = fread(mesh_format.vertex_buffer_bindings.data(),
@@ -84,7 +83,7 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
   read_count = fread(indices.data(), mesh_header.bytes_per_index, mesh_header.index_count, mesh_file);
   fclose(mesh_file);
 
-  mesh_format.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+  mesh_format.Finalize(mesh_header.topology);
   if (mesh_header.bytes_per_index == 2) {
     index_type = VK_INDEX_TYPE_UINT16;
   } else if (mesh_header.bytes_per_index == 4) {
