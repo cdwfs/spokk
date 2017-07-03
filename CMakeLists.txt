@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 2.8)
 project(spokk)
 
 # Global build settings
+# TODO(cort): Disable /W4 for third_party projects
 IF(MSVC)
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GS- /GR- /W4 /wd4996 /wd4201 /we4003 /D _UNICODE /D UNICODE /D NOMINMAX /D _HAS_EXCEPTIONS=0" CACHE TYPE STRING FORCE)
@@ -39,6 +40,26 @@ option(GLFW_BUILD_DOCS "Build the GLFW documentation" OFF)
 option(GLFW_INSTALL "Generate installation target" OFF)
 option(USE_MSVC_RUNTIME_LIBRARY_DLL "Use MSVC runtime library DLL" ON)
 add_subdirectory(third_party/glfw)
+
+# assimp
+OPTION(ASSIMP_BUILD_ASSIMP_TOOLS "If the supplementary tools for Assimp are built in addition to the library." OFF)
+OPTION(ASSIMP_BUILD_TESTS "If the test suite for Assimp is built in addition to the library." OFF)
+OPTION(ASSIMP_NO_EXPORT "Disable Assimp's export functionality." ON)
+OPTION(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT "default value of all ASSIMP_BUILD_XXX_IMPORTER value" FALSE)
+OPTION(ASSIMP_BUILD_BLEND_IMPORTER "build the BLEND importer" ON)
+OPTION(ASSIMP_BUILD_FBX_IMPORTER "build the FBX importer" ON)
+OPTION(ASSIMP_BUILD_OBJ_IMPORTER "build the OBJ importer" ON)
+ADD_SUBDIRECTORY(third_party/assimp)
+set(ASSIMP_TARGETS
+    assimp
+    uninstall
+    UpdateAssimpLibsDebugSymbolsAndDLLs
+    zlibstatic
+)
+set_target_properties(${ASSIMP_TARGETS} PROPERTIES FOLDER "assimp")
+
+# json.h
+set(JSON_H_DIR third_party/json.h)
 
 # Vulkan -- uses VULKAN_* variables defined by GLFW
 include_directories(${VULKAN_INCLUDE_DIR})
@@ -154,6 +175,26 @@ MACRO (cmp_IDE_SOURCE_PROPERTIES SOURCE_PATH HEADERS SOURCES)
     source_group(${source_group_path} FILES ${HEADERS} ${SOURCES})
 ENDMACRO (cmp_IDE_SOURCE_PROPERTIES NAME HEADERS SOURCES INSTALL_FILES)
 
+# spokkle
+SET(SPOKKLE_SOURCES
+    spokkle.cpp
+    vk_vertex.cpp
+    ${JSON_H_DIR}/json.c
+)
+SET(SPOKKLE_HEADERS
+    ${JSON_H_DIR}/json.h
+)
+cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKKLE_HEADERS}" "${SPOKKLE_SOURCES}")
+ADD_EXECUTABLE(spokkle ${SPOKKLE_SOURCES} ${SPOKKLE_HEADERS})
+TARGET_LINK_LIBRARIES(spokkle assimp)
+TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
+    "third_party/assimp/include"
+    ${JSON_H_DIR}
+    )
+IF(MSVC)
+    TARGET_LINK_LIBRARIES(spokkle shlwapi)
+ENDIF(MSVC)
+
 # libspokk
 SET(SPOKK_HEADERS
     image_file.h
@@ -168,6 +209,7 @@ SET(SPOKK_HEADERS
     vk_pipeline.h
     vk_renderpass.h
     vk_shader.h
+    vk_shader_interface.h
     vk_utilities.h
     vk_vertex.h
 )
@@ -194,15 +236,13 @@ IF(${SPOKK_ENABLE_SHADERC})
 ENDIF()
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC "third_party/stb")
 
-# Copy assets directory into build dir.
-# TODO(https://github.com/cdwfs/spokk/issues/11): only copy assets required by a particular sample
+# Build assets
 ADD_CUSTOM_TARGET(spokk-assets
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets
-        ${CMAKE_BINARY_DIR}/data
-    COMMENT "Copying assets from ${CMAKE_SOURCE_DIR}/assets to to ${CMAKE_BINARY_DIR}/data"
+    COMMAND $<TARGET_FILE:spokkle> assets.json5
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Bulding assets from ${CMAKE_SOURCE_DIR}/assets.json5"
 )
-
+ADD_DEPENDENCIES(spokk-assets spokkle)
 
 FUNCTION (SPOKK_APP APP_NAME APP_SOURCES_LIST APP_HEADERS_LIST APP_SHADERS_LIST)
     SET(APP_HEADERS ${${APP_HEADERS_LIST}})

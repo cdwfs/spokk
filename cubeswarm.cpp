@@ -58,9 +58,7 @@ public:
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-    const VkDeviceSize blit_buffer_nbytes = 4*1024*1024;
-    SPOKK_VK_CHECK(blitter_.Create(device_context_, PFRAME_COUNT, blit_buffer_nbytes));
-    albedo_tex_.CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "data/redf.ktx");
+    albedo_tex_.CreateFromFile(device_context_, graphics_and_present_queue_, "data/redf.ktx");
 
     // Load shader pipelines
     SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_context_, "rigid_mesh.vert.spv"));
@@ -70,50 +68,8 @@ public:
     SPOKK_VK_CHECK(mesh_shader_program_.Finalize(device_context_));
 
     // Populate Mesh object
-    mesh_.index_type = (sizeof(cube_indices[0]) == sizeof(uint32_t)) ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
-    mesh_.index_count = cube_index_count;
-
-    VkBufferCreateInfo index_buffer_ci = {};
-    index_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    index_buffer_ci.size = cube_index_count * sizeof(cube_indices[0]);
-    index_buffer_ci.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_.index_buffer.Create(device_context_, index_buffer_ci));
-    SPOKK_VK_CHECK(mesh_.index_buffer.Load(device_context_, cube_indices, index_buffer_ci.size));
-
-    // Describe the mesh format.
-    mesh_format_.vertex_buffer_bindings = {
-      {0, 4+4+4, VK_VERTEX_INPUT_RATE_VERTEX},
-    };
-    mesh_format_.vertex_attributes = {
-      {0, 0, VK_FORMAT_R8G8B8A8_SNORM, 0},
-      {1, 0, VK_FORMAT_R8G8B8A8_SNORM, 4},
-      {2, 0, VK_FORMAT_R16G16_SFLOAT, 8},
-    };
-    mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    mesh_.mesh_format = &mesh_format_;
-
-    VkBufferCreateInfo vertex_buffer_ci = {};
-    vertex_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    vertex_buffer_ci.size = cube_vertex_count * mesh_format_.vertex_buffer_bindings[0].stride;
-    vertex_buffer_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    mesh_.vertex_buffers.resize(1);
-    SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Create(device_context_, vertex_buffer_ci));
-    // Convert the vertex data from its original uncompressed format to its final format.
-    // In a real application, this conversion would happen at asset build time.
-    const VertexLayout src_vertex_layout = {
-      {0, VK_FORMAT_R32G32B32_SFLOAT, 0},
-      {1, VK_FORMAT_R32G32B32_SFLOAT, 12},
-      {2, VK_FORMAT_R32G32_SFLOAT, 24},
-    };
-    const VertexLayout final_vertex_layout(mesh_format_, 0);
-    std::vector<uint8_t> final_mesh_vertices(vertex_buffer_ci.size);
-    int convert_error = ConvertVertexBuffer(cube_vertices, src_vertex_layout,
-      final_mesh_vertices.data(), final_vertex_layout, cube_vertex_count);
-    assert(convert_error == 0);
-    (void)convert_error;
-    SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Load(device_context_, final_mesh_vertices.data(), vertex_buffer_ci.size));
+    int mesh_load_error = mesh_.CreateFromFile(device_context_, "data/teapot.mesh");
+    ZOMBO_ASSERT(!mesh_load_error, "load error: %d", mesh_load_error);
 
     // Create pipelined buffer of per-mesh object-to-world matrices.
     VkBufferCreateInfo o2w_buffer_ci = {};
@@ -132,7 +88,7 @@ public:
     SPOKK_VK_CHECK(scene_uniforms_.Create(device_context_, PFRAME_COUNT, scene_uniforms_ci,
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
-    mesh_pipeline_.Init(mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
+    mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_context_));
 
     for(const auto& dset_layout_ci : mesh_shader_program_.dset_layout_cis) {
@@ -167,9 +123,7 @@ public:
       mesh_uniforms_.Destroy(device_context_);
       scene_uniforms_.Destroy(device_context_);
 
-      // TODO(cort): automate!
-      mesh_.index_buffer.Destroy(device_context_);
-      mesh_.vertex_buffers[0].Destroy(device_context_);
+      mesh_.Destroy(device_context_);
 
       mesh_vs_.Destroy(device_context_);
       mesh_fs_.Destroy(device_context_);
@@ -178,7 +132,6 @@ public:
 
       vkDestroySampler(device_, sampler_, host_allocator_);
       albedo_tex_.Destroy(device_context_);
-      blitter_.Destroy(device_context_);
 
       for(const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
@@ -272,7 +225,7 @@ public:
           60.0f * sinf(0.5f * secs + float(13*iMesh) + 2.0f) + swarm_center[2]
         ))
         * q.ToMatrix4()
-        * mathfu::mat4::FromScaleVector( mathfu::vec3(1.0f, 1.0f, 1.0f) )
+        * mathfu::mat4::FromScaleVector( mathfu::vec3(3.0f, 3.0f, 3.0f) )
         ;
       o2w_matrices[iMesh] = o2w;
     }
@@ -281,8 +234,6 @@ public:
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
-    blitter_.NextPframe();
-
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -295,12 +246,7 @@ public:
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
       mesh_pipeline_.shader_program->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
-    const VkDeviceSize vertex_buffer_offsets[1] = {}; // TODO(cort): mesh::bind()
-    VkBuffer vertex_buffer = mesh_.vertex_buffers[0].Handle();
-    vkCmdBindVertexBuffers(primary_cb, 0,1, &vertex_buffer, vertex_buffer_offsets);
-    const VkDeviceSize index_buffer_offset = 0;
-    vkCmdBindIndexBuffer(primary_cb, mesh_.index_buffer.Handle(), index_buffer_offset, mesh_.index_type);
-    vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0,0,0);
+    mesh_.BindBuffersAndDraw(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT);
     vkCmdEndRenderPass(primary_cb);
   }
 
@@ -352,7 +298,6 @@ private:
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
 
-  ImageBlitter blitter_;
   Image albedo_tex_;
   VkSampler sampler_;
 
@@ -363,7 +308,6 @@ private:
   DescriptorPool dpool_;
   std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
-  MeshFormat mesh_format_;
   Mesh mesh_;
   PipelinedBuffer mesh_uniforms_;
   PipelinedBuffer scene_uniforms_;

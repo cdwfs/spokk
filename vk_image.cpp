@@ -151,7 +151,7 @@ namespace spokk {
 //
 VkResult Image::Create(const DeviceContext& device_context, const VkImageCreateInfo& ci,
     VkMemoryPropertyFlags memory_properties, DeviceAllocationScope allocation_scope) {
-  assert(handle == VK_NULL_HANDLE);  // can't re-create an existing image!
+  ZOMBO_ASSERT_RETURN(handle == VK_NULL_HANDLE, VK_ERROR_INITIALIZATION_FAILED, "Can't re-create an existing Image");
   VkResult result = vkCreateImage(device_context.Device(), &ci, device_context.HostAllocator(), &handle);
   if (result == VK_SUCCESS) {
     memory = device_context.DeviceAllocAndBindToImage(handle, memory_properties, allocation_scope);
@@ -167,9 +167,9 @@ VkResult Image::Create(const DeviceContext& device_context, const VkImageCreateI
   image_ci = ci;
   return result;
 }
-int Image::CreateFromFile(const DeviceContext& device_context, ImageBlitter& blitter, const DeviceQueue *queue,
+int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue *queue,
   const std::string& filename, VkBool32 generate_mipmaps, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
-  assert(handle == VK_NULL_HANDLE);  // can't re-create an existing image!
+  ZOMBO_ASSERT_RETURN(handle == VK_NULL_HANDLE, -1, "Can't re-create an existing Image");
 
   // Load image file. TODO(cort): ideally, we'd load directly into the staging buffer here to save a memcpy.
   ImageFile image_file = {};
@@ -237,15 +237,50 @@ int Image::CreateFromFile(const DeviceContext& device_context, ImageBlitter& bli
   int32_t texel_block_bytes = g_format_attributes[image_file.data_format].texel_block_bytes;
   int32_t texel_block_width = g_format_attributes[image_file.data_format].texel_block_width;
   int32_t texel_block_height = g_format_attributes[image_file.data_format].texel_block_height;
+  // TODO(cort): move staging buffer into device context
+  size_t total_upload_size = 0;
+  for(uint32_t iMip=0; iMip < mips_to_load; ++iMip) {
+    ImageFileSubresource subresource = {};
+    subresource.mip_level = iMip;
+    // TODO(cort): each source subresource may need to start on a properly aligned offset. For now,
+    // ignore it. When I switch to a global staging buffer, allocations should be aligned to the transfer
+    // boundary.
+    total_upload_size += ImageFileGetSubresourceSize(&image_file, subresource) * image_file.array_layers;
+  }
+  VkBufferCreateInfo staging_buffer_ci = {};
+  staging_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  staging_buffer_ci.size = total_upload_size;
+  staging_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  staging_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  Buffer staging_buffer = {};
+  SPOKK_VK_CHECK(staging_buffer.Create(device_context, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+    spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
+  // barrier between host writes and transfer reads
+  VkBufferMemoryBarrier buffer_barrier = {};
+  buffer_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+  buffer_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+  buffer_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+  buffer_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  buffer_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  buffer_barrier.buffer = staging_buffer.Handle();
+  buffer_barrier.offset = 0;
+  buffer_barrier.size = VK_WHOLE_SIZE;
+  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+    0,nullptr, 1,&buffer_barrier, 0,nullptr);  // TODO(cort): combine with previous barrier
+  VkDeviceSize src_offset = 0;
   for(uint32_t i_mip=0; i_mip<mips_to_load; ++i_mip) {
+    ImageFileSubresource subresource;
+    subresource.array_layer = 0;
+    subresource.mip_level = i_mip;
+    size_t subresource_size = ImageFileGetSubresourceSize(&image_file, subresource);
     for(uint32_t i_layer=0; i_layer<image_file.array_layers; ++i_layer) {
-      ImageFileSubresource subresource;
+      // Copy subresource into staging buffer
       subresource.array_layer = i_layer;
-      subresource.mip_level = i_mip;
       const void *subresource_data = ImageFileGetSubresourceData(&image_file, subresource);
-
+      memcpy((uint8_t*)(staging_buffer.Mapped()) + src_offset, subresource_data, subresource_size);
+      // Emit commands to copy subresource from staging buffer to image
       VkBufferImageCopy copy_region = {};
-      copy_region.bufferOffset = 0;
+      copy_region.bufferOffset = src_offset;
       // copy region dimensions are specified in pixels (not texel blocks or bytes), but must be
       // an even integer multiple of the texel block dimensions for compressed formats.
       // It must also respect the minImageTransferGranularity, but in practice that just means we
@@ -257,17 +292,13 @@ int Image::CreateFromFile(const DeviceContext& device_context, ImageBlitter& bli
       copy_region.imageSubresource.aspectMask = aspect_flags;
       copy_region.imageSubresource.mipLevel = i_mip;
       copy_region.imageSubresource.baseArrayLayer = i_layer;
-      copy_region.imageSubresource.layerCount = 1;  // can only copy one layer at a time
+      copy_region.imageSubresource.layerCount = 1;  // TODO(cort): copy all layers from a single mip in one go?
       copy_region.imageExtent.width  = AlignTo(GetMipDimension(image_file.width, i_mip), texel_block_width);
       copy_region.imageExtent.height = AlignTo(GetMipDimension(image_file.height, i_mip), texel_block_height);
       copy_region.imageExtent.depth  = GetMipDimension(image_file.depth, i_mip);
-      int copy_error = blitter.CopyMemoryToImage(cb, handle, subresource_data, image_ci.format, copy_region);
-      if (copy_error) {
-        cpool.EndAbortAndFree(&cb);
-        ImageFileDestroy(&image_file);
-        Destroy(device_context);
-        return -2;
-      }
+      vkCmdCopyBufferToImage(cb, staging_buffer.Handle(), handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1, &copy_region);
+      src_offset += subresource_size;
     }
   }
 
@@ -287,9 +318,9 @@ int Image::CreateFromFile(const DeviceContext& device_context, ImageBlitter& bli
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_DEPENDENCY_BY_REGION_BIT,
       0, nullptr, 0, nullptr, 1, &barrier_dst_to_final);
   }
-
+  staging_buffer.FlushHostCache();
   cpool.EndSubmitAndFree(&cb);
-  // TODO(cort): advance blitter's PFRAME here? we know no transfers are outstanding, right?
+  staging_buffer.Destroy(device_context);
   ImageFileDestroy(&image_file);
 
   VkImageViewCreateInfo view_ci = GetImageViewCreateInfo(handle, image_ci);
@@ -315,11 +346,17 @@ void Image::Destroy(const DeviceContext& device_context) {
   }
 }
 
-int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, ImageBlitter& blitter, const DeviceQueue *queue,
+int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const DeviceQueue *queue,
     const void* src_data, uint32_t src_row_nbytes, uint32_t src_layer_height,
     const VkImageSubresource& dst_subresource, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
-  assert(handle != VK_NULL_HANDLE);  // must create image first
-
+  ZOMBO_ASSERT_RETURN(handle != VK_NULL_HANDLE, -1, "Call Create() first!");
+  // TODO(cort): This function needs a new signature.
+  // - existing src_row_nbytes and src_layer_height are currently implicitly assumed to be the *base* pitch/height.
+  //   They're scaled down to the proper mip dimensions in the VkBufferImageCopy.
+  // - We now need to know the full size of src_data, so we can copy it into the staging buffer. Currently,
+  //   the size is implicit from the destination subresource.
+  ZOMBO_ERROR_RETURN(-2, "This function is broken & needs to be fixed.");
+  size_t src_nbytes = 0;
   // Gimme a command buffer
   OneShotCommandPool cpool(device_context.Device(), queue->handle, queue->family, device_context.HostAllocator());
   VkCommandBuffer cb = cpool.AllocateAndBegin();
@@ -349,7 +386,29 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, ImageB
   const int32_t texel_block_height = format_info.texel_block_height;
   const uint32_t i_mip = dst_subresource.mipLevel;
   const uint32_t i_layer = dst_subresource.arrayLayer;
-  const void *subresource_data = src_data;
+
+  // TODO(cort): global staging buffer
+  VkBufferCreateInfo staging_buffer_ci = {};
+  staging_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  staging_buffer_ci.size = src_nbytes;
+  staging_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  staging_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  Buffer staging_buffer = {};
+  SPOKK_VK_CHECK(staging_buffer.Create(device_context, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+    spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
+  memcpy((uint8_t*)staging_buffer.Mapped(), src_data, src_nbytes);
+  // barrier between host writes and transfer reads
+  VkBufferMemoryBarrier buffer_barrier = {};
+  buffer_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+  buffer_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+  buffer_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+  buffer_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  buffer_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  buffer_barrier.buffer = staging_buffer.Handle();
+  buffer_barrier.offset = 0;
+  buffer_barrier.size = VK_WHOLE_SIZE;
+  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+    0,nullptr, 1,&buffer_barrier, 0,nullptr);
 
   VkBufferImageCopy copy_region = {};
   copy_region.bufferOffset = 0;
@@ -368,7 +427,8 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, ImageB
   copy_region.imageExtent.width  = AlignTo(GetMipDimension(image_ci.extent.width, i_mip), texel_block_width);
   copy_region.imageExtent.height = AlignTo(GetMipDimension(image_ci.extent.height, i_mip), texel_block_height);
   copy_region.imageExtent.depth  = GetMipDimension(image_ci.extent.depth, i_mip);
-  blitter.CopyMemoryToImage(cb, handle, subresource_data, image_ci.format, copy_region);
+  vkCmdCopyBufferToImage(cb, staging_buffer.Handle(), handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+    1, &copy_region);
 
   // transition to final layout/access
   VkImageMemoryBarrier barrier_dst_to_final = barrier_init_to_dst;
@@ -380,8 +440,9 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, ImageB
   vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_DEPENDENCY_BY_REGION_BIT,
     0, nullptr, 0, nullptr, 1, &barrier_dst_to_final);
 
+  staging_buffer.FlushHostCache();
   cpool.EndSubmitAndFree(&cb);
-
+  staging_buffer.Destroy(device_context);
   return 0;
 }
 
@@ -530,122 +591,6 @@ int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& d
     (VkDependencyFlags)0, 0,NULL, 0,NULL, (uint32_t)image_barriers.size(),image_barriers.data());
 
   return 0;
-}
-
-//
-// ImageBlitter
-//
-ImageBlitter::ImageBlitter() 
-  : current_pframe_(0),
-    current_offset_(0) {
-}
-ImageBlitter::~ImageBlitter() {
-}
-
-VkResult ImageBlitter::Create(const DeviceContext& device_context, uint32_t pframe_count, VkDeviceSize staging_bytes_per_pframe) {
-  VkBufferCreateInfo staging_buffer_ci = {};
-  staging_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  staging_buffer_ci.size = staging_bytes_per_pframe;
-  staging_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-  staging_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  VkResult result = staging_buffer_.Create(device_context, pframe_count, staging_buffer_ci,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);  // NOTE: not coherent! writes from the host must be flushed!
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  // TODO(cort): do we need a pipeline barrier here to put the staging buffer into the expected usage state?
-
-  staging_ranges_.resize(pframe_count);
-  for(uint32_t i = 0; i < pframe_count; ++i) {
-    staging_ranges_[i].start = staging_buffer_.Mapped(i);
-    staging_ranges_[i].end = (void*)( uintptr_t(staging_ranges_[i].start) + staging_buffer_.BytesPerPframe() );
-  }
-
-  return VK_SUCCESS;
-}
-
-void ImageBlitter::Destroy(const DeviceContext& device_context) {
-  staging_buffer_.Destroy(device_context);
-}
-
-int ImageBlitter::CopyMemoryToImage(VkCommandBuffer cb, VkImage dst_image, const void *src_data,
-    VkFormat format, const VkBufferImageCopy& copy) {
-  // If src_data is in the current staging buffer, skip the copy
-  bool copy_src_to_staging = true;
-  for(uint32_t pf = 0; pf < staging_buffer_.Depth(); ++pf) {
-    if (src_data >= staging_ranges_[pf].start && src_data < staging_ranges_[pf].end) {
-      if (pf == current_pframe_) {
-        copy_src_to_staging = false;
-        break;
-      } else {
-        return -1;  // src_data is in the wrong pframe's staging buffer!
-      }
-    }
-  }
-
-  // Determine size of the source data.
-  const ImageFormatAttributes& format_attr = GetVkFormatInfo(format);
-  assert((copy.bufferRowLength   % format_attr.texel_block_width) == 0);
-  assert((copy.bufferImageHeight % format_attr.texel_block_height) == 0);
-  assert((copy.imageOffset.x % format_attr.texel_block_width) == 0);
-  assert((copy.imageOffset.y % format_attr.texel_block_height) == 0);
-  assert((copy.bufferOffset % format_attr.texel_block_bytes) == 0);
-  assert((copy.imageExtent.width  % format_attr.texel_block_width) == 0);
-  assert((copy.imageExtent.height % format_attr.texel_block_height) == 0);
-  assert(copy.imageSubresource.layerCount == 1);
-  // bufferRowLength=0 or imageHeight=0 means those dimensions are tightly packed according to the image extent.
-  const uint32_t row_length_pixels = (copy.bufferRowLength != 0) ? copy.bufferRowLength : copy.imageExtent.width;
-  const uint32_t num_pixels = row_length_pixels * (copy.imageExtent.height-1) + copy.imageExtent.width;
-  const VkDeviceSize texel_block_bytes = (VkDeviceSize)GetVkFormatInfo(format).texel_block_bytes;
-  const VkDeviceSize src_nbytes = (num_pixels / (format_attr.texel_block_width * format_attr.texel_block_height))
-    * texel_block_bytes;
-
-  VkBufferImageCopy copy_final = copy;
-  if (!copy_src_to_staging) {  // source data is already in the staging buffer.
-    copy_final.bufferOffset = uintptr_t(src_data) - uintptr_t(staging_ranges_[current_pframe_].start);
-  } else {  // Copy source data to staging buffer.
-    // Allocate space from the staging buffer for the src data.
-    current_offset_ = (current_offset_ + texel_block_bytes - 1) & ~(texel_block_bytes - 1);
-    if (current_offset_ + src_nbytes >= staging_buffer_.BytesPerPframe()) {
-      return -2;  // Not enough room in the staging buffer; make it larger!
-    }
-    void *staging_src = (void*)( uintptr_t(staging_ranges_[current_pframe_].start) + current_offset_ );
-    memcpy(staging_src, src_data, src_nbytes);
-
-    copy_final.bufferOffset = current_offset_;
-    current_offset_ += src_nbytes;
-    current_offset_ = (current_offset_ + 15) & ~15;  // round up to valid offset for next copy
-  }
-  staging_buffer_.FlushPframeHostCache(current_pframe_, current_offset_, src_nbytes);
-
-  // Assume dst_image is already in TRANSFER_DST layout, TRANSFER_READ access, and owned by the appropriate queue family.
-  // The staging buffer must be transferred from HOST_READ/WRITE to TRANSFER_SRC
-  // TODO(cort): HOST_READ is probably undesirable, read/write access to the staging buffer might ruin write-combined performance.
-  VkBufferMemoryBarrier buffer_barrier = {};
-  buffer_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  buffer_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_HOST_READ_BIT;
-  buffer_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  buffer_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  buffer_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  buffer_barrier.buffer = staging_buffer_.Handle(current_pframe_);
-  buffer_barrier.offset = copy_final.bufferOffset;
-  buffer_barrier.size = src_nbytes;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-    0,nullptr, 1,&buffer_barrier, 0,nullptr);
-  vkCmdCopyBufferToImage(cb, staging_buffer_.Handle(current_pframe_), dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-    1, &copy_final);
-  // transition staging buffer back to host access
-  buffer_barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  buffer_barrier.dstAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_HOST_READ_BIT;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-    0,nullptr, 1,&buffer_barrier, 0,nullptr);
-
-  return 0;
-}
-
-void ImageBlitter::NextPframe(void) {
-  current_pframe_ = (current_pframe_ == staging_buffer_.Depth() - 1) ? 0 : (current_pframe_ + 1);
-  current_offset_ = 0;
 }
 
 }  // namespace spokk

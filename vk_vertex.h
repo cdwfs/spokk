@@ -29,6 +29,10 @@ struct VertexLayout
   std::vector<AttributeInfo> attributes;
 };
 
+// Converts all attributes in src to the corresponding format in dst.
+// Attributes are matched by their "location" values.
+// Only attributes present in both layouts will be processed.
+// Returns 0 on success, non-zero on errors.
 int ConvertVertexBuffer(const void *src_vertices, const VertexLayout& src_layout,
   void *dst_vertices, const VertexLayout &dst_layout, size_t vertex_count);
 

@@ -56,7 +56,6 @@ private:
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
 
-  ImageBlitter blitter_;
   Image albedo_tex_;
   VkSampler sampler_;
 
@@ -67,7 +66,6 @@ private:
   DescriptorPool dpool_;
   std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
-  MeshFormat mesh_format_;
   Mesh mesh_;
   PipelinedBuffer scene_uniforms_;
   PipelinedBuffer heightfield_buffer_;
@@ -109,9 +107,7 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR,
     VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
   SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-  const VkDeviceSize blit_buffer_nbytes = 4*1024*1024;
-  SPOKK_VK_CHECK(blitter_.Create(device_context_, PFRAME_COUNT, blit_buffer_nbytes));
-  albedo_tex_.CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, "data/redf.ktx");
+  albedo_tex_.CreateFromFile(device_context_, graphics_and_present_queue_, "data/redf.ktx");
 
   // Load shader pipelines
   SPOKK_VK_CHECK(pillar_vs_.CreateAndLoadSpirvFile(device_context_, "pillar.vert.spv"));
@@ -121,19 +117,18 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   SPOKK_VK_CHECK(pillar_shader_program_.Finalize(device_context_));
 
   // Describe the mesh format.
-  mesh_format_.vertex_buffer_bindings = {
+  mesh_.mesh_format.vertex_buffer_bindings = {
     {0, 4+4+2, VK_VERTEX_INPUT_RATE_VERTEX},
   };
-  mesh_format_.vertex_attributes = {
+  mesh_.mesh_format.vertex_attributes = {
     {0, 0, VK_FORMAT_R8G8B8A8_SNORM, 0},
     {1, 0, VK_FORMAT_R8G8B8A8_SNORM, 4},
     {2, 0, VK_FORMAT_R8G8_UNORM, 8},
   };
-  mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-  mesh_.mesh_format = &mesh_format_;
+  mesh_.mesh_format.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
   // Create graphics pipelines
-  pillar_pipeline_.Init(mesh_.mesh_format, &pillar_shader_program_, &render_pass_, 0);
+  pillar_pipeline_.Init(&(mesh_.mesh_format), &pillar_shader_program_, &render_pass_, 0);
   SPOKK_VK_CHECK(pillar_pipeline_.Finalize(device_context_));
 
   // Populate Mesh object
@@ -151,7 +146,7 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   // vertex buffer
   VkBufferCreateInfo vertex_buffer_ci = {};
   vertex_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  vertex_buffer_ci.size = cube_vertex_count * mesh_format_.vertex_buffer_bindings[0].stride;
+  vertex_buffer_ci.size = cube_vertex_count * mesh_.mesh_format.vertex_buffer_bindings[0].stride;
   vertex_buffer_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   mesh_.vertex_buffers.resize(1);
@@ -163,7 +158,7 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
     {1, VK_FORMAT_R32G32B32_SFLOAT, 12},
     {2, VK_FORMAT_R32G32_SFLOAT, 24},
   };
-  const VertexLayout final_vertex_layout(mesh_format_, 0);
+  const VertexLayout final_vertex_layout(mesh_.mesh_format, 0);
   std::vector<uint8_t> final_mesh_vertices(vertex_buffer_ci.size);
   int convert_error = ConvertVertexBuffer(cube_vertices, src_vertex_layout,
     final_mesh_vertices.data(), final_vertex_layout, cube_vertex_count);
@@ -242,9 +237,7 @@ PillarsApp::~PillarsApp() {
     visible_cells_buffer_.Destroy(device_context_);
     heightfield_buffer_.Destroy(device_context_);
 
-    // TODO(cort): automate!
-    mesh_.index_buffer.Destroy(device_context_);
-    mesh_.vertex_buffers[0].Destroy(device_context_);
+    mesh_.Destroy(device_context_);
 
     pillar_vs_.Destroy(device_context_);
     pillar_fs_.Destroy(device_context_);
@@ -253,7 +246,6 @@ PillarsApp::~PillarsApp() {
 
     vkDestroySampler(device_, sampler_, host_allocator_);
     albedo_tex_.Destroy(device_context_);
-    blitter_.Destroy(device_context_);
 
     for(const auto fb : framebuffers_) {
       vkDestroyFramebuffer(device_, fb, host_allocator_);
@@ -359,8 +351,6 @@ void PillarsApp::Update(double dt) {
 }
 
 void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
-  blitter_.NextPframe();
-
   VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
   render_pass_.begin_info.framebuffer = framebuffer;
   render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -373,12 +363,7 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
     pillar_pipeline_.shader_program->pipeline_layout,
     0, 1, &dsets_[pframe_index_], 0, nullptr);
-  const VkDeviceSize vertex_buffer_offsets[1] = {}; // TODO(cort): mesh::bind()
-  VkBuffer vertex_buffer = mesh_.vertex_buffers[0].Handle();
-  vkCmdBindVertexBuffers(primary_cb, 0,1, &vertex_buffer, vertex_buffer_offsets);
-  const VkDeviceSize index_buffer_offset = 0;
-  vkCmdBindIndexBuffer(primary_cb, mesh_.index_buffer.Handle(), index_buffer_offset, mesh_.index_type);
-  vkCmdDrawIndexed(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size(), 0,0,0);
+  mesh_.BindBuffersAndDraw(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size());
   vkCmdEndRenderPass(primary_cb);
 }
 

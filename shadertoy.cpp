@@ -88,6 +88,8 @@ public:
     mouse_pos_ = mathfu::vec2(0,0);
     glfwSetMouseButtonCallback(window_.get(), MyGlfwMouseButtonCallback);
 
+    empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR, swapchain_surface_format_.format);
     // Customize
@@ -99,18 +101,16 @@ public:
     for(auto& sampler : samplers_) {
       SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler));
     }
-    const VkDeviceSize blit_buffer_nbytes = 16*1024*1024;
-    SPOKK_VK_CHECK(blitter_.Create(device_context_, PFRAME_COUNT, blit_buffer_nbytes));
     for(size_t i=0; i<textures_.size(); ++i) {
       char filename[17];
       zomboSnprintf(filename, 17, "data/tex%02u.ktx", (uint32_t)i);
-      ZOMBO_ASSERT(0 == textures_[i].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, filename, VK_FALSE),
+      ZOMBO_ASSERT(0 == textures_[i].CreateFromFile(device_context_, graphics_and_present_queue_, filename, VK_FALSE),
         "Failed to load %s", filename);
     }
     for(size_t i=0; i<cubemaps_.size(); ++i) {
       char filename[18];
       zomboSnprintf(filename, 18, "data/cube%02u.ktx", (uint32_t)i);
-      ZOMBO_ASSERT(0 == cubemaps_[i].CreateFromFile(device_context_, blitter_, graphics_and_present_queue_, filename, VK_FALSE),
+      ZOMBO_ASSERT(0 == cubemaps_[i].CreateFromFile(device_context_, graphics_and_present_queue_, filename, VK_FALSE),
         "Failed to load %s", filename);
     }
     active_images_[0] = &textures_[15];
@@ -191,7 +191,6 @@ public:
       for(auto sampler : samplers_) {
         vkDestroySampler(device_, sampler, host_allocator_);
       }
-      blitter_.Destroy(device_context_);
     }
   }
 
@@ -262,7 +261,6 @@ public:
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
-    blitter_.NextPframe();
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -346,8 +344,7 @@ private:
       SPOKK_VK_CHECK(new_shader_program.AddShader(&new_fs));
       SPOKK_VK_CHECK(new_shader_program.Finalize(device_context_));
       GraphicsPipeline& new_pipeline = pipelines_[1 - active_pipeline_index_];
-      new_pipeline.Init(MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-        &new_shader_program, &render_pass_, 0);
+      new_pipeline.Init(&empty_mesh_format_, &new_shader_program, &render_pass_, 0);
       SPOKK_VK_CHECK(new_pipeline.Finalize(device_context_));
       swap_shader_.store(true);
     } else {
@@ -417,11 +414,12 @@ private:
   ShaderCompiler shader_compiler_;
   shaderc::CompileOptions compiler_options_;
 
-  ImageBlitter blitter_;
   std::array<Image, 16> textures_;
   std::array<Image, 6> cubemaps_;
   std::array<Image*, 4> active_images_;
   std::array<VkSampler,4> samplers_;
+
+  MeshFormat empty_mesh_format_;
 
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;

@@ -8,7 +8,7 @@
 namespace spokk {
 
 uint32_t GetMaxMipLevels(VkExtent3D base_extent) {
-  if (base_extent.width == 0 && base_extent.height == 0 && base_extent.depth == 0) {
+  if (base_extent.width == 0 || base_extent.height == 0 || base_extent.depth == 0) {
     return 0;
   }
   uint32_t count = 1;

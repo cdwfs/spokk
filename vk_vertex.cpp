@@ -721,13 +721,13 @@ VertexLayout::VertexLayout(const MeshFormat& mesh_format, uint32_t binding) : st
 
 int ConvertVertexBuffer(const void *src_vertices, const VertexLayout& src_layout,
     void *dst_vertices, const VertexLayout &dst_layout, size_t vertex_count) {
-  for(uint32_t a = 0; a < src_layout.attributes.size(); ++a) {
-    if (!IsValidAttributeFormat(src_layout.attributes[a].format)) {
+  for(const auto& attr : src_layout.attributes) {
+    if (!IsValidAttributeFormat(attr.format)) {
       return -1;
     }
   }
-  for(uint32_t a = 0; a < dst_layout.attributes.size(); ++a) {
-    if (!IsValidAttributeFormat(dst_layout.attributes[a].format)) {
+  for(const auto& attr : dst_layout.attributes) {
+    if (!IsValidAttributeFormat(attr.format)) {
       return -1;
     }
   }
@@ -735,9 +735,20 @@ int ConvertVertexBuffer(const void *src_vertices, const VertexLayout& src_layout
   const uint8_t *src_bytes = (const uint8_t*)src_vertices;
   uint8_t *dst_bytes = (uint8_t*)dst_vertices;
   for(size_t v = 0; v < vertex_count; ++v) {
-    for(uint32_t a = 0; a < src_layout.attributes.size(); ++a) {
-      ConvertAttribute(src_bytes + src_layout.attributes[a].offset, src_layout.attributes[a].format,
-        dst_bytes + dst_layout.attributes[a].offset, dst_layout.attributes[a].format);
+    for(const auto& src_attr : src_layout.attributes) {
+      // Find attribute in dstLayout with the same location.
+      const VertexLayout::AttributeInfo* dst_attr = nullptr;
+      for(const auto& attr : dst_layout.attributes) {
+        if (attr.location == src_attr.location) {
+          dst_attr = &attr;
+          break;
+        }
+      }
+      if (dst_attr == nullptr) {
+        continue;  // couldn't find dst attribute with same location. For now, just skip it. Could be an error, though.
+      }
+      ConvertAttribute(src_bytes + src_attr.offset, src_attr.format,
+        dst_bytes + dst_attr->offset, dst_attr->format);
     }
     src_bytes += src_layout.stride;
     dst_bytes += dst_layout.stride;

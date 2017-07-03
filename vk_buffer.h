@@ -1,11 +1,12 @@
 #if !defined(VK_BUFFER_H)
 #define VK_BUFFER_H
 
-#include "vk_context.h"
 #include "vk_memory.h"
 #include <vector>
 
 namespace spokk {
+
+class DeviceContext;
 
 class PipelinedBuffer {
 public:
@@ -21,8 +22,8 @@ public:
   VkResult CreateViews(const DeviceContext& device_context, VkFormat format);
   void Destroy(const DeviceContext& device_context);
 
-  VkBuffer Handle(uint32_t pframe) const { return handles_[pframe]; }
-  VkBufferView View(uint32_t pframe) const { return views_[pframe]; }
+  VkBuffer Handle(uint32_t pframe) const { return handles_.empty() ? VK_NULL_HANDLE : handles_[pframe]; }
+  VkBufferView View(uint32_t pframe) const { return views_.empty() ? VK_NULL_HANDLE : views_[pframe]; }
   // Mapped() returns the base address of the specified pframe's data.
   void *Mapped(uint32_t pframe) const {
     return (pframe < depth_ && memory_.Mapped()) ?
@@ -74,8 +75,8 @@ public:
     return CreateViews(device_context, format);
   }
 
-  VkBuffer Handle() const { return handles_[0]; }
-  VkBufferView View() const { return views_[0]; }
+  VkBuffer Handle() const { return handles_.empty() ? VK_NULL_HANDLE : handles_[0]; }
+  VkBufferView View() const { return views_.empty() ? VK_NULL_HANDLE : views_[0]; }
   void *Mapped() const { return memory_.Mapped(); }
   void InvalidateHostCache() const { return InvalidatePframeHostCache(0); }
   void FlushHostCache() const { return FlushPframeHostCache(0); }
