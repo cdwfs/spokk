@@ -15,14 +15,8 @@ using namespace spokk;
 namespace {
 struct SceneUniforms {
   mathfu::vec4_packed time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
-  mathfu::vec4_packed eye_pos_ws;    // xyz: world-space eye position
-  mathfu::vec4_packed eye_dir_wsn;   // xyz: world-space eye direction (normalized)
+  mathfu::vec4_packed eye;  // xyz: eye position
   mathfu::mat4 viewproj;
-  mathfu::mat4 view;
-  mathfu::mat4 proj;
-  mathfu::mat4 viewproj_inv;
-  mathfu::mat4 view_inv;
-  mathfu::mat4 proj_inv;
 };
 constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
 constexpr float FOV_DEGREES = 45.0f;
@@ -39,7 +33,7 @@ public:
     seconds_elapsed_ = 0;
 
     camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
-    const mathfu::vec3 initial_camera_pos(0, 0, 0);
+    const mathfu::vec3 initial_camera_pos(-1, 0, 6);
     const mathfu::vec3 initial_camera_target(0, 0, 0);
     const mathfu::vec3 initial_camera_up(0,1,0);
     camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
@@ -194,35 +188,28 @@ public:
     SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
     uniforms->time_and_res = mathfu::vec4(
       (float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-    uniforms->eye_pos_ws  = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-    uniforms->eye_dir_wsn = mathfu::vec4(camera_->getViewDirection().Normalized(), 1.0f);
-    const mathfu::mat4 view = camera_->getViewMatrix();
+    uniforms->eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
+    mathfu::mat4 w2v = camera_->getViewMatrix();
     const mathfu::mat4 proj = camera_->getProjectionMatrix();
     const mathfu::mat4 clip_fixup(
       +1.0f, +0.0f, +0.0f, +0.0f,
       +0.0f, -1.0f, +0.0f, +0.0f,
       +0.0f, +0.0f, +0.5f, +0.5f,
       +0.0f, +0.0f, +0.0f, +1.0f);
-    const mathfu::mat4 viewproj = (clip_fixup * proj) * view;
-    uniforms->viewproj = viewproj;
-    uniforms->view = view;
-    uniforms->proj = clip_fixup * proj;
-    uniforms->viewproj_inv = viewproj.Inverse();
-    uniforms->view_inv = view.Inverse();
-    uniforms->proj_inv = (clip_fixup * proj).Inverse();
+    uniforms->viewproj = clip_fixup * proj * w2v;
     scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
     // Update object-to-world matrices.
     const float secs = (float)seconds_elapsed_;
-    std::array<mathfu::mat4, MESH_INSTANCE_COUNT> o2w_matrices;
-    const mathfu::vec3 swarm_center(0, 0, 0);
+    std::array<mathfu::mat4, MESH_INSTANCE_COUNT*4> o2w_matrices;
+    const mathfu::vec3 swarm_center(0, 0, -2);
     for(int iMesh=0; iMesh<MESH_INSTANCE_COUNT; ++iMesh) {
       mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(1,2,3).Normalized());
       mathfu::mat4 o2w = mathfu::mat4::Identity()
         * mathfu::mat4::FromTranslationVector(mathfu::vec3(
-          60.0f * cosf(0.2f * secs + float(9*iMesh) + 0.4f) + swarm_center[0],
-          41.0f * sinf(0.3f * secs + float(11*iMesh) + 5.0f) + swarm_center[1],
-          60.0f * sinf(0.5f * secs + float(13*iMesh) + 2.0f) + swarm_center[2]
+          40.0f * cosf(0.2f * secs + float(9*iMesh) + 0.4f) + swarm_center[0],
+          20.5f * sinf(0.3f * secs + float(11*iMesh) + 5.0f) + swarm_center[1],
+          30.0f * sinf(0.5f * secs + float(13*iMesh) + 2.0f) + swarm_center[2]
         ))
         * q.ToMatrix4()
         * mathfu::mat4::FromScaleVector( mathfu::vec3(3.0f, 3.0f, 3.0f) )
