@@ -61,17 +61,33 @@ public:
       graphics_and_present_queue_, "data/testcube.ktx");
     ZOMBO_ASSERT(load_error == 0, "texture load error (%d)", load_error);
 
-    // Load shader pipelines
+    // Load shaders (forcing compatible pipeline layouts)
     SPOKK_VK_CHECK(skybox_vs_.CreateAndLoadSpirvFile(device_context_, "skybox.vert.spv"));
     SPOKK_VK_CHECK(skybox_fs_.CreateAndLoadSpirvFile(device_context_, "skybox.frag.spv"));
     SPOKK_VK_CHECK(skybox_shader_program_.AddShader(&skybox_vs_));
     SPOKK_VK_CHECK(skybox_shader_program_.AddShader(&skybox_fs_));
-    SPOKK_VK_CHECK(skybox_shader_program_.Finalize(device_context_));
+    SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_context_, "lit_mesh.vert.spv"));
+    SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_context_, "lit_mesh.frag.spv"));
+    SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_vs_));
+    SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_fs_));
+    SPOKK_VK_CHECK(ShaderProgram::ForceCompatibleLayoutsAndFinalize(device_context_,
+      {&skybox_shader_program_, &mesh_shader_program_}));
+
+    // Create skybox pipeline
+    empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    skybox_pipeline_.Init(&empty_mesh_format_, &skybox_shader_program_, &render_pass_, 0);
+    skybox_pipeline_.depth_stencil_state_ci.depthWriteEnable = VK_FALSE;
+    skybox_pipeline_.depth_stencil_state_ci.depthCompareOp = VK_COMPARE_OP_EQUAL;
+    SPOKK_VK_CHECK(skybox_pipeline_.Finalize(device_context_));
 
     // Populate Mesh object
     int mesh_load_error = mesh_.CreateFromFile(device_context_, "data/teapot.mesh");
     ZOMBO_ASSERT(!mesh_load_error, "Error loading mesh");
 
+    // Create mesh pipeline
+    mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
+    SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_context_));
+    
     // Create pipelined buffer of mesh uniforms
     VkBufferCreateInfo mesh_uniforms_ci = {};
     mesh_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -89,12 +105,6 @@ public:
     SPOKK_VK_CHECK(scene_uniforms_.Create(device_context_, PFRAME_COUNT, scene_uniforms_ci,
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
-    empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    skybox_pipeline_.Init(&empty_mesh_format_, &skybox_shader_program_, &render_pass_, 0);
-    skybox_pipeline_.depth_stencil_state_ci.depthWriteEnable = VK_FALSE;
-    skybox_pipeline_.depth_stencil_state_ci.depthCompareOp = VK_COMPARE_OP_EQUAL;
-    SPOKK_VK_CHECK(skybox_pipeline_.Finalize(device_context_));
-
     for(const auto& dset_layout_ci : skybox_shader_program_.dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
@@ -105,11 +115,13 @@ public:
     }
     DescriptorSetWriter dset_writer(skybox_shader_program_.dset_layout_cis[0]);
     dset_writer.BindImage(skybox_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-      skybox_fs_.GetDescriptorBindPoint("tex").binding);
-    dset_writer.BindSampler(sampler_, skybox_fs_.GetDescriptorBindPoint("samp").binding);
+      skybox_fs_.GetDescriptorBindPoint("skybox_tex").binding);
+    dset_writer.BindSampler(sampler_, skybox_fs_.GetDescriptorBindPoint("skybox_samp").binding);
     for(uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dset_writer.BindBuffer(scene_uniforms_.Handle(pframe),
-        skybox_vs_.GetDescriptorBindPoint("scene_consts").binding);
+        mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
+      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe),
+        mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
       dset_writer.WriteAll(device_context_, dsets_[pframe]);
     }
 
@@ -125,7 +137,12 @@ public:
       mesh_uniforms_.Destroy(device_context_);
       scene_uniforms_.Destroy(device_context_);
 
+      mesh_vs_.Destroy(device_context_);
+      mesh_fs_.Destroy(device_context_);
+      mesh_shader_program_.Destroy(device_context_);
+      mesh_pipeline_.Destroy(device_context_);
       mesh_.Destroy(device_context_);
+
       skybox_vs_.Destroy(device_context_);
       skybox_fs_.Destroy(device_context_);
       skybox_shader_program_.Destroy(device_context_);
@@ -219,23 +236,21 @@ public:
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
     vkCmdBeginRenderPass(primary_cb, &render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, skybox_pipeline_.handle);
+    // Set up shared render state
     VkRect2D scissor_rect = render_pass_.begin_info.renderArea;
     VkViewport viewport = Rect2DToViewport(scissor_rect);
     vkCmdSetViewport(primary_cb, 0,1, &viewport);
     vkCmdSetScissor(primary_cb, 0,1, &scissor_rect);
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      skybox_pipeline_.shader_program->pipeline_layout,
+      mesh_pipeline_.shader_program->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
+    // Render scene
+    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
+    mesh_.BindBuffersAndDraw(primary_cb, mesh_.index_count);
+    // Render skybox
+    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, skybox_pipeline_.handle);
     vkCmdDraw(primary_cb, 36, 1, 0, 0);
-    /*
-    const VkDeviceSize vertex_buffer_offsets[1] = {}; // TODO(cort): mesh::bind()
-    VkBuffer vertex_buffer = mesh_.vertex_buffers[0].Handle();
-    vkCmdBindVertexBuffers(primary_cb, 0,1, &vertex_buffer, vertex_buffer_offsets);
-    const VkDeviceSize index_buffer_offset = 0;
-    vkCmdBindIndexBuffer(primary_cb, mesh_.index_buffer.Handle(), index_buffer_offset, mesh_.index_type);
-    vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0,0,0);
-    */
+
     vkCmdEndRenderPass(primary_cb);
   }
 
@@ -298,6 +313,9 @@ private:
   DescriptorPool dpool_;
   std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
+  Shader mesh_vs_, mesh_fs_;
+  ShaderProgram mesh_shader_program_;
+  GraphicsPipeline mesh_pipeline_;
   Mesh mesh_;
   PipelinedBuffer mesh_uniforms_;
   PipelinedBuffer scene_uniforms_;
