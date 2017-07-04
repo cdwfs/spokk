@@ -227,7 +227,12 @@ public:
     scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
     // Update mesh uniforms
-    mathfu::mat4 o2w = mathfu::mat4::Identity();
+    mathfu::quat q = mathfu::quat::identity;
+    mathfu::mat4 o2w = mathfu::mat4::Identity()
+      * mathfu::mat4::FromTranslationVector(mathfu::vec3(0.0f, 0.0f, 0.0f))
+      * q.ToMatrix4()
+      * mathfu::mat4::FromScaleVector( mathfu::vec3(5.0f, 5.0f, 5.0f) )
+      ;
     mesh_uniforms_.Load(device_context_, pframe_index_, &o2w, sizeof(mathfu::mat4), 0, 0);
   }
 
