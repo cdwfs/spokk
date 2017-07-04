@@ -23,7 +23,6 @@ struct SceneUniforms {
   mathfu::mat4 viewproj_inv;
   mathfu::mat4 view_inv;
   mathfu::mat4 proj_inv;
-  mathfu::vec4_packed zrange; // x: near, y: far, zw: unused. TODO(cort): project directly to zfar.
 };
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
@@ -92,8 +91,8 @@ public:
 
     empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     skybox_pipeline_.Init(&empty_mesh_format_, &skybox_shader_program_, &render_pass_, 0);
-    skybox_pipeline_.rasterization_state_ci.cullMode = VK_CULL_MODE_NONE;
     skybox_pipeline_.depth_stencil_state_ci.depthWriteEnable = VK_FALSE;
+    skybox_pipeline_.depth_stencil_state_ci.depthCompareOp = VK_COMPARE_OP_EQUAL;
     SPOKK_VK_CHECK(skybox_pipeline_.Finalize(device_context_));
 
     for(const auto& dset_layout_ci : skybox_shader_program_.dset_layout_cis) {
@@ -208,7 +207,6 @@ public:
     uniforms->viewproj_inv = viewproj.Inverse();
     uniforms->view_inv = view.Inverse();
     uniforms->proj_inv = (clip_fixup * proj).Inverse();
-    uniforms->zrange = mathfu::vec4(Z_NEAR, Z_FAR, 0, 0);
     scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
     // Update mesh uniforms

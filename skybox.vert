@@ -28,7 +28,6 @@ layout (set = 0, binding = 0) uniform SceneUniforms {
   mat4 viewproj_inv;
   mat4 view_inv;
   mat4 proj_inv;
-  vec4 zrange; // x: near, y: far, zw: unused. TODO(cort): project directly to zfar.
 } scene_consts;
 
 layout (location = 0) out vec3 texcoord;
@@ -41,8 +40,7 @@ void main() {
     ((index & 4) != 0) ? +1.0 : -1.0);
 
   mat3 view_rot = mat3(scene_consts.view);
-  const float inv_sqrt3 = 0.575;  // slightly low to ensure corners are always closer than zfar
-  gl_Position = scene_consts.proj * vec4(view_rot * (0.575 * scene_consts.zrange.y * texcoord), 1.0);
+  gl_Position = (scene_consts.proj * vec4(view_rot*texcoord, 0.0)).xyzz;
 
   // cubemaps use left-handed coordinate systems; I use right-handed. This is the easiest fix.
   texcoord.z *= -1;
