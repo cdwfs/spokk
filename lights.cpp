@@ -15,21 +15,24 @@ using namespace spokk;
 namespace {
 struct SceneUniforms {
   mathfu::vec4_packed time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
-  mathfu::vec4_packed eye;  // xyz: eye position
+  mathfu::vec4_packed eye_pos_ws;    // xyz: world-space eye position
+  mathfu::vec4_packed eye_dir_wsn;   // xyz: world-space eye direction (normalized)
   mathfu::mat4 viewproj;
   mathfu::mat4 view;
   mathfu::mat4 proj;
-  mathfu::vec4_packed zrange; // x: near, y: far, zw: unused
+  mathfu::mat4 viewproj_inv;
+  mathfu::mat4 view_inv;
+  mathfu::mat4 proj_inv;
+  mathfu::vec4_packed zrange; // x: near, y: far, zw: unused. TODO(cort): project directly to zfar.
 };
-constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
 }  // namespace
 
-class CubeSwarmApp : public spokk::Application {
+class LightsApp : public spokk::Application {
 public:
-  explicit CubeSwarmApp(Application::CreateInfo &ci) :
+  explicit LightsApp(Application::CreateInfo &ci) :
       Application(ci) {
     glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -55,9 +58,7 @@ public:
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci = GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-    const VkDeviceSize blit_buffer_nbytes = 64*1024*1024;
-    SPOKK_VK_CHECK(blitter_.Create(device_context_, PFRAME_COUNT, blit_buffer_nbytes));
-    int load_error = skybox_tex_.CreateFromFile(device_context_, blitter_,
+    int load_error = skybox_tex_.CreateFromFile(device_context_,
       graphics_and_present_queue_, "data/testcube.ktx");
     ZOMBO_ASSERT(load_error == 0, "texture load error (%d)", load_error);
 
@@ -69,58 +70,16 @@ public:
     SPOKK_VK_CHECK(skybox_shader_program_.Finalize(device_context_));
 
     // Populate Mesh object
-    mesh_.index_type = (sizeof(cube_indices[0]) == sizeof(uint32_t)) ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
-    mesh_.index_count = cube_index_count;
+    int mesh_load_error = mesh_.CreateFromFile(device_context_, "data/teapot.mesh");
+    ZOMBO_ASSERT(!mesh_load_error, "Error loading mesh");
 
-    VkBufferCreateInfo index_buffer_ci = {};
-    index_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    index_buffer_ci.size = cube_index_count * sizeof(cube_indices[0]);
-    index_buffer_ci.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_.index_buffer.Create(device_context_, index_buffer_ci));
-    SPOKK_VK_CHECK(mesh_.index_buffer.Load(device_context_, cube_indices, index_buffer_ci.size));
-
-    // Describe the mesh format.
-    mesh_format_.vertex_buffer_bindings = {
-      {0, 4+4+4, VK_VERTEX_INPUT_RATE_VERTEX},
-    };
-    mesh_format_.vertex_attributes = {
-      {0, 0, VK_FORMAT_R8G8B8A8_SNORM, 0},
-      {1, 0, VK_FORMAT_R8G8B8A8_SNORM, 4},
-      {2, 0, VK_FORMAT_R16G16_SFLOAT, 8},
-    };
-    mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    mesh_.mesh_format = &mesh_format_;
-
-    VkBufferCreateInfo vertex_buffer_ci = {};
-    vertex_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    vertex_buffer_ci.size = cube_vertex_count * mesh_format_.vertex_buffer_bindings[0].stride;
-    vertex_buffer_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    mesh_.vertex_buffers.resize(1);
-    SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Create(device_context_, vertex_buffer_ci));
-    // Convert the vertex data from its original uncompressed format to its final format.
-    // In a real application, this conversion would happen at asset build time.
-    const VertexLayout src_vertex_layout = {
-      {0, VK_FORMAT_R32G32B32_SFLOAT, 0},
-      {1, VK_FORMAT_R32G32B32_SFLOAT, 12},
-      {2, VK_FORMAT_R32G32_SFLOAT, 24},
-    };
-    const VertexLayout final_vertex_layout(mesh_format_, 0);
-    std::vector<uint8_t> final_mesh_vertices(vertex_buffer_ci.size);
-    int convert_error = ConvertVertexBuffer(cube_vertices, src_vertex_layout,
-      final_mesh_vertices.data(), final_vertex_layout, cube_vertex_count);
-    assert(convert_error == 0);
-    (void)convert_error;
-    SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Load(device_context_, final_mesh_vertices.data(), vertex_buffer_ci.size));
-
-    // Create pipelined buffer of per-mesh object-to-world matrices.
-    VkBufferCreateInfo o2w_buffer_ci = {};
-    o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(mathfu::mat4);
-    o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_context_, PFRAME_COUNT, o2w_buffer_ci));
+    // Create pipelined buffer of mesh uniforms
+    VkBufferCreateInfo mesh_uniforms_ci = {};
+    mesh_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    mesh_uniforms_ci.size = sizeof(mathfu::mat4);
+    mesh_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    mesh_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_context_, PFRAME_COUNT, mesh_uniforms_ci));
 
     // Create pipelined buffer of shader uniforms
     VkBufferCreateInfo scene_uniforms_ci = {};
@@ -131,8 +90,8 @@ public:
     SPOKK_VK_CHECK(scene_uniforms_.Create(device_context_, PFRAME_COUNT, scene_uniforms_ci,
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
-    skybox_pipeline_.Init(MeshFormat::GetEmpty(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-      &skybox_shader_program_, &render_pass_, 0);
+    empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    skybox_pipeline_.Init(&empty_mesh_format_, &skybox_shader_program_, &render_pass_, 0);
     skybox_pipeline_.rasterization_state_ci.cullMode = VK_CULL_MODE_NONE;
     skybox_pipeline_.depth_stencil_state_ci.depthWriteEnable = VK_FALSE;
     SPOKK_VK_CHECK(skybox_pipeline_.Finalize(device_context_));
@@ -158,7 +117,7 @@ public:
     // Create swapchain-sized buffers
     CreateRenderBuffers(swapchain_extent_);
   }
-  virtual ~CubeSwarmApp() {
+  virtual ~LightsApp() {
     if (device_) {
       vkDeviceWaitIdle(device_);
 
@@ -167,10 +126,7 @@ public:
       mesh_uniforms_.Destroy(device_context_);
       scene_uniforms_.Destroy(device_context_);
 
-      // TODO(cort): automate!
-      mesh_.index_buffer.Destroy(device_context_);
-      mesh_.vertex_buffers[0].Destroy(device_context_);
-
+      mesh_.Destroy(device_context_);
       skybox_vs_.Destroy(device_context_);
       skybox_fs_.Destroy(device_context_);
       skybox_shader_program_.Destroy(device_context_);
@@ -178,7 +134,6 @@ public:
 
       vkDestroySampler(device_, sampler_, host_allocator_);
       skybox_tex_.Destroy(device_context_);
-      blitter_.Destroy(device_context_);
 
       for(const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
@@ -189,8 +144,8 @@ public:
     }
   }
 
-  CubeSwarmApp(const CubeSwarmApp&) = delete;
-  const CubeSwarmApp& operator=(const CubeSwarmApp&) = delete;
+  LightsApp(const LightsApp&) = delete;
+  const LightsApp& operator=(const LightsApp&) = delete;
 
   virtual void Update(double dt) override {
     Application::Update(dt);
@@ -237,44 +192,31 @@ public:
     SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
     uniforms->time_and_res = mathfu::vec4(
       (float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-    uniforms->eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-    mathfu::mat4 w2v = camera_->getViewMatrix();
+    uniforms->eye_pos_ws  = mathfu::vec4(camera_->getEyePoint(), 1.0f);
+    uniforms->eye_dir_wsn = mathfu::vec4(camera_->getViewDirection().Normalized(), 1.0f);
+    const mathfu::mat4 view = camera_->getViewMatrix();
     const mathfu::mat4 proj = camera_->getProjectionMatrix();
     const mathfu::mat4 clip_fixup(
       +1.0f, +0.0f, +0.0f, +0.0f,
       +0.0f, -1.0f, +0.0f, +0.0f,
       +0.0f, +0.0f, +0.5f, +0.5f,
       +0.0f, +0.0f, +0.0f, +1.0f);
-    uniforms->viewproj = clip_fixup * proj * w2v;
-    uniforms->view = w2v;
+    const mathfu::mat4 viewproj = (clip_fixup * proj) * view;
+    uniforms->viewproj = viewproj;
+    uniforms->view = view;
     uniforms->proj = clip_fixup * proj;
+    uniforms->viewproj_inv = viewproj.Inverse();
+    uniforms->view_inv = view.Inverse();
+    uniforms->proj_inv = (clip_fixup * proj).Inverse();
     uniforms->zrange = mathfu::vec4(Z_NEAR, Z_FAR, 0, 0);
     scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
-    // Update object-to-world matrices.
-    const float secs = (float)seconds_elapsed_;
-    std::array<mathfu::mat4, MESH_INSTANCE_COUNT*4> o2w_matrices;
-    const mathfu::vec3 swarm_center(0, 0, -2);
-    for(int iMesh=0; iMesh<MESH_INSTANCE_COUNT; ++iMesh) {
-      mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(0,1,0));
-      mathfu::mat4 o2w = mathfu::mat4::Identity()
-        * mathfu::mat4::FromTranslationVector(mathfu::vec3(
-          40.0f * cosf(0.2f * secs + float(9*iMesh) + 0.4f) + swarm_center[0],
-          20.5f * sinf(0.3f * secs + float(11*iMesh) + 5.0f) + swarm_center[1],
-          30.0f * sinf(0.5f * secs + float(13*iMesh) + 2.0f) + swarm_center[2]
-        ))
-        * q.ToMatrix4()
-        * mathfu::mat4::FromScaleVector( mathfu::vec3(1.0f, 1.0f, 1.0f) )
-        ;
-      o2w_matrices[iMesh] = o2w;
-    }
-    mesh_uniforms_.Load(device_context_, pframe_index_, o2w_matrices.data(), MESH_INSTANCE_COUNT * sizeof(mathfu::mat4),
-      0, 0);
+    // Update mesh uniforms
+    mathfu::mat4 o2w = mathfu::mat4::Identity();
+    mesh_uniforms_.Load(device_context_, pframe_index_, &o2w, sizeof(mathfu::mat4), 0, 0);
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
-    blitter_.NextPframe();
-
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -347,18 +289,17 @@ private:
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
 
-  ImageBlitter blitter_;
   Image skybox_tex_;
   VkSampler sampler_;
 
   Shader skybox_vs_, skybox_fs_;
   ShaderProgram skybox_shader_program_;
   GraphicsPipeline skybox_pipeline_;
+  MeshFormat empty_mesh_format_;
 
   DescriptorPool dpool_;
   std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
-  MeshFormat mesh_format_;
   Mesh mesh_;
   PipelinedBuffer mesh_uniforms_;
   PipelinedBuffer scene_uniforms_;
@@ -378,7 +319,7 @@ int main(int argc, char *argv[]) {
   app_ci.queue_family_requests = queue_requests;
   app_ci.pfn_set_device_features = EnableMinimumDeviceFeatures;
 
-  CubeSwarmApp app(app_ci);
+  LightsApp app(app_ci);
   int run_error = app.Run();
 
   return run_error;

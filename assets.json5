@@ -2,6 +2,7 @@
     assets: [
         // Textures
         { class: "image", input: "assets/redf.ktx", output: "build/data/redf.ktx", },
+        { class: "image", input: "assets/testcube.ktx", output: "build/data/testcube.ktx", },
         
         // Shadertoy Textures
         { class: "image", input: "assets/cube00.ktx", output: "build/data/cube00.ktx", },

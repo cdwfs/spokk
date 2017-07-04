@@ -158,6 +158,8 @@ FOREACH(SHADER_TARGET IN LISTS SPIRV_CROSS_TARGETS GLSLANG_TARGETS SPIRV_TOOLS_T
 ENDFOREACH()
 
 # Offline shader compilation from GLSL to SPIR-V
+# NOTE: we use glslc from the VULKAN_SDK here, not one we're building ourselves.
+# cause we skip that project anyway.
 FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)
     ADD_CUSTOM_COMMAND(
         OUTPUT ${SPV_FILE}

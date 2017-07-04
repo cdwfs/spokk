@@ -19,12 +19,16 @@ const uint indices[6*6] = {
 };
 
 layout (set = 0, binding = 0) uniform SceneUniforms {
-  vec4 time_and_res;
-  vec4 eye;
+  vec4 time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
+  vec4 eye_pos_ws;    // xyz: world-space eye position
+  vec4 eye_dir_wsn;   // xyz: world-space eye direction (normalized)
   mat4 viewproj;
   mat4 view;
   mat4 proj;
-  vec4 zrange; // .x=near, .y=far, .zw=unused
+  mat4 viewproj_inv;
+  mat4 view_inv;
+  mat4 proj_inv;
+  vec4 zrange; // x: near, y: far, zw: unused. TODO(cort): project directly to zfar.
 } scene_consts;
 
 layout (location = 0) out vec3 texcoord;
