@@ -214,7 +214,7 @@ public:
 
     // Update object-to-world matrices.
     const float secs = (float)seconds_elapsed_;
-    std::array<mathfu::mat4, MESH_INSTANCE_COUNT*4> o2w_matrices;
+    std::array<mathfu::mat4, MESH_INSTANCE_COUNT> o2w_matrices;
     const mathfu::vec3 swarm_center(0, 0, 0);
     for(int iMesh=0; iMesh<MESH_INSTANCE_COUNT; ++iMesh) {
       mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(1,2,3).Normalized());
