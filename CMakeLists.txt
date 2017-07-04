@@ -158,6 +158,8 @@ FOREACH(SHADER_TARGET IN LISTS SPIRV_CROSS_TARGETS GLSLANG_TARGETS SPIRV_TOOLS_T
 ENDFOREACH()
 
 # Offline shader compilation from GLSL to SPIR-V
+# NOTE: we use glslc from the VULKAN_SDK here, not one we're building ourselves.
+# cause we skip that project anyway.
 FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)
     ADD_CUSTOM_COMMAND(
         OUTPUT ${SPV_FILE}
@@ -273,6 +275,12 @@ SET(COMPUTE_SOURCES compute.cpp)
 SET(COMPUTE_HEADERS)
 SET(COMPUTE_SHADERS double_ints.comp)
 SPOKK_APP(spokk-compute COMPUTE_SOURCES COMPUTE_HEADERS COMPUTE_SHADERS)
+
+# spokk-lights
+SET(LIGHTS_SOURCES camera.cpp lights.cpp)
+SET(LIGHTS_HEADERS camera.h)
+SET(LIGHTS_SHADERS lit_mesh.vert lit_mesh.frag skybox.vert skybox.frag)
+SPOKK_APP(spokk-lights LIGHTS_SOURCES LIGHTS_HEADERS LIGHTS_SHADERS)
 
 # spokk-pillars
 SET(PILLARS_SOURCES camera.cpp pillars.cpp)
