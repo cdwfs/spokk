@@ -150,6 +150,8 @@ PillarsApp::PillarsApp(Application::CreateInfo &ci) :
   vertex_buffer_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   mesh_.vertex_buffers.resize(1);
+  mesh_.vertex_buffer_byte_offsets.resize(1, 0);
+  mesh_.index_buffer_byte_offset = 0;
   SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Create(device_context_, vertex_buffer_ci));
   // Convert the vertex data from its original uncompressed format to its final format.
   // In a real application, this conversion would happen at asset build time.
