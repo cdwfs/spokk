@@ -160,10 +160,12 @@ ENDFOREACH()
 # Offline shader compilation from GLSL to SPIR-V
 # NOTE: we use glslc from the VULKAN_SDK here, not one we're building ourselves.
 # cause we skip that project anyway.
+# TODO(https://github.com/cdwfs/spokk/issues/21): Support specifying a shader stage and entry point
 FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)
     ADD_CUSTOM_COMMAND(
         OUTPUT ${SPV_FILE}
-        COMMAND $ENV{VULKAN_SDK}/bin/glslc -o ${SPV_FILE} ${SOURCE_FILE}
+        COMMAND $ENV{VULKAN_SDK}/bin/glslc
+            -I ${CMAKE_SOURCE_DIR}/src/spokk -I ${CMAKE_SOURCE_DIR}/samples -o ${SPV_FILE} ${SOURCE_FILE}
         MAIN_DEPENDENCY ${SOURCE_FILE}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "Compiling ${SOURCE_FILE} -> ${SPV_FILE}"
@@ -179,8 +181,8 @@ ENDMACRO (cmp_IDE_SOURCE_PROPERTIES NAME HEADERS SOURCES INSTALL_FILES)
 
 # spokkle
 SET(SPOKKLE_SOURCES
-    spokkle.cpp
-    vk_vertex.cpp
+    src/spokkle/spokkle.cpp
+    src/spokk/spokk_vertex.cpp
     ${JSON_H_DIR}/json.c
 )
 SET(SPOKKLE_HEADERS
@@ -191,43 +193,46 @@ ADD_EXECUTABLE(spokkle ${SPOKKLE_SOURCES} ${SPOKKLE_HEADERS})
 TARGET_LINK_LIBRARIES(spokkle assimp)
 TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     "third_party/assimp/include"
+    "src/spokk"
     ${JSON_H_DIR}
     )
 IF(MSVC)
+    # Windows puts some path-manipulation APIs in an optional library
     TARGET_LINK_LIBRARIES(spokkle shlwapi)
 ENDIF(MSVC)
 
 # libspokk
 SET(SPOKK_HEADERS
-    image_file.h
-    platform.h
-    vk_application.h
-    vk_buffer.h
-    vk_context.h
-    vk_debug.h
-    vk_image.h
-    vk_memory.h
-    vk_mesh.h
-    vk_pipeline.h
-    vk_renderpass.h
-    vk_shader.h
-    vk_shader_interface.h
-    vk_utilities.h
-    vk_vertex.h
+    src/spokk/image_file.h
+    src/spokk/spokk.h
+    src/spokk/spokk_application.h
+    src/spokk/spokk_buffer.h
+    src/spokk/spokk_context.h
+    src/spokk/spokk_debug.h
+    src/spokk/spokk_image.h
+    src/spokk/spokk_memory.h
+    src/spokk/spokk_mesh.h
+    src/spokk/spokk_pipeline.h
+    src/spokk/spokk_platform.h
+    src/spokk/spokk_renderpass.h
+    src/spokk/spokk_shader.h
+    src/spokk/spokk_shader_interface.h
+    src/spokk/spokk_utilities.h
+    src/spokk/spokk_vertex.h
 )
 SET(SPOKK_SOURCES
-    image_file.c
-    vk_application.cpp
-    vk_buffer.cpp
-    vk_context.cpp
-    vk_image.cpp
-    vk_memory.cpp
-    vk_mesh.cpp
-    vk_pipeline.cpp
-    vk_renderpass.cpp
-    vk_shader.cpp
-    vk_utilities.cpp
-    vk_vertex.cpp
+    src/spokk/image_file.c
+    src/spokk/spokk_application.cpp
+    src/spokk/spokk_buffer.cpp
+    src/spokk/spokk_context.cpp
+    src/spokk/spokk_image.cpp
+    src/spokk/spokk_memory.cpp
+    src/spokk/spokk_mesh.cpp
+    src/spokk/spokk_pipeline.cpp
+    src/spokk/spokk_renderpass.cpp
+    src/spokk/spokk_shader.cpp
+    src/spokk/spokk_utilities.cpp
+    src/spokk/spokk_vertex.cpp
 )
 SET(SPOKK_LIB_NAME spokk)
 cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKK_HEADERS}" "${SPOKK_SOURCES}")
@@ -237,14 +242,16 @@ IF(${SPOKK_ENABLE_SHADERC})
     TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} shaderc)
 ENDIF()
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC "third_party/stb")
+TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC "src/spokk")
 
-# Build assets
-ADD_CUSTOM_TARGET(spokk-assets
-    COMMAND $<TARGET_FILE:spokkle> assets.json5
+# custom target to build/copy sample assets
+ADD_CUSTOM_TARGET(build-assets
+    COMMAND $<TARGET_FILE:spokkle> samples/assets/assets.json5
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Bulding assets from ${CMAKE_SOURCE_DIR}/assets.json5"
+    COMMENT "Building assets from ${CMAKE_SOURCE_DIR}/samples/assets/assets.json5"
 )
-ADD_DEPENDENCIES(spokk-assets spokkle)
+SET_TARGET_PROPERTIES(build-assets PROPERTIES FOLDER "samples")
+ADD_DEPENDENCIES(build-assets spokkle)
 
 FUNCTION (SPOKK_APP APP_NAME APP_SOURCES_LIST APP_HEADERS_LIST APP_SHADERS_LIST)
     SET(APP_HEADERS ${${APP_HEADERS_LIST}})
@@ -258,38 +265,72 @@ FUNCTION (SPOKK_APP APP_NAME APP_SOURCES_LIST APP_HEADERS_LIST APP_SHADERS_LIST)
     ENDFOREACH(SHADER_FILE)
 
     cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${APP_HEADERS}" "${APP_SOURCES}")
-    add_executable(${APP_NAME} ${APP_SOURCES} ${APP_SHADERS} ${APP_HEADERS})
-    target_link_libraries(${APP_NAME} ${SPOKK_LIB_NAME})
-    add_dependencies(${APP_NAME} spokk-assets)
+    ADD_EXECUTABLE(${APP_NAME} ${APP_SOURCES} ${APP_SHADERS} ${APP_HEADERS})
+    TARGET_LINK_LIBRARIES(${APP_NAME} ${SPOKK_LIB_NAME})
+    TARGET_INCLUDE_DIRECTORIES(${APP_NAME} PUBLIC "samples")
+    SET_TARGET_PROPERTIES(${APP_NAME} PROPERTIES FOLDER "samples")
+
+    ADD_DEPENDENCIES(${APP_NAME} build-assets)
     mathfu_configure_flags(${APP_NAME})
 ENDFUNCTION(SPOKK_APP APP_NAME APP_SOURCES APP_HEADERS APP_SHADERS)
 
 # spokk-cubeswarm
-SET(CUBESWARM_SOURCES camera.cpp cubeswarm.cpp)
-SET(CUBESWARM_HEADERS camera.h)
-SET(CUBESWARM_SHADERS rigid_mesh.vert rigid_mesh.frag)
+SET(CUBESWARM_SOURCES
+    samples/common/camera.cpp
+    samples/cubeswarm/cubeswarm.cpp
+)
+SET(CUBESWARM_HEADERS
+    samples/common/camera.h
+)
+SET(CUBESWARM_SHADERS
+    samples/cubeswarm/rigid_mesh.vert
+    samples/cubeswarm/rigid_mesh.frag)
 SPOKK_APP(spokk-cubeswarm CUBESWARM_SOURCES CUBESWARM_HEADERS CUBESWARM_SHADERS)
 
 # spokk-compute
-SET(COMPUTE_SOURCES compute.cpp)
+SET(COMPUTE_SOURCES samples/compute/compute.cpp)
 SET(COMPUTE_HEADERS)
-SET(COMPUTE_SHADERS double_ints.comp)
+SET(COMPUTE_SHADERS samples/compute/double_ints.comp)
 SPOKK_APP(spokk-compute COMPUTE_SOURCES COMPUTE_HEADERS COMPUTE_SHADERS)
 
 # spokk-lights
-SET(LIGHTS_SOURCES camera.cpp lights.cpp)
-SET(LIGHTS_HEADERS camera.h)
-SET(LIGHTS_SHADERS lit_mesh.vert lit_mesh.frag skybox.vert skybox.frag)
+SET(LIGHTS_SOURCES
+    samples/common/camera.cpp
+    samples/lights/lights.cpp
+)
+SET(LIGHTS_HEADERS
+    samples/common/camera.h
+)
+SET(LIGHTS_SHADERS
+    samples/lights/lit_mesh.vert
+    samples/lights/lit_mesh.frag
+    samples/lights/skybox.vert
+    samples/lights/skybox.frag
+)
 SPOKK_APP(spokk-lights LIGHTS_SOURCES LIGHTS_HEADERS LIGHTS_SHADERS)
 
 # spokk-pillars
-SET(PILLARS_SOURCES camera.cpp pillars.cpp)
-SET(PILLARS_HEADERS camera.h)
-SET(PILLARS_SHADERS pillar.vert pillar.frag)
+SET(PILLARS_SOURCES
+    samples/common/camera.cpp
+    samples/pillars/pillars.cpp
+)
+SET(PILLARS_HEADERS
+    samples/common/camera.h
+)
+SET(PILLARS_SHADERS
+    samples/pillars/pillar.vert
+    samples/pillars/pillar.frag
+)
 SPOKK_APP(spokk-pillars PILLARS_SOURCES PILLARS_HEADERS PILLARS_SHADERS)
 
 # spokk-shadertoy
-SET(SHADERTOY_SOURCES shadertoy.cpp)
-SET(SHADERTOY_HEADERS shadertoy.frag) # this shader is special; it's loaded at runtime, not built offline.
-SET(SHADERTOY_SHADERS fullscreen.vert)
+SET(SHADERTOY_SOURCES
+    samples/shadertoy/shadertoy.cpp
+)
+SET(SHADERTOY_HEADERS
+    samples/shadertoy/shadertoy.frag # this shader is special; it's loaded at runtime, not built offline.
+)
+SET(SHADERTOY_SHADERS
+    samples/shadertoy/fullscreen.vert
+)
 SPOKK_APP(spokk-shadertoy SHADERTOY_SOURCES SHADERTOY_HEADERS SHADERTOY_SHADERS)
