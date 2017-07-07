@@ -1,6 +1,8 @@
 #include <spokk.h>
 using namespace spokk;
 
+#include <common/shader_compiler.h>
+
 #include <mathfu/glsl_mappings.h>
 #include <mathfu/vector.h>
 
@@ -21,6 +23,7 @@ namespace {
 // TODO(cort): This path back to the source dir is clumsy. I should pass a list of directories to
 // search.
 const std::string frag_shader_path = "../samples/shadertoy/shadertoy.frag";
+
 // This block of code is inserted in front of every shadertoy fragment shader; it defines the
 // uniform variables and invokes the shader's mainImage() function on every pixel.
 const std::string frag_shader_preamble = R"glsl(#version 450
@@ -160,7 +163,7 @@ public:
   virtual ~ShaderToyApp() {
     if (device_) {
       // TODO(https://github.com/cdwfs/spokk/issues/15) Getting occasional crahes here; graceful exit?
-      shader_reloader_thread_.detach();  
+      shader_reloader_thread_.detach();
 
       vkDeviceWaitIdle(device_);
 
@@ -326,11 +329,13 @@ private:
       return;
     }
     final_frag_source[final_frag_source.size() - 1] = 0;
+#if defined(SPOKK_ENABLE_SHADERC)
     shaderc::SpvCompilationResult compile_result = shader_compiler_.CompileGlslString(
         final_frag_source.data(), frag_shader_path, "main", VK_SHADER_STAGE_FRAGMENT_BIT);
     if (compile_result.GetCompilationStatus() == shaderc_compilation_status_success) {
       Shader& new_fs = fragment_shaders_[1 - active_pipeline_index_];
-      SPOKK_VK_CHECK(new_fs.CreateAndLoadCompileResult(device_context_, compile_result));
+      SPOKK_VK_CHECK(new_fs.CreateAndLoadSpirvMem(device_context_, compile_result.cbegin(),
+          static_cast<int>((compile_result.cend() - compile_result.cbegin()) * sizeof(uint32_t))));
       ShaderProgram& new_shader_program = shader_programs_[1 - active_pipeline_index_];
       SPOKK_VK_CHECK(new_shader_program.AddShader(&fullscreen_tri_vs_));
       SPOKK_VK_CHECK(new_shader_program.AddShader(&new_fs));
@@ -342,6 +347,7 @@ private:
     } else {
       printf("%s\n", compile_result.GetErrorMessage().c_str());
     }
+#endif
   }
   void WatchShaderDir(const std::string dir_path) {
 #ifdef _MSC_VER  // Detect changes using Windows change notification API
@@ -404,8 +410,10 @@ private:
 
   std::atomic_bool swap_shader_;
   std::thread shader_reloader_thread_;
+#if defined(SPOKK_ENABLE_SHADERC)
   ShaderCompiler shader_compiler_;
   shaderc::CompileOptions compiler_options_;
+#endif
 
   std::array<Image, 16> textures_;
   std::array<Image, 6> cubemaps_;
@@ -447,8 +455,13 @@ int main(int argc, char* argv[]) {
   app_ci.queue_family_requests = queue_requests;
   app_ci.pfn_set_device_features = EnableMinimumDeviceFeatures;
 
+#if !defined(SPOKK_ENABLE_SHADERC)
+  fprintf(stderr, "ERROR: This sample requires SPOKK_ENABLE_SHADERC to be useful. Exiting.\n");
+  int run_error = -1;
+#else
   ShaderToyApp app(app_ci);
   int run_error = app.Run();
+#endif
 
   return run_error;
 }

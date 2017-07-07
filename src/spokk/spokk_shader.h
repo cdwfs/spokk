@@ -2,10 +2,6 @@
 
 #include "spokk_context.h"
 
-#if defined(SPOKK_ENABLE_SHADERC)
-#include <shaderc/shaderc.hpp>
-#endif  // defined(SPOKK_ENABLE_SHADERC)
-
 #include <array>
 #include <vector>
 
@@ -24,49 +20,6 @@ struct DescriptorBindPoint {
   uint32_t binding;
 };
 
-#if defined(SPOKK_ENABLE_SHADERC)
-class ShaderCompiler {
-public:
-  ShaderCompiler();
-  ~ShaderCompiler();
-
-  shaderc::SpvCompilationResult CompileGlslString(const char* glsl_source, const std::string& logging_name,
-      const std::string& entry_point = "main", VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
-      const shaderc::CompileOptions& options = shaderc::CompileOptions()) const;
-  shaderc::SpvCompilationResult CompileGlslFp(FILE* fp, int len_bytes, const std::string& logging_name,
-      const std::string& entry_point = "main", VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
-      const shaderc::CompileOptions& options = shaderc::CompileOptions()) const;
-  shaderc::SpvCompilationResult CompileGlslFile(const std::string& filename, const std::string& entry_point = "main",
-      VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
-      const shaderc::CompileOptions& = shaderc::CompileOptions()) const;
-
-  shaderc::SpvCompilationResult CompileHlslString(const char* hlsl_source, const std::string& logging_name,
-      const std::string& entry_point = "main", VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
-      const shaderc::CompileOptions& options = shaderc::CompileOptions()) const {
-    shaderc::CompileOptions final_options = options;
-    final_options.SetSourceLanguage(shaderc_source_language_hlsl);
-    return CompileGlslString(hlsl_source, logging_name, entry_point, target_stage, final_options);
-  }
-  shaderc::SpvCompilationResult CompileHlslFp(FILE* fp, int len_bytes, const std::string& logging_name,
-      const std::string& entry_point = "main", VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
-      const shaderc::CompileOptions& options = shaderc::CompileOptions()) const {
-    shaderc::CompileOptions final_options = options;
-    final_options.SetSourceLanguage(shaderc_source_language_hlsl);
-    return CompileGlslFp(fp, len_bytes, logging_name, entry_point, target_stage, final_options);
-  }
-  shaderc::SpvCompilationResult CompileHlslFile(const std::string& filename, const std::string& entry_point = "main",
-      VkShaderStageFlagBits target_stage = VK_SHADER_STAGE_ALL,
-      const shaderc::CompileOptions& options = shaderc::CompileOptions()) const {
-    shaderc::CompileOptions final_options = options;
-    final_options.SetSourceLanguage(shaderc_source_language_hlsl);
-    return CompileGlslFile(filename, entry_point, target_stage, final_options);
-  }
-
-protected:
-  shaderc::Compiler compiler_;
-};
-#endif
-
 struct Shader {
   Shader()
     : handle(VK_NULL_HANDLE), spirv{}, stage((VkShaderStageFlagBits)0), dset_layout_infos{}, push_constant_range{} {}
@@ -74,16 +27,7 @@ struct Shader {
   VkResult CreateAndLoadSpirvFile(const DeviceContext& device_context, const std::string& filename);
   VkResult CreateAndLoadSpirvFp(const DeviceContext& device_context, FILE* fp, int len_bytes);
   VkResult CreateAndLoadSpirvMem(const DeviceContext& device_context, const void* buffer, int len_bytes);
-#if defined(SPOKK_ENABLE_SHADERC)
-  VkResult CreateAndLoadCompileResult(
-      const DeviceContext& device_context, const shaderc::SpvCompilationResult& result) {
-    if (result.GetCompilationStatus() != shaderc_compilation_status_success) {
-      return VK_ERROR_INITIALIZATION_FAILED;
-    }
-    return CreateAndLoadSpirvMem(
-        device_context, result.cbegin(), static_cast<int>((result.cend() - result.cbegin()) * sizeof(uint32_t)));
-  }
-#endif  // defined(SPOKK_ENABLE_SHADERC)
+
   // After parsing, you can probably get rid of the SPIRV to save some memory.
   void UnloadSpirv(void) { spirv = std::vector<uint32_t>(0); }
   // Dynamic buffers need a different descriptor type, but there's no way to express it in the shader language.

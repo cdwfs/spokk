@@ -93,7 +93,8 @@ set(mathfu_enable_simd OFF CACHE BOOL "")
 add_subdirectory(third_party/mathfu)
 
 # shaderc
-OPTION(SPOKK_ENABLE_SHADERC "Use shaderc for runtime shader compilation" ON)
+# NOTE: if this option is disabled, the shadertoy sample won't run; it uses shaderc for runtime shader compilation.
+OPTION(SPOKK_ENABLE_SHADERC "Use shaderc for runtime shader compilation" OFF)
 IF(${SPOKK_ENABLE_SHADERC})
     SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
     SET(SHADERC_THIRD_PARTY_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party" CACHE PATH "Root location of shaderc third-party projets" FORCE)
@@ -326,11 +327,16 @@ SPOKK_APP(spokk-pillars PILLARS_SOURCES PILLARS_HEADERS PILLARS_SHADERS)
 # spokk-shadertoy
 SET(SHADERTOY_SOURCES
     samples/shadertoy/shadertoy.cpp
+    samples/common/shader_compiler.cpp
 )
 SET(SHADERTOY_HEADERS
     samples/shadertoy/shadertoy.frag # this shader is special; it's loaded at runtime, not built offline.
+    samples/common/shader_compiler.h
 )
 SET(SHADERTOY_SHADERS
     samples/shadertoy/fullscreen.vert
 )
 SPOKK_APP(spokk-shadertoy SHADERTOY_SOURCES SHADERTOY_HEADERS SHADERTOY_SHADERS)
+IF(${SPOKK_ENABLE_SHADERC})
+    TARGET_LINK_LIBRARIES(spokk-shadertoy shaderc)
+ENDIF()
