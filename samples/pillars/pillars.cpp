@@ -94,12 +94,8 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   // Create render pass
   render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
   SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
-  render_pass_.clear_values[0].color.float32[0] = 0.2f;
-  render_pass_.clear_values[0].color.float32[1] = 0.2f;
-  render_pass_.clear_values[0].color.float32[2] = 0.3f;
-  render_pass_.clear_values[0].color.float32[3] = 0.0f;
-  render_pass_.clear_values[1].depthStencil.depth = 1.0f;
-  render_pass_.clear_values[1].depthStencil.stencil = 0;
+  render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
+  render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
   // Load textures and samplers
   VkSamplerCreateInfo sampler_ci =
