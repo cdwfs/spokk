@@ -1,4 +1,4 @@
-#include <spokk_mesh.h>// for MeshHeader
+#include <spokk_mesh.h>  // for MeshHeader
 #include <spokk_platform.h>
 #include <spokk_shader_interface.h>
 #include <spokk_vertex.h>
@@ -9,8 +9,9 @@
 #include <assimp/DefaultLogger.hpp>
 #include <assimp/Importer.hpp>
 
-#ifdef _MSC_VER
+#ifdef ZOMBO_PLATFORM_WINDOWS
 #include <Shlwapi.h>  // for PathFileExists
+#include <direct.h>  // for _chdir()
 #endif
 
 #include <stdio.h>
@@ -253,10 +254,34 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
 // manifest parsing
 //////////////////////////
 
+struct ImageAsset {
+  std::string json_location;
+  std::string input_path;
+  std::string output_path;
+};
+
+struct MeshAsset {
+  std::string json_location;
+  std::string input_path;
+  std::string output_path;
+};
+
+struct ShaderAsset {
+  std::string json_location;
+  std::string input_path;
+  std::string output_path;
+  std::string entry_point;
+  std::string shader_stage;
+};
+
 class AssetManifest {
 public:
-  explicit AssetManifest(const std::string& json5_filename);
+  explicit AssetManifest();
   ~AssetManifest();
+
+  int Load(const std::string& json5_filename);
+  int OverrideOutputRoot(const std::string& output_root_dir);
+  int Build();
 
 private:
   AssetManifest(const AssetManifest& rhs) = delete;
@@ -273,56 +298,189 @@ private:
     ASSET_CLASS_UNKNOWN = 0,
     ASSET_CLASS_IMAGE = 1,
     ASSET_CLASS_MESH = 2,
+    ASSET_CLASS_SHADER = 3,
   };
   AssetClass AssetManifest::GetAssetClassFromInputPath(const json_value_s* input_path_val) const;
 
   // Individual value parsers. Each returns 0 on success, non-zero on error.
   int ParseRoot(const json_value_s* val);
+
+  int ParseDefaults(const json_value_s* val);
+  int ParseDefaultOutputRoot(const json_value_s* val);
+  int ParseDefaultShaderIncludeDirs(const json_value_s* val);
+
   int ParseAssets(const json_value_s* val);
   int ParseAsset(const json_value_s* val);
+  int ParseImageAsset(const json_value_s* val);
+  int ParseMeshAsset(const json_value_s* val);
+  int ParseShaderAsset(const json_value_s* val);
 
-  int IsOutputOutOfDate(const json_string_s* input_path, const json_string_s* output_path, bool* out_result) const;
-  bool CopyAssetFile(const json_string_s* input_path, const json_string_s* output_path) const;
+  int AssetManifest::IsOutputOutOfDate(
+      const std::string& input_path, const std::string& output_path, bool* out_result) const;
+  bool CopyAssetFile(const std::string& input_path, const std::string& output_path) const;
 
-  int ProcessImage(const json_string_s* input_path, const json_string_s* output_path);
-  int ProcessMesh(const json_string_s* input_path, const json_string_s* output_path);
+  int ProcessImage(const ImageAsset& image);
+  int ProcessMesh(const MeshAsset& image);
+  int ProcessShader(const ShaderAsset& image);
 
+  std::string launch_dir_;
+  std::string manifest_dir_;
   std::string manifest_filename_;
   std::string output_root_;
+
+  std::vector<std::string> shader_include_dirs_;
+
+  std::vector<ImageAsset> image_assets_;
+  std::vector<MeshAsset> mesh_assets_;
+  std::vector<ShaderAsset> shader_assets_;
 };
 
-AssetManifest::AssetManifest(const std::string& json5_filename)
-  : manifest_filename_(json5_filename), output_root_(".") {
-  FILE* manifest_file = zomboFopen(manifest_filename_.c_str(), "rb");
-  if (!manifest_file) {
-    fprintf(stderr, "ERROR: Could not open %s\n", manifest_filename_.c_str());
-    return;
+namespace {
+// Takes an absolute path to a directory. Creates the directory and all missing parent directories.
+BOOL CreateDirectoryAndParentsA(const char* abs_dir) {
+  if (PathIsRelativeA(abs_dir)) {
+    return FALSE;  // input must be absolute
   }
+  if (PathIsDirectoryA(abs_dir)) {
+    return TRUE;
+  }
+  std::string parent = abs_dir;
+  PathRemoveFileSpecA(&parent[0]);
+  int create_success = CreateDirectoryAndParentsA(parent.c_str());
+  ZOMBO_ASSERT_RETURN(create_success, create_success, "CreateDirectory() failed");
+  return CreateDirectoryA(abs_dir, nullptr);
+}
+
+void ConvertToWindowsSlashes(char* path) {
+  char* c = path;
+  while (*c != '\0') {
+    if (*c == '/') {
+      *c = '\\';
+    }
+    ++c;
+  }
+}
+
+// If path is relative, combine with root and canonicalize into out_abs_path.
+// If path is absolute, ignore root and copy to out_abs_path.
+int CreateAbsolutePath(std::string* out_abs_path, const char* root, const char* path) {
+  if (PathIsRelativeA(path)) {
+    std::array<char, MAX_PATH> abs_path;
+    const char* out_path = PathCombineA(abs_path.data(), root, path);
+    ZOMBO_ASSERT_RETURN(out_path != nullptr, -1, "ERROR: could not combine root (%s) with path (%s)", root, path);
+
+    ConvertToWindowsSlashes(abs_path.data());
+
+    std::array<char, MAX_PATH> final_abs_path;
+    BOOL canonicalize_success = PathCanonicalizeA(final_abs_path.data(), abs_path.data());
+    ZOMBO_ASSERT_RETURN(canonicalize_success, -1, "ERROR: could not canonicalize output dir (%s)", abs_path.data());
+    *out_abs_path = final_abs_path.data();
+  } else {
+    *out_abs_path = path;
+  }
+  return 0;
+}
+
+// Converts a UTF8-encoded JSON string to a UTF16 string.
+int ConvertUtf8ToWide(const json_string_s* utf8, std::wstring* out_wide) {
+  static_assert(sizeof(wchar_t) == sizeof(WCHAR), "This code assume sizeof(wchar_t) == sizeof(WCHAR)");
+  int nchars = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, nullptr, 0);
+  ZOMBO_ASSERT_RETURN(nchars != 0, -1, "malformed UTF-8, I guess?");
+  out_wide->resize(nchars + 1);
+  int nchars_final = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, &(*out_wide)[0], nchars + 1);
+  ZOMBO_ASSERT_RETURN(nchars_final != 0, -2, "failed to decode UTF-8");
+  (*out_wide)[nchars_final] = 0;
+  return nchars_final;
+}
+
+}  // namespace
+
+AssetManifest::AssetManifest() : launch_dir_("."), manifest_dir_("."), manifest_filename_(""), output_root_(".") {}
+AssetManifest::~AssetManifest() {}
+
+int AssetManifest::Load(const std::string& json5_filename) {
+  manifest_filename_ = json5_filename;
+
+  FILE* manifest_file = zomboFopen(manifest_filename_.c_str(), "rb");
+  ZOMBO_ASSERT_RETURN(manifest_file != nullptr, -1, "ERROR: Could not open %s\n", manifest_filename_.c_str());
   fseek(manifest_file, 0, SEEK_END);
   size_t manifest_nbytes = ftell(manifest_file);
   std::vector<uint8_t> manifest_bytes(manifest_nbytes);
   fseek(manifest_file, 0, SEEK_SET);
   size_t read_nbytes = fread(manifest_bytes.data(), 1, manifest_nbytes, manifest_file);
   fclose(manifest_file);
-  if (read_nbytes != manifest_nbytes) {
-    fprintf(stderr, "ERROR: file I/O error while reading from %s\n", manifest_filename_.c_str());
-    return;
-  }
+  ZOMBO_ASSERT_RETURN(
+      read_nbytes == manifest_nbytes, -2, "ERROR: file I/O error while reading from %s\n", manifest_filename_.c_str());
+
+#ifdef ZOMBO_PLATFORM_WINDOWS
+  // Save the directory we launched from
+  launch_dir_.resize(MAX_PATH);
+  _getcwd(&launch_dir_[0], (int)launch_dir_.capacity());
+  // chdir to the same directory as the manifest file
+  manifest_dir_.resize(MAX_PATH);
+  DWORD path_nchars = GetFullPathNameA(json5_filename.c_str(), MAX_PATH, &manifest_dir_[0], nullptr);
+  ZOMBO_ASSERT_RETURN(path_nchars != 0, -3, "Failed to get full path for manifest file %s", json5_filename.c_str());
+  BOOL remove_success = PathRemoveFileSpecA(&manifest_dir_[0]);
+  ZOMBO_ASSERT_RETURN(remove_success, -4, "Failed to remove filespec for manifest file %s", json5_filename.c_str());
+  _chdir(manifest_dir_.c_str());
+#else
+#error linux tbi
+#endif
 
   json_parse_result_s parse_result = {};
   json_value_s* manifest = json_parse_ex(manifest_bytes.data(), manifest_bytes.size(),
       json_parse_flags_allow_json5 | json_parse_flags_allow_location_information, NULL, NULL, &parse_result);
-  if (!manifest) {
-    fprintf(stderr, "%s(%u): error %u at column %u (%s)\n", manifest_filename_.c_str(),
-        (uint32_t)parse_result.error_line_no, (uint32_t)parse_result.error, (uint32_t)parse_result.error_row_no,
-        JsonParseErrorStr((json_parse_error_e)parse_result.error).c_str());
-    return;
-  }
+  ZOMBO_ASSERT_RETURN(manifest != nullptr, -5, "%s(%u): error %u at column %u (%s)\n", manifest_filename_.c_str(),
+      (uint32_t)parse_result.error_line_no, (uint32_t)parse_result.error, (uint32_t)parse_result.error_row_no,
+      JsonParseErrorStr((json_parse_error_e)parse_result.error).c_str());
   int parse_error = ParseRoot(manifest);
-  ZOMBO_ASSERT(parse_error == 0, "ParseRoot() returned %d at %s", parse_error, JsonValueLocationStr(manifest).c_str());
   free(manifest);
+  ZOMBO_ASSERT_RETURN(
+      parse_error == 0, -6, "ParseRoot() returned %d at %s", parse_error, JsonValueLocationStr(manifest).c_str());
+  return 0;
 }
-AssetManifest::~AssetManifest() {}
+
+int AssetManifest::OverrideOutputRoot(const std::string& output_root_dir) {
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+  if (PathIsRelativeA(output_root_dir.c_str())) {
+    std::array<char, MAX_PATH> absolute_root;
+    const char* root = PathCombineA(absolute_root.data(), launch_dir_.c_str(), output_root_dir.c_str());
+    ZOMBO_ASSERT_RETURN(root != nullptr, -1, "ERROR: could not combine launch dir(%s) with output dir (%s)",
+        launch_dir_.c_str(), output_root_dir.c_str());
+
+    std::array<char, MAX_PATH> final_abs_root;
+    BOOL canonicalize_success = PathCanonicalizeA(final_abs_root.data(), absolute_root.data());
+    ZOMBO_ASSERT_RETURN(
+        canonicalize_success, -1, "ERROR: could not canonicalize output dir (%s)", absolute_root.data());
+    output_root_ = final_abs_root.data();
+  } else {
+    output_root_ = output_root_dir;
+  }
+  return 0;
+#else
+#error linux TBI
+#endif
+}
+
+int AssetManifest::Build() {
+  int process_error = 0;
+  for (const auto& image : image_assets_) {
+    process_error = ProcessImage(image);
+    ZOMBO_ASSERT_RETURN(process_error == 0, -2, "ProcessImage() returned %d while processing %s", process_error,
+        image.input_path.c_str());
+  }
+  for (const auto& mesh : mesh_assets_) {
+    process_error = ProcessMesh(mesh);
+    ZOMBO_ASSERT_RETURN(process_error == 0, -2, "ProcessMesh() returned %d while processing %s", process_error,
+        mesh.input_path.c_str());
+  }
+  for (const auto& shader : shader_assets_) {
+    process_error = ProcessShader(shader);
+    ZOMBO_ASSERT_RETURN(process_error == 0, -2, "ProcessShader() returned %d while processing %s", process_error,
+        shader.input_path.c_str());
+  }
+  return 0;
+}
 
 std::string AssetManifest::JsonParseErrorStr(const json_parse_error_e error_code) const {
   switch (error_code) {
@@ -371,9 +529,54 @@ int AssetManifest::ParseRoot(const json_value_s* val) {
       int parse_error = ParseAssets(child_elem->value);
       ZOMBO_ASSERT_RETURN(
           parse_error == 0, -2, "ParseAssets() returned %d at %s", parse_error, JsonValueLocationStr(val).c_str());
-    } else if (strcmp(child_elem->name->string, "globals") == 0) {
-      // TODO(cort): global asset settings go here
+    } else if (strcmp(child_elem->name->string, "defaults") == 0) {
+      int parse_error = ParseDefaults(child_elem->value);
+      ZOMBO_ASSERT_RETURN(
+          parse_error == 0, -2, "ParseDefaults() returned %d at %s", parse_error, JsonValueLocationStr(val).c_str());
     }
+  }
+  return 0;
+}
+
+int AssetManifest::ParseDefaults(const json_value_s* val) {
+  ZOMBO_ASSERT_RETURN(val->type == json_type_object, -1, "ERROR: defaults payload (%s) must be an object\n",
+      JsonValueLocationStr(val).c_str());
+  const json_object_s* defaults_obj = (const json_object_s*)(val->payload);
+  size_t i_child = 0;
+  for (json_object_element_s *child_elem = defaults_obj->start; i_child < defaults_obj->length;
+       ++i_child, child_elem = child_elem->next) {
+    if (strcmp(child_elem->name->string, "output_root") == 0) {
+      int parse_error = ParseDefaultOutputRoot(child_elem->value);
+      ZOMBO_ASSERT_RETURN(parse_error == 0, -2, "Error parsing default root");
+    } else if (strcmp(child_elem->name->string, "shader_include_dirs") == 0) {
+      int parse_error = ParseDefaultShaderIncludeDirs(child_elem->value);
+      ZOMBO_ASSERT_RETURN(parse_error == 0, -3, "Error parsing default shader include dirs");
+    }
+  }
+  return 0;
+}
+
+int AssetManifest::ParseDefaultOutputRoot(const json_value_s* val) {
+  ZOMBO_ASSERT_RETURN(val->type == json_type_string, -1, "ERROR: output_root payload (%s) must be a string\n",
+      JsonValueLocationStr(val).c_str());
+  const json_string_s* output_root_str = (const json_string_s*)(val->payload);
+  return CreateAbsolutePath(&output_root_, manifest_dir_.c_str(), output_root_str->string);
+}
+int AssetManifest::ParseDefaultShaderIncludeDirs(const json_value_s* val) {
+  ZOMBO_ASSERT_RETURN(val->type == json_type_array, -1, "ERROR: shader_include_dirs payload (%s) must be an array\n",
+      JsonValueLocationStr(val).c_str());
+  const json_array_s* includes_array = (const json_array_s*)(val->payload);
+  size_t i_child = 0;
+  for (json_array_element_s *child_elem = includes_array->start; i_child < includes_array->length;
+       ++i_child, child_elem = child_elem->next) {
+    // parse array of shader includes. Combine each dir with the manifest dir and canonicalize
+    ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
+        "ERROR: shader_include_dirs element (%s) must be a string\n", JsonValueLocationStr(val).c_str());
+    const json_string_s* include_dir_str = (const json_string_s*)(child_elem->value->payload);
+    std::string abs_include_dir;
+    int abs_error = CreateAbsolutePath(&abs_include_dir, manifest_dir_.c_str(), include_dir_str->string);
+    ZOMBO_ASSERT_RETURN(abs_error == 0, -3, "Error converting %s to an absolute path", include_dir_str->string);
+    shader_include_dirs_.push_back(abs_include_dir);
   }
   return 0;
 }
@@ -395,9 +598,8 @@ int AssetManifest::ParseAssets(const json_value_s* val) {
 int AssetManifest::ParseAsset(const json_value_s* val) {
   ZOMBO_ASSERT_RETURN(val->type == json_type_object, -1, "ERROR: asset payload (%s) must be an object",
       JsonValueLocationStr(val).c_str());
-  AssetClass asset_class = ASSET_CLASS_UNKNOWN;
-  const json_string_s* input_path = nullptr;
-  const json_string_s* output_path = nullptr;
+  // First we need to loop through child elements and find the asset class, so we know which Parse*Asset()
+  // variant to call.
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
   for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
@@ -407,79 +609,143 @@ int AssetManifest::ParseAsset(const json_value_s* val) {
           "ERROR: asset class payload (%s) must be a string", JsonValueLocationStr(child_elem->value).c_str());
       const json_string_s* asset_class_str = (const json_string_s*)child_elem->value->payload;
       if (strcmp(asset_class_str->string, "image") == 0) {
-        asset_class = ASSET_CLASS_IMAGE;
+        return ParseImageAsset(val);
       } else if (strcmp(asset_class_str->string, "mesh") == 0) {
-        asset_class = ASSET_CLASS_MESH;
+        return ParseMeshAsset(val);
+      } else if (strcmp(asset_class_str->string, "shader") == 0) {
+        return ParseShaderAsset(val);
       } else {
-        ZOMBO_ERROR_RETURN(-2, "ERROR: unknown asset class '%s' at %s", asset_class_str->string,
+        ZOMBO_ERROR_RETURN(-3, "ERROR: unknown asset class '%s' at %s", asset_class_str->string,
             JsonValueLocationStr(child_elem->value).c_str());
       }
+    }
+  }
+  ZOMBO_ERROR_RETURN(-4, "ERROR: asset at %s has no 'class'.", JsonValueLocationStr(val).c_str());
+}
+
+int AssetManifest::ParseImageAsset(const json_value_s* val) {
+  const json_string_s* input_path = nullptr;
+  const json_string_s* output_path = nullptr;
+  json_object_s* asset_obj = (json_object_s*)(val->payload);
+  size_t i_child = 0;
+  for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
+       ++i_child, child_elem = child_elem->next) {
+    if (strcmp(child_elem->name->string, "class") == 0) {
+      // Already handled by caller
     } else if (strcmp(child_elem->name->string, "input") == 0) {
-      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -3,
-          "ERROR: asset input payload (%s) must be a string", JsonValueLocationStr(child_elem->value).c_str());
-      input_path = (const json_string_s*)child_elem->value->payload;
+      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -1,
+          "ERROR: asset 'input' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      input_path = (const json_string_s*)(child_elem->value->payload);
     } else if (strcmp(child_elem->name->string, "output") == 0) {
-      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -4,
-          "ERROR: asset output payload (%s) must be a string", JsonValueLocationStr(child_elem->value).c_str());
-      output_path = (const json_string_s*)child_elem->value->payload;
+      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
+          "ERROR: asset 'output' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      output_path = (const json_string_s*)(child_elem->value->payload);
+    } else {
+      fprintf(stderr, "WARNING: ignoring unexpected tag '%s' in image asset at %s", child_elem->name->string,
+          JsonValueLocationStr(val).c_str());
     }
   }
   ZOMBO_ASSERT_RETURN(
-      input_path && output_path, -5, "ERROR: incomplete asset at %s", JsonValueLocationStr(val).c_str());
-  // For now, assets are processed right here.
-  // Longer-term, we can build up a list in the AssetManifest and process it later.
-  if (asset_class == ASSET_CLASS_IMAGE) {
-    int process_error = ProcessImage(input_path, output_path);
-    ZOMBO_ASSERT_RETURN(
-        process_error == 0, -2, "ProcessImage() returned %d at %s", process_error, JsonValueLocationStr(val).c_str());
-  } else if (asset_class == ASSET_CLASS_MESH) {
-    int process_error = ProcessMesh(input_path, output_path);
-    ZOMBO_ASSERT_RETURN(
-        process_error == 0, -2, "ProcessMesh() returned %d at %s", process_error, JsonValueLocationStr(val).c_str());
-  } else {
-    // unknown asset class; skip it!
-    printf("WARNING: skipping asset at %s with unknown asset class\n", JsonValueLocationStr(val).c_str());
-  }
+      input_path && output_path, -3, "ERROR: incomplete image asset at %s", JsonValueLocationStr(val).c_str());
+  ImageAsset image = {};
+  image.json_location = JsonValueLocationStr(val);
+  image.input_path = input_path->string;
+  image.output_path = output_path->string;
+  image_assets_.push_back(image);
   return 0;
 }
 
-int ConvertUtf8ToWide(const json_string_s* utf8, std::wstring* out_wide) {
-  static_assert(sizeof(wchar_t) == sizeof(WCHAR), "This code assume sizeof(wchar_t) == sizeof(WCHAR)");
-  int nchars = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, nullptr, 0);
-  ZOMBO_ASSERT_RETURN(nchars != 0, -1, "malformed UTF-8, I guess?");
-  out_wide->resize(nchars + 1);
-  int nchars_final = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, &(*out_wide)[0], nchars + 1);
-  ZOMBO_ASSERT_RETURN(nchars_final != 0, -2, "failed to decode UTF-8");
-  (*out_wide)[nchars_final] = 0;
-  return nchars_final;
+int AssetManifest::ParseMeshAsset(const json_value_s* val) {
+  const json_string_s* input_path = nullptr;
+  const json_string_s* output_path = nullptr;
+  json_object_s* asset_obj = (json_object_s*)(val->payload);
+  size_t i_child = 0;
+  for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
+       ++i_child, child_elem = child_elem->next) {
+    if (strcmp(child_elem->name->string, "class") == 0) {
+      // Already handled by caller
+    } else if (strcmp(child_elem->name->string, "input") == 0) {
+      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -1,
+          "ERROR: asset 'input' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      input_path = (const json_string_s*)(child_elem->value->payload);
+    } else if (strcmp(child_elem->name->string, "output") == 0) {
+      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
+          "ERROR: asset 'output' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      output_path = (const json_string_s*)(child_elem->value->payload);
+    } else {
+      fprintf(stderr, "WARNING: ignoring unexpected tag '%s' in mesh asset at %s", child_elem->name->string,
+          JsonValueLocationStr(val).c_str());
+    }
+  }
+  ZOMBO_ASSERT_RETURN(
+      input_path && output_path, -3, "ERROR: incomplete mesh asset at %s", JsonValueLocationStr(val).c_str());
+  MeshAsset mesh = {};
+  mesh.json_location = JsonValueLocationStr(val);
+  mesh.input_path = input_path->string;
+  mesh.output_path = output_path->string;
+  mesh_assets_.push_back(mesh);
+  return 0;
+}
+int AssetManifest::ParseShaderAsset(const json_value_s* val) {
+  const json_string_s* input_path = nullptr;
+  const json_string_s* output_path = nullptr;
+  const json_string_s* entry_point = nullptr;
+  const json_string_s* shader_stage = nullptr;
+  json_object_s* asset_obj = (json_object_s*)(val->payload);
+  size_t i_child = 0;
+  for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
+       ++i_child, child_elem = child_elem->next) {
+    if (strcmp(child_elem->name->string, "class") == 0) {
+      // Already handled by caller
+    } else if (strcmp(child_elem->name->string, "input") == 0) {
+      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -1,
+          "ERROR: asset 'input' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      input_path = (const json_string_s*)(child_elem->value->payload);
+    } else if (strcmp(child_elem->name->string, "output") == 0) {
+      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
+          "ERROR: asset 'output' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      output_path = (const json_string_s*)(child_elem->value->payload);
+    } else if (strcmp(child_elem->name->string, "entry") == 0) {
+      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
+          "ERROR: asset 'entry' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      entry_point = (const json_string_s*)(child_elem->value->payload);
+    } else if (strcmp(child_elem->name->string, "stage") == 0) {
+      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
+          "ERROR: asset 'stage' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      shader_stage = (const json_string_s*)(child_elem->value->payload);
+    } else {
+      fprintf(stderr, "WARNING: ignoring unexpected tag '%s' in shader asset at %s", child_elem->name->string,
+          JsonValueLocationStr(val).c_str());
+    }
+  }
+  ZOMBO_ASSERT_RETURN(
+      input_path && output_path, -3, "ERROR: incomplete shader asset at %s", JsonValueLocationStr(val).c_str());
+  ShaderAsset shader = {};
+  shader.json_location = JsonValueLocationStr(val);
+  shader.input_path = input_path->string;
+  shader.output_path = output_path->string;
+  shader.entry_point = entry_point ? entry_point->string : "";
+  shader.shader_stage = shader_stage ? shader_stage->string : "";
+  shader_assets_.push_back(shader);
+  return 0;
 }
 
 int AssetManifest::IsOutputOutOfDate(
-    const json_string_s* input_path, const json_string_s* output_path, bool* out_result) const {
+    const std::string& input_path, const std::string& output_path, bool* out_result) const {
 #if defined(ZOMBO_PLATFORM_WINDOWS)
-  // Convert UTF-8 paths to wide strings
-  std::wstring input_wstr, output_wstr;
-  int input_nchars = ConvertUtf8ToWide(input_path, &input_wstr);
-  ZOMBO_ASSERT_RETURN(input_nchars > 0, -1, "Failed to decode input_path");
-  int output_nchars = ConvertUtf8ToWide(output_path, &output_wstr);
-  ZOMBO_ASSERT_RETURN(output_nchars > 0, -2, "Failed to decode output_path");
-
   // Do the files exist? Missing input = error! Missing output = automatic rebuild!
-  BOOL input_exists = PathFileExists(input_wstr.c_str());
-  BOOL output_exists = PathFileExists(output_wstr.c_str());
-  if (!input_exists) {
-    fwprintf(stderr, L"ERROR: asset %s does not exist\n", input_wstr.c_str());
-    return -6;
-  }
+  BOOL input_exists = PathFileExistsA(input_path.c_str());
+  ZOMBO_ASSERT_RETURN(input_exists, -6, "ERROR: asset %s does not exist\n", input_path.c_str());
+  BOOL output_exists = PathFileExistsA(output_path.c_str());
 
   // If both files exists, we compare last-write time.
   bool output_is_older = false;
   if (input_exists && output_exists) {
     // Query file attributes
     WIN32_FILE_ATTRIBUTE_DATA input_attrs = {}, output_attrs = {};
-    BOOL input_attr_success = GetFileAttributesExW(input_wstr.c_str(), GetFileExInfoStandard, &input_attrs);
+    BOOL input_attr_success = GetFileAttributesExA(input_path.c_str(), GetFileExInfoStandard, &input_attrs);
     ZOMBO_ASSERT_RETURN(input_attr_success, -3, "Failed to read file attributes for input_path");
-    BOOL output_attr_success = GetFileAttributesExW(output_wstr.c_str(), GetFileExInfoStandard, &output_attrs);
+    BOOL output_attr_success = GetFileAttributesExA(output_path.c_str(), GetFileExInfoStandard, &output_attrs);
     ZOMBO_ASSERT_RETURN(output_attr_success, -4, "Failed to read file attributes for output_path");
     // Compare file write times
     ULARGE_INTEGER input_write_time, output_write_time;
@@ -502,43 +768,23 @@ int AssetManifest::IsOutputOutOfDate(
   //   deal with that on the code side.
   *out_result = (!output_exists || output_is_older);
   return 0;
-#elif defined(ZOMBO_PLATFORM_POSIX)
-#error I haven't written POSIX support yet. Sorry!
 #else
 #error Unsupported platform! Sorry!
 #endif
 }
 
-BOOL CreateDirectoryAndParents(const std::wstring& dir) {
-  if (PathIsDirectory(dir.c_str())) {
-    return TRUE;
-  }
-  std::wstring parent = dir;
-  PathRemoveFileSpec(&parent[0]);
-  int create_success = CreateDirectoryAndParents(parent);
-  ZOMBO_ASSERT_RETURN(create_success, create_success, "CreateDirectory() failed");
-  return CreateDirectory(dir.c_str(), nullptr);
-}
-
-bool AssetManifest::CopyAssetFile(const json_string_s* input_path, const json_string_s* output_path) const {
+bool AssetManifest::CopyAssetFile(const std::string& input_path, const std::string& output_path) const {
 #if defined(ZOMBO_PLATFORM_WINDOWS)
-  // Convert UTF-8 paths to wide strings
-  std::wstring input_wstr, output_wstr;
-  int input_nchars = ConvertUtf8ToWide(input_path, &input_wstr);
-  ZOMBO_ASSERT_RETURN(input_nchars > 0, false, "Failed to decode input_path");
-  int output_nchars = ConvertUtf8ToWide(output_path, &output_wstr);
-  ZOMBO_ASSERT_RETURN(output_nchars > 0, false, "Failed to decode output_path");
   // Create any missing parent directories for the output file
-  std::wstring output_dir;
-  output_dir.resize(MAX_PATH);
-  DWORD path_nchars = GetFullPathName(output_wstr.c_str(), MAX_PATH, &output_dir[0], nullptr);
+  std::array<char, MAX_PATH> output_dir;
+  DWORD path_nchars = GetFullPathNameA(output_path.c_str(), (int)output_dir.size(), output_dir.data(), nullptr);
   ZOMBO_ASSERT_RETURN(path_nchars != 0, false, "Failed to get full path for output file");
-  BOOL remove_success = PathRemoveFileSpec(&output_dir[0]);
+  BOOL remove_success = PathRemoveFileSpecA(output_dir.data());
   ZOMBO_ASSERT_RETURN(remove_success, false, "Failed to remove filespec for output file");
-  BOOL create_dir_success = CreateDirectoryAndParents(output_dir);
+  BOOL create_dir_success = CreateDirectoryAndParentsA(output_dir.data());
   ZOMBO_ASSERT_RETURN(create_dir_success, false, "Failed to create parent directories");
   // Copy
-  BOOL copy_success = CopyFile(input_wstr.data(), output_wstr.data(), FALSE);
+  BOOL copy_success = CopyFileA(input_path.c_str(), output_path.c_str(), FALSE);
   ZOMBO_ASSERT_RETURN(copy_success, false, "CopyFile() failed");
   return true;
 #else
@@ -546,40 +792,84 @@ bool AssetManifest::CopyAssetFile(const json_string_s* input_path, const json_st
 #endif
 }
 
-int AssetManifest::ProcessImage(const json_string_s* input_path, const json_string_s* output_path) {
+int AssetManifest::ProcessImage(const ImageAsset& image) {
   bool build_output = false;
-  int query_error = IsOutputOutOfDate(input_path, output_path, &build_output);
-  ZOMBO_ASSERT_RETURN(query_error == 0, -1, "IsOutputOutOfDate failed");
+  std::string abs_output_path;
+  int path_error = CreateAbsolutePath(&abs_output_path, output_root_.c_str(), image.output_path.c_str());
+  ZOMBO_ASSERT_RETURN(path_error == 0, -1, "CreateAbsoluteOutputPath failed (%d) for image at %s", path_error,
+      image.json_location.c_str());
+  int query_error = IsOutputOutOfDate(image.input_path, abs_output_path, &build_output);
+  ZOMBO_ASSERT_RETURN(
+      query_error == 0, -2, "IsOutputOutOfDate failed (%d) for image at %s", query_error, image.json_location.c_str());
   if (build_output) {
-    bool copy_success = CopyAssetFile(input_path, output_path);
-    ZOMBO_ASSERT_RETURN(copy_success, -1, "CopyAssetFile() failed");
-    printf("%s -> %s\n", input_path->string, output_path->string);
+    bool copy_success = CopyAssetFile(image.input_path, abs_output_path.c_str());
+    ZOMBO_ASSERT_RETURN(copy_success, -3, "CopyAssetFile failed for image at %s", image.json_location.c_str());
+    printf("%s -> %s\n", image.input_path.c_str(), abs_output_path.c_str());
   } else {
-    // wprintf(L"Skipped %s (%s is up to date)\n", input_wstr.c_str(), output_wstr.c_str());
+    // printf("Skipped %s (%s is up to date)\n", image.input_path.c_str(), abs_output_path.c_str());
   }
   return 0;
 }
-int AssetManifest::ProcessMesh(const json_string_s* input_path, const json_string_s* output_path) {
+
+int AssetManifest::ProcessMesh(const MeshAsset& mesh) {
   bool build_output = false;
-  int query_error = IsOutputOutOfDate(input_path, output_path, &build_output);
-  ZOMBO_ASSERT_RETURN(query_error == 0, -1, "IsOutputOutOfDate failed");
+  std::string abs_output_path;
+  int path_error = CreateAbsolutePath(&abs_output_path, output_root_.c_str(), mesh.output_path.c_str());
+  ZOMBO_ASSERT_RETURN(path_error == 0, -1, "CreateAbsoluteOutputPath failed (%d) for mesh at %s", path_error,
+      mesh.json_location.c_str());
+  int query_error = IsOutputOutOfDate(mesh.input_path, abs_output_path, &build_output);
+  ZOMBO_ASSERT_RETURN(
+      query_error == 0, -1, "IsOutputOutOfDate failed (%d) for mesh at %s", query_error, mesh.json_location.c_str());
   if (build_output) {
-    int process_result = ConvertSceneToMesh(input_path->string, output_path->string);
-    ZOMBO_ASSERT_RETURN(process_result == 0, -1, "ConvertSceneToMesh() failed (%d)", process_result);
-    printf("%s -> %s\n", input_path->string, output_path->string);
+    int process_result = ConvertSceneToMesh(mesh.input_path, abs_output_path.c_str());
+    ZOMBO_ASSERT_RETURN(process_result == 0, -1, "ConvertSceneToMesh failed (%d) for mesh at %s", process_result,
+        mesh.json_location.c_str());
+    printf("%s -> %s\n", mesh.input_path.c_str(), abs_output_path.c_str());
   } else {
-    // wprintf(L"Skipped %s (%s is up to date)\n", input_wstr.c_str(), output_wstr.c_str());
+    // printf("Skipped %s (%s is up to date)\n", mesh.input_path.c_str(), abs_output_path.c_str());
+  }
+  return 0;
+}
+
+int AssetManifest::ProcessShader(const ShaderAsset& shader) {
+  bool build_output = false;
+  std::string abs_output_path;
+  int path_error = CreateAbsolutePath(&abs_output_path, output_root_.c_str(), shader.output_path.c_str());
+  ZOMBO_ASSERT_RETURN(path_error == 0, -1, "CreateAbsoluteOutputPath failed (%d) for shader at %s", path_error,
+      shader.json_location.c_str());
+  int query_error = IsOutputOutOfDate(shader.input_path, abs_output_path, &build_output);
+  ZOMBO_ASSERT_RETURN(query_error == 0, -1, "IsOutputOutOfDate failed (%d) for shader at %s", query_error,
+      shader.json_location.c_str());
+  if (build_output) {
+    int process_result = 0;  // TODO: compile shader!
+    ZOMBO_ASSERT_RETURN(process_result == 0, -1, "CompileShader failed (%d) for shader at %s", process_result,
+        shader.json_location.c_str());
+    printf("%s -> %s\n", shader.input_path.c_str(), abs_output_path.c_str());
+  } else {
+    // printf("Skipped %s (%s is up to date)\n", shader.input_path.c_str(), abs_output_path.c_str());
   }
   return 0;
 }
 
 int main(int argc, char* argv[]) {
+  // TODO(cort): Command line options
+  // -f, --force-rebuild: Assume all outputs are dirty
+  // -v, --verbose: Extra logging?
+  // -t, --test-only: Print what would be done but don't actually do it
+  // -o, --output-root: override output root dir
   if (argc != 2) {
     return -1;
   }
 
   const char* manifest_filename = argv[1];
-  AssetManifest manifest(manifest_filename);
+  AssetManifest manifest;
+  int load_error = manifest.Load(manifest_filename);
+  ZOMBO_ASSERT_RETURN(load_error == 0, -1, "load error (%d) while loading manifest %s", load_error, manifest_filename);
 
-  // ImportFromFile(input_filename);
+  //int override_error = manifest.OverrideOutputRoot("D:\\code\\spokk\\build");
+  //ZOMBO_ASSERT_RETURN(override_error == 0, -1, "override error (%d)", load_error);
+
+  int build_error = manifest.Build();
+  ZOMBO_ASSERT_RETURN(
+      build_error == 0, -2, "build error (%d) while loading manifest %s", build_error, manifest_filename);
 }
