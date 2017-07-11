@@ -514,6 +514,8 @@ private:
   std::string manifest_filename_;
   std::string output_root_;
 
+  ULARGE_INTEGER manifest_write_time_;
+
   std::vector<std::string> shader_include_dirs_;
 
   std::vector<ImageAsset> image_assets_;
@@ -539,6 +541,12 @@ int AssetManifest::Load(const std::string& json5_filename) {
       read_nbytes == manifest_nbytes, -2, "ERROR: file I/O error while reading from %s\n", manifest_filename_.c_str());
 
 #ifdef ZOMBO_PLATFORM_WINDOWS
+  // Grab the modification time of the manifest file, so we can compare it to the output modification times later.
+  WIN32_FILE_ATTRIBUTE_DATA manifest_attrs = {};
+  BOOL attr_success = GetFileAttributesExA(manifest_filename_.c_str(), GetFileExInfoStandard, &manifest_attrs);
+  ZOMBO_ASSERT_RETURN(attr_success, -3, "Failed to read file attributes for %s", manifest_filename_.c_str());
+  manifest_write_time_.HighPart = manifest_attrs.ftLastWriteTime.dwHighDateTime;
+  manifest_write_time_.LowPart = manifest_attrs.ftLastWriteTime.dwLowDateTime;
   // Save the directory we launched from
   launch_dir_.resize(MAX_PATH);
   _getcwd(&launch_dir_[0], (int)launch_dir_.capacity());
@@ -882,16 +890,13 @@ int AssetManifest::IsOutputOutOfDate(
     if (output_write_time.QuadPart < input_write_time.QuadPart) {
       output_is_older = true;
     }
+    // Also compare output write time to manifest write time; if the manifest is newer, assume everything
+    // is out of date. This does mean you get a full asset rebuild every time the manifest changes, which would
+    // probably be unacceptable in a large production environment, but I'm really not there yet.
+    if (output_write_time.QuadPart < manifest_write_time_.QuadPart) {
+      output_is_older = true;
+    }
   }
-
-  // TODO(cort): There's a problem here. If the manifest is changed to reference a different
-  // (preexisting) input file that's still older than the output, or if all that changes are
-  // asset metadata, the output will not be rebuilt.
-  // Not sure how often that will be an issue, but a few possible fixes included:
-  // - Track the input file that was used to build each output file (by name or hash)
-  // - Check the write time of the manifest itself. If it's newer than an output, rebuild it.
-  //   (This is the nuclear option, as any manifest change means a full rebuild. But I already
-  //   deal with that on the code side.
   *out_result = (!output_exists || output_is_older);
   return 0;
 #else
@@ -912,6 +917,18 @@ bool AssetManifest::CopyAssetFile(const std::string& input_path, const std::stri
   // Copy
   BOOL copy_success = CopyFileA(input_path.c_str(), output_path.c_str(), FALSE);
   ZOMBO_ASSERT_RETURN(copy_success, false, "CopyFile() failed");
+  // Update output file modification time (otherwise preserved by CopyFile)
+  // TODO(cort): potential race condition here? Technically CopyFile and SetFileTime should be a single transaction.
+  HANDLE out_handle =
+      CreateFileA(output_path.c_str(), FILE_WRITE_ATTRIBUTES, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  SYSTEMTIME system_time = {};
+  GetSystemTime(&system_time);
+  FILETIME file_time = {};
+  SystemTimeToFileTime(&system_time, &file_time);
+  BOOL time_success = SetFileTime(out_handle, (LPFILETIME)NULL, (LPFILETIME)NULL, &file_time);
+  ZOMBO_ASSERT_RETURN(time_success, false, "SetFileTime() failed");
+  BOOL close_success = CloseHandle(out_handle);
+  ZOMBO_ASSERT_RETURN(close_success, false, "CloseHandle() failed");
   return true;
 #else
 #error Unsupported platform! Sorry!
