@@ -15,6 +15,7 @@ IF(MSVC)
     SET(CMAKE_EXE_LINKER_FLAGS_RELEASE "/LTCG" CACHE TYPE STRING FORCE)
     SET(libs)
 ELSEIF(UNIX)
+    # TODO(cort): -W?
     SET(CMAKE_CXX_FLAGS "-march=native -msse4.1 -D_POSIX_C_SOURCE=199309L -DM_PI=3.141592653 -std=c++11" CACHE TYPE STRING FORCE)
     SET(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE TYPE STRING FORCE)
     SET(CMAKE_CXX_FLAGS_DEBUG   "-D_DEBUG" CACHE TYPE STRING FORCE)
@@ -85,62 +86,57 @@ set(mathfu_enable_simd OFF CACHE BOOL "")
 add_subdirectory(third_party/mathfu)
 
 # shaderc
-# NOTE: if this option is disabled, the shadertoy sample won't run; it uses shaderc for runtime shader compilation.
-OPTION(SPOKK_ENABLE_SHADERC "Use shaderc for runtime shader compilation" OFF)
-IF(${SPOKK_ENABLE_SHADERC})
-    SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
-    SET(SHADERC_THIRD_PARTY_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party" CACHE PATH "Root location of shaderc third-party projets" FORCE)
-    option(SHADERC_SKIP_TESTS "Skip building tests" ON)
-    option(SHADERC_ENABLED_SHARED_CRT "Use the shared CRT instead of the static CRT" ON)
-    add_subdirectory(third_party/shaderc)
-    # shaderc pulls in a gajillion targets. Let's organize them a bit.
-    set(GLSLANG_TARGETS
-        glslang
-        glslang-default-resource-limits
-        glslangValidator
-        HLSL
-        OGLCompiler
-        OSDependent
-        SPIRV
-        spirv-remap
-        SPVRemapper
-        Continuous
-        Experimental
-        Nightly
-        NightlyMemoryCheck
+SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
+SET(SHADERC_THIRD_PARTY_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party" CACHE PATH "Root location of shaderc third-party projets" FORCE)
+option(SHADERC_SKIP_TESTS "Skip building tests" ON)
+option(SHADERC_ENABLED_SHARED_CRT "Use the shared CRT instead of the static CRT" ON)
+add_subdirectory(third_party/shaderc)
+# shaderc pulls in a gajillion targets. Let's organize them a bit.
+set(GLSLANG_TARGETS
+    glslang
+    glslang-default-resource-limits
+    glslangValidator
+    HLSL
+    OGLCompiler
+    OSDependent
+    SPIRV
+    spirv-remap
+    SPVRemapper
+    Continuous
+    Experimental
+    Nightly
+    NightlyMemoryCheck
 
-    )
-    SET(SPIRV_TOOLS_TARGETS
-        spirv-as
-        spirv-cfg
-        spirv-dis
-        spirv-opt
-        spirv-stats
-        SPIRV-Tools
-        spirv-tools-build-version
-        spirv-tools-cpp-example
-        spirv-tools-spv-amd-gcn-shader
-        spirv-tools-vimsyntax
-        SPIRV-Tools-opt
-        spirv-val
-    )
-    set(SHADERC_TARGETS
-        add-copyright
-        build-version
-        check-copyright
-        glslc
-        glslc_exe
-        shaderc
-        shaderc_combined_genfile
-        shaderc_util
-        shaderc-online-compile
-        testdata
-    )
-    set_target_properties(${GLSLANG_TARGETS} PROPERTIES FOLDER "shaderc/glslang")
-    set_target_properties(${SPIRV_TOOLS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-tools")
-    set_target_properties(${SHADERC_TARGETS} PROPERTIES FOLDER "shaderc")
-    add_definitions(-DSPOKK_ENABLE_SHADERC)
-ENDIF()
+)
+SET(SPIRV_TOOLS_TARGETS
+    spirv-as
+    spirv-cfg
+    spirv-dis
+    spirv-opt
+    spirv-stats
+    SPIRV-Tools
+    spirv-tools-build-version
+    spirv-tools-cpp-example
+    spirv-tools-spv-amd-gcn-shader
+    spirv-tools-vimsyntax
+    SPIRV-Tools-opt
+    spirv-val
+)
+set(SHADERC_TARGETS
+    add-copyright
+    build-version
+    check-copyright
+    glslc
+    glslc_exe
+    shaderc
+    shaderc_combined_genfile
+    shaderc_util
+    shaderc-online-compile
+    testdata
+)
+set_target_properties(${GLSLANG_TARGETS} PROPERTIES FOLDER "shaderc/glslang")
+set_target_properties(${SPIRV_TOOLS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-tools")
+set_target_properties(${SHADERC_TARGETS} PROPERTIES FOLDER "shaderc")
 
 # Skip executable targets; we only care about the library anyway.
 FOREACH(SHADERC_TARGET IN LISTS SPIRV_CROSS_TARGETS GLSLANG_TARGETS SPIRV_TOOLS_TARGETS SHADERC_TARGETS)
@@ -168,7 +164,7 @@ SET(SPOKKLE_HEADERS
 )
 cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKKLE_HEADERS}" "${SPOKKLE_SOURCES}")
 ADD_EXECUTABLE(spokkle ${SPOKKLE_SOURCES} ${SPOKKLE_HEADERS})
-TARGET_LINK_LIBRARIES(spokkle assimp)
+TARGET_LINK_LIBRARIES(spokkle assimp shaderc)
 TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     "third_party/assimp/include"
     "src/spokk"
@@ -216,9 +212,6 @@ SET(SPOKK_LIB_NAME spokk)
 cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKK_HEADERS}" "${SPOKK_SOURCES}")
 ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC ${SPOKK_SOURCES} ${SPOKK_HEADERS})
 TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} spirv-cross-cpp ${libs})
-IF(${SPOKK_ENABLE_SHADERC})
-    TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} shaderc)
-ENDIF()
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC "third_party/stb")
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC "src/spokk")
 
@@ -327,6 +320,4 @@ SPOKK_ADD_HEADERS(spokk-shadertoy
 )
 SPOKK_ADD_SHADER(spokk-shadertoy samples/shadertoy/fullscreen.vert fullscreen.vert.spv vert main)
 SPOKK_ADD_EXECUTABLE(spokk-shadertoy)
-IF(${SPOKK_ENABLE_SHADERC})
-    TARGET_LINK_LIBRARIES(spokk-shadertoy shaderc)
-ENDIF()
+TARGET_LINK_LIBRARIES(spokk-shadertoy shaderc)

@@ -1,7 +1,5 @@
 #pragma once
 
-#if defined(SPOKK_ENABLE_SHADERC)
-
 #include "spokk_context.h"
 #include "spokk_shader.h"
 
@@ -12,7 +10,6 @@
 
 /**
  * To use this class:
- * - Set SPOKK_ENABLE_SHADERC to true in the CMake configuration
  * - Declare a ShaderCompiler object:
  *     ShaderCompiler compiler;
  * - [optional] Declare and configure a shaderc::CompileOptions object. Default options
@@ -80,5 +77,3 @@ public:
 protected:
   shaderc::Compiler compiler_;
 };
-
-#endif

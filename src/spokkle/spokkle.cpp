@@ -8,6 +8,7 @@
 #include <json.h>
 #include <assimp/DefaultLogger.hpp>
 #include <assimp/Importer.hpp>
+#include <shaderc/shaderc.hpp>
 
 #ifdef ZOMBO_PLATFORM_WINDOWS
 #include <Shlwapi.h>  // for PathFileExists
@@ -16,8 +17,71 @@
 
 #include <stdio.h>
 #include <array>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
+
+namespace {
+// Takes an absolute path to a directory. Creates the directory and all missing parent directories.
+BOOL CreateDirectoryAndParentsA(const char* abs_dir) {
+  if (PathIsRelativeA(abs_dir)) {
+    return FALSE;  // input must be absolute
+  }
+  if (PathIsDirectoryA(abs_dir)) {
+    return TRUE;
+  }
+  std::string parent = abs_dir;
+  PathRemoveFileSpecA(&parent[0]);
+  int create_success = CreateDirectoryAndParentsA(parent.c_str());
+  ZOMBO_ASSERT_RETURN(create_success, create_success, "CreateDirectory() failed");
+  return CreateDirectoryA(abs_dir, nullptr);
+}
+
+void ConvertToWindowsSlashes(char* path) {
+  char* c = path;
+  while (*c != '\0') {
+    if (*c == '/') {
+      *c = '\\';
+    }
+    ++c;
+  }
+}
+
+// If path is relative, combine with root and canonicalize into out_abs_path.
+// If path is absolute, ignore root and copy to out_abs_path.
+int CreateAbsolutePath(std::string* out_abs_path, const char* root, const char* path) {
+  if (PathIsRelativeA(path)) {
+    std::array<char, MAX_PATH> abs_path;
+    const char* out_path = PathCombineA(abs_path.data(), root, path);
+    ZOMBO_ASSERT_RETURN(out_path != nullptr, -1, "ERROR: could not combine root (%s) with path (%s)", root, path);
+
+    ConvertToWindowsSlashes(abs_path.data());
+
+    std::array<char, MAX_PATH> final_abs_path;
+    BOOL canonicalize_success = PathCanonicalizeA(final_abs_path.data(), abs_path.data());
+    ZOMBO_ASSERT_RETURN(canonicalize_success, -1, "ERROR: could not canonicalize output dir (%s)", abs_path.data());
+    *out_abs_path = final_abs_path.data();
+  } else {
+    *out_abs_path = path;
+  }
+  return 0;
+}
+
+// Converts a UTF8-encoded JSON string to a UTF16 string.
+int ConvertUtf8ToWide(const json_string_s* utf8, std::wstring* out_wide) {
+  static_assert(sizeof(wchar_t) == sizeof(WCHAR), "This code assume sizeof(wchar_t) == sizeof(WCHAR)");
+  int nchars = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, nullptr, 0);
+  ZOMBO_ASSERT_RETURN(nchars != 0, -1, "malformed UTF-8, I guess?");
+  out_wide->resize(nchars + 1);
+  int nchars_final = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, &(*out_wide)[0], nchars + 1);
+  ZOMBO_ASSERT_RETURN(nchars_final != 0, -2, "failed to decode UTF-8");
+  (*out_wide)[nchars_final] = 0;
+  return nchars_final;
+}
+
+}  // namespace
 
 constexpr uint32_t SPOKK_MAX_VERTEX_COLORS = 4;
 constexpr uint32_t SPOKK_MAX_VERTEX_TEXCOORDS = 4;
@@ -274,6 +338,128 @@ struct ShaderAsset {
   std::string shader_stage;
 };
 
+class ShaderFileIncluder : public shaderc::CompileOptions::IncluderInterface {
+public:
+  ShaderFileIncluder(const std::string& manifest_dir, std::vector<std::string>& dirs)
+    : manifest_dir_(manifest_dir), include_dirs_(dirs) {}
+  ~ShaderFileIncluder() {
+    for (auto itor : include_results_) {
+      delete itor.second;
+    }
+    for (auto result : failed_include_results_) {
+      delete result;
+    }
+  }
+
+  // Handles shaderc_include_resolver_fn callbacks.
+  shaderc_include_result* GetInclude(const char* requested_source, shaderc_include_type type,
+      const char* requesting_source, size_t /*include_depth*/) override {
+    // Acquire lock
+    std::lock_guard<std::mutex> results_lock(mutex_);
+    FILE* included_file = nullptr;
+    std::string abs_header_path;
+    if (type == shaderc_include_type_relative) {
+      // combine manifest dir + requesting source to get absolute shader path
+      std::string abs_shader_path;
+      int path_error = CreateAbsolutePath(&abs_shader_path, manifest_dir_.c_str(), requesting_source);
+      // remove shader filename to get shader dir
+      std::string abs_shader_dir = abs_shader_path;
+      path_error = PathRemoveFileSpecA(&abs_shader_dir[0]) ? 0 : 1;
+      // combine shader dir with requested_source to get absolute header path
+      path_error = CreateAbsolutePath(&abs_header_path, abs_shader_dir.c_str(), requested_source);
+      (void)path_error;
+      // If it's in the hash table, return its result.
+      auto itor = include_results_.find(abs_header_path);
+      if (itor != include_results_.end()) {
+        return &(itor->second->result);
+      }
+      included_file = zomboFopen(abs_header_path.c_str(), "rb");
+    } else {
+      // Search for header in include path
+      for (const auto& dir : include_dirs_) {
+        // - combine dir with requested_source to get absolute_header_path
+        int path_error = CreateAbsolutePath(&abs_header_path, dir.c_str(), requested_source);
+        (void)path_error;
+        // - If it's in the hash table, return its result.
+        auto itor = include_results_.find(abs_header_path);
+        if (itor != include_results_.end()) {
+          return &(itor->second->result);
+        }
+        included_file = zomboFopen(abs_header_path.c_str(), "rb");
+        if (included_file) {
+          break;
+        }
+      }
+    }
+    if (!included_file) {
+      // header not found. Craft an appropriate include_result and cache it somewhere
+      // until it's released.
+      IncludeResult* failure = new IncludeResult;
+      failure->source_name = "";
+      failure->content = "Could not find " + std::string(requested_source);
+      failure->result.source_name = failure->source_name.c_str();
+      failure->result.source_name_length = strlen(failure->result.source_name);
+      failure->result.content = failure->content.c_str();
+      failure->result.content_length = strlen(failure->content.c_str());
+      failure->result.user_data = nullptr;
+      failed_include_results_.push_back(failure);
+      return &(failure->result);
+    }
+    // Load file's contents and add it to the hash table.
+    fseek(included_file, 0, SEEK_END);
+    size_t included_file_nbytes = ftell(included_file);
+    fseek(included_file, 0, SEEK_SET);
+    std::vector<char> content(included_file_nbytes + 1);
+    size_t read_nbytes = fread(content.data(), 1, included_file_nbytes, included_file);
+    content[included_file_nbytes] = '\0';
+    fclose(included_file);
+    if (read_nbytes != included_file_nbytes) {
+      // I/O error; craft a failure result.
+      IncludeResult* failure = new IncludeResult;
+      failure->source_name = "";
+      failure->content = "Error reading from " + std::string(requested_source);
+      failure->result.source_name = failure->source_name.c_str();
+      failure->result.source_name_length = strlen(failure->result.source_name);
+      failure->result.content = failure->content.c_str();
+      failure->result.content_length = strlen(failure->content.c_str());
+      failure->result.user_data = nullptr;
+      failed_include_results_.push_back(failure);
+      return &(failure->result);
+    }
+    IncludeResult* result_data = new IncludeResult;
+    result_data->source_name = abs_header_path;
+    result_data->content = content.data();
+    result_data->result.source_name_length = strlen(abs_header_path.c_str());
+    result_data->result.source_name = result_data->source_name.c_str();
+    result_data->result.content_length = included_file_nbytes;
+    result_data->result.content = result_data->content.c_str();
+    result_data->result.user_data = nullptr;
+
+    include_results_[abs_header_path] = result_data;
+    return &(result_data->result);
+  }
+
+  // Handles shaderc_include_result_release_fn callbacks.
+  void ReleaseInclude(shaderc_include_result* /*data*/) override {
+    // Just delete everything in the destructor
+  }
+
+private:
+  ShaderFileIncluder(const ShaderFileIncluder& rhs) = delete;
+  ShaderFileIncluder& operator=(const ShaderFileIncluder& rhs) = delete;
+
+  std::string manifest_dir_;  // prepended to relative requester_source paths
+  std::vector<std::string> include_dirs_;
+  struct IncludeResult {
+    std::string source_name;
+    std::string content;
+    shaderc_include_result result;  // char* members refer to source_name and content std::strings
+  };
+  std::mutex mutex_;  // Protects access to include_results_ and failed_include_results_
+  std::map<std::string, IncludeResult*> include_results_;
+  std::vector<IncludeResult*> failed_include_results_;
+};
+
 class AssetManifest {
 public:
   explicit AssetManifest();
@@ -334,66 +520,6 @@ private:
   std::vector<MeshAsset> mesh_assets_;
   std::vector<ShaderAsset> shader_assets_;
 };
-
-namespace {
-// Takes an absolute path to a directory. Creates the directory and all missing parent directories.
-BOOL CreateDirectoryAndParentsA(const char* abs_dir) {
-  if (PathIsRelativeA(abs_dir)) {
-    return FALSE;  // input must be absolute
-  }
-  if (PathIsDirectoryA(abs_dir)) {
-    return TRUE;
-  }
-  std::string parent = abs_dir;
-  PathRemoveFileSpecA(&parent[0]);
-  int create_success = CreateDirectoryAndParentsA(parent.c_str());
-  ZOMBO_ASSERT_RETURN(create_success, create_success, "CreateDirectory() failed");
-  return CreateDirectoryA(abs_dir, nullptr);
-}
-
-void ConvertToWindowsSlashes(char* path) {
-  char* c = path;
-  while (*c != '\0') {
-    if (*c == '/') {
-      *c = '\\';
-    }
-    ++c;
-  }
-}
-
-// If path is relative, combine with root and canonicalize into out_abs_path.
-// If path is absolute, ignore root and copy to out_abs_path.
-int CreateAbsolutePath(std::string* out_abs_path, const char* root, const char* path) {
-  if (PathIsRelativeA(path)) {
-    std::array<char, MAX_PATH> abs_path;
-    const char* out_path = PathCombineA(abs_path.data(), root, path);
-    ZOMBO_ASSERT_RETURN(out_path != nullptr, -1, "ERROR: could not combine root (%s) with path (%s)", root, path);
-
-    ConvertToWindowsSlashes(abs_path.data());
-
-    std::array<char, MAX_PATH> final_abs_path;
-    BOOL canonicalize_success = PathCanonicalizeA(final_abs_path.data(), abs_path.data());
-    ZOMBO_ASSERT_RETURN(canonicalize_success, -1, "ERROR: could not canonicalize output dir (%s)", abs_path.data());
-    *out_abs_path = final_abs_path.data();
-  } else {
-    *out_abs_path = path;
-  }
-  return 0;
-}
-
-// Converts a UTF8-encoded JSON string to a UTF16 string.
-int ConvertUtf8ToWide(const json_string_s* utf8, std::wstring* out_wide) {
-  static_assert(sizeof(wchar_t) == sizeof(WCHAR), "This code assume sizeof(wchar_t) == sizeof(WCHAR)");
-  int nchars = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, nullptr, 0);
-  ZOMBO_ASSERT_RETURN(nchars != 0, -1, "malformed UTF-8, I guess?");
-  out_wide->resize(nchars + 1);
-  int nchars_final = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, &(*out_wide)[0], nchars + 1);
-  ZOMBO_ASSERT_RETURN(nchars_final != 0, -2, "failed to decode UTF-8");
-  (*out_wide)[nchars_final] = 0;
-  return nchars_final;
-}
-
-}  // namespace
 
 AssetManifest::AssetManifest() : launch_dir_("."), manifest_dir_("."), manifest_filename_(""), output_root_(".") {}
 AssetManifest::~AssetManifest() {}
@@ -838,12 +964,54 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
   ZOMBO_ASSERT_RETURN(path_error == 0, -1, "CreateAbsoluteOutputPath failed (%d) for shader at %s", path_error,
       shader.json_location.c_str());
   int query_error = IsOutputOutOfDate(shader.input_path, abs_output_path, &build_output);
-  ZOMBO_ASSERT_RETURN(query_error == 0, -1, "IsOutputOutOfDate failed (%d) for shader at %s", query_error,
+  ZOMBO_ASSERT_RETURN(query_error == 0, -2, "IsOutputOutOfDate failed (%d) for shader at %s", query_error,
       shader.json_location.c_str());
   if (build_output) {
-    int process_result = 0;  // TODO: compile shader!
-    ZOMBO_ASSERT_RETURN(process_result == 0, -1, "CompileShader failed (%d) for shader at %s", process_result,
-        shader.json_location.c_str());
+    shaderc_shader_kind shader_kind = shaderc_glsl_infer_from_source;
+    if (shader.shader_stage == "vert" || shader.shader_stage == "vertex") {
+      shader_kind = shaderc_vertex_shader;
+    } else if (shader.shader_stage == "frag" || shader.shader_stage == "fragment") {
+      shader_kind = shaderc_fragment_shader;
+    } else if (shader.shader_stage == "geom" || shader.shader_stage == "geometry") {
+      shader_kind = shaderc_geometry_shader;
+    } else if (shader.shader_stage == "tese" || shader.shader_stage == "tesseval") {
+      shader_kind = shaderc_tess_evaluation_shader;
+    } else if (shader.shader_stage == "comp" || shader.shader_stage == "compute") {
+      shader_kind = shaderc_compute_shader;
+    } else {
+      ZOMBO_ERROR_RETURN(
+          -3, "Unrecognized shader stage '%s' at %s", shader.shader_stage.c_str(), shader.json_location.c_str());
+    }
+    FILE* source_file = zomboFopen(shader.input_path.c_str(), "rb");
+    ZOMBO_ASSERT_RETURN(source_file, -4, "Could not open %s for reading", shader.input_path.c_str());
+    fseek(source_file, 0, SEEK_END);
+    size_t source_nbytes = ftell(source_file);
+    fseek(source_file, 0, SEEK_SET);
+    std::vector<char> source_contents(source_nbytes + 1);
+    size_t read_nbytes = fread(source_contents.data(), 1, source_nbytes, source_file);
+    source_contents[source_nbytes] = '\0';
+    fclose(source_file);
+    ZOMBO_ASSERT_RETURN(read_nbytes == source_nbytes, -4, "Read error while loading %s", shader.input_path.c_str());
+
+    shaderc::CompileOptions options;
+    std::unique_ptr<ShaderFileIncluder> includer =
+        std::make_unique<ShaderFileIncluder>(manifest_dir_, shader_include_dirs_);
+    options.SetIncluder(std::move(includer));
+    shaderc::Compiler compiler;
+    shaderc::SpvCompilationResult compile_result = compiler.CompileGlslToSpv(
+        source_contents.data(), shader_kind, shader.input_path.c_str(), shader.entry_point.c_str(), options);
+    if (compile_result.GetCompilationStatus() != shaderc_compilation_status_success) {
+      fprintf(stderr, "%s\n", compile_result.GetErrorMessage().c_str());
+      return compile_result.GetCompilationStatus();
+    }
+
+    size_t spv_dword_count = static_cast<size_t>(compile_result.cend() - compile_result.cbegin());
+    FILE* spv_file = zomboFopen(abs_output_path.c_str(), "wb");
+    ZOMBO_ASSERT_RETURN(spv_file, -5, "Could not open %s for writing", abs_output_path.c_str());
+    size_t write_ndwords = fwrite(compile_result.cbegin(), sizeof(uint32_t), spv_dword_count, spv_file);
+    fclose(spv_file);
+    ZOMBO_ASSERT_RETURN(
+        spv_dword_count == write_ndwords, -6, "Write error while writing to %s", abs_output_path.c_str());
     printf("%s -> %s\n", shader.input_path.c_str(), abs_output_path.c_str());
   } else {
     // printf("Skipped %s (%s is up to date)\n", shader.input_path.c_str(), abs_output_path.c_str());
@@ -851,23 +1019,45 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
   return 0;
 }
 
+void PrintUsage(const char* argv0) {
+  printf(R"usage(\
+Usage: %s [options] manifest.json5
+Options:
+  -h, --help:       Prints this message
+  -o <root>         Override output root in manifest with the specified directory.
+)usage",
+      argv0);
+}
+
 int main(int argc, char* argv[]) {
   // TODO(cort): Command line options
   // -f, --force-rebuild: Assume all outputs are dirty
   // -v, --verbose: Extra logging?
   // -t, --test-only: Print what would be done but don't actually do it
-  // -o, --output-root: override output root dir
-  if (argc != 2) {
-    return -1;
+  const char* new_output_root = nullptr;
+  const char* manifest_filename = nullptr;
+  for (int i = 1; i < argc; ++i) {
+    if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+      PrintUsage(argv[0]);
+      return 0;
+    } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+      new_output_root = argv[++i];
+    } else if (i == argc - 1) {
+      manifest_filename = argv[i];
+    } else {
+      PrintUsage(argv[0]);
+      return -1;
+    }
   }
 
-  const char* manifest_filename = argv[1];
   AssetManifest manifest;
   int load_error = manifest.Load(manifest_filename);
   ZOMBO_ASSERT_RETURN(load_error == 0, -1, "load error (%d) while loading manifest %s", load_error, manifest_filename);
 
-  //int override_error = manifest.OverrideOutputRoot("D:\\code\\spokk\\build");
-  //ZOMBO_ASSERT_RETURN(override_error == 0, -1, "override error (%d)", load_error);
+  if (new_output_root) {
+    int override_error = manifest.OverrideOutputRoot(new_output_root);
+    ZOMBO_ASSERT_RETURN(override_error == 0, -1, "override error (%d)", load_error);
+  }
 
   int build_error = manifest.Build();
   ZOMBO_ASSERT_RETURN(

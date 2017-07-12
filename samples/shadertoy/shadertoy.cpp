@@ -329,7 +329,6 @@ private:
       return;
     }
     final_frag_source[final_frag_source.size() - 1] = 0;
-#if defined(SPOKK_ENABLE_SHADERC)
     shaderc::SpvCompilationResult compile_result = shader_compiler_.CompileGlslString(
         final_frag_source.data(), frag_shader_path, "main", VK_SHADER_STAGE_FRAGMENT_BIT);
     if (compile_result.GetCompilationStatus() == shaderc_compilation_status_success) {
@@ -347,7 +346,6 @@ private:
     } else {
       printf("%s\n", compile_result.GetErrorMessage().c_str());
     }
-#endif
   }
   void WatchShaderDir(const std::string dir_path) {
 #ifdef _MSC_VER  // Detect changes using Windows change notification API
@@ -410,10 +408,8 @@ private:
 
   std::atomic_bool swap_shader_;
   std::thread shader_reloader_thread_;
-#if defined(SPOKK_ENABLE_SHADERC)
   ShaderCompiler shader_compiler_;
   shaderc::CompileOptions compiler_options_;
-#endif
 
   std::array<Image, 16> textures_;
   std::array<Image, 6> cubemaps_;
@@ -455,13 +451,8 @@ int main(int argc, char* argv[]) {
   app_ci.queue_family_requests = queue_requests;
   app_ci.pfn_set_device_features = EnableMinimumDeviceFeatures;
 
-#if !defined(SPOKK_ENABLE_SHADERC)
-  fprintf(stderr, "ERROR: This sample requires SPOKK_ENABLE_SHADERC to be useful. Exiting.\n");
-  int run_error = -1;
-#else
   ShaderToyApp app(app_ci);
   int run_error = app.Run();
-#endif
 
   return run_error;
 }

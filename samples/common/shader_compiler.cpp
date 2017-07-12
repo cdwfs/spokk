@@ -1,7 +1,5 @@
 #include "shader_compiler.h"
 
-#if defined(SPOKK_ENABLE_SHADERC)
-
 //
 // ShaderCompiler
 //
@@ -54,5 +52,3 @@ shaderc::SpvCompilationResult ShaderCompiler::CompileGlslFile(const std::string&
   fclose(glsl_file);
   return result;
 }
-
-#endif  // defined(SPOKK_ENABLE_SHADERC)

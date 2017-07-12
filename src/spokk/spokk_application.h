@@ -21,10 +21,6 @@
 #include <string>
 #include <vector>
 
-#if defined(SPOKK_ENABLE_SHADERC)
-#include <shaderc/shaderc.hpp>
-#endif  // defined(SPOKK_ENABLE_SHADERC)
-
 namespace spokk {
 
 class InputState {
