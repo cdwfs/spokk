@@ -76,7 +76,7 @@ public:
     empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     skybox_pipeline_.Init(&empty_mesh_format_, &skybox_shader_program_, &render_pass_, 0);
     skybox_pipeline_.depth_stencil_state_ci.depthWriteEnable = VK_FALSE;
-    skybox_pipeline_.depth_stencil_state_ci.depthCompareOp = VK_COMPARE_OP_EQUAL;
+    skybox_pipeline_.depth_stencil_state_ci.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     SPOKK_VK_CHECK(skybox_pipeline_.Finalize(device_context_));
 
     // Populate Mesh object
