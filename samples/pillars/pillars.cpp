@@ -104,8 +104,8 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   albedo_tex_.CreateFromFile(device_context_, graphics_and_present_queue_, "data/redf.ktx");
 
   // Load shader pipelines
-  SPOKK_VK_CHECK(pillar_vs_.CreateAndLoadSpirvFile(device_context_, "pillar.vert.spv"));
-  SPOKK_VK_CHECK(pillar_fs_.CreateAndLoadSpirvFile(device_context_, "pillar.frag.spv"));
+  SPOKK_VK_CHECK(pillar_vs_.CreateAndLoadSpirvFile(device_context_, "data/pillar.vert.spv"));
+  SPOKK_VK_CHECK(pillar_fs_.CreateAndLoadSpirvFile(device_context_, "data/pillar.frag.spv"));
   SPOKK_VK_CHECK(pillar_shader_program_.AddShader(&pillar_vs_));
   SPOKK_VK_CHECK(pillar_shader_program_.AddShader(&pillar_fs_));
   SPOKK_VK_CHECK(pillar_shader_program_.Finalize(device_context_));

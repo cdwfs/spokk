@@ -241,25 +241,10 @@ MACRO(SPOKK_ADD_HEADERS APP_TARGET)
     LIST(APPEND ${APP_TARGET}_HEADERS ${ARGN})
 ENDMACRO(SPOKK_ADD_HEADERS APP_TARGET HEADER_LIST)
 
-MACRO(SPOKK_ADD_SHADER APP_TARGET SOURCE_FILE SPV_FILE SHADER_STAGE ENTRY_POINT)
-    SOURCE_GROUP(shaders FILES ${SOURCE_FILE})
-    # NOTE: we use glslc from the VULKAN_SDK here, not one we're building ourselves.
-    # cause we skip that project anyway.
-    ADD_CUSTOM_COMMAND(
-        OUTPUT ${SPV_FILE}
-        COMMAND $ENV{VULKAN_SDK}/bin/glslc
-            -I ${CMAKE_SOURCE_DIR}/src/spokk
-            -I ${CMAKE_SOURCE_DIR}/samples
-            -o ${CMAKE_BINARY_DIR}/${SPV_FILE}
-            -fentry-point=${ENTRY_POINT}
-            -fshader-stage=${SHADER_STAGE}
-            ${SOURCE_FILE}
-        MAIN_DEPENDENCY ${SOURCE_FILE}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Compiling ${SOURCE_FILE} -> ${SPV_FILE}"
-    )
-    LIST(APPEND ${APP_TARGET}_SHADERS ${SOURCE_FILE})
-ENDMACRO(SPOKK_ADD_SHADER APP_TARGET SOURCE_FILE SPV_FILE SHADER_STAGE ENTRY_POINT)
+MACRO(SPOKK_ADD_SHADERS APP_TARGET)
+    SOURCE_GROUP(shaders FILES ${ARGN})
+    LIST(APPEND ${APP_TARGET}_SHADERS ${ARGN})
+ENDMACRO(SPOKK_ADD_SHADERS APP_TARGET)
 
 # Adds a spokk-based executable target, onces its sources/headers/shaders have been defined.
 FUNCTION (SPOKK_ADD_EXECUTABLE APP_TARGET)
@@ -281,13 +266,15 @@ SPOKK_ADD_SOURCES(spokk-cubeswarm
 SPOKK_ADD_HEADERS(spokk-cubeswarm
     samples/common/camera.h
 )
-SPOKK_ADD_SHADER(spokk-cubeswarm samples/cubeswarm/rigid_mesh.vert rigid_mesh.vert.spv vert main)
-SPOKK_ADD_SHADER(spokk-cubeswarm samples/cubeswarm/rigid_mesh.frag rigid_mesh.frag.spv frag main)
+SPOKK_ADD_SHADERS(spokk-cubeswarm
+    samples/cubeswarm/rigid_mesh.vert
+    samples/cubeswarm/rigid_mesh.frag
+)
 SPOKK_ADD_EXECUTABLE(spokk-cubeswarm)
 
 # spokk-compute
 SPOKK_ADD_SOURCES(spokk-compute samples/compute/compute.cpp)
-SPOKK_ADD_SHADER(spokk-compute samples/compute/double_ints.comp double_ints.comp.spv comp main)
+SPOKK_ADD_SHADERS(spokk-compute samples/compute/double_ints.comp)
 SPOKK_ADD_EXECUTABLE(spokk-compute)
 
 # spokk-lights
@@ -298,10 +285,12 @@ SPOKK_ADD_SOURCES(spokk-lights
 SPOKK_ADD_HEADERS(spokk-lights
     samples/common/camera.h
 )
-SPOKK_ADD_SHADER(spokk-lights samples/lights/lit_mesh.vert lit_mesh.vert.spv vert main)
-SPOKK_ADD_SHADER(spokk-lights samples/lights/lit_mesh.frag lit_mesh.frag.spv frag main)
-SPOKK_ADD_SHADER(spokk-lights samples/lights/skybox.vert skybox.vert.spv vert main)
-SPOKK_ADD_SHADER(spokk-lights samples/lights/skybox.frag skybox.frag.spv frag main)
+SPOKK_ADD_SHADERS(spokk-lights
+    samples/lights/lit_mesh.vert
+    samples/lights/lit_mesh.frag
+    samples/lights/skybox.vert
+    samples/lights/skybox.frag
+)
 SPOKK_ADD_EXECUTABLE(spokk-lights)
 
 # spokk-pillars
@@ -312,8 +301,10 @@ SPOKK_ADD_SOURCES(spokk-pillars
 SPOKK_ADD_HEADERS(spokk-pillars
     samples/common/camera.h
 )
-SPOKK_ADD_SHADER(spokk-pillars samples/pillars/pillar.vert pillar.vert.spv vert main)
-SPOKK_ADD_SHADER(spokk-pillars samples/pillars/pillar.frag pillar.frag.spv frag main)
+SPOKK_ADD_SHADERS(spokk-pillars
+    samples/pillars/pillar.vert
+    samples/pillars/pillar.frag
+)
 SPOKK_ADD_EXECUTABLE(spokk-pillars)
 
 # spokk-shadertoy
@@ -322,9 +313,11 @@ SPOKK_ADD_SOURCES(spokk-shadertoy
     samples/common/shader_compiler.cpp
 )
 SPOKK_ADD_HEADERS(spokk-shadertoy
-    samples/shadertoy/shadertoy.frag # this shader is special; it's loaded at runtime, not built offline.
     samples/common/shader_compiler.h
 )
-SPOKK_ADD_SHADER(spokk-shadertoy samples/shadertoy/fullscreen.vert fullscreen.vert.spv vert main)
+SPOKK_ADD_SHADERS(spokk-shadertoy
+    samples/shadertoy/fullscreen.vert
+    samples/shadertoy/shadertoy.frag # this shader is special; it's loaded at runtime, not built offline.
+)
 SPOKK_ADD_EXECUTABLE(spokk-shadertoy)
 TARGET_LINK_LIBRARIES(spokk-shadertoy shaderc)

@@ -121,7 +121,7 @@ public:
     active_images_[3] = &textures_[3];
 
     // Load shader pipelines
-    SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_context_, "fullscreen.vert.spv"));
+    SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_context_, "data/fullscreen.vert.spv"));
 
     active_pipeline_index_ = 0;
     ReloadShader();  // force a reload of of the shadertoy shader into slot 1

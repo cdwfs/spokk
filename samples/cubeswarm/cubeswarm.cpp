@@ -51,8 +51,8 @@ public:
     albedo_tex_.CreateFromFile(device_context_, graphics_and_present_queue_, "data/redf.ktx");
 
     // Load shader pipelines
-    SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_context_, "rigid_mesh.vert.spv"));
-    SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_context_, "rigid_mesh.frag.spv"));
+    SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_context_, "data/rigid_mesh.vert.spv"));
+    SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_context_, "data/rigid_mesh.frag.spv"));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_vs_));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_fs_));
     SPOKK_VK_CHECK(mesh_shader_program_.Finalize(device_context_));
