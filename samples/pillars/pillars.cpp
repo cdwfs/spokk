@@ -123,10 +123,6 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   // clang-format on
   mesh_.mesh_format.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
-  // Create graphics pipelines
-  pillar_pipeline_.Init(&(mesh_.mesh_format), &pillar_shader_program_, &render_pass_, 0);
-  SPOKK_VK_CHECK(pillar_pipeline_.Finalize(device_context_));
-
   // Populate Mesh object
   mesh_.index_type = (sizeof(cube_indices[0]) == sizeof(uint32_t)) ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
   mesh_.index_count = cube_index_count;
@@ -164,6 +160,10 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   assert(convert_error == 0);
   (void)convert_error;
   SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Load(device_context_, final_mesh_vertices.data(), vertex_buffer_ci.size));
+
+  // Create graphics pipelines
+  pillar_pipeline_.Init(&(mesh_.mesh_format), &pillar_shader_program_, &render_pass_, 0);
+  SPOKK_VK_CHECK(pillar_pipeline_.Finalize(device_context_));
 
   // Create pipelined buffer of shader uniforms
   VkBufferCreateInfo uniform_buffer_ci = {};
