@@ -1,5 +1,6 @@
 *~
 *.spv
+*.TMP
 
 # GNU global
 GPATH
