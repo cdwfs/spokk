@@ -225,6 +225,7 @@ ADD_CUSTOM_TARGET(build-assets
     COMMAND $<TARGET_FILE:spokkle> samples/assets/assets.json5
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Building assets from ${CMAKE_SOURCE_DIR}/samples/assets/assets.json5"
+    SOURCES samples/assets/assets.json5
 )
 SET_TARGET_PROPERTIES(build-assets PROPERTIES FOLDER "samples")
 ADD_DEPENDENCIES(build-assets spokkle)
