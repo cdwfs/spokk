@@ -5,30 +5,23 @@ project(spokk)
 # Global build settings
 IF(MSVC)
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GS- /GR- /W4 /wd4996 /wd4201 /we4003 /D _UNICODE /D UNICODE /D NOMINMAX /D _HAS_EXCEPTIONS=0" CACHE TYPE STRING FORCE)
+    SET(CMAKE_CXX_FLAGS "/GS- /GR- /W0 /EHsc /D _UNICODE /D UNICODE /D NOMINMAX /D _HAS_EXCEPTIONS=0" CACHE TYPE STRING FORCE)
     SET(CMAKE_CXX_FLAGS_RELEASE "/MD /O2 /Ob1 /Oi /GL /fp:fast /D NDEBUG" CACHE TYPE STRING FORCE)
     SET(CMAKE_CXX_FLAGS_DEBUG   "/MDd /MP /Od /Ob0 /GS- /Zi /D _DEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /GS- /GR- /W4 /wd4996 /wd4201 /we4003 /D _UNICODE /D UNICODE /D NOMINMAX /D _HAS_EXCEPTIONS=0" CACHE TYPE STRING FORCE)
+    SET(CMAKE_C_FLAGS "/GS- /GR- /W0 /D _UNICODE /D UNICODE /D NOMINMAX" CACHE TYPE STRING FORCE)
     SET(CMAKE_C_FLAGS_RELEASE "/MD /O2 /Ob1 /Oi /GL /fp:fast /D NDEBUG" CACHE TYPE STRING FORCE)
     SET(CMAKE_C_FLAGS_DEBUG   "/MDd /MP /Od /Ob0 /GS- /Zi /D _DEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG" CACHE TYPE STRING FORCE)
+    SET(CMAKE_EXE_LINKER_FLAGS_RELEASE "/LTCG" CACHE TYPE STRING FORCE)
     SET(libs)
-ELSEIF(APPLE)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -msse4.1 -std=c++11" CACHE TYPE STRING FORCE)
-    SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DNDEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} -D_DEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native -msse4.1 -std=c99" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DNDEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG} -D_DEBUG" CACHE TYPE STRING FORCE)
-    SET(libs m)
 ELSEIF(UNIX)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -msse4.1 -D_POSIX_C_SOURCE=199309L -DM_PI=3.141592653 -std=c++11" CACHE TYPE STRING FORCE)
-    SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DNDEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} -D_DEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native -msse4.1 -D_POSIX_C_SOURCE=199309L -DM_PI=3.141592653 -std=c99" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DNDEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG} -D_DEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -pthread" CACHE TYPE STRING FORCE)
+    # TODO(cort): -W?
+    SET(CMAKE_CXX_FLAGS "-march=native -msse4.1 -D_POSIX_C_SOURCE=199309L -DM_PI=3.141592653 -std=c++11" CACHE TYPE STRING FORCE)
+    SET(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE TYPE STRING FORCE)
+    SET(CMAKE_CXX_FLAGS_DEBUG   "-D_DEBUG" CACHE TYPE STRING FORCE)
+    SET(CMAKE_C_FLAGS "-march=native -msse4.1 -D_POSIX_C_SOURCE=199309L -DM_PI=3.141592653 -std=c99" CACHE TYPE STRING FORCE)
+    SET(CMAKE_C_FLAGS_RELEASE "-DNDEBUG" CACHE TYPE STRING FORCE)
+    SET(CMAKE_C_FLAGS_DEBUG   "-D_DEBUG" CACHE TYPE STRING FORCE)
+    SET(CMAKE_EXE_LINKER_FLAGS  "-pthread" CACHE TYPE STRING FORCE)
     SET(libs m)
 ENDIF()
 
@@ -39,6 +32,26 @@ option(GLFW_BUILD_DOCS "Build the GLFW documentation" OFF)
 option(GLFW_INSTALL "Generate installation target" OFF)
 option(USE_MSVC_RUNTIME_LIBRARY_DLL "Use MSVC runtime library DLL" ON)
 add_subdirectory(third_party/glfw)
+
+# assimp
+OPTION(ASSIMP_BUILD_ASSIMP_TOOLS "If the supplementary tools for Assimp are built in addition to the library." OFF)
+OPTION(ASSIMP_BUILD_TESTS "If the test suite for Assimp is built in addition to the library." OFF)
+OPTION(ASSIMP_NO_EXPORT "Disable Assimp's export functionality." ON)
+OPTION(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT "default value of all ASSIMP_BUILD_XXX_IMPORTER value" FALSE)
+#OPTION(ASSIMP_BUILD_BLEND_IMPORTER "build the BLEND importer" ON)
+#OPTION(ASSIMP_BUILD_FBX_IMPORTER "build the FBX importer" ON)
+OPTION(ASSIMP_BUILD_OBJ_IMPORTER "build the OBJ importer" ON)
+ADD_SUBDIRECTORY(third_party/assimp)
+set(ASSIMP_TARGETS
+    assimp
+    uninstall
+    UpdateAssimpLibsDebugSymbolsAndDLLs
+    zlibstatic
+)
+set_target_properties(${ASSIMP_TARGETS} PROPERTIES FOLDER "assimp")
+
+# json.h
+set(JSON_H_DIR third_party/json.h)
 
 # Vulkan -- uses VULKAN_* variables defined by GLFW
 include_directories(${VULKAN_INCLUDE_DIR})
@@ -72,186 +85,255 @@ set(mathfu_enable_simd OFF CACHE BOOL "")
 add_subdirectory(third_party/mathfu)
 
 # shaderc
-OPTION(SPOKK_ENABLE_SHADERC "Use shaderc for runtime shader compilation" ON)
-IF(${SPOKK_ENABLE_SHADERC})
-    SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
-    SET(SHADERC_THIRD_PARTY_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party" CACHE PATH "Root location of shaderc third-party projets" FORCE)
-    option(SHADERC_SKIP_TESTS "Skip building tests" ON)
-    option(SHADERC_ENABLED_SHARED_CRT "Use the shared CRT instead of the static CRT" ON)
-    add_subdirectory(third_party/shaderc)
-    # shaderc pulls in a gajillion targets. Let's organize them a bit.
-    set(GLSLANG_TARGETS
-        glslang
-        glslang-default-resource-limits
-        glslangValidator
-        HLSL
-        OGLCompiler
-        OSDependent
-        SPIRV
-        spirv-remap
-        SPVRemapper
-        Continuous
-        Experimental
-        Nightly
-        NightlyMemoryCheck
+SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
+SET(SHADERC_THIRD_PARTY_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party" CACHE PATH "Root location of shaderc third-party projets" FORCE)
+option(SHADERC_SKIP_TESTS "Skip building tests" ON)
+option(SHADERC_ENABLED_SHARED_CRT "Use the shared CRT instead of the static CRT" ON)
+add_subdirectory(third_party/shaderc)
+# shaderc pulls in a gajillion targets. Let's organize them a bit.
+set(GLSLANG_TARGETS
+    glslang
+    glslang-default-resource-limits
+    glslangValidator
+    HLSL
+    OGLCompiler
+    OSDependent
+    SPIRV
+    spirv-remap
+    SPVRemapper
+    Continuous
+    Experimental
+    Nightly
+    NightlyMemoryCheck
 
-    )
-    SET(SPIRV_TOOLS_TARGETS
-        spirv-as
-        spirv-cfg
-        spirv-dis
-        spirv-opt
-        spirv-stats
-        SPIRV-Tools
-        spirv-tools-build-version
-        spirv-tools-cpp-example
-        spirv-tools-spv-amd-gcn-shader
-        spirv-tools-vimsyntax
-        SPIRV-Tools-opt
-        spirv-val
-    )
-    set(SHADERC_TARGETS
-        add-copyright
-        build-version
-        check-copyright
-        glslc
-        glslc_exe
-        shaderc
-        shaderc_combined_genfile
-        shaderc_util
-        shaderc-online-compile
-        testdata
-    )
-    set_target_properties(${GLSLANG_TARGETS} PROPERTIES FOLDER "shaderc/glslang")
-    set_target_properties(${SPIRV_TOOLS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-tools")
-    set_target_properties(${SHADERC_TARGETS} PROPERTIES FOLDER "shaderc")
-    add_definitions(-DSPOKK_ENABLE_SHADERC)
-ENDIF()
+)
+SET(SPIRV_TOOLS_TARGETS
+    spirv-as
+    spirv-cfg
+    spirv-dis
+    spirv-opt
+    spirv-stats
+    SPIRV-Tools
+    spirv-tools-build-version
+    spirv-tools-cpp-example
+    spirv-tools-spv-amd-gcn-shader
+    spirv-tools-vimsyntax
+    SPIRV-Tools-opt
+    spirv-val
+)
+set(SHADERC_TARGETS
+    add-copyright
+    build-version
+    check-copyright
+    glslc
+    glslc_exe
+    shaderc
+    shaderc_combined_genfile
+    shaderc_util
+    shaderc-online-compile
+    testdata
+)
+set_target_properties(${GLSLANG_TARGETS} PROPERTIES FOLDER "shaderc/glslang")
+set_target_properties(${SPIRV_TOOLS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-tools")
+set_target_properties(${SHADERC_TARGETS} PROPERTIES FOLDER "shaderc")
 
 # Skip executable targets; we only care about the library anyway.
-FOREACH(SHADER_TARGET IN LISTS SPIRV_CROSS_TARGETS GLSLANG_TARGETS SPIRV_TOOLS_TARGETS SHADERC_TARGETS)
-    get_target_property(TARGET_TYPE ${SHADER_TARGET} TYPE)
+FOREACH(SHADERC_TARGET IN LISTS SPIRV_CROSS_TARGETS GLSLANG_TARGETS SPIRV_TOOLS_TARGETS SHADERC_TARGETS)
+    get_target_property(TARGET_TYPE ${SHADERC_TARGET} TYPE)
     IF(${TARGET_TYPE} STREQUAL EXECUTABLE)
-        set_target_properties(${SHADER_TARGET} PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD TRUE)
+        set_target_properties(${SHADERC_TARGET} PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD TRUE)
     ENDIF()
 ENDFOREACH()
 
-# Offline shader compilation from GLSL to SPIR-V
-FUNCTION(SHADER_BUILD_RULE SOURCE_FILE SPV_FILE)
-    ADD_CUSTOM_COMMAND(
-        OUTPUT ${SPV_FILE}
-        COMMAND $ENV{VULKAN_SDK}/bin/glslc -o ${SPV_FILE} ${SOURCE_FILE}
-        MAIN_DEPENDENCY ${SOURCE_FILE}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Compiling ${SOURCE_FILE} -> ${SPV_FILE}"
-    )
-ENDFUNCTION(SHADER_BUILD_RULE SHADER_FILE SPV_FILE)
-
 # Mysterious macro to remove default VS "Source Files" and "Header Files" filters.
+# TODO(https://github.com/cdwfs/spokk/issues/10): Figure out why this works and refactor if necessary.
 MACRO (cmp_IDE_SOURCE_PROPERTIES SOURCE_PATH HEADERS SOURCES)
     STRING(REPLACE "/" "\\\\" source_group_path ${SOURCE_PATH}  )
     source_group(${source_group_path} FILES ${HEADERS} ${SOURCES})
 ENDMACRO (cmp_IDE_SOURCE_PROPERTIES NAME HEADERS SOURCES INSTALL_FILES)
 
+# Add stricter warnings to my own code
+IF(MSVC)
+    ADD_COMPILE_OPTIONS(/W4 /WX /wd4996 /wd4201 /we4003)
+ELSEIF(UNIX)
+    # TODO: -Wall?
+ENDIF()
+
+# spokkle
+SET(SPOKKLE_SOURCES
+    src/spokkle/spokkle.cpp
+    src/spokk/spokk_vertex.cpp
+    ${JSON_H_DIR}/json.c
+)
+SET(SPOKKLE_HEADERS
+    ${JSON_H_DIR}/json.h
+)
+cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKKLE_HEADERS}" "${SPOKKLE_SOURCES}")
+ADD_EXECUTABLE(spokkle ${SPOKKLE_SOURCES} ${SPOKKLE_HEADERS})
+TARGET_LINK_LIBRARIES(spokkle assimp shaderc)
+TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
+    "third_party/assimp/include"
+    "src/spokk"
+    ${JSON_H_DIR}
+    )
+IF(MSVC)
+    # Windows puts some path-manipulation APIs in an optional library
+    TARGET_LINK_LIBRARIES(spokkle shlwapi)
+ENDIF(MSVC)
+
 # libspokk
 SET(SPOKK_HEADERS
-    image_file.h
-    platform.h
-    vk_application.h
-    vk_buffer.h
-    vk_context.h
-    vk_debug.h
-    vk_image.h
-    vk_memory.h
-    vk_mesh.h
-    vk_pipeline.h
-    vk_renderpass.h
-    vk_shader.h
-    vk_utilities.h
-    vk_text.h
-    vk_vertex.h
+    src/spokk/image_file.h
+    src/spokk/spokk.h
+    src/spokk/spokk_application.h
+    src/spokk/spokk_buffer.h
+    src/spokk/spokk_context.h
+    src/spokk/spokk_debug.h
+    src/spokk/spokk_image.h
+    src/spokk/spokk_memory.h
+    src/spokk/spokk_mesh.h
+    src/spokk/spokk_pipeline.h
+    src/spokk/spokk_platform.h
+    src/spokk/spokk_renderpass.h
+    src/spokk/spokk_shader.h
+    src/spokk/spokk_shader_interface.h
+    src/spokk/spokk_utilities.h
+    src/spokk/spokk_text.h
+    src/spokk/spokk_vertex.h
 )
 SET(SPOKK_SOURCES
-    image_file.c
-    vk_application.cpp
-    vk_buffer.cpp
-    vk_context.cpp
-    vk_image.cpp
-    vk_memory.cpp
-    vk_mesh.cpp
-    vk_pipeline.cpp
-    vk_renderpass.cpp
-    vk_shader.cpp
-    vk_utilities.cpp
-    vk_text.cpp
-    vk_vertex.cpp
+    src/spokk/image_file.c
+    src/spokk/spokk_application.cpp
+    src/spokk/spokk_buffer.cpp
+    src/spokk/spokk_context.cpp
+    src/spokk/spokk_image.cpp
+    src/spokk/spokk_memory.cpp
+    src/spokk/spokk_mesh.cpp
+    src/spokk/spokk_pipeline.cpp
+    src/spokk/spokk_renderpass.cpp
+    src/spokk/spokk_shader.cpp
+    src/spokk/spokk_utilities.cpp
+    src/spokk/spokk_text.cpp
+    src/spokk/spokk_vertex.cpp
 )
 SET(SPOKK_LIB_NAME spokk)
 cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKK_HEADERS}" "${SPOKK_SOURCES}")
 ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC ${SPOKK_SOURCES} ${SPOKK_HEADERS})
 TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} spirv-cross-cpp ${libs})
-IF(${SPOKK_ENABLE_SHADERC})
-    TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} shaderc)
-ENDIF()
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC "third_party/stb")
+TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC "src/spokk")
 
-# Copy assets directory into build dir.
-# TODO(cort): Copying all assets whenever any sample is built doesn't really scale.
-# Ideally, every sample would know what assets it depends on, and only the
-# necessary assets get copied.
-ADD_CUSTOM_TARGET(spokk-assets
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets
-        ${CMAKE_BINARY_DIR}/data
-    COMMENT "Copying assets from ${CMAKE_SOURCE_DIR}/assets to to ${CMAKE_BINARY_DIR}/data"
+# custom target to build/copy sample assets
+ADD_CUSTOM_TARGET(build-assets
+    COMMAND $<TARGET_FILE:spokkle> samples/assets/assets.json5
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building assets from ${CMAKE_SOURCE_DIR}/samples/assets/assets.json5"
+    SOURCES samples/assets/assets.json5
 )
+SET_TARGET_PROPERTIES(build-assets PROPERTIES FOLDER "samples")
+ADD_DEPENDENCIES(build-assets spokkle)
 
+# usage: SPOKK_ADD_SOURCES(target [source1 source2 source3 ...])
+MACRO(SPOKK_ADD_SOURCES APP_TARGET)
+    LIST(APPEND ${APP_TARGET}_SOURCES ${ARGN})
+ENDMACRO(SPOKK_ADD_SOURCES APP_TARGET SOURCE_LIST)
 
-FUNCTION (SPOKK_APP APP_NAME APP_SOURCES_LIST APP_HEADERS_LIST APP_SHADERS_LIST)
-    # TODO(cort): ...really?
-    SET(APP_HEADERS ${${APP_HEADERS_LIST}})
-    SET(APP_SOURCES ${${APP_SOURCES_LIST}})
-    SET(APP_SHADERS ${${APP_SHADERS_LIST}})
-    SOURCE_GROUP(shaders FILES ${APP_SHADERS})
-    FOREACH(SHADER_FILE IN LISTS APP_SHADERS)
-        SET(SPV_FILENAME ${CMAKE_BINARY_DIR}/${SHADER_FILE}.spv)
-        STRING(REGEX REPLACE ".hlsl.spv$" ".spv" SPV_FILENAME ${SPV_FILENAME})
-        SHADER_BUILD_RULE(${SHADER_FILE} ${SPV_FILENAME})
-    ENDFOREACH(SHADER_FILE)
+# usage: SPOKK_ADD_HEADERS(target [header1 header2 header3 ...])
+MACRO(SPOKK_ADD_HEADERS APP_TARGET)
+    LIST(APPEND ${APP_TARGET}_HEADERS ${ARGN})
+ENDMACRO(SPOKK_ADD_HEADERS APP_TARGET HEADER_LIST)
 
-    cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${APP_HEADERS}" "${APP_SOURCES}")
-    add_executable(${APP_NAME} ${APP_SOURCES} ${APP_SHADERS} ${APP_HEADERS})
-    target_link_libraries(${APP_NAME} ${SPOKK_LIB_NAME})
-    add_dependencies(${APP_NAME} spokk-assets)
-    mathfu_configure_flags(${APP_NAME})
-ENDFUNCTION(SPOKK_APP APP_NAME APP_SOURCES APP_HEADERS APP_SHADERS)
+MACRO(SPOKK_ADD_SHADERS APP_TARGET)
+    SOURCE_GROUP(shaders FILES ${ARGN})
+    LIST(APPEND ${APP_TARGET}_SHADERS ${ARGN})
+ENDMACRO(SPOKK_ADD_SHADERS APP_TARGET)
+
+# Adds a spokk-based executable target, onces its sources/headers/shaders have been defined.
+FUNCTION (SPOKK_ADD_EXECUTABLE APP_TARGET)
+    cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${${APP_TARGET}_HEADERS}" "${${APP_TARGET}_SOURCES}")
+    ADD_EXECUTABLE(${APP_TARGET} ${${APP_TARGET}_SOURCES} ${${APP_TARGET}_SHADERS} ${${APP_TARGET}_HEADERS})
+    TARGET_LINK_LIBRARIES(${APP_TARGET} ${SPOKK_LIB_NAME})
+    TARGET_INCLUDE_DIRECTORIES(${APP_TARGET} PUBLIC "samples")
+    SET_TARGET_PROPERTIES(${APP_TARGET} PROPERTIES FOLDER "samples")
+
+    ADD_DEPENDENCIES(${APP_TARGET} build-assets)
+    mathfu_configure_flags(${APP_TARGET})
+ENDFUNCTION(SPOKK_ADD_EXECUTABLE APP_TARGET)
 
 # spokk-cubeswarm
-SET(CUBESWARM_SOURCES camera.cpp cubeswarm.cpp)
-SET(CUBESWARM_HEADERS camera.h)
-SET(CUBESWARM_SHADERS rigid_mesh.vert rigid_mesh.frag)
-SPOKK_APP(spokk-cubeswarm CUBESWARM_SOURCES CUBESWARM_HEADERS CUBESWARM_SHADERS)
+SPOKK_ADD_SOURCES(spokk-cubeswarm
+    samples/common/camera.cpp
+    samples/cubeswarm/cubeswarm.cpp
+)
+SPOKK_ADD_HEADERS(spokk-cubeswarm
+    samples/common/camera.h
+)
+SPOKK_ADD_SHADERS(spokk-cubeswarm
+    samples/cubeswarm/rigid_mesh.vert
+    samples/cubeswarm/rigid_mesh.frag
+)
+SPOKK_ADD_EXECUTABLE(spokk-cubeswarm)
 
 # spokk-compute
-SET(COMPUTE_SOURCES compute.cpp)
-SET(COMPUTE_HEADERS)
-SET(COMPUTE_SHADERS double_ints.comp)
-SPOKK_APP(spokk-compute COMPUTE_SOURCES COMPUTE_HEADERS COMPUTE_SHADERS)
+SPOKK_ADD_SOURCES(spokk-compute samples/compute/compute.cpp)
+SPOKK_ADD_SHADERS(spokk-compute samples/compute/double_ints.comp)
+SPOKK_ADD_EXECUTABLE(spokk-compute)
+
+# spokk-lights
+SPOKK_ADD_SOURCES(spokk-lights
+    samples/common/camera.cpp
+    samples/lights/lights.cpp
+)
+SPOKK_ADD_HEADERS(spokk-lights
+    samples/common/camera.h
+)
+SPOKK_ADD_SHADERS(spokk-lights
+    samples/lights/lit_mesh.vert
+    samples/lights/lit_mesh.frag
+    samples/lights/skybox.vert
+    samples/lights/skybox.frag
+)
+SPOKK_ADD_EXECUTABLE(spokk-lights)
 
 # spokk-pillars
-SET(PILLARS_SOURCES camera.cpp pillars.cpp)
-SET(PILLARS_HEADERS camera.h)
-SET(PILLARS_SHADERS pillar.vert pillar.frag)
-SPOKK_APP(spokk-pillars PILLARS_SOURCES PILLARS_HEADERS PILLARS_SHADERS)
+SPOKK_ADD_SOURCES(spokk-pillars
+    samples/common/camera.cpp
+    samples/pillars/pillars.cpp
+)
+SPOKK_ADD_HEADERS(spokk-pillars
+    samples/common/camera.h
+)
+SPOKK_ADD_SHADERS(spokk-pillars
+    samples/pillars/pillar.vert
+    samples/pillars/pillar.frag
+)
+SPOKK_ADD_EXECUTABLE(spokk-pillars)
 
 # spokk-shadertoy
-SET(SHADERTOY_SOURCES shadertoy.cpp)
-SET(SHADERTOY_HEADERS shadertoy.frag) # this shader is special; it's loaded at runtime, not built offline.
-SET(SHADERTOY_SHADERS fullscreen.vert)
-SPOKK_APP(spokk-shadertoy SHADERTOY_SOURCES SHADERTOY_HEADERS SHADERTOY_SHADERS)
+SPOKK_ADD_SOURCES(spokk-shadertoy
+    samples/shadertoy/shadertoy.cpp
+    samples/common/shader_compiler.cpp
+)
+SPOKK_ADD_HEADERS(spokk-shadertoy
+    samples/common/shader_compiler.h
+)
+SPOKK_ADD_SHADERS(spokk-shadertoy
+    samples/shadertoy/fullscreen.vert
+    samples/shadertoy/shadertoy.frag # this shader is special; it's loaded at runtime, not built offline.
+)
+SPOKK_ADD_EXECUTABLE(spokk-shadertoy)
+TARGET_LINK_LIBRARIES(spokk-shadertoy shaderc)
 
-# spokk-textfield
-SET(TEXTFIELD_SOURCES camera.cpp textfield.cpp)
-SET(TEXTFIELD_HEADERS camera.h)
-SET(TEXTFIELD_SHADERS textmesh.vert textmesh.frag)
-SPOKK_APP(spokk-textfield TEXTFIELD_SOURCES TEXTFIELD_HEADERS TEXTFIELD_SHADERS)
+# spokk-text
+SPOKK_ADD_SOURCES(spokk-text
+    samples/common/camera.cpp
+    samples/text/text.cpp
+)
+SPOKK_ADD_HEADERS(spokk-text
+    samples/common/camera.h
+)
+SPOKK_ADD_SHADERS(spokk-text
+    samples/text/textmesh.vert
+    samples/text/textmesh.frag
+)
+SPOKK_ADD_EXECUTABLE(spokk-text)

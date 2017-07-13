@@ -1,0 +1,60 @@
+{
+    defaults: {
+        output_root: "../../build/data",  // override with -o on the command line
+        shader_include_dirs: [
+            "../../src/spokk",
+            "..",
+        ],
+    },
+
+    assets: [
+        // Textures
+        { class: "image", input: "redf.ktx", output: "redf.ktx", },
+        { class: "image", input: "testcube.ktx", output: "testcube.ktx", },
+        
+        // Shadertoy Textures
+        { class: "image", input: "cube00.ktx", output: "cube00.ktx", },
+        { class: "image", input: "cube01.ktx", output: "cube01.ktx", },
+        { class: "image", input: "cube02.ktx", output: "cube02.ktx", },
+        { class: "image", input: "cube03.ktx", output: "cube03.ktx", },
+        { class: "image", input: "cube04.ktx", output: "cube04.ktx", },
+        { class: "image", input: "cube05.ktx", output: "cube05.ktx", },
+        { class: "image", input: "cube05.ktx", output: "cube05.ktx", },
+        { class: "image", input: "tex00.ktx", output: "tex00.ktx", },
+        { class: "image", input: "tex01.ktx", output: "tex01.ktx", },
+        { class: "image", input: "tex02.ktx", output: "tex02.ktx", },
+        { class: "image", input: "tex03.ktx", output: "tex03.ktx", },
+        { class: "image", input: "tex04.ktx", output: "tex04.ktx", },
+        { class: "image", input: "tex05.ktx", output: "tex05.ktx", },
+        { class: "image", input: "tex06.ktx", output: "tex06.ktx", },
+        { class: "image", input: "tex07.ktx", output: "tex07.ktx", },
+        { class: "image", input: "tex08.ktx", output: "tex08.ktx", },
+        { class: "image", input: "tex09.ktx", output: "tex09.ktx", },
+        { class: "image", input: "tex10.ktx", output: "tex10.ktx", },
+        { class: "image", input: "tex11.ktx", output: "tex11.ktx", },
+        { class: "image", input: "tex12.ktx", output: "tex12.ktx", },
+        { class: "image", input: "tex13.ktx", output: "tex13.ktx", },
+        { class: "image", input: "tex14.ktx", output: "tex14.ktx", },
+        { class: "image", input: "tex15.ktx", output: "tex15.ktx", },
+        
+        // Meshes
+        { class: "mesh", input: "teapot.obj", output: "teapot.mesh", },
+
+        // Fonts
+        { class: "font", input: "SourceCodePro-Semibold.ttf", output: "SourceCodePro-Semibold.ttf", },
+
+        // Shaders
+        { class: "shader", input: "../cubeswarm/rigid_mesh.vert", output: "rigid_mesh.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../cubeswarm/rigid_mesh.frag", output: "rigid_mesh.frag.spv", stage: "frag", entry: "main", },
+        { class: "shader", input: "../compute/double_ints.comp", output: "double_ints.comp.spv", stage: "comp", entry: "main", },
+        { class: "shader", input: "../lights/lit_mesh.vert", output: "lit_mesh.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../lights/lit_mesh.frag", output: "lit_mesh.frag.spv", stage: "frag", entry: "main", },
+        { class: "shader", input: "../lights/skybox.vert", output: "skybox.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../lights/skybox.frag", output: "skybox.frag.spv", stage: "frag", entry: "main", },
+        { class: "shader", input: "../pillars/pillar.vert", output: "pillar.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../pillars/pillar.frag", output: "pillar.frag.spv", stage: "frag", entry: "main", },
+        { class: "shader", input: "../shadertoy/fullscreen.vert", output: "fullscreen.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../text/textmesh.vert", output: "textmesh.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../text/textmesh.frag", output: "textmesh.frag.spv", stage: "frag", entry: "main", },
+    ],
+}
