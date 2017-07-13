@@ -245,9 +245,6 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
   for (uint32_t iMip = 0; iMip < mips_to_load; ++iMip) {
     ImageFileSubresource subresource = {};
     subresource.mip_level = iMip;
-    // TODO(cort): each source subresource may need to start on a properly aligned offset. For now,
-    // ignore it. When I switch to a global staging buffer, allocations should be aligned to the transfer
-    // boundary.
     total_upload_size += ImageFileGetSubresourceSize(&image_file, subresource) * image_file.array_layers;
   }
   VkBufferCreateInfo staging_buffer_ci = {};
