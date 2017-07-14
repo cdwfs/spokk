@@ -61,7 +61,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkFlags msgFlags, Vk
 #if 0  //_WIN32
   MessageBoxA(NULL, message, "Alert", MB_OK);
 #else
-  printf("%s\n", message);
+  fprintf(stderr, "%s\n", message);
   fflush(stdout);
 #endif
   free(message);
@@ -298,10 +298,6 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
     required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
   }
   const std::vector<const char *> optional_device_extension_names = {
-#if !defined(NDEBUG) && defined(VK_EXT_debug_marker)
-    VK_EXT_DEBUG_MARKER_EXTENSION_NAME,  // will only be enabled if a layer supports it (currently, only RenderDoc's
-// implicit layer)
-#endif
   };
   std::vector<const char *> enabled_device_extension_names;
   SPOKK_VK_CHECK(GetSupportedDeviceExtensions(physical_device_, instance_layers_, required_device_extension_names,

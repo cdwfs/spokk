@@ -53,7 +53,7 @@ void RenderPass::InitFromPreset(Preset preset, VkFormat output_color_format) {
     attachment_descs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachment_descs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachment_descs[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachment_descs[1].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     subpass_attachments.resize(1);
     subpass_attachments[0].color_refs.push_back({0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
     subpass_attachments[0].depth_stencil_refs.push_back({1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL});
@@ -80,7 +80,7 @@ void RenderPass::InitFromPreset(Preset preset, VkFormat output_color_format) {
     attachment_descs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     attachment_descs[1].format = output_color_format;
     attachment_descs[1].samples = VK_SAMPLE_COUNT_1_BIT;
     attachment_descs[1].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -124,7 +124,7 @@ void RenderPass::InitFromPreset(Preset preset, VkFormat output_color_format) {
     attachment_descs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     attachment_descs[1].format = VK_FORMAT_D32_SFLOAT;
     attachment_descs[1].samples = VK_SAMPLE_COUNT_1_BIT;
     attachment_descs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -132,7 +132,7 @@ void RenderPass::InitFromPreset(Preset preset, VkFormat output_color_format) {
     attachment_descs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachment_descs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachment_descs[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachment_descs[1].finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     attachment_descs[2].format = output_color_format;
     attachment_descs[2].samples = VK_SAMPLE_COUNT_1_BIT;
     attachment_descs[2].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
