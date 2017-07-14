@@ -3,16 +3,16 @@
 // Must happen before any vulkan.h include, in order to get the platform-specific extensions included.
 #if defined(ZOMBO_PLATFORM_WINDOWS)
 #define VK_USE_PLATFORM_WIN32_KHR 1
-#define PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+#define SPOKK_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_WIN32_SURFACE_EXTENSION_NAME
 #elif defined(ZOMBO_PLATFORM_POSIX)
 #define VK_USE_PLATFORM_XCB_KHR 1
-#define PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_XCB_SURFACE_EXTENSION_NAME
+#define SPOKK_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_XCB_SURFACE_EXTENSION_NAME
 #elif defined(ZOMBO_PLATFORM_ANDROID)
 #define VK_USE_PLATFORM_ANDROID_KHR 1
-#define PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
+#define SPOKK_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
 #else
 #error Unsupported platform
-#define PLATFORM_SURFACE_EXTENSION_NAME "Unsupported platform",
+#define SPOKK_PLATFORM_SURFACE_EXTENSION_NAME "Unsupported platform",
 #endif
 
 #include "spokk_application.h"
@@ -232,7 +232,7 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   std::vector<const char *> required_instance_extension_names = {};
   if (ci.enable_graphics) {
     required_instance_extension_names.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
-    required_instance_extension_names.push_back(PLATFORM_SURFACE_EXTENSION_NAME);
+    required_instance_extension_names.push_back(SPOKK_PLATFORM_SURFACE_EXTENSION_NAME);
   }
   std::vector<const char *> optional_instance_extension_names = {};
   if (ci.debug_report_flags != 0) {
