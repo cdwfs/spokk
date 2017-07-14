@@ -5,10 +5,10 @@ project(spokk)
 # Global build settings
 IF(MSVC)
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-    SET(CMAKE_CXX_FLAGS "/GS- /GR- /W0 /EHsc /D _UNICODE /D UNICODE /D NOMINMAX /D _HAS_EXCEPTIONS=0" CACHE TYPE STRING FORCE)
+    SET(CMAKE_CXX_FLAGS "/GS- /GR- /W0 /WX- /EHsc /D _UNICODE /D UNICODE /D NOMINMAX /D _HAS_EXCEPTIONS=0" CACHE TYPE STRING FORCE)
     SET(CMAKE_CXX_FLAGS_RELEASE "/MD /O2 /Ob1 /Oi /GL /fp:fast /D NDEBUG" CACHE TYPE STRING FORCE)
     SET(CMAKE_CXX_FLAGS_DEBUG   "/MDd /MP /Od /Ob0 /GS- /Zi /D _DEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS "/GS- /GR- /W0 /D _UNICODE /D UNICODE /D NOMINMAX" CACHE TYPE STRING FORCE)
+    SET(CMAKE_C_FLAGS "/GS- /GR- /W0 /WX- /D _UNICODE /D UNICODE /D NOMINMAX" CACHE TYPE STRING FORCE)
     SET(CMAKE_C_FLAGS_RELEASE "/MD /O2 /Ob1 /Oi /GL /fp:fast /D NDEBUG" CACHE TYPE STRING FORCE)
     SET(CMAKE_C_FLAGS_DEBUG   "/MDd /MP /Od /Ob0 /GS- /Zi /D _DEBUG" CACHE TYPE STRING FORCE)
     SET(CMAKE_EXE_LINKER_FLAGS_RELEASE "/LTCG" CACHE TYPE STRING FORCE)
@@ -111,12 +111,17 @@ SET(SPIRV_TOOLS_TARGETS
     spirv-as
     spirv-cfg
     spirv-dis
+    spirv-markv
     spirv-opt
     spirv-stats
     SPIRV-Tools
+    SPIRV-Tools-comp
     spirv-tools-build-version
     spirv-tools-cpp-example
     spirv-tools-spv-amd-gcn-shader
+    spirv-tools-spv-amd-shader-ballot
+    spirv-tools-spv-amd-shader-explicit-vertex-parameter
+    spirv-tools-spv-amd-shader-trinary-minmax
     spirv-tools-vimsyntax
     SPIRV-Tools-opt
     spirv-val

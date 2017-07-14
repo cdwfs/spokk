@@ -3,16 +3,16 @@
 // Must happen before any vulkan.h include, in order to get the platform-specific extensions included.
 #if defined(ZOMBO_PLATFORM_WINDOWS)
 #define VK_USE_PLATFORM_WIN32_KHR 1
-#define PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+#define SPOKK_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_WIN32_SURFACE_EXTENSION_NAME
 #elif defined(ZOMBO_PLATFORM_POSIX)
 #define VK_USE_PLATFORM_XCB_KHR 1
-#define PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_XCB_SURFACE_EXTENSION_NAME
+#define SPOKK_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_XCB_SURFACE_EXTENSION_NAME
 #elif defined(ZOMBO_PLATFORM_ANDROID)
 #define VK_USE_PLATFORM_ANDROID_KHR 1
-#define PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
+#define SPOKK_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
 #else
 #error Unsupported platform
-#define PLATFORM_SURFACE_EXTENSION_NAME "Unsupported platform",
+#define SPOKK_PLATFORM_SURFACE_EXTENSION_NAME "Unsupported platform",
 #endif
 
 #include "spokk_application.h"
@@ -61,7 +61,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkFlags msgFlags, Vk
 #if 0  //_WIN32
   MessageBoxA(NULL, message, "Alert", MB_OK);
 #else
-  printf("%s\n", message);
+  fprintf(stderr, "%s\n", message);
   fflush(stdout);
 #endif
   free(message);
@@ -232,7 +232,7 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   std::vector<const char *> required_instance_extension_names = {};
   if (ci.enable_graphics) {
     required_instance_extension_names.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
-    required_instance_extension_names.push_back(PLATFORM_SURFACE_EXTENSION_NAME);
+    required_instance_extension_names.push_back(SPOKK_PLATFORM_SURFACE_EXTENSION_NAME);
   }
   std::vector<const char *> optional_instance_extension_names = {};
   if (ci.debug_report_flags != 0) {
@@ -298,10 +298,6 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
     required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
   }
   const std::vector<const char *> optional_device_extension_names = {
-#if !defined(NDEBUG) && defined(VK_EXT_debug_marker)
-    VK_EXT_DEBUG_MARKER_EXTENSION_NAME,  // will only be enabled if a layer supports it (currently, only RenderDoc's
-// implicit layer)
-#endif
   };
   std::vector<const char *> enabled_device_extension_names;
   SPOKK_VK_CHECK(GetSupportedDeviceExtensions(physical_device_, instance_layers_, required_device_extension_names,

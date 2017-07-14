@@ -26,7 +26,7 @@ struct Image {
       VkBool32 generate_mipmaps = VK_TRUE, VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
       VkAccessFlags final_access_flags = VK_ACCESS_SHADER_READ_BIT);
   int LoadSubresourceFromMemory(const DeviceContext& device_context, const DeviceQueue* queue, const void* src_data,
-      uint32_t src_row_nbytes, uint32_t src_layer_height, const VkImageSubresource& dst_subresource,
+      size_t src_nbytes, uint32_t src_row_nbytes, uint32_t src_layer_height, const VkImageSubresource& dst_subresource,
       VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
       VkAccessFlags final_access_flags = VK_ACCESS_SHADER_READ_BIT);
   int GenerateMipmaps(const DeviceContext& device_context, const DeviceQueue* queue,

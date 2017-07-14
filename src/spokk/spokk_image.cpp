@@ -348,20 +348,24 @@ void Image::Destroy(const DeviceContext& device_context) {
 }
 
 int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const DeviceQueue* queue,
-    const void* src_data, uint32_t src_row_nbytes, uint32_t src_layer_height, const VkImageSubresource& dst_subresource,
-    VkImageLayout final_layout, VkAccessFlags final_access_flags) {
+    const void* src_data, size_t src_nbytes, uint32_t src_row_nbytes, uint32_t src_layer_height,
+    const VkImageSubresource& dst_subresource, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
   ZOMBO_ASSERT_RETURN(handle != VK_NULL_HANDLE, -1, "Call Create() first!");
-  // TODO(cort): This function needs a new signature.
-  // - existing src_row_nbytes and src_layer_height are currently implicitly assumed to be the *base* pitch/height.
-  //   They're scaled down to the proper mip dimensions in the VkBufferImageCopy.
-  // - We now need to know the full size of src_data, so we can copy it into the staging buffer. Currently,
-  //   the size is implicit from the destination subresource.
-  ZOMBO_ERROR_RETURN(-2, "This function is broken & needs to be fixed.");
-  size_t src_nbytes = 0;
+
   // Gimme a command buffer
   OneShotCommandPool cpool(device_context.Device(), queue->handle, queue->family, device_context.HostAllocator());
   VkCommandBuffer cb = cpool.AllocateAndBegin();
 
+  // TODO(cort): global staging buffer
+  VkBufferCreateInfo staging_buffer_ci = {};
+  staging_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  staging_buffer_ci.size = src_nbytes;
+  staging_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  staging_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  Buffer staging_buffer = {};
+  SPOKK_VK_CHECK(staging_buffer.Create(
+      device_context, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
+  memcpy((uint8_t*)staging_buffer.Mapped(), src_data, src_nbytes);
   // transition destination subresource into TRANSFER_DST most for loading
   VkImageMemoryBarrier barrier_init_to_dst = {};
   barrier_init_to_dst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -377,27 +381,6 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const 
   barrier_init_to_dst.subresourceRange.layerCount = 1;
   barrier_init_to_dst.subresourceRange.baseMipLevel = dst_subresource.mipLevel;
   barrier_init_to_dst.subresourceRange.levelCount = 1;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0,
-      nullptr, 0, nullptr, 1, &barrier_init_to_dst);
-
-  // Load!
-  const ImageFormatAttributes& format_info = GetVkFormatInfo(image_ci.format);
-  const int32_t texel_block_bytes = format_info.texel_block_bytes;
-  const int32_t texel_block_width = format_info.texel_block_width;
-  const int32_t texel_block_height = format_info.texel_block_height;
-  const uint32_t i_mip = dst_subresource.mipLevel;
-  const uint32_t i_layer = dst_subresource.arrayLayer;
-
-  // TODO(cort): global staging buffer
-  VkBufferCreateInfo staging_buffer_ci = {};
-  staging_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  staging_buffer_ci.size = src_nbytes;
-  staging_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-  staging_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  Buffer staging_buffer = {};
-  SPOKK_VK_CHECK(staging_buffer.Create(
-      device_context, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
-  memcpy((uint8_t*)staging_buffer.Mapped(), src_data, src_nbytes);
   // barrier between host writes and transfer reads
   VkBufferMemoryBarrier buffer_barrier = {};
   buffer_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -408,26 +391,37 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const 
   buffer_barrier.buffer = staging_buffer.Handle();
   buffer_barrier.offset = 0;
   buffer_barrier.size = VK_WHOLE_SIZE;
-  vkCmdPipelineBarrier(
-      cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &buffer_barrier, 0, nullptr);
+  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1,
+      &buffer_barrier, 1, &barrier_init_to_dst);
+
+  // Load!
+  const ImageFormatAttributes& format_info = GetVkFormatInfo(image_ci.format);
+  const int32_t texel_block_bytes = format_info.texel_block_bytes;
+  const int32_t texel_block_width = format_info.texel_block_width;
+  const int32_t texel_block_height = format_info.texel_block_height;
 
   VkBufferImageCopy copy_region = {};
   copy_region.bufferOffset = 0;
   // copy region dimensions are specified in pixels (not texel blocks or bytes), but must be
   // an even integer multiple of the texel block dimensions for compressed formats.
-  // It must also respect the minImageTransferGranularity, but I don't have a good way of testing
-  // that right now.  ...Wait, yes I do! It's in the DeviceQueue!
-  copy_region.bufferRowLength = GetMipDimension(src_row_nbytes * texel_block_width / texel_block_bytes, i_mip);
-  copy_region.bufferImageHeight = GetMipDimension(src_layer_height, i_mip);
-  copy_region.bufferRowLength = AlignTo(copy_region.bufferRowLength, texel_block_width);
-  copy_region.bufferImageHeight = AlignTo(copy_region.bufferImageHeight, texel_block_height);
+  // It must also respect the DeviceQueue's minImageTransferGranularity, but copying full mip levels is
+  // always supported, and that's all I'm doing here.
+  ZOMBO_ASSERT_RETURN((src_row_nbytes % texel_block_bytes) == 0, -1,
+      "src_row_nbytes (%d) must be a multiple of image's texel_block_bytes (%d)", src_row_nbytes, texel_block_bytes);
+  ZOMBO_ASSERT_RETURN((src_layer_height % texel_block_height) == 0, -1,
+      "src_layer_height (%d) must be a multiple of image's texel_block_height (%d)", src_layer_height,
+      texel_block_height);
+  copy_region.bufferRowLength = src_row_nbytes * texel_block_width / texel_block_bytes;
+  copy_region.bufferImageHeight = src_layer_height;
   copy_region.imageSubresource.aspectMask = dst_subresource.aspectMask;
-  copy_region.imageSubresource.mipLevel = i_mip;
-  copy_region.imageSubresource.baseArrayLayer = i_layer;
-  copy_region.imageSubresource.layerCount = 1;  // can only copy one layer at a time
-  copy_region.imageExtent.width = AlignTo(GetMipDimension(image_ci.extent.width, i_mip), texel_block_width);
-  copy_region.imageExtent.height = AlignTo(GetMipDimension(image_ci.extent.height, i_mip), texel_block_height);
-  copy_region.imageExtent.depth = GetMipDimension(image_ci.extent.depth, i_mip);
+  copy_region.imageSubresource.mipLevel = dst_subresource.mipLevel;
+  copy_region.imageSubresource.baseArrayLayer = dst_subresource.arrayLayer;
+  copy_region.imageSubresource.layerCount = 1;
+  copy_region.imageExtent.width =
+      AlignTo(GetMipDimension(image_ci.extent.width, dst_subresource.mipLevel), texel_block_width);
+  copy_region.imageExtent.height =
+      AlignTo(GetMipDimension(image_ci.extent.height, dst_subresource.mipLevel), texel_block_height);
+  copy_region.imageExtent.depth = GetMipDimension(image_ci.extent.depth, dst_subresource.mipLevel);
   vkCmdCopyBufferToImage(cb, staging_buffer.Handle(), handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
 
   // transition to final layout/access
