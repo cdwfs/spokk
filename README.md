@@ -3,6 +3,7 @@ spokk
 
 Just a framework for building simple [Vulkan](https://www.khronos.org/vulkan/) applications.
 ![image](https://raw.githubusercontent.com/cdwfs/spokk/master/samples/cubeswarm/screenshot.jpg)
+![image](https://raw.githubusercontent.com/cdwfs/spokk/master/samples/lights/screenshot.jpg)
 ![image](https://raw.githubusercontent.com/cdwfs/spokk/master/samples/pillars/screenshot.jpg)
 
 Acknowledgements
