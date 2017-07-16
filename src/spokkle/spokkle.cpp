@@ -35,7 +35,10 @@ BOOL CreateDirectoryAndParentsA(const char* abs_dir) {
   std::string parent = abs_dir;
   PathRemoveFileSpecA(&parent[0]);
   int create_success = CreateDirectoryAndParentsA(parent.c_str());
-  ZOMBO_ASSERT_RETURN(create_success, create_success, "CreateDirectory() failed");
+  if (!create_success) {
+    fprintf(stderr, "CreateDirectory(\"%s\") failed\n", abs_dir);
+    return FALSE;
+  }
   return CreateDirectoryA(abs_dir, nullptr);
 }
 
@@ -71,7 +74,7 @@ int CreateAbsolutePath(std::string* out_abs_path, const char* root, const char* 
 
 // Converts a UTF8-encoded JSON string to a UTF16 string.
 int ConvertUtf8ToWide(const json_string_s* utf8, std::wstring* out_wide) {
-  static_assert(sizeof(wchar_t) == sizeof(WCHAR), "This code assume sizeof(wchar_t) == sizeof(WCHAR)");
+  static_assert(sizeof(wchar_t) == sizeof(WCHAR), "This code assumes sizeof(wchar_t) == sizeof(WCHAR)");
   int nchars = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, nullptr, 0);
   ZOMBO_ASSERT_RETURN(nchars != 0, -1, "malformed UTF-8, I guess?");
   out_wide->resize(nchars + 1);
@@ -235,7 +238,8 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
   for (const auto& attrib : src_attributes) {
     int convert_error =
         spokk::ConvertVertexBuffer(attrib.values, attrib.layout, vertices.data(), dst_layout, vertex_count);
-    ZOMBO_ASSERT(convert_error == 0, "error converting attribute at location %u", attrib.layout.attributes[0].location);
+    ZOMBO_ASSERT_RETURN(
+        convert_error == 0, -2, "error converting attribute at location %u", attrib.layout.attributes[0].location);
   }
 
   // Load index buffer
@@ -530,21 +534,29 @@ int AssetManifest::Load(const std::string& json5_filename) {
   manifest_filename_ = json5_filename;
 
   FILE* manifest_file = zomboFopen(manifest_filename_.c_str(), "rb");
-  ZOMBO_ASSERT_RETURN(manifest_file != nullptr, -1, "ERROR: Could not open %s\n", manifest_filename_.c_str());
+  if (!manifest_file) {
+    fprintf(stderr, "ERROR: Could not open manifest file %s\n", manifest_filename_.c_str());
+    return -1;
+  }
   fseek(manifest_file, 0, SEEK_END);
   size_t manifest_nbytes = ftell(manifest_file);
   std::vector<uint8_t> manifest_bytes(manifest_nbytes);
   fseek(manifest_file, 0, SEEK_SET);
   size_t read_nbytes = fread(manifest_bytes.data(), 1, manifest_nbytes, manifest_file);
   fclose(manifest_file);
-  ZOMBO_ASSERT_RETURN(
-      read_nbytes == manifest_nbytes, -2, "ERROR: file I/O error while reading from %s\n", manifest_filename_.c_str());
+  if (read_nbytes != manifest_nbytes) {
+    fprintf(stderr, "ERROR: file I/O error while loading %s\n", manifest_filename_.c_str());
+    return -2;
+  }
 
 #ifdef ZOMBO_PLATFORM_WINDOWS
   // Grab the modification time of the manifest file, so we can compare it to the output modification times later.
   WIN32_FILE_ATTRIBUTE_DATA manifest_attrs = {};
   BOOL attr_success = GetFileAttributesExA(manifest_filename_.c_str(), GetFileExInfoStandard, &manifest_attrs);
-  ZOMBO_ASSERT_RETURN(attr_success, -3, "Failed to read file attributes for %s", manifest_filename_.c_str());
+  if (!attr_success) {
+    fprintf(stderr, "ERROR: failed to read file attributes for %s\n", manifest_filename_.c_str());
+    return -3;
+  }
   manifest_write_time_.HighPart = manifest_attrs.ftLastWriteTime.dwHighDateTime;
   manifest_write_time_.LowPart = manifest_attrs.ftLastWriteTime.dwLowDateTime;
   // Save the directory we launched from
@@ -564,14 +576,15 @@ int AssetManifest::Load(const std::string& json5_filename) {
   json_parse_result_s parse_result = {};
   json_value_s* manifest = json_parse_ex(manifest_bytes.data(), manifest_bytes.size(),
       json_parse_flags_allow_json5 | json_parse_flags_allow_location_information, NULL, NULL, &parse_result);
-  ZOMBO_ASSERT_RETURN(manifest != nullptr, -5, "%s(%u): error %u at column %u (%s)\n", manifest_filename_.c_str(),
-      (uint32_t)parse_result.error_line_no, (uint32_t)parse_result.error, (uint32_t)parse_result.error_row_no,
-      JsonParseErrorStr((json_parse_error_e)parse_result.error).c_str());
+  if (!manifest) {
+    fprintf(stderr, "%s(%u): error %u at column %u (%s)\n", manifest_filename_.c_str(),
+        (uint32_t)parse_result.error_line_no, (uint32_t)parse_result.error, (uint32_t)parse_result.error_row_no,
+        JsonParseErrorStr((json_parse_error_e)parse_result.error).c_str());
+    return -5;
+  }
   int parse_error = ParseRoot(manifest);
   free(manifest);
-  ZOMBO_ASSERT_RETURN(
-      parse_error == 0, -6, "ParseRoot() returned %d at %s", parse_error, JsonValueLocationStr(manifest).c_str());
-  return 0;
+  return parse_error;
 }
 
 int AssetManifest::OverrideOutputRoot(const std::string& output_root_dir) {
@@ -600,18 +613,21 @@ int AssetManifest::Build() {
   int process_error = 0;
   for (const auto& image : image_assets_) {
     process_error = ProcessImage(image);
-    ZOMBO_ASSERT_RETURN(process_error == 0, -2, "ProcessImage() returned %d while processing %s", process_error,
-        image.input_path.c_str());
+    if (process_error != 0) {
+      return process_error;
+    }
   }
   for (const auto& mesh : mesh_assets_) {
     process_error = ProcessMesh(mesh);
-    ZOMBO_ASSERT_RETURN(process_error == 0, -2, "ProcessMesh() returned %d while processing %s", process_error,
-        mesh.input_path.c_str());
+    if (process_error != 0) {
+      return process_error;
+    }
   }
   for (const auto& shader : shader_assets_) {
     process_error = ProcessShader(shader);
-    ZOMBO_ASSERT_RETURN(process_error == 0, -2, "ProcessShader() returned %d while processing %s", process_error,
-        shader.input_path.c_str());
+    if (process_error != 0) {
+      return process_error;
+    }
   }
   return 0;
 }
@@ -649,89 +665,118 @@ std::string AssetManifest::JsonParseErrorStr(const json_parse_error_e error_code
 
 std::string AssetManifest::JsonValueLocationStr(const json_value_s* val) const {
   const json_value_ex_s* val_ex = (const json_value_ex_s*)val;
-  return manifest_filename_ + "line " + std::to_string(val_ex->line_no) + ", column " + std::to_string(val_ex->row_no);
+  return manifest_filename_ + "(" + std::to_string(val_ex->line_no) + ":" + std::to_string(val_ex->row_no) + ")";
 }
 
 int AssetManifest::ParseRoot(const json_value_s* val) {
-  ZOMBO_ASSERT_RETURN(val->type == json_type_object, -1, "ERROR: root payload (%s) must be an object",
-      JsonValueLocationStr(val).c_str());
+  if (val->type != json_type_object) {
+    fprintf(stderr, "%s: error: root payload must be an object\n", JsonValueLocationStr(val).c_str());
+    return -1;
+  }
   json_object_s* root_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
+  int parse_error = 0;
   for (json_object_element_s *child_elem = root_obj->start; i_child < root_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "assets") == 0) {
-      int parse_error = ParseAssets(child_elem->value);
-      ZOMBO_ASSERT_RETURN(
-          parse_error == 0, -2, "ParseAssets() returned %d at %s", parse_error, JsonValueLocationStr(val).c_str());
+      parse_error = ParseAssets(child_elem->value);
+      if (parse_error) {
+        break;
+      }
     } else if (strcmp(child_elem->name->string, "defaults") == 0) {
-      int parse_error = ParseDefaults(child_elem->value);
-      ZOMBO_ASSERT_RETURN(
-          parse_error == 0, -2, "ParseDefaults() returned %d at %s", parse_error, JsonValueLocationStr(val).c_str());
+      parse_error = ParseDefaults(child_elem->value);
+      if (parse_error) {
+        break;
+      }
     }
   }
-  return 0;
+  return parse_error;
 }
 
 int AssetManifest::ParseDefaults(const json_value_s* val) {
-  ZOMBO_ASSERT_RETURN(val->type == json_type_object, -1, "ERROR: defaults payload (%s) must be an object\n",
-      JsonValueLocationStr(val).c_str());
+  if (val->type != json_type_object) {
+    fprintf(stderr, "%s: error: defaults payload must be an object\n", JsonValueLocationStr(val).c_str());
+    return -1;
+  }
   const json_object_s* defaults_obj = (const json_object_s*)(val->payload);
   size_t i_child = 0;
+  int parse_error = 0;
   for (json_object_element_s *child_elem = defaults_obj->start; i_child < defaults_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "output_root") == 0) {
-      int parse_error = ParseDefaultOutputRoot(child_elem->value);
-      ZOMBO_ASSERT_RETURN(parse_error == 0, -2, "Error parsing default root");
+      parse_error = ParseDefaultOutputRoot(child_elem->value);
+      if (parse_error) {
+        break;
+      }
     } else if (strcmp(child_elem->name->string, "shader_include_dirs") == 0) {
-      int parse_error = ParseDefaultShaderIncludeDirs(child_elem->value);
-      ZOMBO_ASSERT_RETURN(parse_error == 0, -3, "Error parsing default shader include dirs");
+      parse_error = ParseDefaultShaderIncludeDirs(child_elem->value);
+      if (parse_error) {
+        break;
+      }
     }
   }
-  return 0;
+  return parse_error;
 }
 
 int AssetManifest::ParseDefaultOutputRoot(const json_value_s* val) {
-  ZOMBO_ASSERT_RETURN(val->type == json_type_string, -1, "ERROR: output_root payload (%s) must be a string\n",
-      JsonValueLocationStr(val).c_str());
+  if (val->type != json_type_string) {
+    fprintf(stderr, "%s: error: output_root payload must be a string\n", JsonValueLocationStr(val).c_str());
+    return -1;
+  }
   const json_string_s* output_root_str = (const json_string_s*)(val->payload);
   return CreateAbsolutePath(&output_root_, manifest_dir_.c_str(), output_root_str->string);
 }
+
 int AssetManifest::ParseDefaultShaderIncludeDirs(const json_value_s* val) {
-  ZOMBO_ASSERT_RETURN(val->type == json_type_array, -1, "ERROR: shader_include_dirs payload (%s) must be an array\n",
-      JsonValueLocationStr(val).c_str());
+  if (val->type != json_type_array) {
+    fprintf(stderr, "%s: error: shader_include_dirs payload must be an array\n", JsonValueLocationStr(val).c_str());
+    return -1;
+  }
   const json_array_s* includes_array = (const json_array_s*)(val->payload);
   size_t i_child = 0;
+  int parse_error = 0;
   for (json_array_element_s *child_elem = includes_array->start; i_child < includes_array->length;
        ++i_child, child_elem = child_elem->next) {
     // parse array of shader includes. Combine each dir with the manifest dir and canonicalize
-    ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
-        "ERROR: shader_include_dirs element (%s) must be a string\n", JsonValueLocationStr(val).c_str());
+    if (child_elem->value->type != json_type_string) {
+      fprintf(stderr, "%s: error: shader_include_dirs element must be a string\n",
+          JsonValueLocationStr(child_elem->value).c_str());
+      return -2;
+    }
     const json_string_s* include_dir_str = (const json_string_s*)(child_elem->value->payload);
     std::string abs_include_dir;
-    int abs_error = CreateAbsolutePath(&abs_include_dir, manifest_dir_.c_str(), include_dir_str->string);
-    ZOMBO_ASSERT_RETURN(abs_error == 0, -3, "Error converting %s to an absolute path", include_dir_str->string);
+    parse_error = CreateAbsolutePath(&abs_include_dir, manifest_dir_.c_str(), include_dir_str->string);
+    if (parse_error) {
+      break;
+    }
     shader_include_dirs_.push_back(abs_include_dir);
   }
-  return 0;
+  return parse_error;
 }
 
 int AssetManifest::ParseAssets(const json_value_s* val) {
-  ZOMBO_ASSERT_RETURN(val->type == json_type_array, -1, "ERROR: assets payload (%s) must be an array\n",
-      JsonValueLocationStr(val).c_str());
+  if (val->type != json_type_array) {
+    fprintf(stderr, "%s: error: assets payload must be an array\n", JsonValueLocationStr(val).c_str());
+    return -1;
+  }
   const json_array_s* assets_array = (const json_array_s*)(val->payload);
   size_t i_child = 0;
+  int parse_error = 0;
   for (json_array_element_s *child_elem = assets_array->start; i_child < assets_array->length;
        ++i_child, child_elem = child_elem->next) {
-    int parse_error = ParseAsset(child_elem->value);
-    ZOMBO_ASSERT_RETURN(
-        parse_error == 0, -2, "ParseAsset() returned %d at %s", parse_error, JsonValueLocationStr(val).c_str());
+    parse_error = ParseAsset(child_elem->value);
+    if (parse_error) {
+      break;
+    }
   }
-  return 0;
+  return parse_error;
 }
 
 int AssetManifest::ParseAsset(const json_value_s* val) {
-  ZOMBO_ASSERT_RETURN(val->type == json_type_object, -1, "ERROR: asset payload (%s) must be an object",
-      JsonValueLocationStr(val).c_str());
+  if (val->type != json_type_object) {
+    fprintf(stderr, "%s: error: asset payload must be an object\n", JsonValueLocationStr(val).c_str());
+    return -1;
+  }
   // First we need to loop through child elements and find the asset class, so we know which Parse*Asset()
   // variant to call.
   json_object_s* asset_obj = (json_object_s*)(val->payload);
@@ -739,8 +784,10 @@ int AssetManifest::ParseAsset(const json_value_s* val) {
   for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
-      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
-          "ERROR: asset class payload (%s) must be a string", JsonValueLocationStr(child_elem->value).c_str());
+      if (child_elem->value->type != json_type_string) {
+        fprintf(stderr, "%s: error: asset class payload must be a string\n", JsonValueLocationStr(val).c_str());
+        return -2;
+      }
       const json_string_s* asset_class_str = (const json_string_s*)child_elem->value->payload;
       if (strcmp(asset_class_str->string, "image") == 0) {
         return ParseImageAsset(val);
@@ -749,12 +796,14 @@ int AssetManifest::ParseAsset(const json_value_s* val) {
       } else if (strcmp(asset_class_str->string, "shader") == 0) {
         return ParseShaderAsset(val);
       } else {
-        ZOMBO_ERROR_RETURN(-3, "ERROR: unknown asset class '%s' at %s", asset_class_str->string,
-            JsonValueLocationStr(child_elem->value).c_str());
+        fprintf(stderr, "%s: error: unknown asset class \"%s\"\n", JsonValueLocationStr(child_elem->value).c_str(),
+            asset_class_str->string);
+        return -3;
       }
     }
   }
-  ZOMBO_ERROR_RETURN(-4, "ERROR: asset at %s has no 'class'.", JsonValueLocationStr(val).c_str());
+  fprintf(stderr, "%s: error: asset has no \"class\" member\n", JsonValueLocationStr(val).c_str());
+  return -4;
 }
 
 int AssetManifest::ParseImageAsset(const json_value_s* val) {
@@ -767,20 +816,27 @@ int AssetManifest::ParseImageAsset(const json_value_s* val) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
     } else if (strcmp(child_elem->name->string, "input") == 0) {
-      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -1,
-          "ERROR: asset 'input' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      if (child_elem->value->type != json_type_string) {
+        fprintf(stderr, "%s: error: input payload must be a string\n", JsonValueLocationStr(val).c_str());
+        return -1;
+      }
       input_path = (const json_string_s*)(child_elem->value->payload);
     } else if (strcmp(child_elem->name->string, "output") == 0) {
-      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
-          "ERROR: asset 'output' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      if (child_elem->value->type != json_type_string) {
+        fprintf(stderr, "%s: error: output payload must be a string\n", JsonValueLocationStr(val).c_str());
+        return -2;
+      }
       output_path = (const json_string_s*)(child_elem->value->payload);
     } else {
-      fprintf(stderr, "WARNING: ignoring unexpected tag '%s' in image asset at %s", child_elem->name->string,
-          JsonValueLocationStr(val).c_str());
+      fprintf(stderr, "%s: warning: ignoring unexpected tag '%s'\n", JsonValueLocationStr(val).c_str(),
+          child_elem->name->string);
     }
   }
-  ZOMBO_ASSERT_RETURN(
-      input_path && output_path, -3, "ERROR: incomplete image asset at %s", JsonValueLocationStr(val).c_str());
+  if (!input_path || !output_path) {
+    fprintf(stderr, "%s: error: incomplete image asset\n", JsonValueLocationStr(val).c_str());
+    return -3;
+  }
+
   ImageAsset image = {};
   image.json_location = JsonValueLocationStr(val);
   image.input_path = input_path->string;
@@ -799,20 +855,27 @@ int AssetManifest::ParseMeshAsset(const json_value_s* val) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
     } else if (strcmp(child_elem->name->string, "input") == 0) {
-      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -1,
-          "ERROR: asset 'input' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      if (child_elem->value->type != json_type_string) {
+        fprintf(stderr, "%s: error: input payload must be a string\n", JsonValueLocationStr(val).c_str());
+        return -1;
+      }
       input_path = (const json_string_s*)(child_elem->value->payload);
     } else if (strcmp(child_elem->name->string, "output") == 0) {
-      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
-          "ERROR: asset 'output' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      if (child_elem->value->type != json_type_string) {
+        fprintf(stderr, "%s: error: output payload must be a string\n", JsonValueLocationStr(val).c_str());
+        return -2;
+      }
       output_path = (const json_string_s*)(child_elem->value->payload);
     } else {
-      fprintf(stderr, "WARNING: ignoring unexpected tag '%s' in mesh asset at %s", child_elem->name->string,
-          JsonValueLocationStr(val).c_str());
+      fprintf(stderr, "%s: warning: ignoring unexpected tag '%s'\n", JsonValueLocationStr(val).c_str(),
+          child_elem->name->string);
     }
   }
-  ZOMBO_ASSERT_RETURN(
-      input_path && output_path, -3, "ERROR: incomplete mesh asset at %s", JsonValueLocationStr(val).c_str());
+  if (!input_path || !output_path) {
+    fprintf(stderr, "%s: error: incomplete mesh asset\n", JsonValueLocationStr(val).c_str());
+    return -3;
+  }
+
   MeshAsset mesh = {};
   mesh.json_location = JsonValueLocationStr(val);
   mesh.input_path = input_path->string;
@@ -820,6 +883,7 @@ int AssetManifest::ParseMeshAsset(const json_value_s* val) {
   mesh_assets_.push_back(mesh);
   return 0;
 }
+
 int AssetManifest::ParseShaderAsset(const json_value_s* val) {
   const json_string_s* input_path = nullptr;
   const json_string_s* output_path = nullptr;
@@ -832,28 +896,38 @@ int AssetManifest::ParseShaderAsset(const json_value_s* val) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
     } else if (strcmp(child_elem->name->string, "input") == 0) {
-      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -1,
-          "ERROR: asset 'input' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      if (child_elem->value->type != json_type_string) {
+        fprintf(stderr, "%s: error: input payload must be a string\n", JsonValueLocationStr(val).c_str());
+        return -1;
+      }
       input_path = (const json_string_s*)(child_elem->value->payload);
     } else if (strcmp(child_elem->name->string, "output") == 0) {
-      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
-          "ERROR: asset 'output' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      if (child_elem->value->type != json_type_string) {
+        fprintf(stderr, "%s: error: output payload must be a string\n", JsonValueLocationStr(val).c_str());
+        return -2;
+      }
       output_path = (const json_string_s*)(child_elem->value->payload);
     } else if (strcmp(child_elem->name->string, "entry") == 0) {
-      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
-          "ERROR: asset 'entry' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      if (child_elem->value->type != json_type_string) {
+        fprintf(stderr, "%s: error: entry payload must be a string\n", JsonValueLocationStr(val).c_str());
+        return -3;
+      }
       entry_point = (const json_string_s*)(child_elem->value->payload);
     } else if (strcmp(child_elem->name->string, "stage") == 0) {
-      ZOMBO_ASSERT_RETURN(child_elem->value->type == json_type_string, -2,
-          "ERROR: asset 'stage' payload at %s must be a string", JsonValueLocationStr(val).c_str());
+      if (child_elem->value->type != json_type_string) {
+        fprintf(stderr, "%s: error: stage payload must be a string\n", JsonValueLocationStr(val).c_str());
+        return -4;
+      }
       shader_stage = (const json_string_s*)(child_elem->value->payload);
     } else {
-      fprintf(stderr, "WARNING: ignoring unexpected tag '%s' in shader asset at %s", child_elem->name->string,
-          JsonValueLocationStr(val).c_str());
+      fprintf(stderr, "%s: warning: ignoring unexpected tag '%s'\n", JsonValueLocationStr(val).c_str(),
+          child_elem->name->string);
     }
   }
-  ZOMBO_ASSERT_RETURN(
-      input_path && output_path, -3, "ERROR: incomplete shader asset at %s", JsonValueLocationStr(val).c_str());
+  if (!input_path || !output_path) {
+    fprintf(stderr, "%s: error: incomplete shader asset\n", JsonValueLocationStr(val).c_str());
+    return -3;
+  }
   ShaderAsset shader = {};
   shader.json_location = JsonValueLocationStr(val);
   shader.input_path = input_path->string;
@@ -869,7 +943,10 @@ int AssetManifest::IsOutputOutOfDate(
 #if defined(ZOMBO_PLATFORM_WINDOWS)
   // Do the files exist? Missing input = error! Missing output = automatic rebuild!
   BOOL input_exists = PathFileExistsA(input_path.c_str());
-  ZOMBO_ASSERT_RETURN(input_exists, -6, "ERROR: asset %s does not exist\n", input_path.c_str());
+  if (!input_exists) {
+    fprintf(stderr, "%s: error: input file '%s' does not exist\n", manifest_filename_.c_str(), input_path.c_str());
+    return -6;
+  }
   BOOL output_exists = PathFileExistsA(output_path.c_str());
 
   // If both files exists, we compare last-write time.
@@ -942,11 +1019,15 @@ int AssetManifest::ProcessImage(const ImageAsset& image) {
   ZOMBO_ASSERT_RETURN(path_error == 0, -1, "CreateAbsoluteOutputPath failed (%d) for image at %s", path_error,
       image.json_location.c_str());
   int query_error = IsOutputOutOfDate(image.input_path, abs_output_path, &build_output);
-  ZOMBO_ASSERT_RETURN(
-      query_error == 0, -2, "IsOutputOutOfDate failed (%d) for image at %s", query_error, image.json_location.c_str());
+  if (query_error) {
+    return query_error;
+  }
   if (build_output) {
     bool copy_success = CopyAssetFile(image.input_path, abs_output_path.c_str());
-    ZOMBO_ASSERT_RETURN(copy_success, -3, "CopyAssetFile failed for image at %s", image.json_location.c_str());
+    if (!copy_success) {
+      fprintf(stderr, "%s: error: CopyAssetFile() failed for image\n", image.json_location.c_str());
+      return -3;
+    }
     printf("%s -> %s\n", image.input_path.c_str(), abs_output_path.c_str());
   } else {
     // printf("Skipped %s (%s is up to date)\n", image.input_path.c_str(), abs_output_path.c_str());
@@ -961,12 +1042,14 @@ int AssetManifest::ProcessMesh(const MeshAsset& mesh) {
   ZOMBO_ASSERT_RETURN(path_error == 0, -1, "CreateAbsoluteOutputPath failed (%d) for mesh at %s", path_error,
       mesh.json_location.c_str());
   int query_error = IsOutputOutOfDate(mesh.input_path, abs_output_path, &build_output);
-  ZOMBO_ASSERT_RETURN(
-      query_error == 0, -1, "IsOutputOutOfDate failed (%d) for mesh at %s", query_error, mesh.json_location.c_str());
+  if (query_error) {
+    return query_error;
+  }
   if (build_output) {
-    int process_result = ConvertSceneToMesh(mesh.input_path, abs_output_path.c_str());
-    ZOMBO_ASSERT_RETURN(process_result == 0, -1, "ConvertSceneToMesh failed (%d) for mesh at %s", process_result,
-        mesh.json_location.c_str());
+    int process_error = ConvertSceneToMesh(mesh.input_path, abs_output_path.c_str());
+    if (process_error) {
+      return process_error;
+    }
     printf("%s -> %s\n", mesh.input_path.c_str(), abs_output_path.c_str());
   } else {
     // printf("Skipped %s (%s is up to date)\n", mesh.input_path.c_str(), abs_output_path.c_str());
@@ -981,8 +1064,9 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
   ZOMBO_ASSERT_RETURN(path_error == 0, -1, "CreateAbsoluteOutputPath failed (%d) for shader at %s", path_error,
       shader.json_location.c_str());
   int query_error = IsOutputOutOfDate(shader.input_path, abs_output_path, &build_output);
-  ZOMBO_ASSERT_RETURN(query_error == 0, -2, "IsOutputOutOfDate failed (%d) for shader at %s", query_error,
-      shader.json_location.c_str());
+  if (query_error) {
+    return query_error;
+  }
   if (build_output) {
     shaderc_shader_kind shader_kind = shaderc_glsl_infer_from_source;
     if (shader.shader_stage == "vert" || shader.shader_stage == "vertex") {
@@ -996,11 +1080,16 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
     } else if (shader.shader_stage == "comp" || shader.shader_stage == "compute") {
       shader_kind = shaderc_compute_shader;
     } else {
-      ZOMBO_ERROR_RETURN(
-          -3, "Unrecognized shader stage '%s' at %s", shader.shader_stage.c_str(), shader.json_location.c_str());
+      fprintf(stderr, "%s: error: Unrecognized shader stage '%s'\n", shader.json_location.c_str(),
+          shader.shader_stage.c_str());
+      return -3;
     }
     FILE* source_file = zomboFopen(shader.input_path.c_str(), "rb");
-    ZOMBO_ASSERT_RETURN(source_file, -4, "Could not open %s for reading", shader.input_path.c_str());
+    if (!source_file) {
+      fprintf(stderr, "%s: error: could not open '%s' for reading\n", shader.json_location.c_str(),
+          shader.input_path.c_str());
+      return -4;
+    }
     fseek(source_file, 0, SEEK_END);
     size_t source_nbytes = ftell(source_file);
     fseek(source_file, 0, SEEK_SET);
@@ -1008,7 +1097,11 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
     size_t read_nbytes = fread(source_contents.data(), 1, source_nbytes, source_file);
     source_contents[source_nbytes] = '\0';
     fclose(source_file);
-    ZOMBO_ASSERT_RETURN(read_nbytes == source_nbytes, -4, "Read error while loading %s", shader.input_path.c_str());
+    if (read_nbytes != source_nbytes) {
+      fprintf(stderr, "%s: error: file I/O error while loading %s\n", shader.json_location.c_str(),
+          shader.input_path.c_str());
+      return -5;
+    }
 
     shaderc::CompileOptions options;
     std::unique_ptr<ShaderFileIncluder> includer =
@@ -1024,11 +1117,18 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
 
     size_t spv_dword_count = static_cast<size_t>(compile_result.cend() - compile_result.cbegin());
     FILE* spv_file = zomboFopen(abs_output_path.c_str(), "wb");
-    ZOMBO_ASSERT_RETURN(spv_file, -5, "Could not open %s for writing", abs_output_path.c_str());
+    if (!spv_file) {
+      fprintf(stderr, "%s: error: could not open '%s' for writing\n", shader.json_location.c_str(),
+          abs_output_path.c_str());
+      return -7;
+    }
     size_t write_ndwords = fwrite(compile_result.cbegin(), sizeof(uint32_t), spv_dword_count, spv_file);
     fclose(spv_file);
-    ZOMBO_ASSERT_RETURN(
-        spv_dword_count == write_ndwords, -6, "Write error while writing to %s", abs_output_path.c_str());
+    if (spv_dword_count != write_ndwords) {
+      fprintf(stderr, "%s: error: file I/O error while writing %s\n", shader.json_location.c_str(),
+          abs_output_path.c_str());
+      return -8;
+    }
     printf("%s -> %s\n", shader.input_path.c_str(), abs_output_path.c_str());
   } else {
     // printf("Skipped %s (%s is up to date)\n", shader.input_path.c_str(), abs_output_path.c_str());
@@ -1069,14 +1169,21 @@ int main(int argc, char* argv[]) {
 
   AssetManifest manifest;
   int load_error = manifest.Load(manifest_filename);
-  ZOMBO_ASSERT_RETURN(load_error == 0, -1, "load error (%d) while loading manifest %s", load_error, manifest_filename);
+  if (load_error) {
+    return load_error;
+  }
 
   if (new_output_root) {
     int override_error = manifest.OverrideOutputRoot(new_output_root);
-    ZOMBO_ASSERT_RETURN(override_error == 0, -1, "override error (%d)", load_error);
+    if (override_error) {
+      return override_error;
+    }
   }
 
   int build_error = manifest.Build();
-  ZOMBO_ASSERT_RETURN(
-      build_error == 0, -2, "build error (%d) while loading manifest %s", build_error, manifest_filename);
+  if (build_error) {
+    return build_error;
+  }
+
+  return 0;
 }
