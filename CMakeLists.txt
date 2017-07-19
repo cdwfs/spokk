@@ -45,9 +45,14 @@ ADD_SUBDIRECTORY(third_party/assimp)
 set(ASSIMP_TARGETS
     assimp
     uninstall
-    UpdateAssimpLibsDebugSymbolsAndDLLs
-    zlibstatic
+    IrrXML
 )
+IF(MSVC)
+    LIST(APPEND ASSIMP_TARGETS
+        UpdateAssimpLibsDebugSymbolsAndDLLs
+        zlibstatic
+    )
+ENDIF(MSVC)
 set_target_properties(${ASSIMP_TARGETS} PROPERTIES FOLDER "assimp")
 
 # json.h
@@ -177,8 +182,9 @@ cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKKLE_HEADERS}" "${SPOKKLE_SOURCES}")
 ADD_EXECUTABLE(spokkle ${SPOKKLE_SOURCES} ${SPOKKLE_HEADERS})
 TARGET_LINK_LIBRARIES(spokkle assimp shaderc)
 TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
-    "third_party/assimp/include"
-    "src/spokk"
+    ${CMAKE_BINARY_DIR}/third_party/assimp/include # for config.h
+    ${CMAKE_SOURCE_DIR}/third_party/assimp/include # for everything else
+    src/spokk
     ${JSON_H_DIR}
     )
 IF(MSVC)
