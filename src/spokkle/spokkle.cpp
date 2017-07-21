@@ -10,19 +10,28 @@
 #include <assimp/Importer.hpp>
 #include <shaderc/shaderc.hpp>
 
-#ifdef ZOMBO_PLATFORM_WINDOWS
+#if defined(ZOMBO_PLATFORM_WINDOWS)
 #include <Shlwapi.h>  // for Path*() functions
 #endif
 
-#include <stdio.h>
 #include <array>
+#include <float.h>
+#include <limits.h>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string>
 #include <vector>
 
 namespace {
+
+// Effective Modern C++, Item 21: make_unique() is C++14 only, but easy to implement in C++11.
+template <typename T, typename... Ts>
+std::unique_ptr<T> my_make_unique(Ts&&... params) {
+  return std::unique_ptr<T>(new T(std::forward<Ts>(params)...));
+}
 
 int GetFileModificationTime(const char* path, time_t* out_mtime) {
   ZomboStatStruct out_stats = {};
@@ -37,8 +46,10 @@ bool IsPathDirectory(const char* path) {
 #if defined(ZOMBO_PLATFORM_WINDOWS)
   return PathIsDirectoryA(path) ? true : false;
 #elif defined(ZOMBO_PLATFORM_POSIX)
-#error unsupported platform
-// stat()
+  // This should work on Windows as well, but S_ISDIR would be _S_ISDIR
+  ZomboStatStruct out_stats = {};
+  int stat_error = zomboStat(path, &out_stats);
+  return !stat_error && S_ISDIR(out_stats.st_mode) ? true : false;
 #else
 #error unsupported platform
 #endif
@@ -55,21 +66,19 @@ bool IsRelativePath(const char* path) {
 }
 
 bool FileExists(const char* path) {
-#if defined(ZOMBO_PLATFORM_WINDOWS)
-  return PathFileExistsA(path) ? true : false;
-#elif defined(ZOMBO_PLATFORM_POSIX)
-#error unsupported platform
-// stat()
+#if defined(ZOMBO_PLATFORM_WINDOWS) || defined(ZOMBO_PLATFORM_POSIX)
+  ZomboStatStruct out_stats = {};
+  return (zomboStat(path, &out_stats) == 0);
 #else
 #error unsupported platform
 #endif
 }
 
-void ConvertToWindowsSlashes(char* path) {
-  char* c = path;
+void CharFromAToB(char* str, char a, char b) {
+  char* c = str;
   while (*c != '\0') {
-    if (*c == '/') {
-      *c = '\\';
+    if (*c == a) {
+      *c = b;
     }
     ++c;
   }
@@ -90,7 +99,7 @@ int MakeAbsolutePath(const char* path, int* buffer_nchars, char* out_buffer) {
     char tmp_path[MAX_PATH + 1];
     int ret = GetFullPathNameA(path, MAX_PATH + 1, tmp_path, NULL);
     if (ret != 0) {
-      ConvertToWindowsSlashes(tmp_path);
+      CharFromAToB(tmp_path, '/', '\\');
       ret = PathCanonicalizeA(out_buffer, tmp_path) ? 0 : -1;
     }
     return ret;
@@ -186,7 +195,8 @@ int CreateDirectoryAndParents(const char* abs_dir) {
   return zomboMkdir(abs_dir);
 }
 
-// Converts a UTF8-encoded JSON string to a UTF16 string.
+#if 0 && defined(ZOMBO_PLATFORM_WINDOWS)
+// Converts a UTF8-encoded JSON string to a UTF16 string. Not sure if I'll need this.
 int ConvertUtf8ToWide(const json_string_s* utf8, std::wstring* out_wide) {
   static_assert(sizeof(wchar_t) == sizeof(WCHAR), "This code assumes sizeof(wchar_t) == sizeof(WCHAR)");
   int nchars = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, nullptr, 0);
@@ -197,6 +207,7 @@ int ConvertUtf8ToWide(const json_string_s* utf8, std::wstring* out_wide) {
   (*out_wide)[nchars_final] = 0;
   return nchars_final;
 }
+#endif
 
 }  // namespace
 
@@ -400,13 +411,15 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
     mesh_header.aabb_max[0] = aabb_max.x;
     mesh_header.aabb_max[1] = aabb_max.y;
     mesh_header.aabb_max[2] = aabb_max.z;
-    std::vector<VkVertexInputBindingDescription> vb_descs(mesh_header.vertex_buffer_count, {});
+    std::vector<VkVertexInputBindingDescription> vb_descs(mesh_header.vertex_buffer_count,
+        VkVertexInputBindingDescription{});
     {
       vb_descs[0].binding = 0;
       vb_descs[0].stride = dst_layout.stride;
       vb_descs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     }
-    std::vector<VkVertexInputAttributeDescription> attr_descs(dst_layout.attributes.size(), {});
+    std::vector<VkVertexInputAttributeDescription> attr_descs(dst_layout.attributes.size(),
+        VkVertexInputAttributeDescription{});
     for (size_t iAttr = 0; iAttr < attr_descs.size(); ++iAttr) {
       attr_descs[iAttr].location = dst_layout.attributes[iAttr].location;
       attr_descs[iAttr].binding = 0;
@@ -606,7 +619,7 @@ private:
     ASSET_CLASS_MESH = 2,
     ASSET_CLASS_SHADER = 3,
   };
-  AssetClass AssetManifest::GetAssetClassFromInputPath(const json_value_s* input_path_val) const;
+  AssetClass GetAssetClassFromInputPath(const json_value_s* input_path_val) const;
 
   // Individual value parsers. Each returns 0 on success, non-zero on error.
   int ParseRoot(const json_value_s* val);
@@ -621,8 +634,7 @@ private:
   int ParseMeshAsset(const json_value_s* val);
   int ParseShaderAsset(const json_value_s* val);
 
-  int AssetManifest::IsOutputOutOfDate(
-      const std::string& input_path, const std::string& output_path, bool* out_result) const;
+  int IsOutputOutOfDate(const std::string& input_path, const std::string& output_path, bool* out_result) const;
   int CopyAssetFile(const std::string& input_path, const std::string& output_path) const;
 
   int ProcessImage(const ImageAsset& image);
@@ -1114,8 +1126,8 @@ int AssetManifest::ProcessImage(const ImageAsset& image) {
   bool build_output = false;
   std::string abs_output_path;
   int path_error = CombineAbsDirAndPath(output_root_.c_str(), image.output_path.c_str(), &abs_output_path);
-  ZOMBO_ASSERT_RETURN(
-      !path_error, -1, "CreateAbsoluteOutputPath failed (%d) for image at %s", path_error, image.json_location.c_str());
+  ZOMBO_ASSERT_RETURN(!path_error, -1, "CombineAbsDirAndPath('%s', '%s') failed (%d) for image at %s",
+      output_root_.c_str(), image.output_path.c_str(), path_error, image.json_location.c_str());
   int query_error = IsOutputOutOfDate(image.input_path, abs_output_path, &build_output);
   if (query_error) {
     return query_error;
@@ -1203,7 +1215,7 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
 
     shaderc::CompileOptions options;
     std::unique_ptr<ShaderFileIncluder> includer =
-        std::make_unique<ShaderFileIncluder>(manifest_dir_, shader_include_dirs_);
+        my_make_unique<ShaderFileIncluder>(manifest_dir_, shader_include_dirs_);
     options.SetIncluder(std::move(includer));
     shaderc::Compiler compiler;
     shaderc::SpvCompilationResult compile_result = compiler.CompileGlslToSpv(
@@ -1263,6 +1275,10 @@ int main(int argc, char* argv[]) {
       PrintUsage(argv[0]);
       return -1;
     }
+  }
+  if (!manifest_filename) {
+    PrintUsage(argv[0]);
+    return -1;
   }
 
   AssetManifest manifest;
