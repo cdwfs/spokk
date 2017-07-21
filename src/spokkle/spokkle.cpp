@@ -144,7 +144,7 @@ int CombineAbsDirAndPath(const char* abs_dir, const char* path, int* buffer_ncha
       tmp_path[MAX_PATH] = '\0';
     }
     if (!err) {
-      ConvertToWindowsSlashes(tmp_path);
+      CharFromAToB(tmp_path, '/', '\\');
       err = PathCanonicalizeA(out_buffer, tmp_path) ? 0 : -1;
     }
     return err;
