@@ -11,8 +11,7 @@
 #include <shaderc/shaderc.hpp>
 
 #ifdef ZOMBO_PLATFORM_WINDOWS
-#include <Shlwapi.h>  // for PathFileExists
-#include <direct.h>  // for _chdir()
+#include <Shlwapi.h>  // for Path*() functions
 #endif
 
 #include <stdio.h>
@@ -24,22 +23,46 @@
 #include <vector>
 
 namespace {
-// Takes an absolute path to a directory. Creates the directory and all missing parent directories.
-BOOL CreateDirectoryAndParentsA(const char* abs_dir) {
-  if (PathIsRelativeA(abs_dir)) {
-    return FALSE;  // input must be absolute
+
+int GetFileModificationTime(const char* path, time_t* out_mtime) {
+  ZomboStatStruct out_stats = {};
+  int stat_error = zomboStat(path, &out_stats);
+  if (!stat_error) {
+    *out_mtime = out_stats.st_mtime;
   }
-  if (PathIsDirectoryA(abs_dir)) {
-    return TRUE;
-  }
-  std::string parent = abs_dir;
-  PathRemoveFileSpecA(&parent[0]);
-  int create_success = CreateDirectoryAndParentsA(parent.c_str());
-  if (!create_success) {
-    fprintf(stderr, "CreateDirectory(\"%s\") failed\n", abs_dir);
-    return FALSE;
-  }
-  return CreateDirectoryA(abs_dir, nullptr);
+  return stat_error;
+}
+
+bool IsPathDirectory(const char* path) {
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+  return PathIsDirectoryA(path) ? true : false;
+#elif defined(ZOMBO_PLATFORM_POSIX)
+#error unsupported platform
+// stat()
+#else
+#error unsupported platform
+#endif
+}
+
+bool IsRelativePath(const char* path) {
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+  return PathIsRelativeA(path) ? true : false;
+#elif defined(ZOMBO_PLATFORM_POSIX)
+  return (path != nullptr) && path[0] != '/';
+#else
+#error unsupported platform
+#endif
+}
+
+bool FileExists(const char* path) {
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+  return PathFileExistsA(path) ? true : false;
+#elif defined(ZOMBO_PLATFORM_POSIX)
+#error unsupported platform
+// stat()
+#else
+#error unsupported platform
+#endif
 }
 
 void ConvertToWindowsSlashes(char* path) {
@@ -52,24 +75,115 @@ void ConvertToWindowsSlashes(char* path) {
   }
 }
 
-// If path is relative, combine with root and canonicalize into out_abs_path.
-// If path is absolute, ignore root and copy to out_abs_path.
-int CreateAbsolutePath(std::string* out_abs_path, const char* root, const char* path) {
-  if (PathIsRelativeA(path)) {
-    std::array<char, MAX_PATH> abs_path;
-    const char* out_path = PathCombineA(abs_path.data(), root, path);
-    ZOMBO_ASSERT_RETURN(out_path != nullptr, -1, "ERROR: could not combine root (%s) with path (%s)", root, path);
-
-    ConvertToWindowsSlashes(abs_path.data());
-
-    std::array<char, MAX_PATH> final_abs_path;
-    BOOL canonicalize_success = PathCanonicalizeA(final_abs_path.data(), abs_path.data());
-    ZOMBO_ASSERT_RETURN(canonicalize_success, -1, "ERROR: could not canonicalize output dir (%s)", abs_path.data());
-    *out_abs_path = final_abs_path.data();
+// buffer_nchars should include space for the terminating character.
+// if out_buffer is NULL, stores the number of chars necessary to hold the output in buffer_nchars.
+// Returns 0 on success, non-zero on error.
+// May attempt to canonicalize/normalize the path (removing duplicate separators,
+// eliminating ./.., etc.
+// Not safe in multithreaded programs (cwd is shared process-level state)
+int MakeAbsolutePath(const char* path, int* buffer_nchars, char* out_buffer) {
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+  if (out_buffer == NULL) {
+    *buffer_nchars = MAX_PATH + 1;  // PathCanonicalize always requires MAX_PATH + 1 chars
+    return 0;
   } else {
-    *out_abs_path = path;
+    char tmp_path[MAX_PATH + 1];
+    int ret = GetFullPathNameA(path, MAX_PATH + 1, tmp_path, NULL);
+    if (ret != 0) {
+      ConvertToWindowsSlashes(tmp_path);
+      ret = PathCanonicalizeA(out_buffer, tmp_path) ? 0 : -1;
+    }
+    return ret;
   }
-  return 0;
+#elif defined(ZOMBO_PLATFORM_POSIX)
+#error unsupported platform
+// realpath()
+#else
+#error unsupported platform
+#endif
+}
+// Shortcut to just write the results to a string
+int MakeAbsolutePath(const char* path, std::string* out_path) {
+  int path_nchars = 0;
+  int path_error = MakeAbsolutePath(path, &path_nchars, nullptr);
+  if (!path_error) {
+    std::vector<char> abs_path(path_nchars);
+    path_error = MakeAbsolutePath(path, &path_nchars, abs_path.data());
+    if (!path_error) {
+      *out_path = abs_path.data();
+    }
+  }
+  return path_error;
+}
+
+// if out_buffer is NULL, stores the number of chars necessary to hold the output in buffer_nchars.
+// If path is absolute, out_buffer is canonicalize(path).
+// If path is relative, out_buffer is canonicalize(abs_dir+path)
+// Not safe in multithreaded programs (cwd is shared process-level state)
+int CombineAbsDirAndPath(const char* abs_dir, const char* path, int* buffer_nchars, char* out_buffer) {
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+  if (out_buffer == NULL) {
+    *buffer_nchars = MAX_PATH + 1;  // PathCanonicalize always requires MAX_PATH + 1 chars
+    return 0;
+  } else {
+    char tmp_path[MAX_PATH + 1];
+    int err = 0;
+    if (IsRelativePath(path)) {
+      err = (PathCombineA(tmp_path, abs_dir, path) != NULL) ? 0 : -1;
+    } else {
+      strncpy(tmp_path, path, MAX_PATH);
+      tmp_path[MAX_PATH] = '\0';
+    }
+    if (!err) {
+      ConvertToWindowsSlashes(tmp_path);
+      err = PathCanonicalizeA(out_buffer, tmp_path) ? 0 : -1;
+    }
+    return err;
+  }
+#elif defined(ZOMBO_PLATFORM_POSIX)
+#error unsupported platform
+// getcwd(), chdir(abs_dir), realpath(path), chdir(old_cwd)
+#else
+#error unsupported platform
+#endif
+}
+// Shortcut to just write the results to a string
+int CombineAbsDirAndPath(const char* abs_dir, const char* path, std::string* out_path) {
+  int path_nchars = 0;
+  int path_error = CombineAbsDirAndPath(abs_dir, path, &path_nchars, nullptr);
+  if (!path_error) {
+    std::vector<char> abs_path(path_nchars);
+    path_error = CombineAbsDirAndPath(abs_dir, path, &path_nchars, abs_path.data());
+    if (!path_error) {
+      *out_path = abs_path.data();
+    }
+  }
+  return path_error;
+}
+
+int TruncatePathToDir(char* path) {
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+  return PathRemoveFileSpecA(path) ? 0 : -1;
+#elif defined(ZOMBO_PLATFORM_POSIX)
+#error unsupported platform
+// if !IsPathDirectory(), strchr for / and set to '\0'
+#else
+#error unsupported platform
+#endif
+}
+
+// Takes an absolute path to a directory. Creates the directory and all missing parent directories.
+int CreateDirectoryAndParents(const char* abs_dir) {
+  if (IsRelativePath(abs_dir)) {
+    return -1;  // input must be absolute
+  }
+  if (IsPathDirectory(abs_dir)) {
+    return 0;
+  }
+  std::string parent = abs_dir;
+  int truncate_error = TruncatePathToDir(&parent[0]);
+  ZOMBO_ASSERT_RETURN(!truncate_error, -2, "TruncatePathToDir(%s) failed", abs_dir);
+  return zomboMkdir(abs_dir);
 }
 
 // Converts a UTF8-encoded JSON string to a UTF16 string.
@@ -365,13 +479,15 @@ public:
     if (type == shaderc_include_type_relative) {
       // combine manifest dir + requesting source to get absolute shader path
       std::string abs_shader_path;
-      int path_error = CreateAbsolutePath(&abs_shader_path, manifest_dir_.c_str(), requesting_source);
+      int path_error = CombineAbsDirAndPath(manifest_dir_.c_str(), requesting_source, &abs_shader_path);
+      ZOMBO_ASSERT(!path_error, "dir+path combine error");
       // remove shader filename to get shader dir
       std::string abs_shader_dir = abs_shader_path;
-      path_error = PathRemoveFileSpecA(&abs_shader_dir[0]) ? 0 : 1;
+      path_error = TruncatePathToDir(&abs_shader_dir[0]);
+      ZOMBO_ASSERT(!path_error, "dir+path combine error");
       // combine shader dir with requested_source to get absolute header path
-      path_error = CreateAbsolutePath(&abs_header_path, abs_shader_dir.c_str(), requested_source);
-      (void)path_error;
+      path_error = CombineAbsDirAndPath(abs_shader_dir.c_str(), requested_source, &abs_header_path);
+      ZOMBO_ASSERT(!path_error, "dir+path combine error");
       // If it's in the hash table, return its result.
       auto itor = include_results_.find(abs_header_path);
       if (itor != include_results_.end()) {
@@ -382,8 +498,8 @@ public:
       // Search for header in include path
       for (const auto& dir : include_dirs_) {
         // - combine dir with requested_source to get absolute_header_path
-        int path_error = CreateAbsolutePath(&abs_header_path, dir.c_str(), requested_source);
-        (void)path_error;
+        int path_error = CombineAbsDirAndPath(dir.c_str(), requested_source, &abs_header_path);
+        ZOMBO_ASSERT(!path_error, "dir+path combine error");
         // - If it's in the hash table, return its result.
         auto itor = include_results_.find(abs_header_path);
         if (itor != include_results_.end()) {
@@ -507,7 +623,7 @@ private:
 
   int AssetManifest::IsOutputOutOfDate(
       const std::string& input_path, const std::string& output_path, bool* out_result) const;
-  bool CopyAssetFile(const std::string& input_path, const std::string& output_path) const;
+  int CopyAssetFile(const std::string& input_path, const std::string& output_path) const;
 
   int ProcessImage(const ImageAsset& image);
   int ProcessMesh(const MeshAsset& image);
@@ -518,7 +634,7 @@ private:
   std::string manifest_filename_;
   std::string output_root_;
 
-  ULARGE_INTEGER manifest_write_time_;
+  time_t manifest_mtime_;
 
   std::vector<std::string> shader_include_dirs_;
 
@@ -549,29 +665,18 @@ int AssetManifest::Load(const std::string& json5_filename) {
     return -2;
   }
 
-#ifdef ZOMBO_PLATFORM_WINDOWS
   // Grab the modification time of the manifest file, so we can compare it to the output modification times later.
-  WIN32_FILE_ATTRIBUTE_DATA manifest_attrs = {};
-  BOOL attr_success = GetFileAttributesExA(manifest_filename_.c_str(), GetFileExInfoStandard, &manifest_attrs);
-  if (!attr_success) {
-    fprintf(stderr, "ERROR: failed to read file attributes for %s\n", manifest_filename_.c_str());
-    return -3;
-  }
-  manifest_write_time_.HighPart = manifest_attrs.ftLastWriteTime.dwHighDateTime;
-  manifest_write_time_.LowPart = manifest_attrs.ftLastWriteTime.dwLowDateTime;
+  int attr_error = GetFileModificationTime(manifest_filename_.c_str(), &manifest_mtime_);
+  ZOMBO_ASSERT_RETURN(!attr_error, -1, "Could not access modification time for %s", manifest_filename_.c_str());
   // Save the directory we launched from
   launch_dir_.resize(MAX_PATH);
-  _getcwd(&launch_dir_[0], (int)launch_dir_.capacity());
+  zomboGetcwd(&launch_dir_[0], (int)launch_dir_.capacity());
   // chdir to the same directory as the manifest file
-  manifest_dir_.resize(MAX_PATH);
-  DWORD path_nchars = GetFullPathNameA(json5_filename.c_str(), MAX_PATH, &manifest_dir_[0], nullptr);
-  ZOMBO_ASSERT_RETURN(path_nchars != 0, -3, "Failed to get full path for manifest file %s", json5_filename.c_str());
-  BOOL remove_success = PathRemoveFileSpecA(&manifest_dir_[0]);
-  ZOMBO_ASSERT_RETURN(remove_success, -4, "Failed to remove filespec for manifest file %s", json5_filename.c_str());
-  _chdir(manifest_dir_.c_str());
-#else
-#error linux tbi
-#endif
+  int path_error = MakeAbsolutePath(json5_filename.c_str(), &manifest_dir_);
+  ZOMBO_ASSERT(!path_error, "abs path error");
+  path_error = TruncatePathToDir(&manifest_dir_[0]);
+  ZOMBO_ASSERT_RETURN(!path_error, -4, "Failed to truncate path to manifest file %s", json5_filename.c_str());
+  zomboChdir(manifest_dir_.c_str());
 
   json_parse_result_s parse_result = {};
   json_value_s* manifest = json_parse_ex(manifest_bytes.data(), manifest_bytes.size(),
@@ -588,25 +693,7 @@ int AssetManifest::Load(const std::string& json5_filename) {
 }
 
 int AssetManifest::OverrideOutputRoot(const std::string& output_root_dir) {
-#if defined(ZOMBO_PLATFORM_WINDOWS)
-  if (PathIsRelativeA(output_root_dir.c_str())) {
-    std::array<char, MAX_PATH> absolute_root;
-    const char* root = PathCombineA(absolute_root.data(), launch_dir_.c_str(), output_root_dir.c_str());
-    ZOMBO_ASSERT_RETURN(root != nullptr, -1, "ERROR: could not combine launch dir(%s) with output dir (%s)",
-        launch_dir_.c_str(), output_root_dir.c_str());
-
-    std::array<char, MAX_PATH> final_abs_root;
-    BOOL canonicalize_success = PathCanonicalizeA(final_abs_root.data(), absolute_root.data());
-    ZOMBO_ASSERT_RETURN(
-        canonicalize_success, -1, "ERROR: could not canonicalize output dir (%s)", absolute_root.data());
-    output_root_ = final_abs_root.data();
-  } else {
-    output_root_ = output_root_dir;
-  }
-  return 0;
-#else
-#error linux TBI
-#endif
+  return CombineAbsDirAndPath(launch_dir_.c_str(), output_root_dir.c_str(), &output_root_);
 }
 
 int AssetManifest::Build() {
@@ -724,7 +811,7 @@ int AssetManifest::ParseDefaultOutputRoot(const json_value_s* val) {
     return -1;
   }
   const json_string_s* output_root_str = (const json_string_s*)(val->payload);
-  return CreateAbsolutePath(&output_root_, manifest_dir_.c_str(), output_root_str->string);
+  return CombineAbsDirAndPath(manifest_dir_.c_str(), output_root_str->string, &output_root_);
 }
 
 int AssetManifest::ParseDefaultShaderIncludeDirs(const json_value_s* val) {
@@ -745,8 +832,9 @@ int AssetManifest::ParseDefaultShaderIncludeDirs(const json_value_s* val) {
     }
     const json_string_s* include_dir_str = (const json_string_s*)(child_elem->value->payload);
     std::string abs_include_dir;
-    parse_error = CreateAbsolutePath(&abs_include_dir, manifest_dir_.c_str(), include_dir_str->string);
-    if (parse_error) {
+    int path_error = CombineAbsDirAndPath(manifest_dir_.c_str(), include_dir_str->string, &abs_include_dir);
+    ZOMBO_ASSERT(!path_error, "dir+path combine error");
+    if (path_error) {
       break;
     }
     shader_include_dirs_.push_back(abs_include_dir);
@@ -940,91 +1028,101 @@ int AssetManifest::ParseShaderAsset(const json_value_s* val) {
 
 int AssetManifest::IsOutputOutOfDate(
     const std::string& input_path, const std::string& output_path, bool* out_result) const {
-#if defined(ZOMBO_PLATFORM_WINDOWS)
   // Do the files exist? Missing input = error! Missing output = automatic rebuild!
-  BOOL input_exists = PathFileExistsA(input_path.c_str());
+  bool input_exists = FileExists(input_path.c_str());
   if (!input_exists) {
     fprintf(stderr, "%s: error: input file '%s' does not exist\n", manifest_filename_.c_str(), input_path.c_str());
     return -6;
   }
-  BOOL output_exists = PathFileExistsA(output_path.c_str());
+  bool output_exists = FileExists(output_path.c_str());
 
   // If both files exists, we compare last-write time.
   bool output_is_older = false;
   if (input_exists && output_exists) {
-    // Query file attributes
-    WIN32_FILE_ATTRIBUTE_DATA input_attrs = {}, output_attrs = {};
-    BOOL input_attr_success = GetFileAttributesExA(input_path.c_str(), GetFileExInfoStandard, &input_attrs);
-    ZOMBO_ASSERT_RETURN(input_attr_success, -3, "Failed to read file attributes for input_path");
-    BOOL output_attr_success = GetFileAttributesExA(output_path.c_str(), GetFileExInfoStandard, &output_attrs);
-    ZOMBO_ASSERT_RETURN(output_attr_success, -4, "Failed to read file attributes for output_path");
+    time_t input_mtime = 0, output_mtime = 0;
+    int input_attr_error = GetFileModificationTime(input_path.c_str(), &input_mtime);
+    ZOMBO_ASSERT_RETURN(!input_attr_error, -3, "Failed to read file attributes for %s", input_path.c_str());
+    int output_attr_error = GetFileModificationTime(output_path.c_str(), &output_mtime);
+    ZOMBO_ASSERT_RETURN(!output_attr_error, -3, "Failed to read file attributes for %s", output_path.c_str());
     // Compare file write times
-    ULARGE_INTEGER input_write_time, output_write_time;
-    input_write_time.HighPart = input_attrs.ftLastWriteTime.dwHighDateTime;
-    input_write_time.LowPart = input_attrs.ftLastWriteTime.dwLowDateTime;
-    output_write_time.HighPart = output_attrs.ftLastWriteTime.dwHighDateTime;
-    output_write_time.LowPart = output_attrs.ftLastWriteTime.dwLowDateTime;
-    if (output_write_time.QuadPart < input_write_time.QuadPart) {
+    if (output_mtime < input_mtime) {
       output_is_older = true;
     }
     // Also compare output write time to manifest write time; if the manifest is newer, assume everything
     // is out of date. This does mean you get a full asset rebuild every time the manifest changes, which would
     // probably be unacceptable in a large production environment, but I'm really not there yet.
-    if (output_write_time.QuadPart < manifest_write_time_.QuadPart) {
+    if (output_mtime < manifest_mtime_) {
       output_is_older = true;
     }
   }
   *out_result = (!output_exists || output_is_older);
   return 0;
-#else
-#error Unsupported platform! Sorry!
-#endif
 }
 
-bool AssetManifest::CopyAssetFile(const std::string& input_path, const std::string& output_path) const {
-#if defined(ZOMBO_PLATFORM_WINDOWS)
+int AssetManifest::CopyAssetFile(const std::string& input_path, const std::string& output_path) const {
   // Create any missing parent directories for the output file
-  std::array<char, MAX_PATH> output_dir;
-  DWORD path_nchars = GetFullPathNameA(output_path.c_str(), (int)output_dir.size(), output_dir.data(), nullptr);
-  ZOMBO_ASSERT_RETURN(path_nchars != 0, false, "Failed to get full path for output file");
-  BOOL remove_success = PathRemoveFileSpecA(output_dir.data());
-  ZOMBO_ASSERT_RETURN(remove_success, false, "Failed to remove filespec for output file");
-  BOOL create_dir_success = CreateDirectoryAndParentsA(output_dir.data());
-  ZOMBO_ASSERT_RETURN(create_dir_success, false, "Failed to create parent directories");
-  // Copy
-  BOOL copy_success = CopyFileA(input_path.c_str(), output_path.c_str(), FALSE);
-  ZOMBO_ASSERT_RETURN(copy_success, false, "CopyFile() failed");
-  // Update output file modification time (otherwise preserved by CopyFile)
-  // TODO(cort): potential race condition here? Technically CopyFile and SetFileTime should be a single transaction.
-  HANDLE out_handle =
-      CreateFileA(output_path.c_str(), FILE_WRITE_ATTRIBUTES, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-  SYSTEMTIME system_time = {};
-  GetSystemTime(&system_time);
-  FILETIME file_time = {};
-  SystemTimeToFileTime(&system_time, &file_time);
-  BOOL time_success = SetFileTime(out_handle, (LPFILETIME)NULL, (LPFILETIME)NULL, &file_time);
-  ZOMBO_ASSERT_RETURN(time_success, false, "SetFileTime() failed");
-  BOOL close_success = CloseHandle(out_handle);
-  ZOMBO_ASSERT_RETURN(close_success, false, "CloseHandle() failed");
-  return true;
-#else
-#error Unsupported platform! Sorry!
-#endif
+  std::string abs_output_dir;
+  int path_error = MakeAbsolutePath(output_path.c_str(), &abs_output_dir);
+  ZOMBO_ASSERT_RETURN(!path_error, -1, "Can't make absolute path for %s", output_path.c_str());
+  path_error = TruncatePathToDir(&abs_output_dir[0]);
+  ZOMBO_ASSERT_RETURN(!path_error, -2, "Can't make truncate dir for %s", abs_output_dir.c_str());
+  int dir_error = CreateDirectoryAndParents(abs_output_dir.c_str());
+  ZOMBO_ASSERT_RETURN(!dir_error, -3, "Can't create directory %s", abs_output_dir.c_str());
+  // Open input and output files
+  FILE* input_file = zomboFopen(input_path.c_str(), "rb");
+  if (!input_file) {
+    return -4;
+  }
+  fseek(input_file, 0, SEEK_END);
+  size_t input_file_nbytes = ftell(input_file);
+  fseek(input_file, 0, SEEK_SET);
+  FILE* output_file = zomboFopen(output_path.c_str(), "wb");
+  if (!output_file) {
+    fclose(input_file);
+    return -5;
+  }
+  // Copy file contents through a decently sized intermediate buffer
+  size_t copied_nbytes = 0;
+  const size_t max_batch_nbytes = 64 * 1024;
+  std::vector<uint8_t> batch_data(max_batch_nbytes);
+  int copy_error = 0;
+  while (copied_nbytes != input_file_nbytes) {
+    size_t read_nbytes = fread(batch_data.data(), 1, max_batch_nbytes, input_file);
+    // batch_nbytes may be less than the full batch if it's the last batch of the file
+    if (read_nbytes != max_batch_nbytes && copied_nbytes + read_nbytes != input_file_nbytes) {
+      fprintf(stderr, "error: I/O error while reading from %s: fread() returned %d, expected %d", input_path.c_str(),
+          (int)read_nbytes, (int)max_batch_nbytes);
+      copy_error = -10;
+      break;
+    }
+
+    size_t write_nbytes = fwrite(batch_data.data(), 1, read_nbytes, output_file);
+    if (write_nbytes != read_nbytes) {
+      fprintf(stderr, "error: I/O error writing to %s: fwrite() returned %d, expected %d", output_path.c_str(),
+          (int)write_nbytes, (int)read_nbytes);
+      copy_error = -11;
+      break;
+    }
+    copied_nbytes += read_nbytes;
+  }
+  fclose(input_file);
+  fclose(output_file);
+  return copy_error;
 }
 
 int AssetManifest::ProcessImage(const ImageAsset& image) {
   bool build_output = false;
   std::string abs_output_path;
-  int path_error = CreateAbsolutePath(&abs_output_path, output_root_.c_str(), image.output_path.c_str());
-  ZOMBO_ASSERT_RETURN(path_error == 0, -1, "CreateAbsoluteOutputPath failed (%d) for image at %s", path_error,
-      image.json_location.c_str());
+  int path_error = CombineAbsDirAndPath(output_root_.c_str(), image.output_path.c_str(), &abs_output_path);
+  ZOMBO_ASSERT_RETURN(
+      !path_error, -1, "CreateAbsoluteOutputPath failed (%d) for image at %s", path_error, image.json_location.c_str());
   int query_error = IsOutputOutOfDate(image.input_path, abs_output_path, &build_output);
   if (query_error) {
     return query_error;
   }
   if (build_output) {
-    bool copy_success = CopyAssetFile(image.input_path, abs_output_path.c_str());
-    if (!copy_success) {
+    int copy_error = CopyAssetFile(image.input_path, abs_output_path.c_str());
+    if (copy_error) {
       fprintf(stderr, "%s: error: CopyAssetFile() failed for image\n", image.json_location.c_str());
       return -3;
     }
@@ -1038,7 +1136,7 @@ int AssetManifest::ProcessImage(const ImageAsset& image) {
 int AssetManifest::ProcessMesh(const MeshAsset& mesh) {
   bool build_output = false;
   std::string abs_output_path;
-  int path_error = CreateAbsolutePath(&abs_output_path, output_root_.c_str(), mesh.output_path.c_str());
+  int path_error = CombineAbsDirAndPath(output_root_.c_str(), mesh.output_path.c_str(), &abs_output_path);
   ZOMBO_ASSERT_RETURN(path_error == 0, -1, "CreateAbsoluteOutputPath failed (%d) for mesh at %s", path_error,
       mesh.json_location.c_str());
   int query_error = IsOutputOutOfDate(mesh.input_path, abs_output_path, &build_output);
@@ -1060,7 +1158,7 @@ int AssetManifest::ProcessMesh(const MeshAsset& mesh) {
 int AssetManifest::ProcessShader(const ShaderAsset& shader) {
   bool build_output = false;
   std::string abs_output_path;
-  int path_error = CreateAbsolutePath(&abs_output_path, output_root_.c_str(), shader.output_path.c_str());
+  int path_error = CombineAbsDirAndPath(output_root_.c_str(), shader.output_path.c_str(), &abs_output_path);
   ZOMBO_ASSERT_RETURN(path_error == 0, -1, "CreateAbsoluteOutputPath failed (%d) for shader at %s", path_error,
       shader.json_location.c_str());
   int query_error = IsOutputOutOfDate(shader.input_path, abs_output_path, &build_output);
