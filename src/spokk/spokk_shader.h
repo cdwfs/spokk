@@ -3,6 +3,7 @@
 #include "spokk_context.h"
 
 #include <array>
+#include <tuple>
 #include <vector>
 
 namespace spokk {
