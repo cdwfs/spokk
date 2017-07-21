@@ -334,33 +334,18 @@ ZOMBO_DEF ZOMBO_INLINE FILE *zomboFopen(const char *path, const char *mode)
 #   define zomboStrncpy(dest, src, n)   strncpy( (dest), (src), (n) )
 #endif
 
-// zomboMkdir()
-// returns 0 on success, non-zero on error
-// Creates the specified directory. All its parents must already exist.
-ZOMBO_DEF ZOMBO_INLINE int zomboMkdir(const char *dir_path)
-{
-#if   defined(ZOMBO_PLATFORM_WINDOWS)
-    return (CreateDirectoryA(dir_path, NULL) != 0) ? 0 : -1;
-#elif defined(ZOMBO_PLATFORM_POSIX)
-#   error unsupported platform
-  // mkdir(dir_path);
-#else
-#error unsupported platform
-#endif
-}
-
 #if   defined(ZOMBO_PLATFORM_WINDOWS)
 #   define zomboChdir(dir)             _chdir( (dir) )
 #   define zomboMkdir(dir)             _mkdir( (dir) )
 #   define zomboGetcwd(buf, size)      _getcwd( (buf), (size) )
 typedef struct _stat ZomboStatStruct;
-#   define zomboStat(path, stat)       _stat( (path), (stat) )
+#   define zomboStat(path, pstat)       _stat( (path), (pstat) )
 #elif defined(ZOMBO_PLATFORM_APPLE) || defined(ZOMBO_PLATFORM_POSIX)
 #   define zomboChdir(dir)             chdir( (dir) )
-#   define zomboMkdir(dir)             mkdir( (dir) )
+#   define zomboMkdir(dir)             mkdir( (dir), 0755 )
 #   define zomboGetcwd(buf, size)      getcwd( (buf), (size) )
-typedef struct _stat ZomboStatStruct;
-#   define zomboStat(path, stat)       stat( (path), (stat) )
+typedef struct stat ZomboStatStruct;
+#   define zomboStat(path, pstat)       stat( (path), (pstat) )
 #endif
 
 #ifdef __cplusplus
