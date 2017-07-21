@@ -1,175 +1,36 @@
-cmake_minimum_required(VERSION 2.8)
+CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
-project(spokk)
+PROJECT(spokk)
 
-# Global build settings
-IF(MSVC)
-    set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-    SET(CMAKE_CXX_FLAGS "/GS- /GR- /W0 /WX- /EHsc /D _UNICODE /D UNICODE /D NOMINMAX /D _HAS_EXCEPTIONS=0" CACHE TYPE STRING FORCE)
-    SET(CMAKE_CXX_FLAGS_RELEASE "/MD /O2 /Ob1 /Oi /GL /fp:fast /D NDEBUG" CACHE TYPE STRING FORCE)
+# Add third-party projects
+ADD_SUBDIRECTORY(third_party)
+
+IF(${MSVC})
+    SET_PROPERTY(GLOBAL PROPERTY USE_FOLDERS ON)
+    SET(CMAKE_CXX_FLAGS "/GS- /GR- /W4 /WX /wd4996 /wd4201 /we4003 /EHsc /D _UNICODE /D UNICODE /D NOMINMAX /D _HAS_EXCEPTIONS=0" CACHE TYPE STRING FORCE)
+    SET(CMAKE_CXX_FLAGS_RELEASE "/MD /O2 /Ob1 /Oi /fp:fast /D NDEBUG" CACHE TYPE STRING FORCE)
     SET(CMAKE_CXX_FLAGS_DEBUG   "/MDd /MP /Od /Ob0 /GS- /Zi /D _DEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS "/GS- /GR- /W0 /WX- /D _UNICODE /D UNICODE /D NOMINMAX" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS_RELEASE "/MD /O2 /Ob1 /Oi /GL /fp:fast /D NDEBUG" CACHE TYPE STRING FORCE)
+    SET(CMAKE_C_FLAGS "/GS- /GR- /W4 /WX  /wd4996 /wd4201 /we4003 /D _UNICODE /D UNICODE /D NOMINMAX" CACHE TYPE STRING FORCE)
+    SET(CMAKE_C_FLAGS_RELEASE "/MD /O2 /Ob1 /Oi /fp:fast /D NDEBUG" CACHE TYPE STRING FORCE)
     SET(CMAKE_C_FLAGS_DEBUG   "/MDd /MP /Od /Ob0 /GS- /Zi /D _DEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_EXE_LINKER_FLAGS_RELEASE "/LTCG" CACHE TYPE STRING FORCE)
-    SET(libs)
-ELSEIF(UNIX)
-    SET(CMAKE_CXX_FLAGS "-w -march=native -msse4.1 -D_POSIX_C_SOURCE=199309L -DM_PI=3.141592653 -std=c++11" CACHE TYPE STRING FORCE)
+    LIST(APPEND libs)
+ELSEIF(${UNIX})
+    SET(CMAKE_CXX_FLAGS "-Wall -Werror -march=native -msse4.1 -D_POSIX_C_SOURCE=199309L -DM_PI=3.141592653 -std=c++11" CACHE TYPE STRING FORCE)
     SET(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE TYPE STRING FORCE)
     SET(CMAKE_CXX_FLAGS_DEBUG   "-D_DEBUG -g" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS "-w -march=native -msse4.1 -D_POSIX_C_SOURCE=199309L -DM_PI=3.141592653 -std=c99" CACHE TYPE STRING FORCE)
+    SET(CMAKE_C_FLAGS "-Wall -Werror -march=native -msse4.1 -D_POSIX_C_SOURCE=199309L -DM_PI=3.141592653 -std=c99" CACHE TYPE STRING FORCE)
     SET(CMAKE_C_FLAGS_RELEASE "-DNDEBUG" CACHE TYPE STRING FORCE)
     SET(CMAKE_C_FLAGS_DEBUG   "-D_DEBUG -g" CACHE TYPE STRING FORCE)
     SET(CMAKE_EXE_LINKER_FLAGS  "-pthread" CACHE TYPE STRING FORCE)
-    SET(libs m)
+    LIST(APPEND libs m)
 ENDIF()
-
-# GLFW
-option(GLFW_BUILD_EXAMPLES "Build the GLFW example programs" OFF)
-option(GLFW_BUILD_TESTS "Build the GLFW test programs" OFF)
-option(GLFW_BUILD_DOCS "Build the GLFW documentation" OFF)
-option(GLFW_INSTALL "Generate installation target" OFF)
-option(USE_MSVC_RUNTIME_LIBRARY_DLL "Use MSVC runtime library DLL" ON)
-add_subdirectory(third_party/glfw)
-
-# assimp
-OPTION(ASSIMP_BUILD_ASSIMP_TOOLS "If the supplementary tools for Assimp are built in addition to the library." OFF)
-OPTION(ASSIMP_BUILD_TESTS "If the test suite for Assimp is built in addition to the library." OFF)
-OPTION(ASSIMP_NO_EXPORT "Disable Assimp's export functionality." ON)
-OPTION(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT "default value of all ASSIMP_BUILD_XXX_IMPORTER value" FALSE)
-#OPTION(ASSIMP_BUILD_BLEND_IMPORTER "build the BLEND importer" ON)
-#OPTION(ASSIMP_BUILD_FBX_IMPORTER "build the FBX importer" ON)
-OPTION(ASSIMP_BUILD_OBJ_IMPORTER "build the OBJ importer" ON)
-ADD_SUBDIRECTORY(third_party/assimp)
-set(ASSIMP_TARGETS
-    assimp
-    uninstall
-    IrrXML
-)
-IF(MSVC)
-    LIST(APPEND ASSIMP_TARGETS
-        UpdateAssimpLibsDebugSymbolsAndDLLs
-        zlibstatic
-    )
-ENDIF(MSVC)
-set_target_properties(${ASSIMP_TARGETS} PROPERTIES FOLDER "assimp")
-
-# json.h
-set(JSON_H_DIR third_party/json.h)
-
-# Vulkan -- uses VULKAN_* variables defined by GLFW
-include_directories(${VULKAN_INCLUDE_DIR})
-#link_directories(${VULKAN_SDK}/lib)
-IF(MSVC)
-    SET(libs ${libs} ${VULKAN_LIBRARY})
-ELSEIF(APPLE)
-    SET(libs ${libs} ${VULKAN_LIBRARY})
-ELSEIF(UNIX)
-    SET(libs ${libs} ${VULKAN_LIBRARY})
-ENDIF()
-
-# SPIRV-Cross
-add_subdirectory(third_party/SPIRV-Cross)
-set(SPIRV_CROSS_TARGETS
-	spirv-cross-core
-	spirv-cross-glsl
-	spirv-cross-hlsl
-	spirv-cross-cpp
-	spirv-cross-msl
-	spirv-cross
-)
-set_target_properties(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
-
-# fplutil (dependency of mathfu)
-set(dependencies_fplutil_dir ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fplutil CACHE PATH "base directory of fplutil repository" FORCE)
-# Mathfu
-set(mathfu_build_benchmarks OFF CACHE BOOL "")
-set(mathfu_build_tests OFF CACHE BOOL "")
-set(mathfu_enable_simd OFF CACHE BOOL "")
-add_subdirectory(third_party/mathfu)
-
-# shaderc
-SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
-SET(SHADERC_THIRD_PARTY_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party" CACHE PATH "Root location of shaderc third-party projets" FORCE)
-option(SHADERC_SKIP_TESTS "Skip building tests" ON)
-option(SHADERC_ENABLED_SHARED_CRT "Use the shared CRT instead of the static CRT" ON)
-add_subdirectory(third_party/shaderc)
-# shaderc pulls in a gajillion targets. Let's organize them a bit.
-set(GLSLANG_TARGETS
-    glslang
-    glslang-default-resource-limits
-    glslangValidator
-    HLSL
-    OGLCompiler
-    OSDependent
-    SPIRV
-    spirv-remap
-    SPVRemapper
-    Continuous
-    Experimental
-    Nightly
-    NightlyMemoryCheck
-
-)
-SET(SPIRV_TOOLS_TARGETS
-    spirv-as
-    spirv-cfg
-    spirv-dis
-    spirv-markv
-    spirv-opt
-    spirv-stats
-    SPIRV-Tools
-    SPIRV-Tools-comp
-    spirv-tools-build-version
-    spirv-tools-cpp-example
-    spirv-tools-spv-amd-gcn-shader
-    spirv-tools-spv-amd-shader-ballot
-    spirv-tools-spv-amd-shader-explicit-vertex-parameter
-    spirv-tools-spv-amd-shader-trinary-minmax
-    spirv-tools-vimsyntax
-    SPIRV-Tools-opt
-    spirv-val
-)
-set(SHADERC_TARGETS
-    add-copyright
-    build-version
-    check-copyright
-    glslc
-    glslc_exe
-    shaderc
-    shaderc_combined_genfile
-    shaderc_util
-    shaderc-online-compile
-    testdata
-)
-set_target_properties(${GLSLANG_TARGETS} PROPERTIES FOLDER "shaderc/glslang")
-set_target_properties(${SPIRV_TOOLS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-tools")
-set_target_properties(${SHADERC_TARGETS} PROPERTIES FOLDER "shaderc")
-
-# Skip executable targets; we only care about the library anyway.
-FOREACH(SHADERC_TARGET IN LISTS SPIRV_CROSS_TARGETS GLSLANG_TARGETS SPIRV_TOOLS_TARGETS SHADERC_TARGETS)
-    get_target_property(TARGET_TYPE ${SHADERC_TARGET} TYPE)
-    IF(${TARGET_TYPE} STREQUAL EXECUTABLE)
-        set_target_properties(${SHADERC_TARGET} PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD TRUE)
-    ENDIF()
-ENDFOREACH()
 
 # Mysterious macro to remove default VS "Source Files" and "Header Files" filters.
 # TODO(https://github.com/cdwfs/spokk/issues/10): Figure out why this works and refactor if necessary.
 MACRO (cmp_IDE_SOURCE_PROPERTIES SOURCE_PATH HEADERS SOURCES)
     STRING(REPLACE "/" "\\\\" source_group_path ${SOURCE_PATH}  )
-    source_group(${source_group_path} FILES ${HEADERS} ${SOURCES})
+    SOURCE_GROUP(${source_group_path} FILES ${HEADERS} ${SOURCES})
 ENDMACRO (cmp_IDE_SOURCE_PROPERTIES NAME HEADERS SOURCES INSTALL_FILES)
-
-# Add stricter warnings to my own code
-IF(MSVC)
-    ADD_COMPILE_OPTIONS(/W4 /WX /wd4996 /wd4201 /we4003)
-ELSEIF(UNIX)
-    # TODO(cort): This doesn't work; -w from earlier still takes effect.
-    # One solution would be to move *all* third_party setup into its own cmake
-    # file, and add the suppression flag there.
-    ADD_COMPILE_OPTIONS(-Wall -Werror)
-ENDIF()
 
 # spokkle
 SET(SPOKKLE_SOURCES
@@ -186,13 +47,14 @@ TARGET_LINK_LIBRARIES(spokkle assimp shaderc)
 TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     ${CMAKE_BINARY_DIR}/third_party/assimp/include # for config.h
     ${CMAKE_SOURCE_DIR}/third_party/assimp/include # for everything else
+    $ENV{VULKAN_SDK}/include
     src/spokk
     ${JSON_H_DIR}
-    )
-IF(MSVC)
+)
+IF(${MSVC})
     # Windows puts some path-manipulation APIs in an optional library
     TARGET_LINK_LIBRARIES(spokkle shlwapi)
-ENDIF(MSVC)
+ENDIF(${MSVC})
 
 # libspokk
 SET(SPOKK_HEADERS
@@ -232,6 +94,7 @@ cmp_IDE_SOURCE_PROPERTIES( "\\\\" "${SPOKK_HEADERS}" "${SPOKK_SOURCES}")
 ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC ${SPOKK_SOURCES} ${SPOKK_HEADERS})
 TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} spirv-cross-cpp ${libs})
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC "third_party/stb")
+TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC $ENV{VULKAN_SDK}/include)
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC "src/spokk")
 
 # custom target to build/copy sample assets
