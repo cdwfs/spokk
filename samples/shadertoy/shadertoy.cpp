@@ -158,7 +158,7 @@ public:
     // directory change.
     swap_shader_.store(false);
 
-    shader_reloader_thread_ = std::thread(&ShaderToyApp::WatchShaderDir, this, "..");
+    shader_reloader_thread_ = std::thread(&ShaderToyApp::WatchShaderDir, this, "../samples/shadertoy");
   }
   virtual ~ShaderToyApp() {
     if (device_) {
