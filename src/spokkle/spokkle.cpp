@@ -12,6 +12,8 @@
 
 #if defined(ZOMBO_PLATFORM_WINDOWS)
 #include <Shlwapi.h>  // for Path*() functions
+#elif defined(ZOMBO_PLATFORM_POSIX)
+#include <unistd.h>
 #endif
 
 #include <array>
@@ -84,6 +86,99 @@ void CharFromAToB(char* str, char a, char b) {
   }
 }
 
+// if out_buffer is NULL, stores the number of chars necessary to hold the output in buffer_nchars.
+// If path is absolute, out_buffer is canonicalize(path).
+// If path is relative, out_buffer is canonicalize(abs_dir+path)
+// Not safe in multithreaded programs (cwd is shared process-level state)
+int CombineAbsDirAndPath(const char* abs_dir, const char* path, int* buffer_nchars, char* out_buffer) {
+  ZOMBO_ASSERT_RETURN(!IsRelativePath(abs_dir), -1, "abs_dir (%s) must be an absolute path", abs_dir);
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+  if (out_buffer == NULL) {
+    *buffer_nchars = MAX_PATH + 1;  // PathCanonicalize always requires MAX_PATH + 1 chars
+    return 0;
+  } else {
+    char tmp_path[MAX_PATH + 1];
+    int err = 0;
+    if (IsRelativePath(path)) {
+      err = (PathCombineA(tmp_path, abs_dir, path) != NULL) ? 0 : -1;
+    } else {
+      strncpy(tmp_path, path, MAX_PATH);
+      tmp_path[MAX_PATH] = '\0';
+    }
+    if (!err) {
+      CharFromAToB(tmp_path, '/', '\\');
+      err = PathCanonicalizeA(out_buffer, tmp_path) ? 0 : -1;
+    }
+    return err;
+  }
+#elif defined(ZOMBO_PLATFORM_POSIX)
+  if (out_buffer == NULL) {
+    *buffer_nchars = PATH_MAX;
+    return 0;
+  } else {
+    // Just smoosh 'em together
+    std::string tmp_path = IsRelativePath(path)
+                           ? (std::string(abs_dir) + std::string("/") + std::string(path))
+                           : path;
+    // Frustratingly, realpath() doesn't work if some/all of the path doesn't exist.
+    // So, canonicalize manually.
+    const char* src = tmp_path.c_str();
+    out_buffer[0] = '/';
+    char* dst = out_buffer;
+    while(*src != '\0') {
+      ZOMBO_ASSERT(*src == '/', "invariant failure");
+      const char *src_next = strchr(src+1, '/');
+      if (src_next == nullptr) {
+        // this is the final component in the path, with no trailing slash.
+        src_next = strchr(src+1, '\0');
+      }
+      ptrdiff_t nchars = src_next - src;
+      if (nchars == 1 && *src_next == '\0') {
+        // trailing slash at the end of src. Skip it, and we're done.
+      } else if (nchars == 1 && *src_next == '/') {
+        // consecutive slashes. Skip all but the last one, writing no output
+        while( *(src_next+1) == '/') {
+          ++src_next;
+        }
+      } else if (nchars == 2 && src[1] == '.') {
+        // skip "/." chunk
+      } else if (nchars == 3 && src[1] == '.' && src[2] == '.') {
+        // Rewind dst to previous dir (unless we're already at the
+        // root, in which case ignore it. "/.." == "/" at the root.
+        while (dst != out_buffer && *(--dst) != '/') {
+        }
+      } else {
+        ZOMBO_ASSERT_RETURN(dst+nchars <= out_buffer + *buffer_nchars - 1, -2, "output path len exceeds buffer_size");
+        strncpy(dst, src, nchars);
+        dst += nchars;
+      }
+      src = src_next;
+    }
+    if (dst == out_buffer) {
+      *dst++ = '/';
+    }
+    *dst = 0;
+    return 0;
+  }
+  // alternately: getcwd(), chdir(abs_dir), realpath(path), chdir(old_cwd)
+#else
+#error unsupported platform
+#endif
+}
+// Shortcut to just write the results to a string
+int CombineAbsDirAndPath(const char* abs_dir, const char* path, std::string* out_path) {
+  int path_nchars = 0;
+  int path_error = CombineAbsDirAndPath(abs_dir, path, &path_nchars, nullptr);
+  if (!path_error) {
+    std::vector<char> abs_path(path_nchars);
+    path_error = CombineAbsDirAndPath(abs_dir, path, &path_nchars, abs_path.data());
+    if (!path_error) {
+      *out_path = abs_path.data();
+    }
+  }
+  return path_error;
+}
+
 // buffer_nchars should include space for the terminating character.
 // if out_buffer is NULL, stores the number of chars necessary to hold the output in buffer_nchars.
 // Returns 0 on success, non-zero on error.
@@ -105,8 +200,17 @@ int MakeAbsolutePath(const char* path, int* buffer_nchars, char* out_buffer) {
     return ret;
   }
 #elif defined(ZOMBO_PLATFORM_POSIX)
-#error unsupported platform
-// realpath()
+  if (out_buffer == NULL) {
+    *buffer_nchars = PATH_MAX;
+    return 0;
+  } else {
+    std::vector<char> cwd(PATH_MAX);
+    char *cwd_str = getcwd(cwd.data(), PATH_MAX);
+    if (cwd_str == NULL) {
+      return -1;
+    }
+    return CombineAbsDirAndPath(cwd_str, path, buffer_nchars, out_buffer);
+  }
 #else
 #error unsupported platform
 #endif
@@ -125,57 +229,21 @@ int MakeAbsolutePath(const char* path, std::string* out_path) {
   return path_error;
 }
 
-// if out_buffer is NULL, stores the number of chars necessary to hold the output in buffer_nchars.
-// If path is absolute, out_buffer is canonicalize(path).
-// If path is relative, out_buffer is canonicalize(abs_dir+path)
-// Not safe in multithreaded programs (cwd is shared process-level state)
-int CombineAbsDirAndPath(const char* abs_dir, const char* path, int* buffer_nchars, char* out_buffer) {
-#if defined(ZOMBO_PLATFORM_WINDOWS)
-  if (out_buffer == NULL) {
-    *buffer_nchars = MAX_PATH + 1;  // PathCanonicalize always requires MAX_PATH + 1 chars
-    return 0;
-  } else {
-    char tmp_path[MAX_PATH + 1];
-    int err = 0;
-    if (IsRelativePath(path)) {
-      err = (PathCombineA(tmp_path, abs_dir, path) != NULL) ? 0 : -1;
-    } else {
-      strncpy(tmp_path, path, MAX_PATH);
-      tmp_path[MAX_PATH] = '\0';
-    }
-    if (!err) {
-      CharFromAToB(tmp_path, '/', '\\');
-      err = PathCanonicalizeA(out_buffer, tmp_path) ? 0 : -1;
-    }
-    return err;
-  }
-#elif defined(ZOMBO_PLATFORM_POSIX)
-#error unsupported platform
-// getcwd(), chdir(abs_dir), realpath(path), chdir(old_cwd)
-#else
-#error unsupported platform
-#endif
-}
-// Shortcut to just write the results to a string
-int CombineAbsDirAndPath(const char* abs_dir, const char* path, std::string* out_path) {
-  int path_nchars = 0;
-  int path_error = CombineAbsDirAndPath(abs_dir, path, &path_nchars, nullptr);
-  if (!path_error) {
-    std::vector<char> abs_path(path_nchars);
-    path_error = CombineAbsDirAndPath(abs_dir, path, &path_nchars, abs_path.data());
-    if (!path_error) {
-      *out_path = abs_path.data();
-    }
-  }
-  return path_error;
-}
-
 int TruncatePathToDir(char* path) {
 #if defined(ZOMBO_PLATFORM_WINDOWS)
   return PathRemoveFileSpecA(path) ? 0 : -1;
 #elif defined(ZOMBO_PLATFORM_POSIX)
-#error unsupported platform
-// if !IsPathDirectory(), strchr for / and set to '\0'
+  int len = strlen(path);
+  // remove trailing slashes
+  while(len > 1 && path[len-1] == '/') {
+    path[len-1] = '\0';
+    --len;
+  }
+  char* last_slash = strrchr(path, '/');
+  if (last_slash) {
+    *(last_slash+1) = '\0';
+  }
+  return 0;
 #else
 #error unsupported platform
 #endif
@@ -192,6 +260,11 @@ int CreateDirectoryAndParents(const char* abs_dir) {
   std::string parent = abs_dir;
   int truncate_error = TruncatePathToDir(&parent[0]);
   ZOMBO_ASSERT_RETURN(!truncate_error, -2, "TruncatePathToDir(%s) failed", abs_dir);
+  int create_error = CreateDirectoryAndParents(parent.c_str());
+  if (create_error) {
+    fprintf(stderr, "error: Could not create directory %s\n", parent.c_str());
+    return -2;
+  }
   return zomboMkdir(abs_dir);
 }
 
@@ -681,7 +754,7 @@ int AssetManifest::Load(const std::string& json5_filename) {
   int attr_error = GetFileModificationTime(manifest_filename_.c_str(), &manifest_mtime_);
   ZOMBO_ASSERT_RETURN(!attr_error, -1, "Could not access modification time for %s", manifest_filename_.c_str());
   // Save the directory we launched from
-  launch_dir_.resize(MAX_PATH);
+  launch_dir_.resize(300);
   zomboGetcwd(&launch_dir_[0], (int)launch_dir_.capacity());
   // chdir to the same directory as the manifest file
   int path_error = MakeAbsolutePath(json5_filename.c_str(), &manifest_dir_);
