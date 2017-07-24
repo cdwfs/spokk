@@ -198,7 +198,7 @@ public:
     const float secs = (float)seconds_elapsed_;
     std::array<mathfu::mat4, MESH_INSTANCE_COUNT * 4> o2w_matrices;
     const mathfu::vec3 swarm_center(0, 0, -2);
-    for (int iMesh = 0; iMesh < MESH_INSTANCE_COUNT; ++iMesh) {
+    for (uint32_t iMesh = 0; iMesh < MESH_INSTANCE_COUNT; ++iMesh) {
       // clang-format off
       mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(1,2,3).Normalized());
       mathfu::mat4 o2w = mathfu::mat4::Identity()

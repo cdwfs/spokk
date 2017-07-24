@@ -28,8 +28,8 @@ struct DeviceQueue {
 class DeviceContext {
 public:
   DeviceContext()
-    : device_(VK_NULL_HANDLE),
-      physical_device_(VK_NULL_HANDLE),
+    : physical_device_(VK_NULL_HANDLE),
+      device_(VK_NULL_HANDLE),
       pipeline_cache_(VK_NULL_HANDLE),
       host_allocator_(nullptr),
       device_allocator_(nullptr),

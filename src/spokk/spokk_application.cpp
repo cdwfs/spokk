@@ -160,8 +160,8 @@ VkResult FindPhysicalDevice(const std::vector<Application::QueueFamilyRequest> &
 //
 // InputState
 //
-InputState::InputState() : window_{}, current_{}, prev_{} {}
-InputState::InputState(const std::shared_ptr<GLFWwindow> &window) : window_{}, current_{}, prev_{} {
+InputState::InputState() : current_{}, prev_{}, window_{} {}
+InputState::InputState(const std::shared_ptr<GLFWwindow> &window) : current_{}, prev_{}, window_{} {
   SetWindow(window);
 }
 

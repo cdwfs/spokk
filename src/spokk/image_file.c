@@ -1,22 +1,19 @@
 #include "image_file.h"
 
 #define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_STATIC  // declare all public symbols as static
 #define STBI_ONLY_PNG
 #define STBI_ONLY_JPEG
 #define STBI_ONLY_TGA
 #define STBI_ONLY_BMP
-#ifdef _MSC_VER
+#if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4244)  // conversion from int to uint16_t
 #pragma warning(disable : 4100)  // unreferenced function parameter
 #pragma warning(disable : 4456)  // shadowing local variable definition
 #endif
 #include <stb_image.h>
-#ifdef _MSC_VER
+#if defined(_MSC_VER)
 #pragma warning(pop)
-// Warning C4505 (unreferenced function removed) can not be suppressed, by design.
-// When STB_IMAGE_STATIC is defined, you get a ton of them. Sorry!
 #endif
 
 #include <assert.h>
@@ -109,6 +106,7 @@ uint32_t ImageFileGetBytesPerTexelBlock(ImageFileDataFormat format) {
   case IMAGE_FILE_DATA_FORMAT_EAC_R11_SNORM:      return 16;
   case IMAGE_FILE_DATA_FORMAT_EAC_R11G11_UNORM:   return 16;
   case IMAGE_FILE_DATA_FORMAT_EAC_R11G11_SNORM:   return 16;
+  case IMAGE_FILE_DATA_FORMAT_COUNT:              return 0;
   // no default case here, to get warnings when new formats are added!
   }
   // clang-format on
@@ -412,6 +410,8 @@ static int DdsContainsCompressedTexture(ImageFileDataFormat format) {
   case IMAGE_FILE_DATA_FORMAT_EAC_R11G11_UNORM:
   case IMAGE_FILE_DATA_FORMAT_EAC_R11G11_SNORM:
     return 1;  // ...but DDS files can't contain these formats, I think
+  case IMAGE_FILE_DATA_FORMAT_COUNT:
+    return 0;
     // no default case here, to get warnings when new formats are added!
   }
   return 0;
@@ -559,10 +559,12 @@ static ImageFileDataFormat DdsParseDxFormat(DxFormat dx_format) {
     return IMAGE_FILE_DATA_FORMAT_BC5_UNORM;
   case DX_FORMAT_BC5_SNORM:
     return IMAGE_FILE_DATA_FORMAT_BC5_SNORM;
+  case DX_FORMAT_BC6H_TYPELESS:
   case DX_FORMAT_BC6H_UF16:
     return IMAGE_FILE_DATA_FORMAT_BC6H_UF16;
   case DX_FORMAT_BC6H_SF16:
     return IMAGE_FILE_DATA_FORMAT_BC6H_SF16;
+  case DX_FORMAT_BC7_TYPELESS:
   case DX_FORMAT_BC7_UNORM:
     return IMAGE_FILE_DATA_FORMAT_BC7_UNORM;
   case DX_FORMAT_BC7_UNORM_SRGB:

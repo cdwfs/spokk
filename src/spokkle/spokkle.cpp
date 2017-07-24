@@ -284,8 +284,8 @@ int ConvertUtf8ToWide(const json_string_s* utf8, std::wstring* out_wide) {
 
 }  // namespace
 
-constexpr uint32_t SPOKK_MAX_VERTEX_COLORS = 4;
-constexpr uint32_t SPOKK_MAX_VERTEX_TEXCOORDS = 4;
+constexpr int SPOKK_MAX_VERTEX_COLORS = 4;
+constexpr int SPOKK_MAX_VERTEX_TEXCOORDS = 4;
 
 struct SourceAttribute {
   spokk::VertexLayout layout;

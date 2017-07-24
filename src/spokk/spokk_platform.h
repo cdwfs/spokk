@@ -139,7 +139,7 @@ extern "C"
                 fflush(stdout); \
                 ZOMBO_DEBUGBREAK(); \
             } \
-        } while(0,0)
+        } while(0)
 #   define ZOMBO_ASSERT_RETURN(cond,retval,msg,...) \
         do { \
             if (!(cond)) { \
@@ -148,7 +148,7 @@ extern "C"
                 ZOMBO_DEBUGBREAK(); \
                 return (retval); \
             } \
-        } while(0,0)
+        } while(0)
 #else
 #   error Unsupported compiler
 #endif

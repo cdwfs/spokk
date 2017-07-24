@@ -144,7 +144,7 @@ void *DeviceContext::HostAlloc(size_t size, size_t alignment, VkSystemAllocation
 #else
     void *ptr = nullptr;
     int ret = posix_memalign(&ptr, alignment, size);
-    return ptr;
+    return (ret == 0) ? ptr : nullptr;
 #endif
   }
 }
