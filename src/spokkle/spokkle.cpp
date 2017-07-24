@@ -76,6 +76,7 @@ bool FileExists(const char* path) {
 #endif
 }
 
+#if defined(ZOMBO_PLATFORM_WINDOWS)
 void CharFromAToB(char* str, char a, char b) {
   char* c = str;
   while (*c != '\0') {
@@ -85,6 +86,7 @@ void CharFromAToB(char* str, char a, char b) {
     ++c;
   }
 }
+#endif
 
 // if out_buffer is NULL, stores the number of chars necessary to hold the output in buffer_nchars.
 // If path is absolute, out_buffer is canonicalize(path).
