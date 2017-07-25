@@ -258,31 +258,38 @@ void PillarsApp::Update(double dt) {
   seconds_elapsed_ += dt;
 
   // Update camera
-  mathfu::vec3 impulse(0, 0, 0);
-  const float MOVE_SPEED = 0.3f, TURN_SPEED = 0.001f;
+  mathfu::vec3 camera_accel_dir(0, 0, 0);
+  const float CAMERA_ACCEL_MAG = 100.0f, CAMERA_TURN_SPEED = 0.001f;
   if (input_state_.GetDigital(InputState::DIGITAL_LPAD_UP)) {
-    impulse += camera_->getViewDirection() * MOVE_SPEED;
+    camera_accel_dir += camera_->getViewDirection();
   }
   if (input_state_.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
     mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
-    impulse -= viewRight * MOVE_SPEED;
+    camera_accel_dir -= viewRight;
   }
   if (input_state_.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
-    impulse -= camera_->getViewDirection() * MOVE_SPEED;
+    camera_accel_dir -= camera_->getViewDirection();
   }
   if (input_state_.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
     mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
-    impulse += viewRight * MOVE_SPEED;
+    camera_accel_dir += viewRight;
+  }
+  if (input_state_.GetDigital(InputState::DIGITAL_RPAD_LEFT)) {
+    mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
+    camera_accel_dir -= viewUp;
   }
   if (input_state_.GetDigital(InputState::DIGITAL_RPAD_DOWN)) {
     mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
-    impulse += viewUp * MOVE_SPEED;
+    camera_accel_dir += viewUp;
   }
+  mathfu::vec3 camera_accel = (camera_accel_dir.LengthSquared() > 0)
+    ? camera_accel_dir.Normalized() * CAMERA_ACCEL_MAG
+    : mathfu::vec3(0, 0, 0);
 
-  // Update camera based on mouse delta
-  mathfu::vec3 camera_eulers =
-      camera_->getEulersYPR() + mathfu::vec3(-TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
-                                    -TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_X), 0);
+  // Update camera based on acceleration vector and mouse delta
+  mathfu::vec3 camera_eulers = camera_->getEulersYPR() +
+    mathfu::vec3(-CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
+      -CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_X), 0);
   if (camera_eulers[0] >= float(M_PI_2 - 0.01f)) {
     camera_eulers[0] = float(M_PI_2 - 0.01f);
   } else if (camera_eulers[0] <= float(-M_PI_2 + 0.01f)) {
@@ -290,8 +297,7 @@ void PillarsApp::Update(double dt) {
   }
   camera_eulers[2] = 0;  // disallow roll
   camera_->setOrientation(mathfu::quat::FromEulerAngles(camera_eulers));
-  dolly_->Impulse(impulse);
-  dolly_->Update((float)dt);
+  dolly_->Update(camera_accel, (float)dt);
 
   // Update uniforms
   SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
