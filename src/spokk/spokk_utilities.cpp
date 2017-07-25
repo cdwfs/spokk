@@ -1,4 +1,5 @@
 #include "spokk_utilities.h"
+#include "spokk_debug.h"
 
 #include <algorithm>
 #include <cassert>
@@ -48,8 +49,7 @@ OneShotCommandPool::OneShotCommandPool(
   cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
   cpool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
   cpool_ci.queueFamilyIndex = queue_family_;
-  VkResult result = vkCreateCommandPool(device_, &cpool_ci, allocator, &pool_);
-  assert(result == VK_SUCCESS);
+  SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, allocator, &pool_));
 }
 OneShotCommandPool::~OneShotCommandPool() {
   if (pool_ != VK_NULL_HANDLE) {

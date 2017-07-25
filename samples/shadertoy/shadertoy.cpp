@@ -158,7 +158,7 @@ public:
     // directory change.
     swap_shader_.store(false);
 
-    shader_reloader_thread_ = std::thread(&ShaderToyApp::WatchShaderDir, this, "..");
+    shader_reloader_thread_ = std::thread(&ShaderToyApp::WatchShaderDir, this, "../samples/shadertoy");
   }
   virtual ~ShaderToyApp() {
     if (device_) {
@@ -376,11 +376,11 @@ private:
     for (;;) {
       // TODO(https://github.com/cdwfs/spokk/issues/15): Potential race condition here.
       // Many text editors will "modify" a file as a write to a temp file (IN_MODIFY), followed by
-      // a rename to the original file (IN_MOVED_TO). We shouldn't reload a shader until the rename. I think this
-      // is currently handled by the zomboSleepMsec() below, but it seems janky.
+      // a rename to the original file (IN_MOVED_TO). We shouldn't reload a shader until the rename. This
+      // is currently handled by the sleep() below, but that's a total hack.
       uint8_t event_buffer[sizeof(inotify_event) + NAME_MAX + 1] = {};
       ssize_t event_bytes = read(fd, event_buffer, sizeof(inotify_event) + NAME_MAX + 1);
-      ZOMBO_ASSERT(event_bytes >= sizeof(inotify_event), "inotify event read failed (errno=%d)", errno);
+      ZOMBO_ASSERT(event_bytes >= (ssize_t)sizeof(inotify_event), "inotify event read failed (errno=%d)", errno);
       int32_t event_offset = 0;
       while (event_offset < event_bytes) {
         inotify_event* event = reinterpret_cast<inotify_event*>(event_buffer + event_offset);
@@ -389,8 +389,8 @@ private:
         }
         // printf("%s: 0x%08X\n", event->name, event->mask);
         if ((event->mask & IN_MODIFY) != 0) {
+          sleep(1); // serves two purposes: only process one reload per second, and delay reload until after a rename
           ReloadShader();
-          sleep(1);  // only process one reload per second.
         } else if ((event->mask & (IN_IGNORED | IN_UNMOUNT | IN_Q_OVERFLOW)) != 0) {
           ZOMBO_ERROR("inotify event mask (0x%08X) indicates something awful is afoot!", event->mask);
         }

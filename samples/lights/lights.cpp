@@ -53,7 +53,7 @@ public:
     VkSamplerCreateInfo sampler_ci =
         GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-    int load_error = skybox_tex_.CreateFromFile(device_context_, graphics_and_present_queue_, "data/testcube.ktx");
+    int load_error = skybox_tex_.CreateFromFile(device_context_, graphics_and_present_queue_, "data/sanfrancisco4-512.ktx");
     ZOMBO_ASSERT(load_error == 0, "texture load error (%d)", load_error);
 
     // Load shaders (forcing compatible pipeline layouts)

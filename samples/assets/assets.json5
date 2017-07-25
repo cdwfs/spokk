@@ -11,6 +11,7 @@
         // Textures
         { class: "image", input: "redf.ktx", output: "redf.ktx", },
         { class: "image", input: "testcube.ktx", output: "testcube.ktx", },
+        { class: "image", input: "sanfrancisco4-512.ktx", output: "sanfrancisco4-512.ktx", },
         
         // Shadertoy Textures
         { class: "image", input: "cube00.ktx", output: "cube00.ktx", },

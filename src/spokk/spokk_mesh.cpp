@@ -55,6 +55,11 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
 
   MeshFileHeader mesh_header = {};
   size_t read_count = fread(&mesh_header, sizeof(mesh_header), 1, mesh_file);
+  if (read_count != 1) {
+    fprintf(stderr, "I/O error while reading %s\n", mesh_filename);
+    fclose(mesh_file);
+    return -1;
+  }
   if (mesh_header.magic_number != MESH_FILE_MAGIC_NUMBER) {
     fprintf(stderr, "Invalid magic number in %s\n", mesh_filename);
     fclose(mesh_file);
@@ -67,13 +72,16 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
   mesh_format.vertex_attributes.resize(mesh_header.attribute_count);
   read_count = fread(mesh_format.vertex_attributes.data(), sizeof(mesh_format.vertex_attributes[0]),
       mesh_header.attribute_count, mesh_file);
+  ZOMBO_ASSERT(read_count == mesh_header.attribute_count, "I/O error while reading %s", mesh_filename);
 
   // Load VB, IB
   std::vector<uint8_t> vertices(mesh_header.vertex_count * mesh_format.vertex_buffer_bindings[0].stride);
   read_count =
       fread(vertices.data(), mesh_format.vertex_buffer_bindings[0].stride, mesh_header.vertex_count, mesh_file);
+  ZOMBO_ASSERT(read_count == mesh_header.vertex_count, "I/O error while reading %s", mesh_filename);
   std::vector<uint8_t> indices(mesh_header.index_count * mesh_header.bytes_per_index);
   read_count = fread(indices.data(), mesh_header.bytes_per_index, mesh_header.index_count, mesh_file);
+  ZOMBO_ASSERT(read_count == mesh_header.index_count, "I/O error while reading %s", mesh_filename);
   fclose(mesh_file);
 
   mesh_format.Finalize(mesh_header.topology);

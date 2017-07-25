@@ -12,13 +12,6 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb_truetype.h>
 
-namespace {
-
-// Use this unused function from stb_rect_pack.h to avoid getting a warning about it.
-void use_unused_function(void) { (void)rect_width_compare(NULL, NULL); }
-
-}  // namespace
-
 namespace spokk {
 
 //
@@ -216,8 +209,7 @@ int FontAtlas::Create(const FontAtlasCreateInfo &ci, uint8_t *out_bitmap) {
 
   char_data_.resize(codepoint_count_);
   const int font_index = 0;
-  // TODO(cort): this const-cast will be unnecessary if https://github.com/nothings/stb/pull/438 is approved
-  err = stbtt_PackFontRange(&pack_context, const_cast<uint8_t *>(ci.font->ttf_.data()), font_index, ci.font_size,
+  err = stbtt_PackFontRange(&pack_context, ci.font->ttf_.data(), font_index, ci.font_size,
       codepoint_first_, codepoint_count_, char_data_.data());
   ZOMBO_ASSERT_RETURN(err != 0, -5, "stbtt_PackFontRange() error: %d", err);
 
@@ -237,7 +229,7 @@ int FontAtlas::GetStringQuads(const char *str, size_t str_len, Quad *out_quads) 
   const int align_to_integer = 0;
   for (size_t i = 0; i < str_len; ++i) {
     uint32_t codepoint = (uint32_t)str[i];
-    stbtt_GetPackedQuad(const_cast<stbtt_packedchar *>(char_data_.data()), image_width_, image_height_,
+    stbtt_GetPackedQuad(char_data_.data(), image_width_, image_height_,
         codepoint - codepoint_first_, &pos_x, &pos_y, &quads[i], align_to_integer);
     if (str[i] == ' ') {
       // We need to call stbtt_GetPackedQuad regardless in order to advance pos_x/pos_y, but there's

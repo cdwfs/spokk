@@ -61,8 +61,14 @@ extern "C"
 // Platform-specific header files
 #if   defined(ZOMBO_PLATFORM_WINDOWS)
 #   include <windows.h>
+#   include <direct.h>  // for _chdir(), _mkdir(), etc.
+#   include <sys/types.h>
+
+#   include <sys/stat.h> // for _stat()
 #elif defined(ZOMBO_PLATFORM_POSIX) || defined(ZOMBO_PLATFORM_APPLE)
 #   include <sys/types.h>
+
+#   include <sys/stat.h> // for _stat()
 #   include <ctype.h>
 #   include <pthread.h>
 #   include <time.h>
@@ -133,7 +139,7 @@ extern "C"
                 fflush(stdout); \
                 ZOMBO_DEBUGBREAK(); \
             } \
-        } while(0,0)
+        } while(0)
 #   define ZOMBO_ASSERT_RETURN(cond,retval,msg,...) \
         do { \
             if (!(cond)) { \
@@ -142,7 +148,7 @@ extern "C"
                 ZOMBO_DEBUGBREAK(); \
                 return (retval); \
             } \
-        } while(0,0)
+        } while(0)
 #else
 #   error Unsupported compiler
 #endif
@@ -309,23 +315,37 @@ ZOMBO_DEF ZOMBO_INLINE FILE *zomboFopen(const char *path, const char *mode)
 // zombo*nprintf()
 #if   defined(ZOMBO_PLATFORM_WINDOWS)
 #   define zomboSnprintf( str, size, fmt, ...)  _snprintf_s((str), (size), _TRUNCATE, (fmt), ## __VA_ARGS__)
-#   define zomboVsnprintf(str, size, fmt, ap)	_vsnprintf_s((str), (size), _TRUNCATE, (fmt), (ap)
-#   define zomboScanf(format, ...)				scanf_s((format), __VA_ARGS__)
+#   define zomboVsnprintf(str, size, fmt, ap)   _vsnprintf_s((str), (size), _TRUNCATE, (fmt), (ap)
+#   define zomboScanf(format, ...)              scanf_s((format), __VA_ARGS__)
 #elif defined(ZOMBO_PLATFORM_APPLE) || defined(ZOMBO_PLATFORM_POSIX)
 #   define zomboSnprintf( str, size, fmt, ...)  snprintf((str), (size), (fmt), ## __VA_ARGS__)
-#   define zomboVsnprintf(str, size, fmt, ap)	vsnprintf((str), (size), (fmt), (ap)
-#   define zomboScanf(format, ...)				scanf((format), __VA_ARGS__)
+#   define zomboVsnprintf(str, size, fmt, ap)   vsnprintf((str), (size), (fmt), (ap)
+#   define zomboScanf(format, ...)              scanf((format), __VA_ARGS__)
 #endif
 
 // zomboStr*()
 #if   defined(ZOMBO_PLATFORM_WINDOWS)
-#   define zomboStrcasecmp(s1, s2)				_stricmp( (s1), (s2) )
-#   define zomboStrncasecmp(s1, s2, n)			_strnicmp( (s1), (s2), (n) )
-#   define zomboStrncpy(dest, src, n)			strncpy_s( (dest), (n), (src), (n) )
+#   define zomboStrcasecmp(s1, s2)      _stricmp( (s1), (s2) )
+#   define zomboStrncasecmp(s1, s2, n)  _strnicmp( (s1), (s2), (n) )
+#   define zomboStrncpy(dest, src, n)   strncpy_s( (dest), (n), (src), (n) )
 #elif defined(ZOMBO_PLATFORM_APPLE) || defined(ZOMBO_PLATFORM_POSIX)
-#   define zomboStrcasecmp(s1, s2)				strcasecmp( (s1), (s2) )
-#   define zomboStrncasecmp(s1, s2, n)			strncasecmp( (s1), (s2), (n) )
-#   define zomboStrncpy(dest, src, n)			strncpy( (dest), (src), (n) )
+#   define zomboStrcasecmp(s1, s2)      strcasecmp( (s1), (s2) )
+#   define zomboStrncasecmp(s1, s2, n)  strncasecmp( (s1), (s2), (n) )
+#   define zomboStrncpy(dest, src, n)   strncpy( (dest), (src), (n) )
+#endif
+
+#if   defined(ZOMBO_PLATFORM_WINDOWS)
+#   define zomboChdir(dir)             _chdir( (dir) )
+#   define zomboMkdir(dir)             _mkdir( (dir) )
+#   define zomboGetcwd(buf, size)      _getcwd( (buf), (size) )
+typedef struct _stat ZomboStatStruct;
+#   define zomboStat(path, pstat)       _stat( (path), (pstat) )
+#elif defined(ZOMBO_PLATFORM_APPLE) || defined(ZOMBO_PLATFORM_POSIX)
+#   define zomboChdir(dir)             chdir( (dir) )
+#   define zomboMkdir(dir)             mkdir( (dir), 0755 )
+#   define zomboGetcwd(buf, size)      getcwd( (buf), (size) )
+typedef struct stat ZomboStatStruct;
+#   define zomboStat(path, pstat)       stat( (path), (pstat) )
 #endif
 
 #ifdef __cplusplus

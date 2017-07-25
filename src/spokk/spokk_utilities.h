@@ -39,7 +39,7 @@ VkImageAspectFlags GetImageAspectFlags(VkFormat format);
 inline VkViewport ExtentToViewport(const VkExtent2D extent, float zMin = 0.0f, float zMax = 1.0f) {
   return {0, 0, (float)extent.width, (float)extent.height, zMin, zMax};
 }
-inline VkRect2D ExtentToRect2D(const VkExtent2D extent) { return {0, 0, extent.width, extent.height}; }
+inline VkRect2D ExtentToRect2D(const VkExtent2D extent) { return { {0, 0}, {extent.width, extent.height}}; }
 inline VkViewport Rect2DToViewport(VkRect2D rect, float z_min = 0.0f, float z_max = 1.0f) {
   return {
       (float)rect.offset.x, (float)rect.offset.y, (float)rect.extent.width, (float)rect.extent.height, z_min, z_max};

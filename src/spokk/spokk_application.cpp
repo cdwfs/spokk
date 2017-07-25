@@ -160,8 +160,8 @@ VkResult FindPhysicalDevice(const std::vector<Application::QueueFamilyRequest> &
 //
 // InputState
 //
-InputState::InputState() : window_{}, current_{}, prev_{} {}
-InputState::InputState(const std::shared_ptr<GLFWwindow> &window) : window_{}, current_{}, prev_{} {
+InputState::InputState() : current_{}, prev_{}, window_{} {}
+InputState::InputState(const std::shared_ptr<GLFWwindow> &window) : current_{}, prev_{}, window_{} {
   SetWindow(window);
 }
 
@@ -297,8 +297,7 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   if (ci.enable_graphics) {
     required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
   }
-  const std::vector<const char *> optional_device_extension_names = {
-  };
+  const std::vector<const char *> optional_device_extension_names = {};
   std::vector<const char *> enabled_device_extension_names;
   SPOKK_VK_CHECK(GetSupportedDeviceExtensions(physical_device_, instance_layers_, required_device_extension_names,
       optional_device_extension_names, &device_extensions_, &enabled_device_extension_names));
@@ -477,10 +476,13 @@ int Application::Run() {
     uint32_t swapchain_image_index = 0;
     VkResult acquire_result = vkAcquireNextImageKHR(
         device_, swapchain_, UINT64_MAX, image_acquire_semaphore_, image_acquire_fence, &swapchain_image_index);
-    if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) {
-      assert(0);  // TODO(https://github.com/cdwfs/spokk/issues/9): force a window resize
-    } else if (acquire_result == VK_SUBOPTIMAL_KHR) {
-      // TODO(https://github.com/cdwfs/spokk/issues/9): force a window resize
+    if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR || acquire_result == VK_SUBOPTIMAL_KHR) {
+      // I've never actually seen these error codes returned, but if they were this is probably how they should be
+      // handled.
+      int window_width = -1, window_height = -1;
+      glfwGetWindowSize(window_.get(), &window_width, &window_height);
+      VkExtent2D window_extent = {(uint32_t)window_width, (uint32_t)window_height};
+      HandleWindowResize(window_extent);
     } else {
       SPOKK_VK_CHECK(acquire_result);
     }
@@ -518,10 +520,13 @@ int Application::Run() {
     present_info.waitSemaphoreCount = 1;
     present_info.pWaitSemaphores = &submit_complete_semaphore_;
     VkResult present_result = vkQueuePresentKHR(graphics_and_present_queue_->handle, &present_info);
-    if (present_result == VK_ERROR_OUT_OF_DATE_KHR) {
-      assert(0);  // TODO(https://github.com/cdwfs/spokk/issues/9): force a window resize
-    } else if (present_result == VK_SUBOPTIMAL_KHR) {
-      // TODO(https://github.com/cdwfs/spokk/issues/9): force a window resize
+    if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR) {
+      // I've never actually seen these error codes returned, but if they were this is probably how they should be
+      // handled.
+      int window_width = -1, window_height = -1;
+      glfwGetWindowSize(window_.get(), &window_width, &window_height);
+      VkExtent2D window_extent = {(uint32_t)window_width, (uint32_t)window_height};
+      HandleWindowResize(window_extent);
     } else {
       SPOKK_VK_CHECK(present_result);
     }

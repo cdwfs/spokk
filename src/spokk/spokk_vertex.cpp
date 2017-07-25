@@ -165,7 +165,7 @@ uint16_t Convert1_F32toF16(float in) {
       h.parts.exponent = 0;
     } else if (af < min_norm) { /* convert normalized input to denormalized output */
       h.parts.exponent = 0;
-      uint32_t unbiased_exp = f.parts.exponent - 127;
+      int32_t unbiased_exp = (int32_t)f.parts.exponent - 127;
       assert(
           -24 <= unbiased_exp && unbiased_exp <= -15); /* range of exponents that map to non-zero denorm f16 values */
       uint32_t new_mantissa = f.parts.mantissa | (1 << 23);
@@ -540,6 +540,9 @@ void ConvertAttribute(const void *in, VkFormat in_format, void *out, VkFormat ou
     }
     break;
   }
+  default:
+    // Many unhandled Vulkan formats here
+    break;
   }
 
   /* Convert temp f32 to output format. */
@@ -688,6 +691,9 @@ void ConvertAttribute(const void *in, VkFormat in_format, void *out, VkFormat ou
     }
     break;
   }
+  default:
+    // Many unhandled Vulkan formats here
+    break;
   }
 }
 }  // namespace

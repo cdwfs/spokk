@@ -110,8 +110,7 @@ class Camera {
 
   protected:
     Camera()
-        : mModelViewCached( false ), mProjectionCached( false ), mInverseModelViewCached( false ), mWorldUp( mathfu::vec3( 0, 1, 0 ) ),
-            mPivotDistance( 0 )
+        : mWorldUp( mathfu::vec3( 0, 1, 0 ) ), mPivotDistance( 0 ), mProjectionCached( false ), mModelViewCached( false ), mInverseModelViewCached( false )
     {}
 
     void			calcMatrices() const;
@@ -217,13 +216,13 @@ class CameraOrtho : public Camera {
 class CameraStereo : public CameraPersp {
   public:
     CameraStereo()
-        : mConvergence( 1.0f ), mEyeSeparation( 0.05f ), mIsStereo( false ), mIsLeft( true ) {}
+        : mIsStereo( false ), mIsLeft( true ), mConvergence( 1.0f ), mEyeSeparation( 0.05f ) {}
     CameraStereo( int pixelWidth, int pixelHeight, float fov )
         : CameraPersp( pixelWidth, pixelHeight, fov ),
-        mConvergence( 1.0f ), mEyeSeparation( 0.05f ), mIsStereo( false ), mIsLeft( true ) {} // constructs screen-aligned camera
+          mIsStereo( false ), mIsLeft( true ), mConvergence( 1.0f ), mEyeSeparation( 0.05f ) {} // constructs screen-aligned camera
     CameraStereo( int pixelWidth, int pixelHeight, float fov, float nearPlane, float farPlane )
         : CameraPersp( pixelWidth, pixelHeight, fov, nearPlane, farPlane ),
-        mConvergence( 1.0f ), mEyeSeparation( 0.05f ), mIsStereo( false ), mIsLeft( true ) {} // constructs screen-aligned camera
+          mIsStereo( false ), mIsLeft( true ), mConvergence( 1.0f ), mEyeSeparation( 0.05f ) {} // constructs screen-aligned camera
 
     //! Returns the current convergence, which is the distance at which there is no parallax.
     float			getConvergence() const { return mConvergence; }
