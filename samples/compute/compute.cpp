@@ -106,7 +106,7 @@ public:
     vkCmdDispatch(cb, BUXEL_COUNT, 1, 1);
 
     buffer_barriers[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    buffer_barriers[1].srcAccessMask = VK_ACCESS_HOST_READ_BIT;
+    buffer_barriers[1].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1,
         &buffer_barriers[1], 0, nullptr);
 

@@ -512,7 +512,7 @@ int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& d
   image_barriers[1].subresourceRange.layerCount = 1;
   image_barriers[1].subresourceRange.baseMipLevel = src_mip_level + 1;
   image_barriers[1].subresourceRange.levelCount = mips_to_gen;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, (VkDependencyFlags)0, 0,
+  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, (VkDependencyFlags)0, 0,
       NULL, 0, NULL, (uint32_t)image_barriers.size(), image_barriers.data());
   // recycle image_barriers[0] to transition each dst_mip from TRANSFER_DST to TRANSFER_SRC after its blit
   image_barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
