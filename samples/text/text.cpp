@@ -169,13 +169,13 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   dst_subresource.arrayLayer = 0;
   int atlas_load_err = font_atlas_image_.LoadSubresourceFromMemory(device_context_, graphics_and_present_queue_,
       atlas_image_pixels.data(), atlas_image_pixels.size(), atlas_ci.image_width, atlas_ci.image_height,
-      dst_subresource);
+      dst_subresource, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT);
   ZOMBO_ASSERT(atlas_load_err == 0, "error (%d) while loading font atlas into memory", atlas_load_err);
   VkImageMemoryBarrier mipmap_barrier = {};
   mipmap_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  mipmap_barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  mipmap_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; // matches final access pass to LoadSubresourceFromMemory
   mipmap_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-  mipmap_barrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  mipmap_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; // matches final layout to LoadSubresourceFromMemory
   mipmap_barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   mipmap_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   mipmap_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
