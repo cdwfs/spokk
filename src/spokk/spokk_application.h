@@ -131,6 +131,7 @@ protected:
   // no resources are in use on the GPU and can be safely destroyed/recreated.
   virtual void HandleWindowResize(VkExtent2D new_window_extent);
 
+  // TODO(https://github.com/cdwfs/spokk/issues/24): Move layer/extension lists into DeviceContext.
   const VkAllocationCallbacks* host_allocator_ = nullptr;
   const DeviceAllocationCallbacks* device_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
