@@ -22,8 +22,9 @@ public:
   int Create(const char* ttf_path);
   void Destroy();
 
-  // API for rendering text into a bitmap on the CPU. For text that will be in a fixed location on screen,
-  // this is probably the way to go.
+  // API for rendering text into a bitmap on the CPU. For text that will be in a fixed location on screen
+  // and persist across several frames (e.g. dialogue text in an RPG, or a UI tooltip), this is probably
+  // the way to go.
   struct StringRenderInfo {
     const char* str;
     float font_size;  // in pixels, from the highest ascent to the lowest descent.
@@ -61,10 +62,13 @@ private:
   friend class FontAtlas;
 };
 
+// A FontAtlas uses a Font to pre-render a range of glyphs to a single image, storing the texture coordinates
+// of each glyph. By rendering quads with appropriate sizes and UVs, dynamic text can be rendered reasonably
+// efficiently at runtime.
 struct FontAtlasCreateInfo {
-  const Font* font;
-  float font_size;
-  uint32_t image_oversample_x, image_oversample_y;
+  const Font* font;  // Only needed during creation.
+  float font_size;  // in pixels, from the highest ascent to the lowest descent.
+  uint32_t image_oversample_x, image_oversample_y;  // 2x in each direction looks good with bilinear filtering
   uint32_t image_width, image_height;
   // TODO: multiple ranges of codepoints?
   uint32_t codepoint_first;
