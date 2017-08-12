@@ -84,7 +84,7 @@ public:
     float x0, y0, s0, t0;  // top-left
     float x1, y1, s1, t1;  // bottom-right
   };
-  int GetStringQuads(const char* str, size_t str_len, Quad* out_quads) const;
+  void GetStringQuads(const char* str, size_t str_len, Quad* out_quads, uint32_t* out_quad_count) const;
 
 private:
   uint32_t image_width_, image_height_;

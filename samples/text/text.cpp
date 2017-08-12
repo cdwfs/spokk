@@ -85,6 +85,7 @@ private:
   PipelinedBuffer scene_uniforms_;
   PipelinedBuffer string_uniforms_;
   Buffer string_vb_;
+  uint32_t string_quad_count_;
   MeshFormat string_mesh_format_;
 
   std::unique_ptr<CameraPersp> camera_;
@@ -188,19 +189,20 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
       font_atlas_image_.GenerateMipmaps(device_context_, graphics_and_present_queue_, mipmap_barrier, 0, 0);
   ZOMBO_ASSERT(mipmap_gen_err == 0, "error (%d) while generating atlas mipmaps", mipmap_gen_err);
 
+  // Generate quads for a string.
+  std::vector<FontAtlas::Quad> quads(string_text.size());
+  string_quad_count_ = 0;
+  font_atlas_.GetStringQuads(string_text.c_str(), string_text.size(), quads.data(), &string_quad_count_);
   // Create vertex buffer
   VkBufferCreateInfo vb_ci = {};
   vb_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  vb_ci.size = sizeof(GlyphVertex) * 6 * string_text.length();
+  vb_ci.size = sizeof(GlyphVertex) * 6 * string_quad_count_;
   vb_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
   vb_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(string_vb_.Create(device_context_, vb_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-  // Generate quads for a string
-  std::vector<FontAtlas::Quad> quads(string_text.size());
-  font_atlas_.GetStringQuads(string_text.c_str(), string_text.size(), quads.data());
   // Convert raw quads into a compressed vertex buffer
   GlyphVertex *verts = (GlyphVertex *)string_vb_.Mapped();
-  for (uint32_t i = 0; i < quads.size(); ++i) {
+  for (uint32_t i = 0; i < string_quad_count_; ++i) {
     const auto &q = quads[i];
 #if 0
     verts[6*i+0] = { F32toS16(q.x0), F32toS16(q.y0), F32toU16N(q.s0), F32toU16N(q.t0) };
@@ -398,7 +400,7 @@ void TextApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index)
   VkDeviceSize vb_offsets[1] = {0};
   VkBuffer vb_handles[1] = {string_vb_.Handle()};
   vkCmdBindVertexBuffers(primary_cb, 0, 1, vb_handles, vb_offsets);
-  vkCmdDraw(primary_cb, 6 * (uint32_t)string_text.length(), 1, 0, 0);
+  vkCmdDraw(primary_cb, 6 * string_quad_count_, 1, 0, 0);
 
   vkCmdEndRenderPass(primary_cb);
 }

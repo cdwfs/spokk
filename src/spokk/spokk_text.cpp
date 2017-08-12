@@ -209,8 +209,8 @@ int FontAtlas::Create(const FontAtlasCreateInfo &ci, uint8_t *out_bitmap) {
 
   char_data_.resize(codepoint_count_);
   const int font_index = 0;
-  err = stbtt_PackFontRange(&pack_context, ci.font->ttf_.data(), font_index, ci.font_size,
-      codepoint_first_, codepoint_count_, char_data_.data());
+  err = stbtt_PackFontRange(&pack_context, ci.font->ttf_.data(), font_index, ci.font_size, codepoint_first_,
+      codepoint_count_, char_data_.data());
   ZOMBO_ASSERT_RETURN(err != 0, -5, "stbtt_PackFontRange() error: %d", err);
 
   stbtt_PackEnd(&pack_context);
@@ -223,21 +223,23 @@ int FontAtlas::Create(const FontAtlasCreateInfo &ci, uint8_t *out_bitmap) {
 }
 void FontAtlas::Destroy(void) {}
 
-int FontAtlas::GetStringQuads(const char *str, size_t str_len, Quad *out_quads) const {
+void FontAtlas::GetStringQuads(const char *str, size_t str_len, Quad *out_quads, uint32_t *out_quad_count) const {
   float pos_x = 0, pos_y = 0;
   stbtt_aligned_quad *quads = reinterpret_cast<stbtt_aligned_quad *>(out_quads);
   const int align_to_integer = 0;
+  uint32_t next_quad = 0;
   for (size_t i = 0; i < str_len; ++i) {
     uint32_t codepoint = (uint32_t)str[i];
-    stbtt_GetPackedQuad(char_data_.data(), image_width_, image_height_,
-        codepoint - codepoint_first_, &pos_x, &pos_y, &quads[i], align_to_integer);
+    stbtt_GetPackedQuad(char_data_.data(), image_width_, image_height_, codepoint - codepoint_first_, &pos_x, &pos_y,
+        &quads[next_quad], align_to_integer);
     if (str[i] == ' ') {
       // We need to call stbtt_GetPackedQuad regardless in order to advance pos_x/pos_y, but there's
       // no point in storing the resulting quad for rendering.
       continue;
     }
+    ++next_quad;
   }
-  return (int)str_len;
+  *out_quad_count = next_quad;
 }
 
 }  // namespace spokk
