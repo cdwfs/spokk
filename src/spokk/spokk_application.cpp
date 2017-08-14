@@ -60,7 +60,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkFlags msgFlags, Vk
     ZOMBO_ERROR_RETURN(VK_FALSE, "Unrecognized msgFlags: %d", msgFlags);
   }
 
-  int nchars = zomboSnprintf(0, NULL, "[%s %s 0x%08X]: %s", message_type, pLayerPrefix, msgCode, pMsg);
+  int nchars = zomboSnprintf(nullptr, 0, "[%s %s 0x%08X]: %s", message_type, pLayerPrefix, msgCode, pMsg);
   char *output = (char *)malloc(nchars + 1);
   zomboSnprintf(output, nchars + 1, "[%s %s 0x%08X]: %s", message_type, pLayerPrefix, msgCode, pMsg);
 #if 0  //_WIN32
