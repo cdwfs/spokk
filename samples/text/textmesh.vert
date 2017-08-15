@@ -1,6 +1,6 @@
 #version 450
 #pragma shader_stage(vertex)
-layout (location = 0) in vec2 poso;
+layout (location = 0) in ivec2 poso;
 layout (location = 1) in vec2 attr;
 layout (location = 0) out vec2 texcoord;
 layout (location = 1) out vec3 tint;

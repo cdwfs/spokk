@@ -19,7 +19,7 @@ constexpr float Z_FAR = 100.0f;
 const std::string string_text("Watson, come here. I need you.");
 
 struct GlyphVertex {
-#if 0
+#if 1
   int16_t pos_x0, pos_y0;
   uint16_t tex_x0, tex_y0;
 #else
@@ -204,7 +204,7 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   GlyphVertex *verts = (GlyphVertex *)string_vb_.Mapped();
   for (uint32_t i = 0; i < string_quad_count_; ++i) {
     const auto &q = quads[i];
-#if 0
+#if 1
     verts[6*i+0] = { F32toS16(q.x0), F32toS16(q.y0), F32toU16N(q.s0), F32toU16N(q.t0) };
     verts[6*i+1] = { F32toS16(q.x0), F32toS16(q.y1), F32toU16N(q.s0), F32toU16N(q.t1) };
     verts[6*i+2] = { F32toS16(q.x1), F32toS16(q.y0), F32toU16N(q.s1), F32toU16N(q.t0) };
@@ -226,7 +226,7 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
       {0, sizeof(GlyphVertex), VK_VERTEX_INPUT_RATE_VERTEX},
   };
   string_mesh_format_.vertex_attributes = {
-#if 0
+#if 1
     {0, 0, VK_FORMAT_R16G16_SINT, 0},
     {1, 0, VK_FORMAT_R16G16_UNORM, 4},
 #else
