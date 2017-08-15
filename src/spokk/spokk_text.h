@@ -139,7 +139,7 @@ public:
   // appends them to the current pframe's vertex buffer, and emits a draw command to render
   // the appropriate number of triangles.
   // It is the caller's responsibility to bind a VkPipeline capable of rendering these glyphs.
-  void TextRenderer::DrawString(VkCommandBuffer cb, const char* str);
+  void DrawString(VkCommandBuffer cb, const char* str);
 
 private:
   TextRenderer(const TextRenderer& rhs) = delete;

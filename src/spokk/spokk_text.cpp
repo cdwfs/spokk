@@ -7,8 +7,21 @@
 
 #include <array>
 
+#if defined(ZOMBO_COMPILER_CLANG)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-but-set-variable" // L1, L2 are set but unused in debug builds
+#elif defined(ZOMBO_COMPILER_GNU)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable" // L1, L2 are set but unused in debug builds
+#endif
 #define STB_RECT_PACK_IMPLEMENTATION
 #include <stb_rect_pack.h>
+#if defined(ZOMBO_COMPILER_CLANG)
+#pragma clang diagnostic pop
+#elif defined(ZOMBO_COMPILER_GNU)
+#pragma GCC diagnostic pop
+#endif
+
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb_truetype.h>
@@ -73,7 +86,7 @@ int Font::RenderStringToBitmap(
   //   This depends on each glyph's subpixel position, so we need to compute that first.
   int max_glyph_width = 0, max_glyph_height = 0;
   const int baseline = int(ascent_ * scale);
-  for (int ch = 0; ch < str_length; ++ch) {
+  for (size_t ch = 0; ch < str_length; ++ch) {
     glyphs[ch].x_shift = glyphs[ch].xpos - floorf(glyphs[ch].xpos);
     glyphs[ch].y_shift = glyphs[ch].ypos - floorf(glyphs[ch].ypos);
     stbtt_GetGlyphBitmapBoxSubpixel(&font_info_, glyphs[ch].glyph_index, scale, scale, glyphs[ch].x_shift,
@@ -151,8 +164,8 @@ void Font::ComputeGlyphInfoAndBitmapDimensions(
   if (str_length > 0) {
     out_glyphs[0].glyph_index = stbtt_FindGlyphIndex(&font_info_, (int)info.str[0]);
   }
-  int line_start = 0;
-  for (int ch = 0; ch < str_length; ++ch) {
+  size_t line_start = 0;
+  for (size_t ch = 0; ch < str_length; ++ch) {
     out_glyphs[ch].glyph_index = stbtt_FindGlyphIndex(&font_info_, (int)info.str[ch]);
     out_glyphs[ch].xpos = xpos;
     out_glyphs[ch].ypos = ypos;
