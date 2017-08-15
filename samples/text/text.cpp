@@ -137,12 +137,12 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   // Create font atlas
   FontAtlasCreateInfo atlas_ci = {};
   atlas_ci.font = &font_;
-  atlas_ci.font_size = 16.0f;
+  atlas_ci.font_size = 48.0f;
   atlas_ci.image_oversample_x = atlas_ci.image_oversample_y = 2;
   atlas_ci.image_width = 512;
   atlas_ci.image_height = 512;
-  atlas_ci.codepoint_first = 0;
-  atlas_ci.codepoint_count = 256;
+  atlas_ci.codepoint_first = 32;
+  atlas_ci.codepoint_count = 96;
   std::vector<uint8_t> atlas_image_pixels(atlas_ci.image_width * atlas_ci.image_height);
   atlas_image_pixels.assign(atlas_image_pixels.size(), 0);
   int atlas_create_err = font_atlas_.Create(atlas_ci, atlas_image_pixels.data());
