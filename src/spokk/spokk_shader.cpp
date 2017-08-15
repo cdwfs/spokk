@@ -505,8 +505,10 @@ void ShaderProgram::Destroy(const DeviceContext& device_context) {
   push_constant_ranges.clear();
   shader_stage_cis.clear();
   entry_point_names.clear();
-  vkDestroyPipelineLayout(device_context.Device(), pipeline_layout, device_context.HostAllocator());
-  pipeline_layout = VK_NULL_HANDLE;
+  if (pipeline_layout != VK_NULL_HANDLE) {
+    vkDestroyPipelineLayout(device_context.Device(), pipeline_layout, device_context.HostAllocator());
+    pipeline_layout = VK_NULL_HANDLE;
+  }
   active_stages = 0;
 }
 
