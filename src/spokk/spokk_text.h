@@ -93,4 +93,66 @@ private:
   std::vector<stbtt_packedchar> char_data_;
 };
 
+// Hypothetical high-level dynamic text interface:
+// Data:
+// - FontAtlas
+// - Image (atlas + mipmaps)
+// - Sampler (bilinear)
+// - Pipeline (VS/PS, ShaderProgram. Tied to a particular RenderPass, natch.)
+// - Pipelined buffer for vertex data.
+//   - What's the vertex format? Well, a fully naive 96 bytes/quad isn't horrific.
+//     48 bytes per quad is doable, with more CPU work, and the vertex shader needs
+//     to be aware either way.
+// - Array of per-string draw parameters: vb offset, quad count, tint, matrix (x,y,scale)
+//
+// Initialization inputs:
+// - Font
+// - FontAtlasCreateInfo
+// - VkRenderPass + subpass index (for pipeline creation)
+// - VS, PS
+// - max chars per frame (used to determine vertex buffer size)
+// - max strings per frame
+//
+// Every frame, advance to the next vertex buffer and reset.
+// GetStringDimensions(const StringRenderInfo& string_info, uint32_t* out_w, uint32_t* out_h);
+// AddString(const StringRenderInfo& string_info);
+// DrawStrings();
+struct TextRendererCreateInfo {
+  const FontAtlasCreateInfo* font_atlas_ci;
+  const DeviceQueue* transfer_queue;
+  uint32_t pframe_count;
+  uint32_t max_chars_per_pframe;
+  uint32_t max_strings_per_pframe;
+};
+
+class TextRenderer {
+public:
+  TextRenderer();
+  ~TextRenderer();
+  int Create(const DeviceContext& device_context, const TextRendererCreateInfo& ci);
+  void Destroy(const DeviceContext& device_context);
+
+  const MeshFormat& GetMeshFormat(void) const { return mesh_format_; }
+  const Image& GetAtlasImage(void) const { return atlas_image_; }
+
+  // Generates quads for each glyph of the string, converts them to the renderer's MeshFormat,
+  // appends them to the current pframe's vertex buffer, and emits a draw command to render
+  // the appropriate number of triangles.
+  // It is the caller's responsibility to bind a VkPipeline capable of rendering these glyphs.
+  void TextRenderer::DrawString(VkCommandBuffer cb, const char* str);
+
+private:
+  TextRenderer(const TextRenderer& rhs) = delete;
+  TextRenderer& operator=(const TextRenderer& rhs) = delete;
+
+  MeshFormat mesh_format_;
+  FontAtlas atlas_;
+  Image atlas_image_;
+  PipelinedBuffer vertex_buffers_;
+
+  uint32_t pframe_index_;
+  uint32_t draw_count_;
+  uint32_t quad_count_;
+};
+
 }  // namespace spokk
