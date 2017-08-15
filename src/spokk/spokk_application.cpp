@@ -45,31 +45,32 @@ void MyGlfwErrorCallback(int error, const char *description) {
 static VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkFlags msgFlags, VkDebugReportObjectTypeEXT /*objType*/,
     uint64_t /*srcObject*/, size_t /*location*/, int32_t msgCode, const char *pLayerPrefix, const char *pMsg,
     void * /*pUserData*/) {
-  char *message = (char *)malloc(strlen(pMsg) + 100);
-  assert(message);
+  const char *message_type = "????";
   if (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT) {
-    sprintf(message, "ERROR: [%s] Code %d : %s", pLayerPrefix, msgCode, pMsg);
+    message_type = "ERROR";
   } else if (msgFlags & VK_DEBUG_REPORT_WARNING_BIT_EXT) {
-    sprintf(message, "WARNING: [%s] Code %d : %s", pLayerPrefix, msgCode, pMsg);
+    message_type = "WARNING";
   } else if (msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT) {
-    sprintf(message, "INFO: [%s] Code %d : %s", pLayerPrefix, msgCode, pMsg);
+    message_type = "INFO";
   } else if (msgFlags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) {
-    sprintf(message, "PERFORMANCE WARNING: [%s] Code %d : %s", pLayerPrefix, msgCode, pMsg);
+    message_type = "PERFORMANCE_WARNING";
+  } else if (msgFlags & VK_DEBUG_REPORT_DEBUG_BIT_EXT) {
+    message_type = "DEBUG";
   } else {
-    return VK_FALSE;
+    ZOMBO_ERROR_RETURN(VK_FALSE, "Unrecognized msgFlags: %d", msgFlags);
   }
+
+  int nchars = zomboSnprintf(0, NULL, "[%s %s 0x%08X]: %s", message_type, pLayerPrefix, msgCode, pMsg);
+  char *output = (char *)malloc(nchars + 1);
+  zomboSnprintf(output, nchars + 1, "[%s %s 0x%08X]: %s", message_type, pLayerPrefix, msgCode, pMsg);
 #if 0  //_WIN32
-  MessageBoxA(NULL, message, "Alert", MB_OK);
+  MessageBoxA(NULL, output, "Alert", MB_OK);
 #else
-  fprintf(stderr, "%s\n", message);
+  fprintf(stderr, "%s\n", output);
   fflush(stdout);
 #endif
-  free(message);
-  if (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT) {
-    return VK_TRUE;  // bail out now if an error occurred
-  } else {
-    return VK_FALSE;  // otherwise, try to soldier on.
-  }
+  free(output);
+  return (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT) ? VK_TRUE : VK_FALSE;
 }
 
 VkResult FindPhysicalDevice(const std::vector<Application::QueueFamilyRequest> &qf_reqs, VkInstance instance,

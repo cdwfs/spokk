@@ -275,14 +275,14 @@ class CameraStereo : public CameraPersp {
 };
 
 // Just a quick hacked-up "physical" representation of a Camera -- it has momentum,
-// it can be pushed around with impulses, and can be constrained to move within an AABB.
+// it can be pushed around, and can be constrained to move within an AABB.
 class CameraDolly
 {
 public:
   explicit CameraDolly(Camera &cam) :
       camera_(cam),
       velocity_(0,0,0),
-      damping_(0.98f),
+      drag_coeff_(0.5f),
       pos_min_(-FLT_MAX, -FLT_MAX, -FLT_MAX),
       pos_max_(FLT_MAX, FLT_MAX, FLT_MAX) {
   }
@@ -296,13 +296,25 @@ public:
   }
   Camera& GetCamera() { return camera_; }
   const Camera& GetCamera() const { return camera_; }
-  void Impulse(mathfu::vec3& dv) { velocity_ += dv; }
-  void Update(float dt) {
-    mathfu::vec3 new_eye = camera_.getEyePoint() + velocity_ * dt;
+  void Update(mathfu::vec3 accel, float dt) {
+    mathfu::vec3 vel_dir = (velocity_.LengthSquared() > 0) ? velocity_.Normalized() : mathfu::vec3(0,0,0);
+    // TODO(cort): would love to define drag in terms of something intuitive like max_velocity
+    mathfu::vec3 drag = drag_coeff_ * velocity_.LengthSquared() * -vel_dir;
+    mathfu::vec3 accel_final = accel + drag;
+
+    mathfu::vec3 new_eye = ((0.5f * accel_final * dt) + velocity_) * dt + camera_.getEyePoint();
     new_eye = mathfu::vec3::Max(new_eye, pos_min_);
     new_eye = mathfu::vec3::Min(new_eye, pos_max_);
     camera_.setEyePoint(new_eye);
-    velocity_ *= damping_;
+
+    velocity_ += accel_final * dt;
+    // Totally non-physical constant deceleration if not actively accelerating.
+    float speed = velocity_.Length();
+    if (accel.LengthSquared() == 0 && speed > 0) {
+      const float idle_decel = -8.0f;
+      float new_speed = std::max(speed + idle_decel*dt, 0.0f);
+      velocity_ *= new_speed / speed;
+    }
     if (velocity_.LengthSquared() < 0.001f) {
       velocity_ = mathfu::vec3(0,0,0);
     }
@@ -311,7 +323,7 @@ public:
 private:
   Camera& camera_;
   mathfu::vec3 velocity_;
-  float damping_;
+  float drag_coeff_;
   mathfu::vec3 pos_min_, pos_max_;
 };
 
