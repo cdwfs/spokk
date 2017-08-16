@@ -196,7 +196,7 @@ void InputState::Update(void) {
 //
 // Application
 //
-Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
+Application::Application(const CreateInfo &ci) {
   if (ci.enable_graphics) {
     // Initialize GLFW
     glfwSetErrorCallback(MyGlfwErrorCallback);
@@ -227,7 +227,7 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   }
   std::vector<const char *> optional_instance_layer_names = {
 #if defined(_DEBUG)
-      "VK_LAYER_LUNARG_monitor",
+    "VK_LAYER_LUNARG_monitor",
 #endif
   };
   std::vector<const char *> enabled_instance_layer_names = {};
@@ -279,9 +279,10 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
     SPOKK_VK_CHECK(glfwCreateWindowSurface(instance_, window_.get(), host_allocator_, &surface_));
   }
 
+  VkPhysicalDevice physical_device = VK_NULL_HANDLE;
   std::vector<uint32_t> queue_family_indices;
   SPOKK_VK_CHECK(
-      FindPhysicalDevice(ci.queue_family_requests, instance_, surface_, &physical_device_, &queue_family_indices));
+      FindPhysicalDevice(ci.queue_family_requests, instance_, surface_, &physical_device, &queue_family_indices));
   std::vector<VkDeviceQueueCreateInfo> device_queue_cis = {};
   uint32_t total_queue_count = 0;
   for (uint32_t iQF = 0; iQF < (uint32_t)ci.queue_family_requests.size(); ++iQF) {
@@ -296,7 +297,7 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
         queue_count, queue_priorities.data()});
     queue_priorities.insert(queue_priorities.end(), queue_count, ci.queue_family_requests[iQF].priority);
   };
-  assert(queue_priorities.size() == total_queue_count);
+  ZOMBO_ASSERT(queue_priorities.size() == total_queue_count, "queue count mismatch");
 
   std::vector<const char *> required_device_extension_names = {};
   if (ci.enable_graphics) {
@@ -304,14 +305,15 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   }
   const std::vector<const char *> optional_device_extension_names = {};
   std::vector<const char *> enabled_device_extension_names;
-  SPOKK_VK_CHECK(GetSupportedDeviceExtensions(physical_device_, instance_layers_, required_device_extension_names,
+  SPOKK_VK_CHECK(GetSupportedDeviceExtensions(physical_device, instance_layers_, required_device_extension_names,
       optional_device_extension_names, &device_extensions_, &enabled_device_extension_names));
 
   VkPhysicalDeviceFeatures supported_device_features = {};
-  vkGetPhysicalDeviceFeatures(physical_device_, &supported_device_features);
+  vkGetPhysicalDeviceFeatures(physical_device, &supported_device_features);
   VkBool32 all_required_features_enabled = VK_TRUE;
+  VkPhysicalDeviceFeatures enabled_device_features = {};
   if (ci.pfn_set_device_features != nullptr) {
-    all_required_features_enabled = ci.pfn_set_device_features(supported_device_features, &enabled_device_features_);
+    all_required_features_enabled = ci.pfn_set_device_features(supported_device_features, &enabled_device_features);
   }
   if (!all_required_features_enabled) {
     ZOMBO_ERROR("Device creation failed: not all required features are supported.");
@@ -324,15 +326,17 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   device_ci.pQueueCreateInfos = device_queue_cis.data();
   device_ci.enabledExtensionCount = (uint32_t)enabled_device_extension_names.size();
   device_ci.ppEnabledExtensionNames = enabled_device_extension_names.data();
-  device_ci.pEnabledFeatures = &enabled_device_features_;
-  SPOKK_VK_CHECK(vkCreateDevice(physical_device_, &device_ci, host_allocator_, &logical_device_));
+  device_ci.pEnabledFeatures = &enabled_device_features;
+  VkDevice logical_device = VK_NULL_HANDLE;
+  SPOKK_VK_CHECK(vkCreateDevice(physical_device, &device_ci, host_allocator_, &logical_device));
 
   uint32_t total_queue_family_count = 0;
-  vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &total_queue_family_count, nullptr);
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &total_queue_family_count, nullptr);
   std::vector<VkQueueFamilyProperties> all_queue_family_properties(total_queue_family_count);
   vkGetPhysicalDeviceQueueFamilyProperties(
-      physical_device_, &total_queue_family_count, all_queue_family_properties.data());
-  queues_.reserve(total_queue_count);
+      physical_device, &total_queue_family_count, all_queue_family_properties.data());
+  std::vector<DeviceQueue> queues;
+  queues.reserve(total_queue_count);
   for (uint32_t iQFR = 0; iQFR < (uint32_t)ci.queue_family_requests.size(); ++iQFR) {
     const QueueFamilyRequest &qfr = ci.queue_family_requests[iQFR];
     const VkDeviceQueueCreateInfo &qci = device_queue_cis[iQFR];
@@ -343,19 +347,22 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
         (qfr.support_present && ((qfp.queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0)) ? surface_ : VK_NULL_HANDLE,
     };
     for (uint32_t iQ = 0; iQ < total_queue_count; ++iQ) {
-      vkGetDeviceQueue(logical_device_, qci.queueFamilyIndex, iQ, &qc.handle);
+      vkGetDeviceQueue(logical_device, qci.queueFamilyIndex, iQ, &qc.handle);
       qc.priority = qci.pQueuePriorities[iQ];
-      queues_.push_back(qc);
+      queues.push_back(qc);
     }
   }
-  assert(queues_.size() == total_queue_count);
+  ZOMBO_ASSERT(queues.size() == total_queue_count, "queue count mismatch");
 
+  // TODO(cort): hmmm, maybe persist this across runs some day...
   VkPipelineCacheCreateInfo pipeline_cache_ci = {};
   pipeline_cache_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-  SPOKK_VK_CHECK(vkCreatePipelineCache(logical_device_, &pipeline_cache_ci, host_allocator_, &pipeline_cache_));
+  VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
+  SPOKK_VK_CHECK(vkCreatePipelineCache(logical_device, &pipeline_cache_ci, host_allocator_, &pipeline_cache));
 
-  device_ = Device(logical_device_, physical_device_, pipeline_cache_, queues_.data(), (uint32_t)queues_.size(),
-      enabled_device_features_, host_allocator_, device_allocator_);
+  // Populate the Device object, which from now on "owns" all of these Vulkan handles.
+  device_.Create(logical_device, physical_device, pipeline_cache, queues.data(), (uint32_t)queues.size(),
+      enabled_device_features, host_allocator_, device_allocator_);
 
   if (ci.enable_graphics) {
     VkExtent2D default_extent = {ci.window_width, ci.window_height};
@@ -369,19 +376,19 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
   cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
   cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
-  SPOKK_VK_CHECK(vkCreateCommandPool(logical_device_, &cpool_ci, host_allocator_, &primary_cpool_));
+  SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &primary_cpool_));
   VkCommandBufferAllocateInfo cb_allocate_info = {};
   cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
   cb_allocate_info.commandPool = primary_cpool_;
   cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
   cb_allocate_info.commandBufferCount = (uint32_t)primary_command_buffers_.size();
-  SPOKK_VK_CHECK(vkAllocateCommandBuffers(logical_device_, &cb_allocate_info, primary_command_buffers_.data()));
+  SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, primary_command_buffers_.data()));
 
   // Create the semaphores used to synchronize access to swapchain images
   VkSemaphoreCreateInfo semaphore_ci = {};
   semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-  SPOKK_VK_CHECK(vkCreateSemaphore(logical_device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
-  SPOKK_VK_CHECK(vkCreateSemaphore(logical_device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
+  SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
+  SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
 
   // Create the fences used to wait for each swapchain image's command buffer to be submitted.
   // This prevents re-writing the command buffer contents before it's been submitted and processed.
@@ -389,30 +396,28 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
   fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
   for (auto &fence : submit_complete_fences_) {
-    SPOKK_VK_CHECK(vkCreateFence(logical_device_, &fence_ci, host_allocator_, &fence));
+    SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
   }
 
   init_successful_ = true;
 }
 Application::~Application() {
-  if (logical_device_) {
-    vkDeviceWaitIdle(logical_device_);
+  if (device_ != VK_NULL_HANDLE) {
+    vkDeviceWaitIdle(device_);
 
-    vkDestroySemaphore(logical_device_, image_acquire_semaphore_, host_allocator_);
-    vkDestroySemaphore(logical_device_, submit_complete_semaphore_, host_allocator_);
+    vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
+    vkDestroySemaphore(device_, submit_complete_semaphore_, host_allocator_);
     for (auto fence : submit_complete_fences_) {
-      vkDestroyFence(logical_device_, fence, host_allocator_);
+      vkDestroyFence(device_, fence, host_allocator_);
     }
-    vkDestroyCommandPool(logical_device_, primary_cpool_, host_allocator_);
-
-    vkDestroyPipelineCache(logical_device_, pipeline_cache_, host_allocator_);
+    vkDestroyCommandPool(device_, primary_cpool_, host_allocator_);
 
     if (swapchain_ != VK_NULL_HANDLE) {
       for (auto &view : swapchain_image_views_) {
-        vkDestroyImageView(logical_device_, view, host_allocator_);
+        vkDestroyImageView(device_, view, host_allocator_);
         view = VK_NULL_HANDLE;
       }
-      vkDestroySwapchainKHR(logical_device_, swapchain_, host_allocator_);
+      vkDestroySwapchainKHR(device_, swapchain_, host_allocator_);
       swapchain_ = VK_NULL_HANDLE;
     }
   }
@@ -420,8 +425,7 @@ Application::~Application() {
     window_.reset();
     glfwTerminate();
   }
-  vkDestroyDevice(logical_device_, host_allocator_);
-  logical_device_ = VK_NULL_HANDLE;
+  device_.Destroy();
   if (debug_report_callback_ != VK_NULL_HANDLE) {
     auto destroy_debug_report_func =
         (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_, "vkDestroyDebugReportCallbackEXT");
@@ -468,8 +472,8 @@ int Application::Run() {
     }
 
     // Wait for the command buffer previously used to generate this swapchain image to be submitted.
-    vkWaitForFences(logical_device_, 1, &submit_complete_fences_[pframe_index_], VK_TRUE, UINT64_MAX);
-    vkResetFences(logical_device_, 1, &submit_complete_fences_[pframe_index_]);
+    vkWaitForFences(device_, 1, &submit_complete_fences_[pframe_index_], VK_TRUE, UINT64_MAX);
+    vkResetFences(device_, 1, &submit_complete_fences_[pframe_index_]);
 
     // The host can now safely reset and rebuild this command buffer, even if the GPU hasn't finished presenting the
     // resulting frame yet.
@@ -480,7 +484,7 @@ int Application::Run() {
         VK_NULL_HANDLE;  // currently unused, but if you want the CPU to wait for an image to be acquired...
     uint32_t swapchain_image_index = 0;
     VkResult acquire_result = vkAcquireNextImageKHR(
-        logical_device_, swapchain_, UINT64_MAX, image_acquire_semaphore_, image_acquire_fence, &swapchain_image_index);
+        device_, swapchain_, UINT64_MAX, image_acquire_semaphore_, image_acquire_fence, &swapchain_image_index);
     if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR || acquire_result == VK_SUBOPTIMAL_KHR) {
       // I've never actually seen these error codes returned, but if they were this is probably how they should be
       // handled.
@@ -574,7 +578,7 @@ bool Application::IsDeviceExtensionEnabled(const std::string &extension_name) co
 }
 
 void Application::HandleWindowResize(VkExtent2D new_window_extent) {
-  SPOKK_VK_CHECK(vkDeviceWaitIdle(logical_device_));
+  SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
   SPOKK_VK_CHECK(CreateSwapchain(new_window_extent));
 }
 
@@ -584,14 +588,14 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   // Clean up old swapchain images/image views if necessary
   for (auto view : swapchain_image_views_) {
     if (view != VK_NULL_HANDLE) {
-      vkDestroyImageView(logical_device_, view, host_allocator_);
+      vkDestroyImageView(device_, view, host_allocator_);
     }
   }
   swapchain_image_views_.clear();
   swapchain_images_.clear();
 
   VkSurfaceCapabilitiesKHR surface_caps = {};
-  SPOKK_VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_, surface_, &surface_caps));
+  SPOKK_VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device_.Physical(), surface_, &surface_caps));
 
   // If the surface's current width is -1, this special value indicates that its dimensions will
   // be determined by the application-provided extent during swapchain creation.
@@ -607,11 +611,11 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   std::vector<VkSurfaceFormatKHR> device_surface_formats;
   VkResult result = VK_INCOMPLETE;
   do {
-    result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device_, surface_, &device_surface_format_count, nullptr);
+    result = vkGetPhysicalDeviceSurfaceFormatsKHR(device_.Physical(), surface_, &device_surface_format_count, nullptr);
     if (result == VK_SUCCESS && device_surface_format_count > 0) {
       device_surface_formats.resize(device_surface_format_count);
       result = vkGetPhysicalDeviceSurfaceFormatsKHR(
-          physical_device_, surface_, &device_surface_format_count, device_surface_formats.data());
+          device_.Physical(), surface_, &device_surface_format_count, device_surface_formats.data());
     }
   } while (result == VK_INCOMPLETE);
   if (device_surface_formats.size() == 1 && device_surface_formats[0].format == VK_FORMAT_UNDEFINED) {
@@ -626,11 +630,12 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   uint32_t device_present_mode_count = 0;
   std::vector<VkPresentModeKHR> device_present_modes;
   do {
-    result = vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device_, surface_, &device_present_mode_count, nullptr);
+    result =
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device_.Physical(), surface_, &device_present_mode_count, nullptr);
     if (result == VK_SUCCESS && device_present_mode_count > 0) {
       device_present_modes.resize(device_present_mode_count);
       result = vkGetPhysicalDeviceSurfacePresentModesKHR(
-          physical_device_, surface_, &device_present_mode_count, device_present_modes.data());
+          device_.Physical(), surface_, &device_present_mode_count, device_present_modes.data());
     }
   } while (result == VK_INCOMPLETE);
   std::array<bool, VK_PRESENT_MODE_RANGE_SIZE_KHR> present_mode_supported = {};
@@ -679,17 +684,17 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   swapchain_ci.presentMode = present_mode;
   swapchain_ci.clipped = VK_TRUE;
   swapchain_ci.oldSwapchain = old_swapchain;
-  SPOKK_VK_CHECK(vkCreateSwapchainKHR(logical_device_, &swapchain_ci, host_allocator_, &swapchain_));
+  SPOKK_VK_CHECK(vkCreateSwapchainKHR(device_, &swapchain_ci, host_allocator_, &swapchain_));
   if (old_swapchain != VK_NULL_HANDLE) {
-    vkDestroySwapchainKHR(logical_device_, old_swapchain, host_allocator_);
+    vkDestroySwapchainKHR(device_, old_swapchain, host_allocator_);
   }
 
   uint32_t swapchain_image_count = 0;
   do {
-    result = vkGetSwapchainImagesKHR(logical_device_, swapchain_, &swapchain_image_count, nullptr);
+    result = vkGetSwapchainImagesKHR(device_, swapchain_, &swapchain_image_count, nullptr);
     if (result == VK_SUCCESS && swapchain_image_count > 0) {
       swapchain_images_.resize(swapchain_image_count);
-      result = vkGetSwapchainImagesKHR(logical_device_, swapchain_, &swapchain_image_count, swapchain_images_.data());
+      result = vkGetSwapchainImagesKHR(device_, swapchain_, &swapchain_image_count, swapchain_images_.data());
     }
   } while (result == VK_INCOMPLETE);
   VkImageViewCreateInfo image_view_ci = {};
@@ -712,7 +717,7 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   for (auto image : swapchain_images_) {
     image_view_ci.image = image;
     VkImageView view = VK_NULL_HANDLE;
-    SPOKK_VK_CHECK(vkCreateImageView(logical_device_, &image_view_ci, host_allocator_, &view));
+    SPOKK_VK_CHECK(vkCreateImageView(device_, &image_view_ci, host_allocator_, &view));
     swapchain_image_views_.push_back(view);
   }
   return VK_SUCCESS;

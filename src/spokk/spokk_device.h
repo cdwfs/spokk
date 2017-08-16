@@ -36,11 +36,16 @@ public:
       device_properties_{},
       memory_properties_{},
       queues_{} {}
-  Device(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache, const DeviceQueue *queues,
-      uint32_t queue_count, const VkPhysicalDeviceFeatures &enabled_device_features,
+  ~Device();
+
+  void Create(VkDevice logical_device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache,
+      const DeviceQueue *queues, uint32_t queue_count, const VkPhysicalDeviceFeatures &enabled_device_features,
       const VkAllocationCallbacks *host_allocator = nullptr,
       const DeviceAllocationCallbacks *device_allocator = nullptr);
-  ~Device();
+  void Destroy();
+
+  Device(const Device &) = delete;
+  Device &operator=(const Device &) = delete;
 
   // Allow implicit conversion to VkDevice, which 99% of the time is what you want from this object.
   operator VkDevice() const { return logical_device_; }

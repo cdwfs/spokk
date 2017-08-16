@@ -1,4 +1,5 @@
 #include "spokk_device.h"
+#include "spokk_platform.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -9,20 +10,37 @@
 
 namespace spokk {
 
-Device::Device(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache,
+Device::~Device() {
+  ZOMBO_ASSERT(logical_device_ == VK_NULL_HANDLE, "Call Device::Destroy()! Don't count on the destructor!");
+}
+
+void Device::Create(VkDevice logical_device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache,
     const DeviceQueue *queues, uint32_t queue_count, const VkPhysicalDeviceFeatures &enabled_device_features,
-    const VkAllocationCallbacks *host_allocator, const DeviceAllocationCallbacks *device_allocator)
-  : physical_device_(physical_device),
-    logical_device_(device),
-    pipeline_cache_(pipeline_cache),
-    host_allocator_(host_allocator),
-    device_allocator_(device_allocator),
-    device_features_(enabled_device_features) {
+    const VkAllocationCallbacks *host_allocator, const DeviceAllocationCallbacks *device_allocator) {
+  physical_device_ = physical_device;
+  logical_device_ = logical_device;
+  pipeline_cache_ = pipeline_cache;
+  host_allocator_ = host_allocator;
+  device_allocator_ = device_allocator;
+  device_features_ = enabled_device_features;
   vkGetPhysicalDeviceProperties(physical_device_, &device_properties_);
   vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
   queues_.insert(queues_.begin(), queues + 0, queues + queue_count);
 }
-Device::~Device() {}
+
+void Device::Destroy() {
+  if (pipeline_cache_ != VK_NULL_HANDLE) {
+    vkDestroyPipelineCache(logical_device_, pipeline_cache_, host_allocator_);
+    pipeline_cache_ = VK_NULL_HANDLE;
+  }
+  queues_.clear();
+  if (logical_device_ != VK_NULL_HANDLE) {
+    vkDestroyDevice(logical_device_, host_allocator_);
+    logical_device_ = VK_NULL_HANDLE;
+  }
+  host_allocator_ = nullptr;
+  device_allocator_ = nullptr;
+}
 
 const DeviceQueue *Device::FindQueue(VkQueueFlags queue_flags, VkSurfaceKHR present_surface) const {
   // Search for an exact match first
