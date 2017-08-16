@@ -7,7 +7,7 @@
 #include <GLFW/glfw3.h>
 
 #include "spokk_buffer.h"
-#include "spokk_context.h"
+#include "spokk_device.h"
 #include "spokk_image.h"
 #include "spokk_memory.h"
 #include "spokk_pipeline.h"
@@ -139,11 +139,7 @@ protected:
   std::vector<VkExtensionProperties> instance_extensions_ = {};
   VkDebugReportCallbackEXT debug_report_callback_ = VK_NULL_HANDLE;
   VkSurfaceKHR surface_ = VK_NULL_HANDLE;
-  VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
-  VkPhysicalDeviceFeatures enabled_device_features_ = {};
-  VkDevice device_ = VK_NULL_HANDLE;
   std::vector<VkExtensionProperties> device_extensions_ = {};
-  std::vector<DeviceQueue> queues_;
 
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
   VkSurfaceFormatKHR swapchain_surface_format_ = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
@@ -151,14 +147,12 @@ protected:
   std::vector<VkImage> swapchain_images_ = {};
   std::vector<VkImageView> swapchain_image_views_ = {};
 
-  VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
-
   std::shared_ptr<GLFWwindow> window_ = nullptr;
 
   InputState input_state_;
 
   // handles refer to this application's device_, queues_, etc.
-  DeviceContext device_context_;
+  Device device_ = {};
 
   // Queue used by the framework for primary graphics/command buffer submission.
   const DeviceQueue* graphics_and_present_queue_;

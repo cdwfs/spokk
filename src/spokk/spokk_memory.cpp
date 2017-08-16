@@ -1,5 +1,5 @@
 #include "spokk_memory.h"
-#include "spokk_context.h"
+#include "spokk_device.h"
 
 #include <cassert>
 
@@ -11,25 +11,25 @@ namespace spokk {
 DeviceMemoryBlock::~DeviceMemoryBlock() {
   assert(handle_ == VK_NULL_HANDLE);  // call free() before deleting!
 }
-VkResult DeviceMemoryBlock::Allocate(const DeviceContext& device_context, const VkMemoryAllocateInfo& alloc_info) {
+VkResult DeviceMemoryBlock::Allocate(const Device& device, const VkMemoryAllocateInfo& alloc_info) {
   assert(handle_ == VK_NULL_HANDLE);
-  VkResult result = vkAllocateMemory(device_context.Device(), &alloc_info, device_context.HostAllocator(), &handle_);
+  VkResult result = vkAllocateMemory(device.Logical(), &alloc_info, device.HostAllocator(), &handle_);
   if (result == VK_SUCCESS) {
     info_ = alloc_info;
-    device_ = device_context.Device();
-    VkMemoryPropertyFlags properties = device_context.MemoryTypeProperties(alloc_info.memoryTypeIndex);
+    device_ = device.Logical();
+    VkMemoryPropertyFlags properties = device.MemoryTypeProperties(alloc_info.memoryTypeIndex);
     if (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-      result = vkMapMemory(device_context.Device(), handle_, 0, VK_WHOLE_SIZE, 0, &mapped_);
+      result = vkMapMemory(device.Logical(), handle_, 0, VK_WHOLE_SIZE, 0, &mapped_);
     } else {
       mapped_ = nullptr;
     }
   }
   return result;
 }
-void DeviceMemoryBlock::Free(const DeviceContext& device_context) {
+void DeviceMemoryBlock::Free(const Device& device) {
   if (handle_ != VK_NULL_HANDLE) {
-    assert(device_context.Device() == device_);
-    vkFreeMemory(device_context.Device(), handle_, device_context.HostAllocator());
+    assert(device.Logical() == device_);
+    vkFreeMemory(device.Logical(), handle_, device.HostAllocator());
     handle_ = VK_NULL_HANDLE;
     mapped_ = nullptr;
   }

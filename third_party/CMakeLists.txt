@@ -54,12 +54,12 @@ SET(SPIRV_CROSS_TARGETS
 )
 SET_TARGET_PROPERTIES(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
 
-# fplutil (dependency of mathfu)
+# fplutil (dependency of mathfu). This also implicitly sets the location of vectorial.
 SET(dependencies_fplutil_dir ${CMAKE_CURRENT_SOURCE_DIR}/fplutil CACHE PATH "base directory of fplutil repository" FORCE)
 # Mathfu
 SET(mathfu_build_benchmarks OFF CACHE BOOL "")
 SET(mathfu_build_tests OFF CACHE BOOL "")
-SET(mathfu_enable_simd OFF CACHE BOOL "")
+SET(mathfu_enable_simd ON CACHE BOOL "")
 ADD_SUBDIRECTORY(mathfu)
 
 # shaderc

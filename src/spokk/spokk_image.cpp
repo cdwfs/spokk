@@ -151,25 +151,25 @@ namespace spokk {
 //
 // Image
 //
-VkResult Image::Create(const DeviceContext& device_context, const VkImageCreateInfo& ci,
-    VkMemoryPropertyFlags memory_properties, DeviceAllocationScope allocation_scope) {
+VkResult Image::Create(const Device& device, const VkImageCreateInfo& ci, VkMemoryPropertyFlags memory_properties,
+    DeviceAllocationScope allocation_scope) {
   ZOMBO_ASSERT_RETURN(handle == VK_NULL_HANDLE, VK_ERROR_INITIALIZATION_FAILED, "Can't re-create an existing Image");
-  VkResult result = vkCreateImage(device_context.Device(), &ci, device_context.HostAllocator(), &handle);
+  VkResult result = vkCreateImage(device.Logical(), &ci, device.HostAllocator(), &handle);
   if (result == VK_SUCCESS) {
-    memory = device_context.DeviceAllocAndBindToImage(handle, memory_properties, allocation_scope);
+    memory = device.DeviceAllocAndBindToImage(handle, memory_properties, allocation_scope);
     if (memory.block == nullptr) {
-      vkDestroyImage(device_context.Device(), handle, device_context.HostAllocator());
+      vkDestroyImage(device.Logical(), handle, device.HostAllocator());
       handle = VK_NULL_HANDLE;
       result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
     } else {
       VkImageViewCreateInfo view_ci = GetImageViewCreateInfo(handle, ci);
-      result = vkCreateImageView(device_context.Device(), &view_ci, device_context.HostAllocator(), &view);
+      result = vkCreateImageView(device.Logical(), &view_ci, device.HostAllocator(), &view);
     }
   }
   image_ci = ci;
   return result;
 }
-int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue* queue, const std::string& filename,
+int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const std::string& filename,
     VkBool32 generate_mipmaps, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
   ZOMBO_ASSERT_RETURN(handle == VK_NULL_HANDLE, -1, "Can't re-create an existing Image");
 
@@ -187,7 +187,7 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
   uint32_t mips_to_load = image_file.mip_levels;
   if (generate_mipmaps) {  // Adjust image_ci to include space for extra mipmaps beyond the ones in the image file.
     VkFormatProperties format_properties = {};
-    vkGetPhysicalDeviceFormatProperties(device_context.PhysicalDevice(), image_ci.format, &format_properties);
+    vkGetPhysicalDeviceFormatProperties(device.Physical(), image_ci.format, &format_properties);
     const VkFormatFeatureFlags blit_mask = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
     const VkFormatFeatureFlags feature_flags = (image_ci.tiling == VK_IMAGE_TILING_LINEAR)
         ? format_properties.linearTilingFeatures
@@ -210,12 +210,12 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
     }
   }
   // TODO(cort): caller passes in memory properties and scope?
-  SPOKK_VK_CHECK(vkCreateImage(device_context.Device(), &image_ci, device_context.HostAllocator(), &handle));
-  memory = device_context.DeviceAllocAndBindToImage(
-      handle, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE);
+  SPOKK_VK_CHECK(vkCreateImage(device.Logical(), &image_ci, device.HostAllocator(), &handle));
+  memory =
+      device.DeviceAllocAndBindToImage(handle, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE);
 
   // Gimme a command buffer
-  OneShotCommandPool cpool(device_context.Device(), queue->handle, queue->family, device_context.HostAllocator());
+  OneShotCommandPool cpool(device.Logical(), queue->handle, queue->family, device.HostAllocator());
   VkCommandBuffer cb = cpool.AllocateAndBegin();
 
   // transition image into TRANSFER_DST most for loading
@@ -240,7 +240,7 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
   int32_t texel_block_bytes = g_format_attributes[image_file.data_format].texel_block_bytes;
   int32_t texel_block_width = g_format_attributes[image_file.data_format].texel_block_width;
   int32_t texel_block_height = g_format_attributes[image_file.data_format].texel_block_height;
-  // TODO(cort): move staging buffer into device context
+  // TODO(cort): move staging buffer into Device?
   size_t total_upload_size = 0;
   for (uint32_t iMip = 0; iMip < mips_to_load; ++iMip) {
     ImageFileSubresource subresource = {};
@@ -254,7 +254,7 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
   staging_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   Buffer staging_buffer = {};
   SPOKK_VK_CHECK(staging_buffer.Create(
-      device_context, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
+      device, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
   // barrier between host writes and transfer reads
   VkBufferMemoryBarrier buffer_barrier = {};
   buffer_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -321,39 +321,39 @@ int Image::CreateFromFile(const DeviceContext& device_context, const DeviceQueue
   }
   staging_buffer.FlushHostCache();
   cpool.EndSubmitAndFree(&cb);
-  staging_buffer.Destroy(device_context);
+  staging_buffer.Destroy(device);
   ImageFileDestroy(&image_file);
 
   VkImageViewCreateInfo view_ci = GetImageViewCreateInfo(handle, image_ci);
-  VkResult result = vkCreateImageView(device_context.Device(), &view_ci, device_context.HostAllocator(), &view);
+  VkResult result = vkCreateImageView(device.Logical(), &view_ci, device.HostAllocator(), &view);
   if (result != VK_SUCCESS) {
-    Destroy(device_context);
+    Destroy(device);
     return -1;
   }
 
   return 0;
 }
 
-void Image::Destroy(const DeviceContext& device_context) {
-  device_context.DeviceFree(memory);
+void Image::Destroy(const Device& device) {
+  device.DeviceFree(memory);
   memory.block = nullptr;
   if (view != VK_NULL_HANDLE) {
-    vkDestroyImageView(device_context.Device(), view, device_context.HostAllocator());
+    vkDestroyImageView(device.Logical(), view, device.HostAllocator());
     view = VK_NULL_HANDLE;
   }
   if (handle != VK_NULL_HANDLE) {
-    vkDestroyImage(device_context.Device(), handle, device_context.HostAllocator());
+    vkDestroyImage(device.Logical(), handle, device.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
 }
 
-int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const DeviceQueue* queue,
-    const void* src_data, size_t src_nbytes, uint32_t src_row_nbytes, uint32_t src_layer_height,
-    const VkImageSubresource& dst_subresource, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
+int Image::LoadSubresourceFromMemory(const Device& device, const DeviceQueue* queue, const void* src_data,
+    size_t src_nbytes, uint32_t src_row_nbytes, uint32_t src_layer_height, const VkImageSubresource& dst_subresource,
+    VkImageLayout final_layout, VkAccessFlags final_access_flags) {
   ZOMBO_ASSERT_RETURN(handle != VK_NULL_HANDLE, -1, "Call Create() first!");
 
   // Gimme a command buffer
-  OneShotCommandPool cpool(device_context.Device(), queue->handle, queue->family, device_context.HostAllocator());
+  OneShotCommandPool cpool(device.Logical(), queue->handle, queue->family, device.HostAllocator());
   VkCommandBuffer cb = cpool.AllocateAndBegin();
 
   // TODO(cort): global staging buffer
@@ -364,7 +364,7 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const 
   staging_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   Buffer staging_buffer = {};
   SPOKK_VK_CHECK(staging_buffer.Create(
-      device_context, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
+      device, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
   memcpy((uint8_t*)staging_buffer.Mapped(), src_data, src_nbytes);
   // transition destination subresource into TRANSFER_DST most for loading
   VkImageMemoryBarrier barrier_init_to_dst = {};
@@ -436,16 +436,16 @@ int Image::LoadSubresourceFromMemory(const DeviceContext& device_context, const 
 
   staging_buffer.FlushHostCache();
   cpool.EndSubmitAndFree(&cb);
-  staging_buffer.Destroy(device_context);
+  staging_buffer.Destroy(device);
   return 0;
 }
 
-int Image::GenerateMipmaps(const DeviceContext& device_context, const DeviceQueue* queue,
-    const VkImageMemoryBarrier& barrier, uint32_t layer, uint32_t src_mip_level, uint32_t mips_to_gen) {
+int Image::GenerateMipmaps(const Device& device, const DeviceQueue* queue, const VkImageMemoryBarrier& barrier,
+    uint32_t layer, uint32_t src_mip_level, uint32_t mips_to_gen) {
   assert(handle != VK_NULL_HANDLE);  // must create image first!
 
   // Gimme a command buffer
-  OneShotCommandPool cpool(device_context.Device(), queue->handle, queue->family, device_context.HostAllocator());
+  OneShotCommandPool cpool(device.Logical(), queue->handle, queue->family, device.HostAllocator());
   VkCommandBuffer cb = cpool.AllocateAndBegin();
 
   int err = GenerateMipmapsImpl(cb, barrier, layer, src_mip_level, mips_to_gen);
@@ -473,7 +473,7 @@ int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& d
 
 #if 0  // validation -- higher-level code should be doing this already
   VkFormatProperties format_properties = {};
-  vkGetPhysicalDeviceFormatProperties(device_context_.PhysicalDevice(), image_ci.format, &format_properties);
+  vkGetPhysicalDeviceFormatProperties(device_.PhysicalDevice(), image_ci.format, &format_properties);
   const VkFormatFeatureFlags blit_mask = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
   const VkFormatFeatureFlags feature_flags = (image_ci.tiling == VK_IMAGE_TILING_LINEAR)
     ? format_properties.linearTilingFeatures : format_properties.optimalTilingFeatures;

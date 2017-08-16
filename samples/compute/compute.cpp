@@ -15,7 +15,7 @@ class ComputeApp : public spokk::Application {
 public:
   explicit ComputeApp(Application::CreateInfo &ci) : Application(ci) {
     // Find a compute queue
-    const DeviceQueue *compute_queue = device_context_.FindQueue(VK_QUEUE_COMPUTE_BIT);
+    const DeviceQueue *compute_queue = device_.FindQueue(VK_QUEUE_COMPUTE_BIT);
 
     // Allocate command buffers
     VkCommandPoolCreateInfo cpool_ci = {};
@@ -43,32 +43,32 @@ public:
     buffer_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     Buffer in_buffer = {}, out_buffer = {};
-    SPOKK_VK_CHECK(in_buffer.Create(device_context_, buffer_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
-    SPOKK_VK_CHECK(in_buffer.Load(device_context_, in_data.data(), buffer_ci.size));
+    SPOKK_VK_CHECK(in_buffer.Create(device_, buffer_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+    SPOKK_VK_CHECK(in_buffer.Load(device_, in_data.data(), buffer_ci.size));
     buffer_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     // TODO(cort): until I have buffer.unload, the output buffer must be host-visible.
-    SPOKK_VK_CHECK(out_buffer.Create(device_context_, buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(out_buffer.Create(device_, buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     // Load shaders
     Shader double_ints_cs = {};
     ShaderProgram compute_shader_program = {};
-    SPOKK_VK_CHECK(double_ints_cs.CreateAndLoadSpirvFile(device_context_, "data/double_ints.comp.spv"));
+    SPOKK_VK_CHECK(double_ints_cs.CreateAndLoadSpirvFile(device_, "data/double_ints.comp.spv"));
     SPOKK_VK_CHECK(compute_shader_program.AddShader(&double_ints_cs, "main"));
-    SPOKK_VK_CHECK(compute_shader_program.Finalize(device_context_));
+    SPOKK_VK_CHECK(compute_shader_program.Finalize(device_));
 
     ComputePipeline compute_pipeline = {};
     compute_pipeline.Init(&compute_shader_program);
-    SPOKK_VK_CHECK(compute_pipeline.Finalize(device_context_));
+    SPOKK_VK_CHECK(compute_pipeline.Finalize(device_));
 
     DescriptorPool dpool = {};
     dpool.Add((uint32_t)compute_shader_program.dset_layout_cis.size(), compute_shader_program.dset_layout_cis.data());
-    SPOKK_VK_CHECK(dpool.Finalize(device_context_));
+    SPOKK_VK_CHECK(dpool.Finalize(device_));
     VkDescriptorSet dset = VK_NULL_HANDLE;
-    dset = dpool.AllocateSet(device_context_, compute_shader_program.dset_layouts[0]);
+    dset = dpool.AllocateSet(device_, compute_shader_program.dset_layouts[0]);
     DescriptorSetWriter dset_writer(compute_shader_program.dset_layout_cis[0]);
     dset_writer.BindBuffer(in_buffer.Handle(), double_ints_cs.GetDescriptorBindPoint("innie").binding);
     dset_writer.BindBuffer(out_buffer.Handle(), double_ints_cs.GetDescriptorBindPoint("outie").binding);
-    dset_writer.WriteAll(device_context_, dset);
+    dset_writer.WriteAll(device_, dset);
 
     VkFenceCreateInfo fence_ci = {};
     fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
@@ -134,12 +134,12 @@ public:
     }
 
     // Cleanup
-    dpool.Destroy(device_context_);
-    in_buffer.Destroy(device_context_);
-    out_buffer.Destroy(device_context_);
-    compute_pipeline.Destroy(device_context_);
-    compute_shader_program.Destroy(device_context_);
-    double_ints_cs.Destroy(device_context_);
+    dpool.Destroy(device_);
+    in_buffer.Destroy(device_);
+    out_buffer.Destroy(device_);
+    compute_pipeline.Destroy(device_);
+    compute_shader_program.Destroy(device_);
+    double_ints_cs.Destroy(device_);
     vkDestroyFence(device_, compute_done_fence, host_allocator_);
     vkDestroyCommandPool(device_, cpool, host_allocator_);
 

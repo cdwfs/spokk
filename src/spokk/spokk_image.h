@@ -1,7 +1,7 @@
 #pragma once
 
 #include "spokk_buffer.h"
-#include "spokk_context.h"
+#include "spokk_device.h"
 #include "spokk_memory.h"
 #include "spokk_utilities.h"
 
@@ -11,30 +11,29 @@
 
 namespace spokk {
 
-class DeviceContext;
+class Device;
 struct DeviceMemoryAllocation;
 
 struct Image {
   Image() : handle(VK_NULL_HANDLE), view(VK_NULL_HANDLE), memory{} {}
 
-  VkResult Create(const DeviceContext& device_context, const VkImageCreateInfo& image_ci,
+  VkResult Create(const Device& device, const VkImageCreateInfo& image_ci,
       VkMemoryPropertyFlags memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DeviceAllocationScope allocation_scope = DEVICE_ALLOCATION_SCOPE_DEVICE);
 
   // synchronous. Returns 0 on success, non-zero on failure.
-  int CreateFromFile(const DeviceContext& device_context, const DeviceQueue* queue, const std::string& filename,
+  int CreateFromFile(const Device& device, const DeviceQueue* queue, const std::string& filename,
       VkBool32 generate_mipmaps = VK_TRUE, VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
       VkAccessFlags final_access_flags = VK_ACCESS_SHADER_READ_BIT);
-  int LoadSubresourceFromMemory(const DeviceContext& device_context, const DeviceQueue* queue, const void* src_data,
-      size_t src_nbytes, uint32_t src_row_nbytes, uint32_t src_layer_height, const VkImageSubresource& dst_subresource,
+  int LoadSubresourceFromMemory(const Device& device, const DeviceQueue* queue, const void* src_data, size_t src_nbytes,
+      uint32_t src_row_nbytes, uint32_t src_layer_height, const VkImageSubresource& dst_subresource,
       VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
       VkAccessFlags final_access_flags = VK_ACCESS_SHADER_READ_BIT);
-  int GenerateMipmaps(const DeviceContext& device_context, const DeviceQueue* queue,
-      const VkImageMemoryBarrier& barrier, uint32_t layer, uint32_t src_mip_level,
-      uint32_t mips_to_gen = VK_REMAINING_MIP_LEVELS);
+  int GenerateMipmaps(const Device& device, const DeviceQueue* queue, const VkImageMemoryBarrier& barrier,
+      uint32_t layer, uint32_t src_mip_level, uint32_t mips_to_gen = VK_REMAINING_MIP_LEVELS);
   // TODO(cort): asynchronous variants of these functions, that take a VkEvent to set when the operation is complete.
 
-  void Destroy(const DeviceContext& device_context);
+  void Destroy(const Device& device);
 
   VkImage handle;
   VkImageCreateInfo image_ci;

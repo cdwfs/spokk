@@ -1,6 +1,6 @@
 #pragma once
 
-#include "spokk_context.h"
+#include "spokk_device.h"
 #include "spokk_mesh.h"
 #include "spokk_renderpass.h"
 #include "spokk_shader.h"
@@ -13,8 +13,8 @@ struct ComputePipeline {
   ComputePipeline& operator=(const ComputePipeline& rhs) = delete;
 
   void Init(const ShaderProgram* shader_program);
-  VkResult Finalize(const DeviceContext& device_context);
-  void Destroy(const DeviceContext& device_context);
+  VkResult Finalize(const Device& device);
+  void Destroy(const Device& device);
 
   VkPipeline handle;
   const ShaderProgram* shader_program;
@@ -30,8 +30,8 @@ struct GraphicsPipeline {
       uint32_t subpass,
       const std::vector<VkDynamicState> dynamic_states = {VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_VIEWPORT},
       const VkViewport viewport = {}, const VkRect2D scissor_rect = {});
-  VkResult Finalize(const DeviceContext& device_context);
-  void Destroy(const DeviceContext& device_context);
+  VkResult Finalize(const Device& device);
+  void Destroy(const Device& device);
 
   VkPipeline handle;
 

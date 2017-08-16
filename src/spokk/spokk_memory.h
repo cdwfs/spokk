@@ -4,14 +4,14 @@
 
 namespace spokk {
 
-class DeviceContext;
+class Device;
 class DeviceMemoryBlock {
 public:
   DeviceMemoryBlock() : handle_(VK_NULL_HANDLE), info_{}, mapped_(nullptr) {}
   ~DeviceMemoryBlock();
 
-  VkResult Allocate(const DeviceContext& device_context, const VkMemoryAllocateInfo& alloc_info);
-  void Free(const DeviceContext& device_context);
+  VkResult Allocate(const Device& device, const VkMemoryAllocateInfo& alloc_info);
+  void Free(const Device& device);
 
   VkDeviceMemory Handle() const { return handle_; }
   const VkMemoryAllocateInfo& Info() const { return info_; }
@@ -59,12 +59,12 @@ enum DeviceAllocationScope {
   DEVICE_ALLOCATION_SCOPE_DEVICE = 2,
 };
 
-typedef DeviceMemoryAllocation(VKAPI_PTR* PFN_deviceAllocationFunction)(void* pUserData,
-    const DeviceContext& device_context, const VkMemoryRequirements& memory_reqs,
-    VkMemoryPropertyFlags memory_property_flags, DeviceAllocationScope allocationScope);
+typedef DeviceMemoryAllocation(VKAPI_PTR* PFN_deviceAllocationFunction)(void* pUserData, const Device& device,
+    const VkMemoryRequirements& memory_reqs, VkMemoryPropertyFlags memory_property_flags,
+    DeviceAllocationScope allocationScope);
 
 typedef void(VKAPI_PTR* PFN_deviceFreeFunction)(
-    void* pUserData, const DeviceContext& device_context, DeviceMemoryAllocation& allocation);
+    void* pUserData, const Device& device, DeviceMemoryAllocation& allocation);
 
 typedef struct DeviceAllocationCallbacks {
   void* pUserData;

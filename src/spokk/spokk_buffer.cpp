@@ -1,6 +1,6 @@
 #include "spokk_buffer.h"
-#include "spokk_context.h"
 #include "spokk_debug.h"
+#include "spokk_device.h"
 #include "spokk_utilities.h"
 
 #include <cassert>
@@ -11,39 +11,38 @@ namespace spokk {
 
 PipelinedBuffer::PipelinedBuffer() : handles_{}, views_{}, depth_(0) {}
 PipelinedBuffer::~PipelinedBuffer() {}
-VkResult PipelinedBuffer::Create(const DeviceContext& device_context, uint32_t depth,
-    const VkBufferCreateInfo& buffer_ci, VkMemoryPropertyFlags memory_properties,
-    DeviceAllocationScope allocation_scope) {
+VkResult PipelinedBuffer::Create(const Device& device, uint32_t depth, const VkBufferCreateInfo& buffer_ci,
+    VkMemoryPropertyFlags memory_properties, DeviceAllocationScope allocation_scope) {
   assert(depth_ == 0);
   depth_ = depth;
   if (depth > 0) {
     handles_.resize(depth);
     VkMemoryRequirements single_reqs = {};
     for (auto& buf : handles_) {
-      SPOKK_VK_CHECK(vkCreateBuffer(device_context.Device(), &buffer_ci, device_context.HostAllocator(), &buf));
+      SPOKK_VK_CHECK(vkCreateBuffer(device.Logical(), &buffer_ci, device.HostAllocator(), &buf));
       // It's a validation error not to call this on every VkBuffer before binding its memory, even if you
       // know the results will be the same.
-      vkGetBufferMemoryRequirements(device_context.Device(), buf, &single_reqs);
+      vkGetBufferMemoryRequirements(device.Logical(), buf, &single_reqs);
     }
 
     bytes_per_pframe_ = (single_reqs.size + (single_reqs.alignment - 1)) & ~(single_reqs.alignment - 1);
     VkMemoryRequirements full_reqs = single_reqs;
     full_reqs.size = bytes_per_pframe_ * depth;
-    memory_ = device_context.DeviceAlloc(full_reqs, memory_properties, allocation_scope);
+    memory_ = device.DeviceAlloc(full_reqs, memory_properties, allocation_scope);
     if (memory_.block) {
       for (size_t iBuf = 0; iBuf < handles_.size(); ++iBuf) {
-        SPOKK_VK_CHECK(vkBindBufferMemory(device_context.Device(), handles_[iBuf], memory_.block->Handle(),
-            memory_.offset + iBuf * bytes_per_pframe_));
+        SPOKK_VK_CHECK(vkBindBufferMemory(
+            device.Logical(), handles_[iBuf], memory_.block->Handle(), memory_.offset + iBuf * bytes_per_pframe_));
       }
     } else {
-      Destroy(device_context);
+      Destroy(device);
       return VK_ERROR_OUT_OF_DEVICE_MEMORY;
     }
   }
   return VK_SUCCESS;
 }
-VkResult PipelinedBuffer::Load(const DeviceContext& device_context, uint32_t pframe, const void* src_data,
-    size_t data_size, size_t src_offset, VkDeviceSize dst_offset) const {
+VkResult PipelinedBuffer::Load(const Device& device, uint32_t pframe, const void* src_data, size_t data_size,
+    size_t src_offset, VkDeviceSize dst_offset) const {
   if (Handle(pframe) == VK_NULL_HANDLE) {
     return VK_ERROR_INITIALIZATION_FAILED;  // Call Create() first!
   }
@@ -54,15 +53,15 @@ VkResult PipelinedBuffer::Load(const DeviceContext& device_context, uint32_t pfr
     pframe_range.memory = memory_.block->Handle();
     pframe_range.offset = memory_.offset + pframe * bytes_per_pframe_;
     pframe_range.size = bytes_per_pframe_;
-    SPOKK_VK_CHECK(vkInvalidateMappedMemoryRanges(device_context.Device(), 1, &pframe_range));
+    SPOKK_VK_CHECK(vkInvalidateMappedMemoryRanges(device.Logical(), 1, &pframe_range));
     memcpy(reinterpret_cast<uint8_t*>(Mapped(pframe)) + dst_offset,
         reinterpret_cast<const uint8_t*>(src_data) + src_offset, data_size);
-    SPOKK_VK_CHECK(vkFlushMappedMemoryRanges(device_context.Device(), 1, &pframe_range));
+    SPOKK_VK_CHECK(vkFlushMappedMemoryRanges(device.Logical(), 1, &pframe_range));
   } else {
-    const DeviceQueue* transfer_queue = device_context.FindQueue(VK_QUEUE_TRANSFER_BIT);
+    const DeviceQueue* transfer_queue = device.FindQueue(VK_QUEUE_TRANSFER_BIT);
     assert(transfer_queue != nullptr);
     std::unique_ptr<OneShotCommandPool> one_shot_cpool = my_make_unique<OneShotCommandPool>(
-        device_context.Device(), transfer_queue->handle, transfer_queue->family, device_context.HostAllocator());
+        device.Logical(), transfer_queue->handle, transfer_queue->family, device.HostAllocator());
     VkCommandBuffer cb = one_shot_cpool->AllocateAndBegin();
     VkBufferMemoryBarrier barrier = {};
     barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -89,8 +88,8 @@ VkResult PipelinedBuffer::Load(const DeviceContext& device_context, uint32_t pfr
       staging_buffer_ci.size = data_size;
       staging_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
       staging_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-      SPOKK_VK_CHECK(staging_buffer.Create(device_context, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-          spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
+      SPOKK_VK_CHECK(staging_buffer.Create(
+          device, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
       // barrier between host writes and transfer reads
       VkBufferMemoryBarrier buffer_barrier = {};
       buffer_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -121,12 +120,12 @@ VkResult PipelinedBuffer::Load(const DeviceContext& device_context, uint32_t pfr
     }
     result = one_shot_cpool->EndSubmitAndFree(&cb);
     if (staging_buffer.Handle() != VK_NULL_HANDLE) {
-      staging_buffer.Destroy(device_context);  // TODO(cort): staging buffer
+      staging_buffer.Destroy(device);  // TODO(cort): staging buffer
     }
   }
   return result;
 }
-VkResult PipelinedBuffer::CreateViews(const DeviceContext& device_context, VkFormat format) {
+VkResult PipelinedBuffer::CreateViews(const Device& device, VkFormat format) {
   if (depth_ == 0) {
     return VK_ERROR_INITIALIZATION_FAILED;  // Call create() first!
   }
@@ -140,24 +139,24 @@ VkResult PipelinedBuffer::CreateViews(const DeviceContext& device_context, VkFor
   for (auto buf : handles_) {
     view_ci.buffer = buf;
     VkBufferView view = VK_NULL_HANDLE;
-    SPOKK_VK_CHECK(vkCreateBufferView(device_context.Device(), &view_ci, device_context.HostAllocator(), &view));
+    SPOKK_VK_CHECK(vkCreateBufferView(device.Logical(), &view_ci, device.HostAllocator(), &view));
     views_.push_back(view);
   }
   return VK_SUCCESS;
 }
-void PipelinedBuffer::Destroy(const DeviceContext& device_context) {
+void PipelinedBuffer::Destroy(const Device& device) {
   if (memory_.block) {
-    device_context.DeviceFree(memory_);
+    device.DeviceFree(memory_);
   }
   for (auto view : views_) {
     if (view != VK_NULL_HANDLE) {
-      vkDestroyBufferView(device_context.Device(), view, device_context.HostAllocator());
+      vkDestroyBufferView(device.Logical(), view, device.HostAllocator());
     }
   }
   views_.clear();
   for (auto buf : handles_) {
     if (buf != VK_NULL_HANDLE) {
-      vkDestroyBuffer(device_context.Device(), buf, device_context.HostAllocator());
+      vkDestroyBuffer(device.Logical(), buf, device.HostAllocator());
     }
   }
   handles_.clear();
