@@ -13,7 +13,10 @@ spokk builds upon the following projects, which will be automatically included a
 - [glfw/glfw](https://github.com/glfw/glfw) for windowing and keyboard/mouse input.
 - [sheredom/json.h](https://github.com/sheredom/json.h) for JSON parsing.
 - [google/mathfu](https://github.com/google/mathfu) for 3D math.
-- [google/shaderc](https://github.com/google/shaderc) for runtime shader compilation.
+  - [scoopr/vectorial](https://github.com/scoopr/vectorial) for mathfu's SIMD support
+- [google/shaderc](https://github.com/google/shaderc) for shader compilation.
 - [KhronosGroup/SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) for introspection of
   SPIR-V shaders (used to automatically generate descriptor set layouts).
-- [nothings/stb_image](https://github.com/nothings/stb) for loading common image formats.
+- [nothings/stb](https://github.com/nothings/stb) for loading common image formats (`stb_image`), writing
+  images (`stb_image_write`), mipmap generation (`stb_image_resize`), and TrueType font loading
+  (`stb_truetype`).

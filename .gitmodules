@@ -31,3 +31,6 @@
 [submodule "third_party/json.h"]
 	path = third_party/json.h
 	url = https://github.com/sheredom/json.h.git
+[submodule "third_party/vectorial"]
+	path = third_party/vectorial
+	url = https://github.com/scoopr/vectorial.git
