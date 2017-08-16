@@ -392,7 +392,7 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
     SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
   }
 
-  init_successful = true;
+  init_successful_ = true;
 }
 Application::~Application() {
   if (device_) {
@@ -438,7 +438,7 @@ Application::~Application() {
 }
 
 int Application::Run() {
-  if (!init_successful) {
+  if (!init_successful_) {
     return -1;
   }
 
