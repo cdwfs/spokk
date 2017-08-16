@@ -93,7 +93,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
 
   // Create render pass
   render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
-  SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
+  SPOKK_VK_CHECK(render_pass_.Finalize(device_));
   render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
@@ -101,14 +101,14 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   VkSamplerCreateInfo sampler_ci =
       GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
   SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-  albedo_tex_.CreateFromFile(device_context_, graphics_and_present_queue_, "data/redf.ktx");
+  albedo_tex_.CreateFromFile(device_, graphics_and_present_queue_, "data/redf.ktx");
 
   // Load shader pipelines
-  SPOKK_VK_CHECK(pillar_vs_.CreateAndLoadSpirvFile(device_context_, "data/pillar.vert.spv"));
-  SPOKK_VK_CHECK(pillar_fs_.CreateAndLoadSpirvFile(device_context_, "data/pillar.frag.spv"));
+  SPOKK_VK_CHECK(pillar_vs_.CreateAndLoadSpirvFile(device_, "data/pillar.vert.spv"));
+  SPOKK_VK_CHECK(pillar_fs_.CreateAndLoadSpirvFile(device_, "data/pillar.frag.spv"));
   SPOKK_VK_CHECK(pillar_shader_program_.AddShader(&pillar_vs_));
   SPOKK_VK_CHECK(pillar_shader_program_.AddShader(&pillar_fs_));
-  SPOKK_VK_CHECK(pillar_shader_program_.Finalize(device_context_));
+  SPOKK_VK_CHECK(pillar_shader_program_.Finalize(device_));
 
   // Describe the mesh format.
   // clang-format off
@@ -132,8 +132,8 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   index_buffer_ci.size = cube_index_count * sizeof(cube_indices[0]);
   index_buffer_ci.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(mesh_.index_buffer.Create(device_context_, index_buffer_ci));
-  SPOKK_VK_CHECK(mesh_.index_buffer.Load(device_context_, cube_indices, index_buffer_ci.size));
+  SPOKK_VK_CHECK(mesh_.index_buffer.Create(device_, index_buffer_ci));
+  SPOKK_VK_CHECK(mesh_.index_buffer.Load(device_, cube_indices, index_buffer_ci.size));
   // vertex buffer
   VkBufferCreateInfo vertex_buffer_ci = {};
   vertex_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -143,7 +143,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   mesh_.vertex_buffers.resize(1);
   mesh_.vertex_buffer_byte_offsets.resize(1, 0);
   mesh_.index_buffer_byte_offset = 0;
-  SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Create(device_context_, vertex_buffer_ci));
+  SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Create(device_, vertex_buffer_ci));
   // Convert the vertex data from its original uncompressed format to its final format.
   // In a real application, this conversion would happen at asset build time.
   // clang-format off
@@ -159,11 +159,11 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
       cube_vertices, src_vertex_layout, final_mesh_vertices.data(), final_vertex_layout, cube_vertex_count);
   assert(convert_error == 0);
   (void)convert_error;
-  SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Load(device_context_, final_mesh_vertices.data(), vertex_buffer_ci.size));
+  SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Load(device_, final_mesh_vertices.data(), vertex_buffer_ci.size));
 
   // Create graphics pipelines
   pillar_pipeline_.Init(&(mesh_.mesh_format), &pillar_shader_program_, &render_pass_, 0);
-  SPOKK_VK_CHECK(pillar_pipeline_.Finalize(device_context_));
+  SPOKK_VK_CHECK(pillar_pipeline_.Finalize(device_));
 
   // Create pipelined buffer of shader uniforms
   VkBufferCreateInfo uniform_buffer_ci = {};
@@ -171,8 +171,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   uniform_buffer_ci.size = sizeof(SceneUniforms);
   uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(
-      scene_uniforms_.Create(device_context_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+  SPOKK_VK_CHECK(scene_uniforms_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
   // Create buffer of per-cell "height" values
   VkBufferCreateInfo heightfield_buffer_ci = {};
@@ -180,9 +179,9 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   heightfield_buffer_ci.size = HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY * sizeof(float);
   heightfield_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   heightfield_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(heightfield_buffer_.Create(
-      device_context_, PFRAME_COUNT, heightfield_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-  SPOKK_VK_CHECK(heightfield_buffer_.CreateViews(device_context_, VK_FORMAT_R32_SFLOAT));
+  SPOKK_VK_CHECK(
+      heightfield_buffer_.Create(device_, PFRAME_COUNT, heightfield_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+  SPOKK_VK_CHECK(heightfield_buffer_.CreateViews(device_, VK_FORMAT_R32_SFLOAT));
   for (int32_t iY = 0; iY < HEIGHTFIELD_DIMY; ++iY) {
     for (int32_t iX = 0; iX < HEIGHTFIELD_DIMX; ++iX) {
       heightfield_.at(XY_TO_CELL(iX, iY)) = -1.0f;  // non-visible cells have negative heights
@@ -197,13 +196,13 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   visible_cells_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   visible_cells_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(visible_cells_buffer_.Create(
-      device_context_, PFRAME_COUNT, visible_cells_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-  SPOKK_VK_CHECK(visible_cells_buffer_.CreateViews(device_context_, VK_FORMAT_R32_SINT));
+      device_, PFRAME_COUNT, visible_cells_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+  SPOKK_VK_CHECK(visible_cells_buffer_.CreateViews(device_, VK_FORMAT_R32_SINT));
 
   for (const auto& dset_layout_ci : pillar_shader_program_.dset_layout_cis) {
     dpool_.Add(dset_layout_ci, PFRAME_COUNT);
   }
-  SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
+  SPOKK_VK_CHECK(dpool_.Finalize(device_));
 
   // Create swapchain-sized buffers
   CreateRenderBuffers(swapchain_extent_);
@@ -214,13 +213,13 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   dset_writer.BindSampler(sampler_, pillar_fs_.GetDescriptorBindPoint("samp").binding);
   for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
     // TODO(cort): allocate_pipelined_set()?
-    dsets_[pframe] = dpool_.AllocateSet(device_context_, pillar_shader_program_.dset_layouts[0]);
+    dsets_[pframe] = dpool_.AllocateSet(device_, pillar_shader_program_.dset_layouts[0]);
     dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), pillar_vs_.GetDescriptorBindPoint("scene_consts").binding);
     dset_writer.BindTexelBuffer(
         visible_cells_buffer_.View(pframe), pillar_vs_.GetDescriptorBindPoint("visible_cells").binding);
     dset_writer.BindTexelBuffer(
         heightfield_buffer_.View(pframe), pillar_vs_.GetDescriptorBindPoint("cell_heights").binding);
-    dset_writer.WriteAll(device_context_, dsets_[pframe]);
+    dset_writer.WriteAll(device_, dsets_[pframe]);
   }
 }
 
@@ -228,28 +227,28 @@ PillarsApp::~PillarsApp() {
   if (device_) {
     vkDeviceWaitIdle(device_);
 
-    dpool_.Destroy(device_context_);
+    dpool_.Destroy(device_);
 
-    scene_uniforms_.Destroy(device_context_);
-    visible_cells_buffer_.Destroy(device_context_);
-    heightfield_buffer_.Destroy(device_context_);
+    scene_uniforms_.Destroy(device_);
+    visible_cells_buffer_.Destroy(device_);
+    heightfield_buffer_.Destroy(device_);
 
-    mesh_.Destroy(device_context_);
+    mesh_.Destroy(device_);
 
-    pillar_vs_.Destroy(device_context_);
-    pillar_fs_.Destroy(device_context_);
-    pillar_shader_program_.Destroy(device_context_);
-    pillar_pipeline_.Destroy(device_context_);
+    pillar_vs_.Destroy(device_);
+    pillar_fs_.Destroy(device_);
+    pillar_shader_program_.Destroy(device_);
+    pillar_pipeline_.Destroy(device_);
 
     vkDestroySampler(device_, sampler_, host_allocator_);
-    albedo_tex_.Destroy(device_context_);
+    albedo_tex_.Destroy(device_);
 
     for (const auto fb : framebuffers_) {
       vkDestroyFramebuffer(device_, fb, host_allocator_);
     }
-    render_pass_.Destroy(device_context_);
+    render_pass_.Destroy(device_);
 
-    depth_image_.Destroy(device_context_);
+    depth_image_.Destroy(device_);
   }
 }
 
@@ -378,7 +377,7 @@ void PillarsApp::HandleWindowResize(VkExtent2D new_window_extent) {
     }
   }
   framebuffers_.clear();
-  depth_image_.Destroy(device_context_);
+  depth_image_.Destroy(device_);
 
   float aspect_ratio = (float)new_window_extent.width / (float)new_window_extent.height;
   camera_->setPerspective(FOV_DEGREES, aspect_ratio, Z_NEAR, Z_FAR);
@@ -391,7 +390,7 @@ void PillarsApp::CreateRenderBuffers(VkExtent2D extent) {
   VkImageCreateInfo depth_image_ci = render_pass_.GetAttachmentImageCreateInfo(1, extent);
   depth_image_ = {};
   SPOKK_VK_CHECK(depth_image_.Create(
-      device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
+      device_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
 
   // Create VkFramebuffers
   std::vector<VkImageView> attachment_views = {

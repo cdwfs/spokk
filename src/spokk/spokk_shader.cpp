@@ -140,7 +140,7 @@ static void parse_shader_resources(std::vector<DescriptorSetLayoutInfo>& dset_la
 //
 // Shader
 //
-VkResult Shader::CreateAndLoadSpirvFile(const DeviceContext& device_context, const std::string& filename) {
+VkResult Shader::CreateAndLoadSpirvFile(const Device& device, const std::string& filename) {
   FILE* spv_file = fopen(filename.c_str(), "rb");
   if (!spv_file) {
     return VK_ERROR_INITIALIZATION_FAILED;
@@ -148,11 +148,11 @@ VkResult Shader::CreateAndLoadSpirvFile(const DeviceContext& device_context, con
   fseek(spv_file, 0, SEEK_END);
   long spv_file_size = ftell(spv_file);
   fseek(spv_file, 0, SEEK_SET);
-  VkResult result = CreateAndLoadSpirvFp(device_context, spv_file, spv_file_size);
+  VkResult result = CreateAndLoadSpirvFp(device, spv_file, spv_file_size);
   fclose(spv_file);
   return result;
 }
-VkResult Shader::CreateAndLoadSpirvFp(const DeviceContext& device_context, FILE* fp, int len_bytes) {
+VkResult Shader::CreateAndLoadSpirvFp(const Device& device, FILE* fp, int len_bytes) {
   ZOMBO_ASSERT_RETURN((len_bytes % sizeof(uint32_t)) == 0, VK_ERROR_INITIALIZATION_FAILED,
       "len_bytes (%d) must be divisible by 4", len_bytes);
   spirv.resize(len_bytes / sizeof(uint32_t));
@@ -160,19 +160,19 @@ VkResult Shader::CreateAndLoadSpirvFp(const DeviceContext& device_context, FILE*
   if ((int)bytes_read != len_bytes) {
     return VK_ERROR_INITIALIZATION_FAILED;
   }
-  return ParseSpirvAndCreate(device_context);
+  return ParseSpirvAndCreate(device);
 }
-VkResult Shader::CreateAndLoadSpirvMem(const DeviceContext& device_context, const void* buffer, int len_bytes) {
+VkResult Shader::CreateAndLoadSpirvMem(const Device& device, const void* buffer, int len_bytes) {
   ZOMBO_ASSERT_RETURN((len_bytes % sizeof(uint32_t)) == 0, VK_ERROR_INITIALIZATION_FAILED,
       "len_bytes (%d) must be divisible by 4", len_bytes);
   spirv.reserve(len_bytes / sizeof(uint32_t));
   const uint32_t* buffer_as_u32 = (const uint32_t*)buffer;
   spirv.insert(spirv.begin(), buffer_as_u32, buffer_as_u32 + (len_bytes / sizeof(uint32_t)));
 
-  return ParseSpirvAndCreate(device_context);
+  return ParseSpirvAndCreate(device);
 }
 
-VkResult Shader::ParseSpirvAndCreate(const DeviceContext& device_context) {
+VkResult Shader::ParseSpirvAndCreate(const Device& device) {
   spirv_cross::CompilerGLSL glsl(spirv);  // NOTE: throws an exception if you hand it malformed/invalid SPIRV.
   stage = VkShaderStageFlagBits(0);
   spv::ExecutionModel execution_model = glsl.get_execution_model();
@@ -197,7 +197,7 @@ VkResult Shader::ParseSpirvAndCreate(const DeviceContext& device_context) {
   shader_ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
   shader_ci.codeSize = spirv.size() * sizeof(uint32_t);  // note: in bytes
   shader_ci.pCode = spirv.data();
-  VkResult result = vkCreateShaderModule(device_context.Device(), &shader_ci, device_context.HostAllocator(), &handle);
+  VkResult result = vkCreateShaderModule(device.Logical(), &shader_ci, device.HostAllocator(), &handle);
   return result;
 }
 void Shader::OverrideDescriptorType(uint32_t dset, uint32_t binding, VkDescriptorType new_type) {
@@ -232,9 +232,9 @@ DescriptorBindPoint Shader::GetDescriptorBindPoint(const std::string& name) cons
   return {UINT32_MAX, UINT32_MAX};  // TODO(cort): better "not found" error?
 }
 
-void Shader::Destroy(const DeviceContext& device_context) {
+void Shader::Destroy(const Device& device) {
   if (handle) {
-    vkDestroyShaderModule(device_context.Device(), handle, device_context.HostAllocator());
+    vkDestroyShaderModule(device.Logical(), handle, device.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
   dset_layout_infos.clear();
@@ -327,7 +327,7 @@ VkResult ShaderProgram::AddShader(const Shader* shader, const char* entry_point)
 }
 
 VkResult ShaderProgram::ForceCompatibleLayoutsAndFinalize(
-    const DeviceContext& device_context, const std::vector<ShaderProgram*> programs) {
+    const Device& device, const std::vector<ShaderProgram*> programs) {
   if (programs.empty()) {
     return VK_SUCCESS;
   }
@@ -423,12 +423,12 @@ VkResult ShaderProgram::ForceCompatibleLayoutsAndFinalize(
   }
 
   for (auto program : programs) {
-    program->Finalize(device_context);
+    program->Finalize(device);
   }
   return VK_SUCCESS;
 }
 
-VkResult ShaderProgram::Finalize(const DeviceContext& device_context) {
+VkResult ShaderProgram::Finalize(const Device& device) {
   // Determine active shader stages
   active_stages = 0;
   for (const auto& stage_ci : shader_stage_cis) {
@@ -471,8 +471,8 @@ VkResult ShaderProgram::Finalize(const DeviceContext& device_context) {
     layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layout_ci.bindingCount = (uint32_t)layout_info.bindings.size();
     layout_ci.pBindings = layout_info.bindings.data();
-    VkResult result = vkCreateDescriptorSetLayout(
-        device_context.Device(), &layout_ci, device_context.HostAllocator(), &dset_layouts[iLayout]);
+    VkResult result =
+        vkCreateDescriptorSetLayout(device.Logical(), &layout_ci, device.HostAllocator(), &dset_layouts[iLayout]);
     if (result != VK_SUCCESS) {
       return result;
     }
@@ -484,8 +484,8 @@ VkResult ShaderProgram::Finalize(const DeviceContext& device_context) {
   pipeline_layout_ci.pSetLayouts = dset_layouts.data();
   pipeline_layout_ci.pushConstantRangeCount = (uint32_t)push_constant_ranges.size();
   pipeline_layout_ci.pPushConstantRanges = push_constant_ranges.data();
-  VkResult result = vkCreatePipelineLayout(
-      device_context.Device(), &pipeline_layout_ci, device_context.HostAllocator(), &pipeline_layout);
+  VkResult result =
+      vkCreatePipelineLayout(device.Logical(), &pipeline_layout_ci, device.HostAllocator(), &pipeline_layout);
   // Set entry point names now that the shader count is finalized
   for (size_t iShader = 0; iShader < shader_stage_cis.size(); ++iShader) {
     shader_stage_cis[iShader].pName = entry_point_names[iShader].c_str();
@@ -493,10 +493,10 @@ VkResult ShaderProgram::Finalize(const DeviceContext& device_context) {
 
   return result;
 }
-void ShaderProgram::Destroy(const DeviceContext& device_context) {
+void ShaderProgram::Destroy(const Device& device) {
   for (auto dset_layout : dset_layouts) {
     if (dset_layout != VK_NULL_HANDLE) {
-      vkDestroyDescriptorSetLayout(device_context.Device(), dset_layout, device_context.HostAllocator());
+      vkDestroyDescriptorSetLayout(device.Logical(), dset_layout, device.HostAllocator());
     }
   }
   dset_layouts.clear();
@@ -506,7 +506,7 @@ void ShaderProgram::Destroy(const DeviceContext& device_context) {
   shader_stage_cis.clear();
   entry_point_names.clear();
   if (pipeline_layout != VK_NULL_HANDLE) {
-    vkDestroyPipelineLayout(device_context.Device(), pipeline_layout, device_context.HostAllocator());
+    vkDestroyPipelineLayout(device.Logical(), pipeline_layout, device.HostAllocator());
     pipeline_layout = VK_NULL_HANDLE;
   }
   active_stages = 0;
@@ -540,41 +540,40 @@ void DescriptorPool::Add(const VkDescriptorSetLayoutCreateInfo& dset_layout, uin
   }
   ci.maxSets += dset_count;
 }
-VkResult DescriptorPool::Finalize(const DeviceContext& device_context, VkDescriptorPoolCreateFlags flags) {
+VkResult DescriptorPool::Finalize(const Device& device, VkDescriptorPoolCreateFlags flags) {
   ci.flags = flags;
-  VkResult result = vkCreateDescriptorPool(device_context.Device(), &ci, device_context.HostAllocator(), &handle);
+  VkResult result = vkCreateDescriptorPool(device.Logical(), &ci, device.HostAllocator(), &handle);
   return result;
 }
-void DescriptorPool::Destroy(const DeviceContext& device_context) {
+void DescriptorPool::Destroy(const Device& device) {
   if (handle != VK_NULL_HANDLE) {
-    vkDestroyDescriptorPool(device_context.Device(), handle, device_context.HostAllocator());
+    vkDestroyDescriptorPool(device.Logical(), handle, device.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
 }
-VkResult DescriptorPool::AllocateSets(const DeviceContext& device_context, uint32_t dset_count,
+VkResult DescriptorPool::AllocateSets(const Device& device, uint32_t dset_count,
     const VkDescriptorSetLayout* dset_layouts, VkDescriptorSet* out_dsets) const {
   VkDescriptorSetAllocateInfo alloc_info = {};
   alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
   alloc_info.descriptorPool = handle;
   alloc_info.descriptorSetCount = dset_count;
   alloc_info.pSetLayouts = dset_layouts;
-  VkResult result = vkAllocateDescriptorSets(device_context.Device(), &alloc_info, out_dsets);
+  VkResult result = vkAllocateDescriptorSets(device.Logical(), &alloc_info, out_dsets);
   return result;
 }
-VkDescriptorSet DescriptorPool::AllocateSet(
-    const DeviceContext& device_context, VkDescriptorSetLayout dset_layout) const {
+VkDescriptorSet DescriptorPool::AllocateSet(const Device& device, VkDescriptorSetLayout dset_layout) const {
   VkDescriptorSet dset = VK_NULL_HANDLE;
-  AllocateSets(device_context, 1, &dset_layout, &dset);
+  AllocateSets(device, 1, &dset_layout, &dset);
   return dset;
 }
-void DescriptorPool::FreeSets(DeviceContext& device_context, uint32_t set_count, const VkDescriptorSet* sets) const {
+void DescriptorPool::FreeSets(Device& device, uint32_t set_count, const VkDescriptorSet* sets) const {
   if (ci.flags & VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT) {
-    vkFreeDescriptorSets(device_context.Device(), handle, set_count, sets);
+    vkFreeDescriptorSets(device.Logical(), handle, set_count, sets);
   }
 }
-void DescriptorPool::FreeSet(DeviceContext& device_context, VkDescriptorSet set) const {
+void DescriptorPool::FreeSet(Device& device, VkDescriptorSet set) const {
   if (ci.flags & VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT) {
-    vkFreeDescriptorSets(device_context.Device(), handle, 1, &set);
+    vkFreeDescriptorSets(device.Logical(), handle, 1, &set);
   }
 }
 
@@ -702,14 +701,14 @@ void DescriptorSetWriter::BindTexelBuffer(VkBufferView view, uint32_t binding, u
   auto* pTexelBufferView = const_cast<VkBufferView*>(write->pTexelBufferView);
   *pTexelBufferView = view;
 }
-void DescriptorSetWriter::WriteAll(const DeviceContext& device_context, VkDescriptorSet dest_set) {
+void DescriptorSetWriter::WriteAll(const Device& device, VkDescriptorSet dest_set) {
   for (auto& write : binding_writes) {
     write.dstSet = dest_set;
   }
-  vkUpdateDescriptorSets(device_context.Device(), (uint32_t)binding_writes.size(), binding_writes.data(), 0, nullptr);
+  vkUpdateDescriptorSets(device.Logical(), (uint32_t)binding_writes.size(), binding_writes.data(), 0, nullptr);
 }
 void DescriptorSetWriter::WriteOne(
-    const DeviceContext& device_context, VkDescriptorSet dest_set, uint32_t binding, uint32_t array_element) {
+    const Device& device, VkDescriptorSet dest_set, uint32_t binding, uint32_t array_element) {
   ZOMBO_ASSERT(
       binding < binding_writes.size(), "binding %u out of range [0..%u]", binding, (uint32_t)binding_writes.size());
   VkWriteDescriptorSet writeCopy = binding_writes[binding];
@@ -722,7 +721,7 @@ void DescriptorSetWriter::WriteOne(
   } else if (writeCopy.pTexelBufferView != nullptr) {
     writeCopy.pTexelBufferView += array_element;
   }
-  vkUpdateDescriptorSets(device_context.Device(), 1, &writeCopy, 0, nullptr);
+  vkUpdateDescriptorSets(device.Logical(), 1, &writeCopy, 0, nullptr);
 }
 
 }  // namespace spokk

@@ -55,8 +55,8 @@ SET(SPOKK_HEADERS
     src/spokk/spokk.h
     src/spokk/spokk_application.h
     src/spokk/spokk_buffer.h
-    src/spokk/spokk_context.h
     src/spokk/spokk_debug.h
+    src/spokk/spokk_device.h
     src/spokk/spokk_image.h
     src/spokk/spokk_memory.h
     src/spokk/spokk_mesh.h
@@ -72,7 +72,7 @@ SET(SPOKK_SOURCES
     src/spokk/image_file.c
     src/spokk/spokk_application.cpp
     src/spokk/spokk_buffer.cpp
-    src/spokk/spokk_context.cpp
+    src/spokk/spokk_device.cpp
     src/spokk/spokk_image.cpp
     src/spokk/spokk_memory.cpp
     src/spokk/spokk_mesh.cpp

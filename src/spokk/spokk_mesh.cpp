@@ -1,5 +1,5 @@
 #include "spokk_mesh.h"
-#include "spokk_context.h"
+#include "spokk_device.h"
 #include "spokk_platform.h"
 
 #include <array>
@@ -46,7 +46,7 @@ Mesh::Mesh()
     index_count(0),
     index_type(VK_INDEX_TYPE_MAX_ENUM) {}
 
-int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_filename) {
+int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
   FILE* mesh_file = zomboFopen(mesh_filename, "rb");
   if (mesh_file == nullptr) {
     fprintf(stderr, "Could not open %s for reading\n", mesh_filename);
@@ -100,8 +100,8 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
   index_buffer_ci.size = indices.size();
   index_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
   index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  index_buffer.Create(device_context, index_buffer_ci);
-  index_buffer.Load(device_context, indices.data(), indices.size());
+  index_buffer.Create(device, index_buffer_ci);
+  index_buffer.Load(device, indices.data(), indices.size());
   vertex_buffers.resize(mesh_header.vertex_buffer_count, {});
   for (uint32_t iVB = 0; iVB < mesh_header.vertex_buffer_count; ++iVB) {
     VkBufferCreateInfo vertex_buffer_ci = {};
@@ -109,8 +109,8 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
     vertex_buffer_ci.size = vertices.size();
     vertex_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    vertex_buffers[iVB].Create(device_context, vertex_buffer_ci);
-    vertex_buffers[iVB].Load(device_context, vertices.data(), vertices.size());
+    vertex_buffers[iVB].Create(device, vertex_buffer_ci);
+    vertex_buffers[iVB].Load(device, vertices.data(), vertices.size());
   }
 
   // Populate buffer offsets
@@ -123,12 +123,12 @@ int Mesh::CreateFromFile(const DeviceContext& device_context, const char* mesh_f
   return 0;
 }
 
-void Mesh::Destroy(const DeviceContext& device_context) {
+void Mesh::Destroy(const Device& device) {
   for (auto& vb : vertex_buffers) {
-    vb.Destroy(device_context);
+    vb.Destroy(device);
   }
   vertex_buffers.clear();
-  index_buffer.Destroy(device_context);
+  index_buffer.Destroy(device);
   index_count = 0;
 }
 

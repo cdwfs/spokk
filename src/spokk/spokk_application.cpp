@@ -325,7 +325,7 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   device_ci.enabledExtensionCount = (uint32_t)enabled_device_extension_names.size();
   device_ci.ppEnabledExtensionNames = enabled_device_extension_names.data();
   device_ci.pEnabledFeatures = &enabled_device_features_;
-  SPOKK_VK_CHECK(vkCreateDevice(physical_device_, &device_ci, host_allocator_, &device_));
+  SPOKK_VK_CHECK(vkCreateDevice(physical_device_, &device_ci, host_allocator_, &logical_device_));
 
   uint32_t total_queue_family_count = 0;
   vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &total_queue_family_count, nullptr);
@@ -343,7 +343,7 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
         (qfr.support_present && ((qfp.queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0)) ? surface_ : VK_NULL_HANDLE,
     };
     for (uint32_t iQ = 0; iQ < total_queue_count; ++iQ) {
-      vkGetDeviceQueue(device_, qci.queueFamilyIndex, iQ, &qc.handle);
+      vkGetDeviceQueue(logical_device_, qci.queueFamilyIndex, iQ, &qc.handle);
       qc.priority = qci.pQueuePriorities[iQ];
       queues_.push_back(qc);
     }
@@ -352,9 +352,9 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
 
   VkPipelineCacheCreateInfo pipeline_cache_ci = {};
   pipeline_cache_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-  SPOKK_VK_CHECK(vkCreatePipelineCache(device_, &pipeline_cache_ci, host_allocator_, &pipeline_cache_));
+  SPOKK_VK_CHECK(vkCreatePipelineCache(logical_device_, &pipeline_cache_ci, host_allocator_, &pipeline_cache_));
 
-  device_context_ = DeviceContext(device_, physical_device_, pipeline_cache_, queues_.data(), (uint32_t)queues_.size(),
+  device_ = Device(logical_device_, physical_device_, pipeline_cache_, queues_.data(), (uint32_t)queues_.size(),
       enabled_device_features_, host_allocator_, device_allocator_);
 
   if (ci.enable_graphics) {
@@ -362,26 +362,26 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
     CreateSwapchain(default_extent);
   }
 
-  graphics_and_present_queue_ = device_context_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
+  graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
 
   // Allocate command buffers
   VkCommandPoolCreateInfo cpool_ci = {};
   cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
   cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
   cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
-  SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &primary_cpool_));
+  SPOKK_VK_CHECK(vkCreateCommandPool(logical_device_, &cpool_ci, host_allocator_, &primary_cpool_));
   VkCommandBufferAllocateInfo cb_allocate_info = {};
   cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
   cb_allocate_info.commandPool = primary_cpool_;
   cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
   cb_allocate_info.commandBufferCount = (uint32_t)primary_command_buffers_.size();
-  SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, primary_command_buffers_.data()));
+  SPOKK_VK_CHECK(vkAllocateCommandBuffers(logical_device_, &cb_allocate_info, primary_command_buffers_.data()));
 
   // Create the semaphores used to synchronize access to swapchain images
   VkSemaphoreCreateInfo semaphore_ci = {};
   semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-  SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
-  SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
+  SPOKK_VK_CHECK(vkCreateSemaphore(logical_device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
+  SPOKK_VK_CHECK(vkCreateSemaphore(logical_device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
 
   // Create the fences used to wait for each swapchain image's command buffer to be submitted.
   // This prevents re-writing the command buffer contents before it's been submitted and processed.
@@ -389,30 +389,30 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
   fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
   for (auto &fence : submit_complete_fences_) {
-    SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
+    SPOKK_VK_CHECK(vkCreateFence(logical_device_, &fence_ci, host_allocator_, &fence));
   }
 
   init_successful_ = true;
 }
 Application::~Application() {
-  if (device_) {
-    vkDeviceWaitIdle(device_);
+  if (logical_device_) {
+    vkDeviceWaitIdle(logical_device_);
 
-    vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
-    vkDestroySemaphore(device_, submit_complete_semaphore_, host_allocator_);
+    vkDestroySemaphore(logical_device_, image_acquire_semaphore_, host_allocator_);
+    vkDestroySemaphore(logical_device_, submit_complete_semaphore_, host_allocator_);
     for (auto fence : submit_complete_fences_) {
-      vkDestroyFence(device_, fence, host_allocator_);
+      vkDestroyFence(logical_device_, fence, host_allocator_);
     }
-    vkDestroyCommandPool(device_, primary_cpool_, host_allocator_);
+    vkDestroyCommandPool(logical_device_, primary_cpool_, host_allocator_);
 
-    vkDestroyPipelineCache(device_, pipeline_cache_, host_allocator_);
+    vkDestroyPipelineCache(logical_device_, pipeline_cache_, host_allocator_);
 
     if (swapchain_ != VK_NULL_HANDLE) {
       for (auto &view : swapchain_image_views_) {
-        vkDestroyImageView(device_, view, host_allocator_);
+        vkDestroyImageView(logical_device_, view, host_allocator_);
         view = VK_NULL_HANDLE;
       }
-      vkDestroySwapchainKHR(device_, swapchain_, host_allocator_);
+      vkDestroySwapchainKHR(logical_device_, swapchain_, host_allocator_);
       swapchain_ = VK_NULL_HANDLE;
     }
   }
@@ -420,8 +420,8 @@ Application::~Application() {
     window_.reset();
     glfwTerminate();
   }
-  vkDestroyDevice(device_, host_allocator_);
-  device_ = VK_NULL_HANDLE;
+  vkDestroyDevice(logical_device_, host_allocator_);
+  logical_device_ = VK_NULL_HANDLE;
   if (debug_report_callback_ != VK_NULL_HANDLE) {
     auto destroy_debug_report_func =
         (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_, "vkDestroyDebugReportCallbackEXT");
@@ -468,8 +468,8 @@ int Application::Run() {
     }
 
     // Wait for the command buffer previously used to generate this swapchain image to be submitted.
-    vkWaitForFences(device_, 1, &submit_complete_fences_[pframe_index_], VK_TRUE, UINT64_MAX);
-    vkResetFences(device_, 1, &submit_complete_fences_[pframe_index_]);
+    vkWaitForFences(logical_device_, 1, &submit_complete_fences_[pframe_index_], VK_TRUE, UINT64_MAX);
+    vkResetFences(logical_device_, 1, &submit_complete_fences_[pframe_index_]);
 
     // The host can now safely reset and rebuild this command buffer, even if the GPU hasn't finished presenting the
     // resulting frame yet.
@@ -480,7 +480,7 @@ int Application::Run() {
         VK_NULL_HANDLE;  // currently unused, but if you want the CPU to wait for an image to be acquired...
     uint32_t swapchain_image_index = 0;
     VkResult acquire_result = vkAcquireNextImageKHR(
-        device_, swapchain_, UINT64_MAX, image_acquire_semaphore_, image_acquire_fence, &swapchain_image_index);
+        logical_device_, swapchain_, UINT64_MAX, image_acquire_semaphore_, image_acquire_fence, &swapchain_image_index);
     if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR || acquire_result == VK_SUBOPTIMAL_KHR) {
       // I've never actually seen these error codes returned, but if they were this is probably how they should be
       // handled.
@@ -574,7 +574,7 @@ bool Application::IsDeviceExtensionEnabled(const std::string &extension_name) co
 }
 
 void Application::HandleWindowResize(VkExtent2D new_window_extent) {
-  SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
+  SPOKK_VK_CHECK(vkDeviceWaitIdle(logical_device_));
   SPOKK_VK_CHECK(CreateSwapchain(new_window_extent));
 }
 
@@ -584,7 +584,7 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   // Clean up old swapchain images/image views if necessary
   for (auto view : swapchain_image_views_) {
     if (view != VK_NULL_HANDLE) {
-      vkDestroyImageView(device_, view, host_allocator_);
+      vkDestroyImageView(logical_device_, view, host_allocator_);
     }
   }
   swapchain_image_views_.clear();
@@ -679,17 +679,17 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   swapchain_ci.presentMode = present_mode;
   swapchain_ci.clipped = VK_TRUE;
   swapchain_ci.oldSwapchain = old_swapchain;
-  SPOKK_VK_CHECK(vkCreateSwapchainKHR(device_, &swapchain_ci, host_allocator_, &swapchain_));
+  SPOKK_VK_CHECK(vkCreateSwapchainKHR(logical_device_, &swapchain_ci, host_allocator_, &swapchain_));
   if (old_swapchain != VK_NULL_HANDLE) {
-    vkDestroySwapchainKHR(device_, old_swapchain, host_allocator_);
+    vkDestroySwapchainKHR(logical_device_, old_swapchain, host_allocator_);
   }
 
   uint32_t swapchain_image_count = 0;
   do {
-    result = vkGetSwapchainImagesKHR(device_, swapchain_, &swapchain_image_count, nullptr);
+    result = vkGetSwapchainImagesKHR(logical_device_, swapchain_, &swapchain_image_count, nullptr);
     if (result == VK_SUCCESS && swapchain_image_count > 0) {
       swapchain_images_.resize(swapchain_image_count);
-      result = vkGetSwapchainImagesKHR(device_, swapchain_, &swapchain_image_count, swapchain_images_.data());
+      result = vkGetSwapchainImagesKHR(logical_device_, swapchain_, &swapchain_image_count, swapchain_images_.data());
     }
   } while (result == VK_INCOMPLETE);
   VkImageViewCreateInfo image_view_ci = {};
@@ -712,7 +712,7 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   for (auto image : swapchain_images_) {
     image_view_ci.image = image;
     VkImageView view = VK_NULL_HANDLE;
-    SPOKK_VK_CHECK(vkCreateImageView(device_, &image_view_ci, host_allocator_, &view));
+    SPOKK_VK_CHECK(vkCreateImageView(logical_device_, &image_view_ci, host_allocator_, &view));
     swapchain_image_views_.push_back(view);
   }
   return VK_SUCCESS;

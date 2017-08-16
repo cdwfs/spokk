@@ -1,6 +1,6 @@
 #pragma once
 
-#include "spokk_context.h"
+#include "spokk_device.h"
 
 #include <vector>
 
@@ -32,14 +32,14 @@ struct RenderPass {
   };
   void InitFromPreset(Preset preset, VkFormat output_color_format);
   // ...and call this after populating the previous vectors.
-  VkResult Finalize(const DeviceContext& device_context,
-      VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS, VkSubpassDescriptionFlags flags = 0);
+  VkResult Finalize(const Device& device, VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS,
+      VkSubpassDescriptionFlags flags = 0);
 
   VkImageCreateInfo GetAttachmentImageCreateInfo(uint32_t attachment_index, VkExtent2D render_area) const;
   VkImageViewCreateInfo GetAttachmentImageViewCreateInfo(uint32_t attachment_index, VkImage image) const;
   VkFramebufferCreateInfo GetFramebufferCreateInfo(VkExtent2D render_area) const;
 
-  void Destroy(const DeviceContext& device_context);
+  void Destroy(const Device& device);
 
   // These are created during finalization
   VkRenderPass handle;

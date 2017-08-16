@@ -171,8 +171,7 @@ void RenderPass::InitFromPreset(Preset preset, VkFormat output_color_format) {
   }
 }
 
-VkResult RenderPass::Finalize(
-    const DeviceContext& device_context, VkPipelineBindPoint bind_point, VkSubpassDescriptionFlags flags) {
+VkResult RenderPass::Finalize(const Device& device, VkPipelineBindPoint bind_point, VkSubpassDescriptionFlags flags) {
   subpass_descs.resize(subpass_attachments.size());
   subpass_multisample_state_cis.resize(subpass_attachments.size());
   for (size_t i = 0; i < subpass_attachments.size(); ++i) {
@@ -218,8 +217,7 @@ VkResult RenderPass::Finalize(
   render_pass_ci.pSubpasses = subpass_descs.data();
   render_pass_ci.dependencyCount = (uint32_t)subpass_dependencies.size();
   render_pass_ci.pDependencies = subpass_dependencies.data();
-  VkResult create_result =
-      vkCreateRenderPass(device_context.Device(), &render_pass_ci, device_context.HostAllocator(), &handle);
+  VkResult create_result = vkCreateRenderPass(device.Logical(), &render_pass_ci, device.HostAllocator(), &handle);
 
   // vkBeginRenderPass layers will warn if clearValueCount includes entries that will never be used.
   // So, find the last attachment that's cleared, and only store enough clear values to handle that one.
@@ -327,9 +325,9 @@ VkFramebufferCreateInfo RenderPass::GetFramebufferCreateInfo(VkExtent2D render_a
   return ci;
 }
 
-void RenderPass::Destroy(const DeviceContext& device_context) {
+void RenderPass::Destroy(const Device& device) {
   if (handle != VK_NULL_HANDLE) {
-    vkDestroyRenderPass(device_context.Device(), handle, device_context.HostAllocator());
+    vkDestroyRenderPass(device.Logical(), handle, device.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
   attachment_descs.clear();

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "spokk_context.h"
+#include "spokk_device.h"
 #include "spokk_shader.h"
 
 #include <shaderc/shaderc.hpp>
@@ -28,7 +28,7 @@
  *       // GLSL -> SPIR-V compilation failed!
  *     }
  *     spokk::Shader shader;
- *     VkResult create_result = shader.CreateAndLoadSpirvMem(device_context, compile_result.cbegin(),
+ *     VkResult create_result = shader.CreateAndLoadSpirvMem(device, compile_result.cbegin(),
  *         static_cast<int>((compile_result.cend() - compile_result.cbegin()) * sizeof(uint32_t)));
  *     if (create_result != VK_SUCCESS) {
  *       // SPIR-V -> VkShaderModule creation failed!

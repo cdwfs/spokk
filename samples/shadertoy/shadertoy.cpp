@@ -95,7 +95,7 @@ public:
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR, swapchain_surface_format_.format);
     // Customize
     render_pass_.attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
+    SPOKK_VK_CHECK(render_pass_.Finalize(device_));
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
@@ -106,13 +106,13 @@ public:
     for (size_t i = 0; i < textures_.size(); ++i) {
       char filename[17];
       zomboSnprintf(filename, 17, "data/tex%02u.ktx", (uint32_t)i);
-      ZOMBO_ASSERT(0 == textures_[i].CreateFromFile(device_context_, graphics_and_present_queue_, filename, VK_FALSE),
+      ZOMBO_ASSERT(0 == textures_[i].CreateFromFile(device_, graphics_and_present_queue_, filename, VK_FALSE),
           "Failed to load %s", filename);
     }
     for (size_t i = 0; i < cubemaps_.size(); ++i) {
       char filename[18];
       zomboSnprintf(filename, 18, "data/cube%02u.ktx", (uint32_t)i);
-      ZOMBO_ASSERT(0 == cubemaps_[i].CreateFromFile(device_context_, graphics_and_present_queue_, filename, VK_FALSE),
+      ZOMBO_ASSERT(0 == cubemaps_[i].CreateFromFile(device_, graphics_and_present_queue_, filename, VK_FALSE),
           "Failed to load %s", filename);
     }
     active_images_[0] = &textures_[15];
@@ -121,7 +121,7 @@ public:
     active_images_[3] = &textures_[3];
 
     // Load shader pipelines
-    SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_context_, "data/fullscreen.vert.spv"));
+    SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_, "data/fullscreen.vert.spv"));
 
     active_pipeline_index_ = 0;
     ReloadShader();  // force a reload of of the shadertoy shader into slot 1
@@ -133,12 +133,12 @@ public:
     uniform_buffer_ci.size = sizeof(ShaderToyUniforms);
     uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(uniform_buffer_.Create(device_context_, PFRAME_COUNT, uniform_buffer_ci));
+    SPOKK_VK_CHECK(uniform_buffer_.Create(device_, PFRAME_COUNT, uniform_buffer_ci));
 
     for (const auto& dset_layout_ci : shader_programs_[active_pipeline_index_].dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
-    SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
+    SPOKK_VK_CHECK(dpool_.Finalize(device_));
 
     // Create swapchain-sized resources.
     CreateRenderBuffers(swapchain_extent_);
@@ -149,9 +149,9 @@ public:
           active_images_[iTex]->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], (uint32_t)iTex);
     }
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      dsets_[pframe] = dpool_.AllocateSet(device_context_, shader_programs_[active_pipeline_index_].dset_layouts[0]);
+      dsets_[pframe] = dpool_.AllocateSet(device_, shader_programs_[active_pipeline_index_].dset_layouts[0]);
       dset_writer.BindBuffer(uniform_buffer_.Handle(pframe), 4);
-      dset_writer.WriteAll(device_context_, dsets_[pframe]);
+      dset_writer.WriteAll(device_, dsets_[pframe]);
     }
 
     // Spawn the shader-watcher thread, to set a shared bool whenever the contents of the shader
@@ -167,29 +167,29 @@ public:
 
       vkDeviceWaitIdle(device_);
 
-      dpool_.Destroy(device_context_);
+      dpool_.Destroy(device_);
 
-      uniform_buffer_.Destroy(device_context_);
+      uniform_buffer_.Destroy(device_);
 
-      pipelines_[0].Destroy(device_context_);
-      pipelines_[1].Destroy(device_context_);
+      pipelines_[0].Destroy(device_);
+      pipelines_[1].Destroy(device_);
 
-      shader_programs_[0].Destroy(device_context_);
-      shader_programs_[1].Destroy(device_context_);
-      fullscreen_tri_vs_.Destroy(device_context_);
-      fragment_shaders_[0].Destroy(device_context_);
-      fragment_shaders_[1].Destroy(device_context_);
+      shader_programs_[0].Destroy(device_);
+      shader_programs_[1].Destroy(device_);
+      fullscreen_tri_vs_.Destroy(device_);
+      fragment_shaders_[0].Destroy(device_);
+      fragment_shaders_[1].Destroy(device_);
 
       for (const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
       }
-      render_pass_.Destroy(device_context_);
+      render_pass_.Destroy(device_);
 
       for (auto& image : textures_) {
-        image.Destroy(device_context_);
+        image.Destroy(device_);
       }
       for (auto& cube : cubemaps_) {
-        cube.Destroy(device_context_);
+        cube.Destroy(device_);
       }
       for (auto sampler : samplers_) {
         vkDestroySampler(device_, sampler, host_allocator_);
@@ -210,9 +210,9 @@ public:
     if (reload) {
       // If we get this far, it's time to replace the existing pipeline
       vkDeviceWaitIdle(device_);
-      pipelines_[active_pipeline_index_].Destroy(device_context_);
-      shader_programs_[active_pipeline_index_].Destroy(device_context_);
-      fragment_shaders_[active_pipeline_index_].Destroy(device_context_);
+      pipelines_[active_pipeline_index_].Destroy(device_);
+      shader_programs_[active_pipeline_index_].Destroy(device_);
+      fragment_shaders_[active_pipeline_index_].Destroy(device_);
       active_pipeline_index_ = 1 - active_pipeline_index_;
       swap_shader_.store(false);
     }
@@ -252,7 +252,7 @@ public:
     uniforms_.iMouse = mathfu::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
     uniforms_.iDate = mathfu::vec4(year, month, mday, dsec);
     uniforms_.iSampleRate = 44100.0f;
-    uniform_buffer_.Load(device_context_, pframe_index_, &uniforms_, sizeof(uniforms_));
+    uniform_buffer_.Load(device_, pframe_index_, &uniforms_, sizeof(uniforms_));
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
@@ -333,15 +333,15 @@ private:
         final_frag_source.data(), frag_shader_path, "main", VK_SHADER_STAGE_FRAGMENT_BIT);
     if (compile_result.GetCompilationStatus() == shaderc_compilation_status_success) {
       Shader& new_fs = fragment_shaders_[1 - active_pipeline_index_];
-      SPOKK_VK_CHECK(new_fs.CreateAndLoadSpirvMem(device_context_, compile_result.cbegin(),
+      SPOKK_VK_CHECK(new_fs.CreateAndLoadSpirvMem(device_, compile_result.cbegin(),
           static_cast<int>((compile_result.cend() - compile_result.cbegin()) * sizeof(uint32_t))));
       ShaderProgram& new_shader_program = shader_programs_[1 - active_pipeline_index_];
       SPOKK_VK_CHECK(new_shader_program.AddShader(&fullscreen_tri_vs_));
       SPOKK_VK_CHECK(new_shader_program.AddShader(&new_fs));
-      SPOKK_VK_CHECK(new_shader_program.Finalize(device_context_));
+      SPOKK_VK_CHECK(new_shader_program.Finalize(device_));
       GraphicsPipeline& new_pipeline = pipelines_[1 - active_pipeline_index_];
       new_pipeline.Init(&empty_mesh_format_, &new_shader_program, &render_pass_, 0);
-      SPOKK_VK_CHECK(new_pipeline.Finalize(device_context_));
+      SPOKK_VK_CHECK(new_pipeline.Finalize(device_));
       swap_shader_.store(true);
     } else {
       printf("%s\n", compile_result.GetErrorMessage().c_str());

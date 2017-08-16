@@ -45,7 +45,7 @@ public:
 
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
-    SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
+    SPOKK_VK_CHECK(render_pass_.Finalize(device_));
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
@@ -53,35 +53,35 @@ public:
     VkSamplerCreateInfo sampler_ci =
         GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-    int load_error = skybox_tex_.CreateFromFile(device_context_, graphics_and_present_queue_, "data/sanfrancisco4-512.ktx");
+    int load_error = skybox_tex_.CreateFromFile(device_, graphics_and_present_queue_, "data/sanfrancisco4-512.ktx");
     ZOMBO_ASSERT(load_error == 0, "texture load error (%d)", load_error);
 
     // Load shaders (forcing compatible pipeline layouts)
-    SPOKK_VK_CHECK(skybox_vs_.CreateAndLoadSpirvFile(device_context_, "data/skybox.vert.spv"));
-    SPOKK_VK_CHECK(skybox_fs_.CreateAndLoadSpirvFile(device_context_, "data/skybox.frag.spv"));
+    SPOKK_VK_CHECK(skybox_vs_.CreateAndLoadSpirvFile(device_, "data/skybox.vert.spv"));
+    SPOKK_VK_CHECK(skybox_fs_.CreateAndLoadSpirvFile(device_, "data/skybox.frag.spv"));
     SPOKK_VK_CHECK(skybox_shader_program_.AddShader(&skybox_vs_));
     SPOKK_VK_CHECK(skybox_shader_program_.AddShader(&skybox_fs_));
-    SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_context_, "data/lit_mesh.vert.spv"));
-    SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_context_, "data/lit_mesh.frag.spv"));
+    SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_, "data/lit_mesh.vert.spv"));
+    SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_, "data/lit_mesh.frag.spv"));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_vs_));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_fs_));
-    SPOKK_VK_CHECK(ShaderProgram::ForceCompatibleLayoutsAndFinalize(
-        device_context_, {&skybox_shader_program_, &mesh_shader_program_}));
+    SPOKK_VK_CHECK(
+        ShaderProgram::ForceCompatibleLayoutsAndFinalize(device_, {&skybox_shader_program_, &mesh_shader_program_}));
 
     // Create skybox pipeline
     empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     skybox_pipeline_.Init(&empty_mesh_format_, &skybox_shader_program_, &render_pass_, 0);
     skybox_pipeline_.depth_stencil_state_ci.depthWriteEnable = VK_FALSE;
     skybox_pipeline_.depth_stencil_state_ci.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
-    SPOKK_VK_CHECK(skybox_pipeline_.Finalize(device_context_));
+    SPOKK_VK_CHECK(skybox_pipeline_.Finalize(device_));
 
     // Populate Mesh object
-    int mesh_load_error = mesh_.CreateFromFile(device_context_, "data/teapot.mesh");
+    int mesh_load_error = mesh_.CreateFromFile(device_, "data/teapot.mesh");
     ZOMBO_ASSERT(!mesh_load_error, "Error loading mesh");
 
     // Create mesh pipeline
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
-    SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_context_));
+    SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
 
     // Create pipelined buffer of mesh uniforms
     VkBufferCreateInfo mesh_uniforms_ci = {};
@@ -89,7 +89,7 @@ public:
     mesh_uniforms_ci.size = sizeof(mathfu::mat4);
     mesh_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     mesh_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_context_, PFRAME_COUNT, mesh_uniforms_ci));
+    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, mesh_uniforms_ci));
 
     // Create pipelined buffer of shader uniforms
     VkBufferCreateInfo scene_uniforms_ci = {};
@@ -98,15 +98,15 @@ public:
     scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(
-        scene_uniforms_.Create(device_context_, PFRAME_COUNT, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+        scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     for (const auto& dset_layout_ci : skybox_shader_program_.dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
-    SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
+    SPOKK_VK_CHECK(dpool_.Finalize(device_));
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       // TODO(cort): allocate_pipelined_set()?
-      dsets_[pframe] = dpool_.AllocateSet(device_context_, skybox_shader_program_.dset_layouts[0]);
+      dsets_[pframe] = dpool_.AllocateSet(device_, skybox_shader_program_.dset_layouts[0]);
     }
     DescriptorSetWriter dset_writer(skybox_shader_program_.dset_layout_cis[0]);
     dset_writer.BindImage(skybox_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -115,7 +115,7 @@ public:
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
       dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
-      dset_writer.WriteAll(device_context_, dsets_[pframe]);
+      dset_writer.WriteAll(device_, dsets_[pframe]);
     }
 
     // Create swapchain-sized buffers
@@ -125,31 +125,31 @@ public:
     if (device_) {
       vkDeviceWaitIdle(device_);
 
-      dpool_.Destroy(device_context_);
+      dpool_.Destroy(device_);
 
-      mesh_uniforms_.Destroy(device_context_);
-      scene_uniforms_.Destroy(device_context_);
+      mesh_uniforms_.Destroy(device_);
+      scene_uniforms_.Destroy(device_);
 
-      mesh_vs_.Destroy(device_context_);
-      mesh_fs_.Destroy(device_context_);
-      mesh_shader_program_.Destroy(device_context_);
-      mesh_pipeline_.Destroy(device_context_);
-      mesh_.Destroy(device_context_);
+      mesh_vs_.Destroy(device_);
+      mesh_fs_.Destroy(device_);
+      mesh_shader_program_.Destroy(device_);
+      mesh_pipeline_.Destroy(device_);
+      mesh_.Destroy(device_);
 
-      skybox_vs_.Destroy(device_context_);
-      skybox_fs_.Destroy(device_context_);
-      skybox_shader_program_.Destroy(device_context_);
-      skybox_pipeline_.Destroy(device_context_);
+      skybox_vs_.Destroy(device_);
+      skybox_fs_.Destroy(device_);
+      skybox_shader_program_.Destroy(device_);
+      skybox_pipeline_.Destroy(device_);
 
       vkDestroySampler(device_, sampler_, host_allocator_);
-      skybox_tex_.Destroy(device_context_);
+      skybox_tex_.Destroy(device_);
 
       for (const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
       }
-      render_pass_.Destroy(device_context_);
+      render_pass_.Destroy(device_);
 
-      depth_image_.Destroy(device_context_);
+      depth_image_.Destroy(device_);
     }
   }
 
@@ -235,7 +235,7 @@ public:
       * mathfu::mat4::FromScaleVector( mathfu::vec3(5.0f, 5.0f, 5.0f) )
       ;
     // clang-format on
-    mesh_uniforms_.Load(device_context_, pframe_index_, &o2w, sizeof(mathfu::mat4), 0, 0);
+    mesh_uniforms_.Load(device_, pframe_index_, &o2w, sizeof(mathfu::mat4), 0, 0);
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
@@ -271,7 +271,7 @@ protected:
       }
     }
     framebuffers_.clear();
-    depth_image_.Destroy(device_context_);
+    depth_image_.Destroy(device_);
 
     float aspect_ratio = (float)new_window_extent.width / (float)new_window_extent.height;
     camera_->setPerspective(FOV_DEGREES, aspect_ratio, Z_NEAR, Z_FAR);
@@ -285,7 +285,7 @@ private:
     VkImageCreateInfo depth_image_ci = render_pass_.GetAttachmentImageCreateInfo(1, extent);
     depth_image_ = {};
     SPOKK_VK_CHECK(depth_image_.Create(
-        device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
+        device_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
 
     // Create VkFramebuffers
     std::vector<VkImageView> attachment_views = {

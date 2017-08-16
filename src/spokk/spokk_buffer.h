@@ -5,21 +5,21 @@
 
 namespace spokk {
 
-class DeviceContext;
+class Device;
 
 class PipelinedBuffer {
 public:
   PipelinedBuffer();
   ~PipelinedBuffer();
 
-  VkResult Create(const DeviceContext& device_context, uint32_t depth, const VkBufferCreateInfo& buffer_ci,
+  VkResult Create(const Device& device, uint32_t depth, const VkBufferCreateInfo& buffer_ci,
       VkMemoryPropertyFlags memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DeviceAllocationScope allocation_scope = DEVICE_ALLOCATION_SCOPE_DEVICE);
-  VkResult Load(const DeviceContext& device_context, uint32_t pframe, const void* src_data, size_t data_size,
-      size_t src_offset = 0, VkDeviceSize dst_offset = 0) const;
+  VkResult Load(const Device& device, uint32_t pframe, const void* src_data, size_t data_size, size_t src_offset = 0,
+      VkDeviceSize dst_offset = 0) const;
   // View creation is optional; it's only necessary for texel buffers.
-  VkResult CreateViews(const DeviceContext& device_context, VkFormat format);
-  void Destroy(const DeviceContext& device_context);
+  VkResult CreateViews(const Device& device, VkFormat format);
+  void Destroy(const Device& device);
 
   VkBuffer Handle(uint32_t pframe) const { return handles_.empty() ? VK_NULL_HANDLE : handles_[pframe]; }
   VkBufferView View(uint32_t pframe) const { return views_.empty() ? VK_NULL_HANDLE : views_[pframe]; }
@@ -59,19 +59,17 @@ public:
   Buffer() : PipelinedBuffer() {}
   ~Buffer() {}
 
-  VkResult Create(const DeviceContext& device_context, const VkBufferCreateInfo& buffer_ci,
+  VkResult Create(const Device& device, const VkBufferCreateInfo& buffer_ci,
       VkMemoryPropertyFlags memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DeviceAllocationScope allocation_scope = DEVICE_ALLOCATION_SCOPE_DEVICE) {
-    return PipelinedBuffer::Create(device_context, 1, buffer_ci, memory_properties, allocation_scope);
+    return PipelinedBuffer::Create(device, 1, buffer_ci, memory_properties, allocation_scope);
   }
-  VkResult Load(const DeviceContext& device_context, const void* src_data, size_t data_size, size_t src_offset = 0,
+  VkResult Load(const Device& device, const void* src_data, size_t data_size, size_t src_offset = 0,
       VkDeviceSize dst_offset = 0) const {
-    return PipelinedBuffer::Load(device_context, 0, src_data, data_size, src_offset, dst_offset);
+    return PipelinedBuffer::Load(device, 0, src_data, data_size, src_offset, dst_offset);
   }
   // View creation is optional; it's only necessary for texel buffers.
-  VkResult CreateView(const DeviceContext& device_context, VkFormat format) {
-    return CreateViews(device_context, format);
-  }
+  VkResult CreateView(const Device& device, VkFormat format) { return CreateViews(device, format); }
 
   VkBuffer Handle() const { return handles_.empty() ? VK_NULL_HANDLE : handles_[0]; }
   VkBufferView View() const { return views_.empty() ? VK_NULL_HANDLE : views_[0]; }
