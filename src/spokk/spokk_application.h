@@ -171,7 +171,7 @@ protected:
 private:
   VkResult CreateSwapchain(VkExtent2D extent);
 
-  bool init_successful = false;
+  bool init_successful_ = false;
 
   VkCommandPool primary_cpool_;
   std::array<VkCommandBuffer, PFRAME_COUNT> primary_command_buffers_;
