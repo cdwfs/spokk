@@ -169,7 +169,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   VkBufferCreateInfo uniform_buffer_ci = {};
   uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   uniform_buffer_ci.size = sizeof(SceneUniforms);
-  uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
   uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(scene_uniforms_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
@@ -177,7 +177,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   VkBufferCreateInfo heightfield_buffer_ci = {};
   heightfield_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   heightfield_buffer_ci.size = HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY * sizeof(float);
-  heightfield_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  heightfield_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
   heightfield_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(
       heightfield_buffer_.Create(device_, PFRAME_COUNT, heightfield_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));

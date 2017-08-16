@@ -23,6 +23,9 @@ struct SceneUniforms {
   mathfu::mat4 view_inv;
   mathfu::mat4 proj_inv;
 };
+struct MeshUniforms {
+  mathfu::mat4 o2w;
+};
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
@@ -87,15 +90,16 @@ public:
     VkBufferCreateInfo mesh_uniforms_ci = {};
     mesh_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     mesh_uniforms_ci.size = sizeof(mathfu::mat4);
-    mesh_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    mesh_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     mesh_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, mesh_uniforms_ci));
+    SPOKK_VK_CHECK(
+      mesh_uniforms_.Create(device_, PFRAME_COUNT, mesh_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     // Create pipelined buffer of shader uniforms
     VkBufferCreateInfo scene_uniforms_ci = {};
     scene_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     scene_uniforms_ci.size = sizeof(SceneUniforms);
-    scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(
         scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
@@ -203,11 +207,11 @@ public:
     dolly_->Update(camera_accel, (float)dt);
 
     // Update uniforms
-    SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
-    uniforms->time_and_res =
+    SceneUniforms* scene_uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
+    scene_uniforms->time_and_res =
         mathfu::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-    uniforms->eye_pos_ws = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-    uniforms->eye_dir_wsn = mathfu::vec4(camera_->getViewDirection().Normalized(), 1.0f);
+    scene_uniforms->eye_pos_ws = mathfu::vec4(camera_->getEyePoint(), 1.0f);
+    scene_uniforms->eye_dir_wsn = mathfu::vec4(camera_->getViewDirection().Normalized(), 1.0f);
     const mathfu::mat4 view = camera_->getViewMatrix();
     const mathfu::mat4 proj = camera_->getProjectionMatrix();
     // clang-format off
@@ -218,24 +222,25 @@ public:
       +0.0f, +0.0f, +0.0f, +1.0f);
     // clang-format on
     const mathfu::mat4 viewproj = (clip_fixup * proj) * view;
-    uniforms->viewproj = viewproj;
-    uniforms->view = view;
-    uniforms->proj = clip_fixup * proj;
-    uniforms->viewproj_inv = viewproj.Inverse();
-    uniforms->view_inv = view.Inverse();
-    uniforms->proj_inv = (clip_fixup * proj).Inverse();
+    scene_uniforms->viewproj = viewproj;
+    scene_uniforms->view = view;
+    scene_uniforms->proj = clip_fixup * proj;
+    scene_uniforms->viewproj_inv = viewproj.Inverse();
+    scene_uniforms->view_inv = view.Inverse();
+    scene_uniforms->proj_inv = (clip_fixup * proj).Inverse();
     scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
     // Update mesh uniforms
     // clang-format off
     mathfu::quat q = mathfu::quat::identity;
-    mathfu::mat4 o2w = mathfu::mat4::Identity()
+    MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
+    mesh_uniforms->o2w = mathfu::mat4::Identity()
       * mathfu::mat4::FromTranslationVector(mathfu::vec3(0.0f, 0.0f, 0.0f))
       * q.ToMatrix4()
       * mathfu::mat4::FromScaleVector( mathfu::vec3(5.0f, 5.0f, 5.0f) )
       ;
     // clang-format on
-    mesh_uniforms_.Load(device_, pframe_index_, &o2w, sizeof(mathfu::mat4), 0, 0);
+    mesh_uniforms_.FlushPframeHostCache(pframe_index_);
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {

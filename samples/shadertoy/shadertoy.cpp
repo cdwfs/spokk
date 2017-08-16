@@ -131,9 +131,10 @@ public:
     VkBufferCreateInfo uniform_buffer_ci = {};
     uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     uniform_buffer_ci.size = sizeof(ShaderToyUniforms);
-    uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(uniform_buffer_.Create(device_, PFRAME_COUNT, uniform_buffer_ci));
+    SPOKK_VK_CHECK(
+      uniform_buffer_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     for (const auto& dset_layout_ci : shader_programs_[active_pipeline_index_].dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
@@ -233,26 +234,27 @@ public:
 
     viewport_ = ExtentToViewport(swapchain_extent_);
     scissor_rect_ = ExtentToRect2D(swapchain_extent_);
-    uniforms_.iResolution = mathfu::vec4(viewport_.width, viewport_.height, 1.0f, 0.0f);
-    uniforms_.iChannelTime[0] = mathfu::vec4(0.0f, 0.0f, 0.0f, 0.0f);  // TODO(cort): audio/video channels are TBI
-    uniforms_.iChannelTime[1] = mathfu::vec4(1.0f, 0.0f, 0.0f, 0.0f);
-    uniforms_.iChannelTime[2] = mathfu::vec4(2.0f, 0.0f, 0.0f, 0.0f);
-    uniforms_.iChannelTime[3] = mathfu::vec4(3.0f, 0.0f, 0.0f, 0.0f);
-    uniforms_.iChannelResolution[0] = mathfu::vec4((float)active_images_[0]->image_ci.extent.width,
+    ShaderToyUniforms *uniforms = (ShaderToyUniforms*)uniform_buffer_.Mapped(pframe_index_);
+    uniforms->iResolution = mathfu::vec4(viewport_.width, viewport_.height, 1.0f, 0.0f);
+    uniforms->iChannelTime[0] = mathfu::vec4(0.0f, 0.0f, 0.0f, 0.0f);  // TODO(cort): audio/video channels are TBI
+    uniforms->iChannelTime[1] = mathfu::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+    uniforms->iChannelTime[2] = mathfu::vec4(2.0f, 0.0f, 0.0f, 0.0f);
+    uniforms->iChannelTime[3] = mathfu::vec4(3.0f, 0.0f, 0.0f, 0.0f);
+    uniforms->iChannelResolution[0] = mathfu::vec4((float)active_images_[0]->image_ci.extent.width,
         (float)active_images_[0]->image_ci.extent.height, (float)active_images_[0]->image_ci.extent.depth, 0.0f);
-    uniforms_.iChannelResolution[1] = mathfu::vec4((float)active_images_[1]->image_ci.extent.width,
+    uniforms->iChannelResolution[1] = mathfu::vec4((float)active_images_[1]->image_ci.extent.width,
         (float)active_images_[1]->image_ci.extent.height, (float)active_images_[1]->image_ci.extent.depth, 0.0f);
-    uniforms_.iChannelResolution[2] = mathfu::vec4((float)active_images_[2]->image_ci.extent.width,
+    uniforms->iChannelResolution[2] = mathfu::vec4((float)active_images_[2]->image_ci.extent.width,
         (float)active_images_[2]->image_ci.extent.height, (float)active_images_[2]->image_ci.extent.depth, 0.0f);
-    uniforms_.iChannelResolution[3] = mathfu::vec4((float)active_images_[3]->image_ci.extent.width,
+    uniforms->iChannelResolution[3] = mathfu::vec4((float)active_images_[3]->image_ci.extent.width,
         (float)active_images_[3]->image_ci.extent.height, (float)active_images_[3]->image_ci.extent.depth, 0.0f);
-    uniforms_.iGlobalTime = (float)seconds_elapsed_;
-    uniforms_.iTimeDelta = (float)dt;
-    uniforms_.iFrame = frame_index_;
-    uniforms_.iMouse = mathfu::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
-    uniforms_.iDate = mathfu::vec4(year, month, mday, dsec);
-    uniforms_.iSampleRate = 44100.0f;
-    uniform_buffer_.Load(device_, pframe_index_, &uniforms_, sizeof(uniforms_));
+    uniforms->iGlobalTime = (float)seconds_elapsed_;
+    uniforms->iTimeDelta = (float)dt;
+    uniforms->iFrame = frame_index_;
+    uniforms->iMouse = mathfu::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
+    uniforms->iDate = mathfu::vec4(year, month, mday, dsec);
+    uniforms->iSampleRate = 44100.0f;
+    uniform_buffer_.FlushPframeHostCache(pframe_index_);
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
@@ -435,7 +437,6 @@ private:
   DescriptorPool dpool_;
   std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
-  ShaderToyUniforms uniforms_;
   mathfu::vec2 mouse_pos_;
   PipelinedBuffer uniform_buffer_;
 };

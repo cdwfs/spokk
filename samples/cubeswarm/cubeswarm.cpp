@@ -18,6 +18,9 @@ struct SceneUniforms {
   mathfu::mat4 viewproj;
 };
 constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
+struct MeshUniforms {
+  mathfu::mat4 o2w[MESH_INSTANCE_COUNT];
+};
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
@@ -65,15 +68,15 @@ public:
     VkBufferCreateInfo o2w_buffer_ci = {};
     o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(mathfu::mat4);
-    o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci));
+    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     // Create pipelined buffer of shader uniforms
     VkBufferCreateInfo scene_uniforms_ci = {};
     scene_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     scene_uniforms_ci.size = sizeof(SceneUniforms);
-    scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(
         scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
@@ -198,12 +201,12 @@ public:
 
     // Update object-to-world matrices.
     const float secs = (float)seconds_elapsed_;
-    std::array<mathfu::mat4, MESH_INSTANCE_COUNT * 4> o2w_matrices;
+    MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
     const mathfu::vec3 swarm_center(0, 0, -2);
     for (uint32_t iMesh = 0; iMesh < MESH_INSTANCE_COUNT; ++iMesh) {
       // clang-format off
       mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(1,2,3).Normalized());
-      mathfu::mat4 o2w = mathfu::mat4::Identity()
+      mesh_uniforms->o2w[iMesh] = mathfu::mat4::Identity()
         * mathfu::mat4::FromTranslationVector(mathfu::vec3(
           40.0f * cosf(0.2f * secs + float(9*iMesh) + 0.4f) + swarm_center[0],
           20.5f * sinf(0.3f * secs + float(11*iMesh) + 5.0f) + swarm_center[1],
@@ -213,9 +216,8 @@ public:
         * mathfu::mat4::FromScaleVector( mathfu::vec3(3.0f, 3.0f, 3.0f) )
         ;
       // clang-format on
-      o2w_matrices[iMesh] = o2w;
     }
-    mesh_uniforms_.Load(device_, pframe_index_, o2w_matrices.data(), MESH_INSTANCE_COUNT * sizeof(mathfu::mat4), 0, 0);
+    mesh_uniforms_.FlushPframeHostCache(pframe_index_);
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
