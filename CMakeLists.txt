@@ -148,6 +148,22 @@ SPOKK_ADD_SOURCES(spokk-compute samples/compute/compute.cpp)
 SPOKK_ADD_SHADERS(spokk-compute samples/compute/double_ints.comp)
 SPOKK_ADD_EXECUTABLE(spokk-compute)
 
+IF(${MSVC})
+    # spokk-eleven
+    SPOKK_ADD_SOURCES(spokk-eleven samples/eleven/eleven.cpp)
+    SOURCE_GROUP("" FILES ${spokk-eleven_SPOKKLE_HEADERS} ${${APP_TARGET}_SOURCES})
+    ADD_EXECUTABLE(spokk-eleven ${spokk-eleven_SOURCES} ${spokk-eleven_SHADERS} ${spokk-eleven_HEADERS})
+    TARGET_LINK_LIBRARIES(spokk-eleven d3d11)
+    TARGET_INCLUDE_DIRECTORIES(spokk-eleven PUBLIC "${CMAKE_SOURCE_DIR}/src/spokk")
+    TARGET_INCLUDE_DIRECTORIES(spokk-eleven PUBLIC "${CMAKE_SOURCE_DIR}/samples")
+    SET_TARGET_PROPERTIES(spokk-eleven PROPERTIES
+        FOLDER "samples"
+        WIN32_EXECUTABLE TRUE
+    )
+    ADD_DEPENDENCIES(spokk-eleven build-assets)
+    mathfu_configure_flags(spokk-eleven)
+ENDIF(${MSVC})
+
 # spokk-lights
 SPOKK_ADD_SOURCES(spokk-lights
     samples/common/camera.cpp
