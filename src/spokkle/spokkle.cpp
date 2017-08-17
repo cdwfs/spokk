@@ -16,14 +16,14 @@
 #include <unistd.h>
 #endif
 
-#include <array>
 #include <float.h>
 #include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <array>
 #include <map>
 #include <memory>
 #include <mutex>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string>
 #include <vector>
 
@@ -119,27 +119,25 @@ int CombineAbsDirAndPath(const char* abs_dir, const char* path, int* buffer_ncha
     return 0;
   } else {
     // Just smoosh 'em together
-    std::string tmp_path = IsRelativePath(path)
-                           ? (std::string(abs_dir) + std::string("/") + std::string(path))
-                           : path;
+    std::string tmp_path = IsRelativePath(path) ? (std::string(abs_dir) + std::string("/") + std::string(path)) : path;
     // Frustratingly, realpath() doesn't work if some/all of the path doesn't exist.
     // So, canonicalize manually.
     const char* src = tmp_path.c_str();
     out_buffer[0] = '/';
     char* dst = out_buffer;
-    while(*src != '\0') {
+    while (*src != '\0') {
       ZOMBO_ASSERT(*src == '/', "invariant failure");
-      const char *src_next = strchr(src+1, '/');
+      const char* src_next = strchr(src + 1, '/');
       if (src_next == nullptr) {
         // this is the final component in the path, with no trailing slash.
-        src_next = strchr(src+1, '\0');
+        src_next = strchr(src + 1, '\0');
       }
       ptrdiff_t nchars = src_next - src;
       if (nchars == 1 && *src_next == '\0') {
         // trailing slash at the end of src. Skip it, and we're done.
       } else if (nchars == 1 && *src_next == '/') {
         // consecutive slashes. Skip all but the last one, writing no output
-        while( *(src_next+1) == '/') {
+        while (*(src_next + 1) == '/') {
           ++src_next;
         }
       } else if (nchars == 2 && src[1] == '.') {
@@ -150,7 +148,7 @@ int CombineAbsDirAndPath(const char* abs_dir, const char* path, int* buffer_ncha
         while (dst != out_buffer && *(--dst) != '/') {
         }
       } else {
-        ZOMBO_ASSERT_RETURN(dst+nchars <= out_buffer + *buffer_nchars - 1, -2, "output path len exceeds buffer_size");
+        ZOMBO_ASSERT_RETURN(dst + nchars <= out_buffer + *buffer_nchars - 1, -2, "output path len exceeds buffer_size");
         strncpy(dst, src, nchars);
         dst += nchars;
       }
@@ -207,7 +205,7 @@ int MakeAbsolutePath(const char* path, int* buffer_nchars, char* out_buffer) {
     return 0;
   } else {
     std::vector<char> cwd(PATH_MAX);
-    char *cwd_str = getcwd(cwd.data(), PATH_MAX);
+    char* cwd_str = getcwd(cwd.data(), PATH_MAX);
     if (cwd_str == NULL) {
       return -1;
     }
@@ -237,13 +235,13 @@ int TruncatePathToDir(char* path) {
 #elif defined(ZOMBO_PLATFORM_POSIX)
   int len = strlen(path);
   // remove trailing slashes
-  while(len > 1 && path[len-1] == '/') {
-    path[len-1] = '\0';
+  while (len > 1 && path[len - 1] == '/') {
+    path[len - 1] = '\0';
     --len;
   }
   char* last_slash = strrchr(path, '/');
   if (last_slash) {
-    *(last_slash+1) = '\0';
+    *(last_slash + 1) = '\0';
   }
   return 0;
 #else
@@ -486,15 +484,15 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
     mesh_header.aabb_max[0] = aabb_max.x;
     mesh_header.aabb_max[1] = aabb_max.y;
     mesh_header.aabb_max[2] = aabb_max.z;
-    std::vector<VkVertexInputBindingDescription> vb_descs(mesh_header.vertex_buffer_count,
-        VkVertexInputBindingDescription{});
+    std::vector<VkVertexInputBindingDescription> vb_descs(
+        mesh_header.vertex_buffer_count, VkVertexInputBindingDescription{});
     {
       vb_descs[0].binding = 0;
       vb_descs[0].stride = dst_layout.stride;
       vb_descs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     }
-    std::vector<VkVertexInputAttributeDescription> attr_descs(dst_layout.attributes.size(),
-        VkVertexInputAttributeDescription{});
+    std::vector<VkVertexInputAttributeDescription> attr_descs(
+        dst_layout.attributes.size(), VkVertexInputAttributeDescription{});
     for (size_t iAttr = 0; iAttr < attr_descs.size(); ++iAttr) {
       attr_descs[iAttr].location = dst_layout.attributes[iAttr].location;
       attr_descs[iAttr].binding = 0;
