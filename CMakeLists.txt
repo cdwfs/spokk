@@ -37,6 +37,9 @@ SET(SPOKKLE_HEADERS
 SOURCE_GROUP("" FILES ${SPOKKLE_HEADERS} ${SPOKKLE_SOURCES})
 ADD_EXECUTABLE(spokkle ${SPOKKLE_SOURCES} ${SPOKKLE_HEADERS})
 TARGET_LINK_LIBRARIES(spokkle assimp shaderc ${VULKAN_LIBRARY})
+IF(${MSVC})
+    TARGET_LINK_LIBRARIES(spokkle d3dcompiler)
+ENDIF(${MSVC})
 TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     ${CMAKE_BINARY_DIR}/third_party/assimp/include # for config.h
     ${CMAKE_SOURCE_DIR}/third_party/assimp/include # for everything else

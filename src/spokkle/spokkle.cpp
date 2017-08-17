@@ -12,6 +12,8 @@
 
 #if defined(ZOMBO_PLATFORM_WINDOWS)
 #include <Shlwapi.h>  // for Path*() functions
+#include <d3dcommon.h>  // For D3D HLSL compiler
+#include <d3dcompiler.h>  // For D3D HLSL compiler
 #elif defined(ZOMBO_PLATFORM_POSIX)
 #include <unistd.h>
 #endif
@@ -534,12 +536,18 @@ struct MeshAsset {
   std::string output_path;
 };
 
+enum ShaderAssetTarget {
+  SHADER_ASSET_TARGET_INVALID = 0,
+  SHADER_ASSET_TARGET_SPV = 1,  // compile to SPIR-V with shaderc
+  SHADER_ASSET_TARGET_CSO = 2,  // compile to CSO (DX bytecode) with D3D compiler
+};
 struct ShaderAsset {
   std::string json_location;
   std::string input_path;
   std::string output_path;
   std::string entry_point;
   std::string shader_stage;
+  ShaderAssetTarget target;
 };
 
 class ShaderFileIncluder : public shaderc::CompileOptions::IncluderInterface {
@@ -1107,6 +1115,21 @@ int AssetManifest::ParseShaderAsset(const json_value_s* val) {
   shader.output_path = output_path->string;
   shader.entry_point = entry_point ? entry_point->string : "";
   shader.shader_stage = shader_stage ? shader_stage->string : "";
+  const char* suffix = strrchr(output_path->string, '.');
+  if (suffix) {
+    if (zomboStrcasecmp(suffix, ".spv") == 0) {
+      shader.target = SHADER_ASSET_TARGET_SPV;
+    } else if (zomboStrcasecmp(suffix, ".cso") == 0) {
+      shader.target = SHADER_ASSET_TARGET_CSO;
+    } else {
+      fprintf(stderr, "%s: error: unknown shader output suffix '%s'\n", JsonValueLocationStr(val).c_str(), suffix);
+      return -5;
+    }
+  } else {
+    fprintf(stderr, "%s: error: can't determine shader output target type with no suffix.\n",
+        JsonValueLocationStr(val).c_str());
+    return -6;
+  }
   shader_assets_.push_back(shader);
   return 0;
 }
@@ -1251,68 +1274,159 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
     return query_error;
   }
   if (build_output) {
-    shaderc_shader_kind shader_kind = shaderc_glsl_infer_from_source;
-    if (shader.shader_stage == "vert" || shader.shader_stage == "vertex") {
-      shader_kind = shaderc_vertex_shader;
-    } else if (shader.shader_stage == "frag" || shader.shader_stage == "fragment") {
-      shader_kind = shaderc_fragment_shader;
-    } else if (shader.shader_stage == "geom" || shader.shader_stage == "geometry") {
-      shader_kind = shaderc_geometry_shader;
-    } else if (shader.shader_stage == "tese" || shader.shader_stage == "tesseval") {
-      shader_kind = shaderc_tess_evaluation_shader;
-    } else if (shader.shader_stage == "comp" || shader.shader_stage == "compute") {
-      shader_kind = shaderc_compute_shader;
+    if (shader.target == SHADER_ASSET_TARGET_SPV) {
+      shaderc_shader_kind shader_kind = shaderc_glsl_infer_from_source;
+      if (shader.shader_stage == "vert" || shader.shader_stage == "vertex") {
+        shader_kind = shaderc_vertex_shader;
+      } else if (shader.shader_stage == "frag" || shader.shader_stage == "fragment" || shader.shader_stage == "pixel") {
+        shader_kind = shaderc_fragment_shader;
+      } else if (shader.shader_stage == "geom" || shader.shader_stage == "geometry") {
+        shader_kind = shaderc_geometry_shader;
+      } else if (shader.shader_stage == "tesc" || shader.shader_stage == "tesscont" || shader.shader_stage == "hull") {
+        shader_kind = shaderc_tess_control_shader;
+      } else if (shader.shader_stage == "tese" || shader.shader_stage == "tesseval" ||
+          shader.shader_stage == "domain") {
+        shader_kind = shaderc_tess_evaluation_shader;
+      } else if (shader.shader_stage == "comp" || shader.shader_stage == "compute") {
+        shader_kind = shaderc_compute_shader;
+      } else {
+        fprintf(stderr, "%s: error: Unrecognized shader stage '%s'\n", shader.json_location.c_str(),
+            shader.shader_stage.c_str());
+        return -3;
+      }
+      FILE* source_file = zomboFopen(shader.input_path.c_str(), "rb");
+      if (!source_file) {
+        fprintf(stderr, "%s: error: could not open '%s' for reading\n", shader.json_location.c_str(),
+            shader.input_path.c_str());
+        return -4;
+      }
+      fseek(source_file, 0, SEEK_END);
+      size_t source_nbytes = ftell(source_file);
+      fseek(source_file, 0, SEEK_SET);
+      std::vector<char> source_contents(source_nbytes + 1);
+      size_t read_nbytes = fread(source_contents.data(), 1, source_nbytes, source_file);
+      source_contents[source_nbytes] = '\0';
+      fclose(source_file);
+      if (read_nbytes != source_nbytes) {
+        fprintf(stderr, "%s: error: file I/O error while loading %s\n", shader.json_location.c_str(),
+            shader.input_path.c_str());
+        return -5;
+      }
+
+      shaderc::CompileOptions options;
+      std::unique_ptr<ShaderFileIncluder> includer =
+          my_make_unique<ShaderFileIncluder>(manifest_dir_, shader_include_dirs_);
+      options.SetIncluder(std::move(includer));
+      shaderc::Compiler compiler;
+      shaderc::SpvCompilationResult compile_result = compiler.CompileGlslToSpv(
+          source_contents.data(), shader_kind, shader.input_path.c_str(), shader.entry_point.c_str(), options);
+      if (compile_result.GetCompilationStatus() != shaderc_compilation_status_success) {
+        fprintf(stderr, "%s\n", compile_result.GetErrorMessage().c_str());
+        return compile_result.GetCompilationStatus();
+      }
+
+      size_t spv_dword_count = static_cast<size_t>(compile_result.cend() - compile_result.cbegin());
+      FILE* spv_file = zomboFopen(abs_output_path.c_str(), "wb");
+      if (!spv_file) {
+        fprintf(stderr, "%s: error: could not open '%s' for writing\n", shader.json_location.c_str(),
+            abs_output_path.c_str());
+        return -7;
+      }
+      size_t write_ndwords = fwrite(compile_result.cbegin(), sizeof(uint32_t), spv_dword_count, spv_file);
+      fclose(spv_file);
+      if (spv_dword_count != write_ndwords) {
+        fprintf(stderr, "%s: error: file I/O error while writing %s\n", shader.json_location.c_str(),
+            abs_output_path.c_str());
+        return -8;
+      }
+      printf("%s -> %s\n", shader.input_path.c_str(), abs_output_path.c_str());
+    } else if (shader.target == SHADER_ASSET_TARGET_CSO) {
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+      const char* shader_model = nullptr;
+      if (shader.shader_stage == "vert" || shader.shader_stage == "vertex") {
+        shader_model = "vs_5_0";
+      } else if (shader.shader_stage == "frag" || shader.shader_stage == "fragment" || shader.shader_stage == "pixel") {
+        shader_model = "ps_5_0";
+      } else if (shader.shader_stage == "geom" || shader.shader_stage == "geometry") {
+        shader_model = "gs_5_0";
+      } else if (shader.shader_stage == "tesc" || shader.shader_stage == "tesscont" || shader.shader_stage == "hull") {
+        shader_model = "hs_5_0";
+      } else if (shader.shader_stage == "tese" || shader.shader_stage == "tesseval" ||
+          shader.shader_stage == "domain") {
+        shader_model = "ds_5_0";
+      } else if (shader.shader_stage == "comp" || shader.shader_stage == "compute") {
+        shader_model = "cs_5_0";
+      } else {
+        fprintf(stderr, "%s: error: Unrecognized shader stage '%s'\n", shader.json_location.c_str(),
+            shader.shader_stage.c_str());
+        return -3;
+      }
+      FILE* source_file = zomboFopen(shader.input_path.c_str(), "rb");
+      if (!source_file) {
+        fprintf(stderr, "%s: error: could not open '%s' for reading\n", shader.json_location.c_str(),
+            shader.input_path.c_str());
+        return -4;
+      }
+      fseek(source_file, 0, SEEK_END);
+      size_t source_nbytes = ftell(source_file);
+      fseek(source_file, 0, SEEK_SET);
+      std::vector<char> source_contents(source_nbytes + 1);
+      size_t read_nbytes = fread(source_contents.data(), 1, source_nbytes, source_file);
+      source_contents[source_nbytes] = '\0';
+      fclose(source_file);
+      if (read_nbytes != source_nbytes) {
+        fprintf(stderr, "%s: error: file I/O error while loading %s\n", shader.json_location.c_str(),
+            shader.input_path.c_str());
+        return -5;
+      }
+
+      D3D_SHADER_MACRO* macros = nullptr;
+      ID3DInclude* includer = D3D_COMPILE_STANDARD_FILE_INCLUDE;  // not great, but handles local includes at least
+      // clang-format: off
+      UINT compile_flags = 0 | D3DCOMPILE_ENABLE_STRICTNESS  // forbid deprecated syntax
+          | D3DCOMPILE_DEBUG  // Emit file/line/type/symbol data
+          | D3DCOMPILE_OPTIMIZATION_LEVEL3  // highest optimization level
+          | D3DCOMPILE_ALL_RESOURCES_BOUND  // Compiler can assume the application will not leave resources unbound
+          ;
+      UINT compile_effect_flags = 0;
+      // clang-format: on
+      ID3DBlob* cso_blob = nullptr;
+      ID3DBlob* error_message_blob = nullptr;
+      HRESULT hr = D3DCompile(source_contents.data(), source_nbytes, shader.input_path.c_str(), macros, includer,
+          shader.entry_point.c_str(), shader_model, compile_flags, compile_effect_flags, &cso_blob,
+          &error_message_blob);
+      if (error_message_blob) {
+        // Print first in case it's just warnings
+        const char* error_msg_data = (const char*)(error_message_blob->GetBufferPointer());
+        fprintf(stderr, "%s\n", error_msg_data);
+        error_message_blob->Release();
+      }
+      if (FAILED(hr)) {
+        return -11;
+      }
+
+      size_t cso_nbytes = cso_blob->GetBufferSize();
+      FILE* cso_file = zomboFopen(abs_output_path.c_str(), "wb");
+      if (!cso_file) {
+        fprintf(stderr, "%s: error: could not open '%s' for writing\n", shader.json_location.c_str(),
+            abs_output_path.c_str());
+        return -7;
+      }
+      size_t write_nbytes = fwrite(cso_blob->GetBufferPointer(), 1, cso_nbytes, cso_file);
+      fclose(cso_file);
+      cso_blob->Release();
+      if (cso_nbytes != write_nbytes) {
+        fprintf(stderr, "%s: error: file I/O error while writing %s\n", shader.json_location.c_str(),
+            abs_output_path.c_str());
+        return -8;
+      }
+      printf("%s -> %s\n", shader.input_path.c_str(), abs_output_path.c_str());
+#else
+      // printf("Skipped %s: .cso shader targets can't be built on this platform.\n", shader.input_path.c_str());
+#endif
     } else {
-      fprintf(stderr, "%s: error: Unrecognized shader stage '%s'\n", shader.json_location.c_str(),
-          shader.shader_stage.c_str());
-      return -3;
+      ZOMBO_ERROR_RETURN(-20, "%s: invalid shader target\n", shader.json_location.c_str());
     }
-    FILE* source_file = zomboFopen(shader.input_path.c_str(), "rb");
-    if (!source_file) {
-      fprintf(stderr, "%s: error: could not open '%s' for reading\n", shader.json_location.c_str(),
-          shader.input_path.c_str());
-      return -4;
-    }
-    fseek(source_file, 0, SEEK_END);
-    size_t source_nbytes = ftell(source_file);
-    fseek(source_file, 0, SEEK_SET);
-    std::vector<char> source_contents(source_nbytes + 1);
-    size_t read_nbytes = fread(source_contents.data(), 1, source_nbytes, source_file);
-    source_contents[source_nbytes] = '\0';
-    fclose(source_file);
-    if (read_nbytes != source_nbytes) {
-      fprintf(stderr, "%s: error: file I/O error while loading %s\n", shader.json_location.c_str(),
-          shader.input_path.c_str());
-      return -5;
-    }
-
-    shaderc::CompileOptions options;
-    std::unique_ptr<ShaderFileIncluder> includer =
-        my_make_unique<ShaderFileIncluder>(manifest_dir_, shader_include_dirs_);
-    options.SetIncluder(std::move(includer));
-    shaderc::Compiler compiler;
-    shaderc::SpvCompilationResult compile_result = compiler.CompileGlslToSpv(
-        source_contents.data(), shader_kind, shader.input_path.c_str(), shader.entry_point.c_str(), options);
-    if (compile_result.GetCompilationStatus() != shaderc_compilation_status_success) {
-      fprintf(stderr, "%s\n", compile_result.GetErrorMessage().c_str());
-      return compile_result.GetCompilationStatus();
-    }
-
-    size_t spv_dword_count = static_cast<size_t>(compile_result.cend() - compile_result.cbegin());
-    FILE* spv_file = zomboFopen(abs_output_path.c_str(), "wb");
-    if (!spv_file) {
-      fprintf(stderr, "%s: error: could not open '%s' for writing\n", shader.json_location.c_str(),
-          abs_output_path.c_str());
-      return -7;
-    }
-    size_t write_ndwords = fwrite(compile_result.cbegin(), sizeof(uint32_t), spv_dword_count, spv_file);
-    fclose(spv_file);
-    if (spv_dword_count != write_ndwords) {
-      fprintf(stderr, "%s: error: file I/O error while writing %s\n", shader.json_location.c_str(),
-          abs_output_path.c_str());
-      return -8;
-    }
-    printf("%s -> %s\n", shader.input_path.c_str(), abs_output_path.c_str());
   } else {
     // printf("Skipped %s (%s is up to date)\n", shader.input_path.c_str(), abs_output_path.c_str());
   }
