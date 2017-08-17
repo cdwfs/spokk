@@ -1,6 +1,9 @@
 #include <spokk_platform.h>
 
+#define SPOKK_HR_CHECK(expr) ZOMBO_RETVAL_CHECK(S_OK, expr)
+
 #include <d3d11_4.h>
+#include <dxgi1_2.h>
 
 #include <cstdint>
 #include <string>
@@ -9,22 +12,44 @@
 namespace {
 class D3d11Device {
 public:
-  D3d11Device(ID3D11Device* device, D3D_DRIVER_TYPE driver_type, D3D_FEATURE_LEVEL feature_level)
-    : device_(device), driver_type_(driver_type), feature_level_(feature_level) {}
+  D3d11Device() {}
   ~D3d11Device() {
-    if (device_) {
-      device_->Release();
-      device_ = nullptr;
+    Destroy();  // safe even if it's already been destroyed
+  }
+
+  void Create(IDXGIAdapter1* adapter, ID3D11Device* device, ID3D11DeviceContext* immediate_context,
+      D3D_FEATURE_LEVEL feature_level) {
+    adapter_ = adapter;
+    logical_device_ = device;
+    immediate_context_ = immediate_context;
+    feature_level_ = feature_level;
+  }
+  void Destroy() {
+    if (immediate_context_) {
+      immediate_context_->Release();
+      immediate_context_ = nullptr;
+    }
+    if (logical_device_) {
+      logical_device_->Release();
+      logical_device_ = nullptr;
+    }
+    if (adapter_) {
+      adapter_->Release();
+      adapter_ = nullptr;
     }
   }
+
+  ID3D11Device* Logical() const { return logical_device_; }
+  IDXGIAdapter1* Physical() const { return adapter_; }
+  ID3D11DeviceContext* Context() const { return immediate_context_; }
+
   D3d11Device(const D3d11Device&) = delete;
   D3d11Device& operator=(const D3d11Device&) = delete;
 
-  ID3D11Device* Device() const { return device_; }
-
 private:
-  ID3D11Device* device_ = NULL;
-  D3D_DRIVER_TYPE driver_type_ = D3D_DRIVER_TYPE_NULL;
+  IDXGIAdapter1* adapter_ = nullptr;
+  ID3D11Device* logical_device_ = nullptr;
+  ID3D11DeviceContext* immediate_context_ = nullptr;
   D3D_FEATURE_LEVEL feature_level_ = D3D_FEATURE_LEVEL_11_0;
 };
 
@@ -67,16 +92,19 @@ public:
   int Run();
 
   virtual void Update(double dt);
-  virtual void Render(ID3D11DeviceContext* context, uint32_t swapchain_image_index);
+  virtual void Render(ID3D11DeviceContext* context);
 
 private:
   bool init_successful_ = false;
 
   HINSTANCE hinstance_ = nullptr;
   HWND hwnd_ = nullptr;
-  D3d11Device* device_ = nullptr;
-  ID3D11DeviceContext* immediate_context_ = nullptr;
-  IDXGISwapChain* swapchain_ = nullptr;
+  D3d11Device device_ = {};
+
+  IDXGISwapChain1* swapchain_ = nullptr;
+  ID3D11RenderTargetView* back_buffer_rtv_ = {};
+
+  uint32_t frame_index_ = 0;
 };
 
 ElevenApp::ElevenApp(const CreateInfo& ci) {
@@ -110,6 +138,31 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
   }
   ShowWindow(hwnd_, ci.cmd_show);
 
+  // Enumerate adaptors. This lets the app choose which physical GPU to target (or
+  // a software reference implementation). For now, just grab the first one you
+  // find that's a hardware device; I'm not picky.
+  IDXGIFactory2* dxgi_factory = nullptr;
+  SPOKK_HR_CHECK(CreateDXGIFactory1(__uuidof(IDXGIFactory2), (void**)&dxgi_factory));
+  IDXGIAdapter1* adapter = nullptr;
+  {
+    IDXGIAdapter1* a1 = nullptr;
+    UINT i = 0;
+    while (dxgi_factory->EnumAdapters1(i, &a1) != DXGI_ERROR_NOT_FOUND) {
+      IDXGIAdapter2* a2 = (IDXGIAdapter2*)a1;
+      DXGI_ADAPTER_DESC2 desc2 = {};
+      SPOKK_HR_CHECK(a2->GetDesc2(&desc2));
+      if ((desc2.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0) {
+        adapter = a1;
+        break;
+      }
+    }
+  }
+  dxgi_factory->Release();
+  if (!adapter) {
+    ZOMBO_ERROR("No hardware adapter found");
+    return;
+  }
+
   // Initialize device
   RECT client_rect = {};
   BOOL rect_error = GetClientRect(hwnd_, &client_rect);
@@ -124,53 +177,50 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
   create_device_flags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
 
-  const std::vector<D3D_DRIVER_TYPE> driver_types = {
-      // Try these driver types in the order listed
-      D3D_DRIVER_TYPE_HARDWARE,
-      D3D_DRIVER_TYPE_WARP,
-      D3D_DRIVER_TYPE_REFERENCE,
-  };
   const std::vector<D3D_FEATURE_LEVEL> feature_levels = {
       D3D_FEATURE_LEVEL_11_1,
       D3D_FEATURE_LEVEL_11_0,
   };
 
-  DXGI_SWAP_CHAIN_DESC sd = {};
-  sd.BufferCount = 2;
-  sd.BufferDesc.Width = client_width;
-  sd.BufferDesc.Height = client_height;
-  sd.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-  sd.BufferDesc.RefreshRate.Numerator = 60;
-  sd.BufferDesc.RefreshRate.Denominator = 1;
-  sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-  sd.OutputWindow = hwnd_;
-  sd.SampleDesc.Count = 1;
-  sd.SampleDesc.Quality = 0;
-  sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;  // TODO(cort): FLIP_ is allegedly more efficient, but Win10+ only.
-  sd.Windowed = TRUE;  // TODO(cort): FALSE -> fullscreen?
+  DXGI_SWAP_CHAIN_DESC swapchain_desc = {};
+  swapchain_desc.BufferCount = 2;
+  swapchain_desc.BufferDesc.Width = client_width;
+  swapchain_desc.BufferDesc.Height = client_height;
+  swapchain_desc.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  swapchain_desc.BufferDesc.RefreshRate.Numerator = 60;
+  swapchain_desc.BufferDesc.RefreshRate.Denominator = 1;
+  swapchain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+  swapchain_desc.OutputWindow = hwnd_;
+  swapchain_desc.SampleDesc.Count = 1;
+  swapchain_desc.SampleDesc.Quality = 0;
+  swapchain_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+  swapchain_desc.Windowed = TRUE;
   hr = E_FAIL;
-  for (auto driver_type : driver_types) {
+  {
     ID3D11Device* device = nullptr;
     D3D_FEATURE_LEVEL device_feature_level = {};
     ID3D11DeviceContext* device_context = nullptr;
-    hr = D3D11CreateDeviceAndSwapChain(NULL, driver_type, NULL, create_device_flags, feature_levels.data(),
-        (UINT)feature_levels.size(), D3D11_SDK_VERSION, &sd, &swapchain_, &device, &device_feature_level,
-        &device_context);
-    if (SUCCEEDED(hr)) {
-      device_ = new D3d11Device(device, driver_type, device_feature_level);
-      break;
-    }
+    IDXGISwapChain* swapchain0 = nullptr;
+    SPOKK_HR_CHECK(D3D11CreateDeviceAndSwapChain(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, create_device_flags,
+        feature_levels.data(), (UINT)feature_levels.size(), D3D11_SDK_VERSION, &swapchain_desc, &swapchain0, &device,
+        &device_feature_level, &device_context));
+    SPOKK_HR_CHECK(swapchain0->QueryInterface<IDXGISwapChain1>(&swapchain_));
+    swapchain0->Release();
+    device_.Create(adapter, device, device_context, device_feature_level);
   }
-  if (FAILED(hr)) {
-    return;
-  }
+
+  // Create render target view for swapchain back buffer
+  ID3D11Texture2D* back_buffer_texture = nullptr;
+  SPOKK_HR_CHECK(swapchain_->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&back_buffer_texture));
+  SPOKK_HR_CHECK(device_.Logical()->CreateRenderTargetView(back_buffer_texture, nullptr, &back_buffer_rtv_));
+  back_buffer_texture->Release();
 
   init_successful_ = true;
 }
 ElevenApp::~ElevenApp() {
-  if (device_) {
-    delete device_;
-  }
+  back_buffer_rtv_->Release();
+  swapchain_->Release();
+  device_.Destroy();
 }
 
 int ElevenApp::Run() {
@@ -185,7 +235,14 @@ int ElevenApp::Run() {
       TranslateMessage(&msg);
       DispatchMessageA(&msg);
     } else {
-      Render(immediate_context_, 0);
+      Render(device_.Context());
+
+      // in D3D11, Present() automatically updates the back buffer pointer(s). Simpler times, man.
+      UINT sync_interval = 1;  // 1 = wait for vsync
+      UINT present_flags = 0;
+      swapchain_->Present(sync_interval, present_flags);
+
+      ++frame_index_;
     }
   }
   return (int)msg.wParam;
@@ -193,7 +250,13 @@ int ElevenApp::Run() {
 
 void ElevenApp::Update(double /*dt*/) {}
 
-void ElevenApp::Render(ID3D11DeviceContext* /*context*/, uint32_t /*swapchain_image_index*/) {}
+void ElevenApp::Render(ID3D11DeviceContext* context) {
+  context->ClearState();
+
+  context->OMSetRenderTargets(1, &back_buffer_rtv_, nullptr);
+  float clear_color[4] = {1.0f, fmodf( (float)frame_index_ * 0.01f, 1.0f), 0.3f, 1.0f};
+  context->ClearRenderTargetView(back_buffer_rtv_, clear_color);
+}
 
 }  // namespace
 
