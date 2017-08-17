@@ -153,12 +153,15 @@ IF(${MSVC})
     SPOKK_ADD_SOURCES(spokk-eleven samples/eleven/eleven.cpp)
     SOURCE_GROUP("" FILES ${spokk-eleven_SPOKKLE_HEADERS} ${${APP_TARGET}_SOURCES})
     ADD_EXECUTABLE(spokk-eleven ${spokk-eleven_SOURCES} ${spokk-eleven_SHADERS} ${spokk-eleven_HEADERS})
-    TARGET_LINK_LIBRARIES(spokk-eleven d3d11 dxgi)
+    TARGET_LINK_LIBRARIES(spokk-eleven
+        glfw ${GLFW_LIBRARIES}
+        d3d11 dxgi
+        )
     TARGET_INCLUDE_DIRECTORIES(spokk-eleven PUBLIC "${CMAKE_SOURCE_DIR}/src/spokk")
     TARGET_INCLUDE_DIRECTORIES(spokk-eleven PUBLIC "${CMAKE_SOURCE_DIR}/samples")
     SET_TARGET_PROPERTIES(spokk-eleven PROPERTIES
         FOLDER "samples"
-        WIN32_EXECUTABLE TRUE
+        #WIN32_EXECUTABLE TRUE
     )
     #ADD_DEPENDENCIES(spokk-eleven build-assets)
     mathfu_configure_flags(spokk-eleven)

@@ -1,11 +1,16 @@
 #include <spokk_platform.h>
 
+#include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+
 #define SPOKK_HR_CHECK(expr) ZOMBO_RETVAL_CHECK(S_OK, expr)
 
 #include <d3d11_4.h>
 #include <dxgi1_2.h>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -53,34 +58,11 @@ private:
   D3D_FEATURE_LEVEL feature_level_ = D3D_FEATURE_LEVEL_11_0;
 };
 
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-  PAINTSTRUCT ps = {};
-  HDC hdc = {};
-
-  switch (message) {
-  case WM_PAINT:
-    hdc = BeginPaint(hWnd, &ps);
-    EndPaint(hWnd, &ps);
-    break;
-
-  case WM_DESTROY:
-    PostQuitMessage(0);
-    break;
-
-  default:
-    return DefWindowProcA(hWnd, message, wParam, lParam);
-  }
-
-  return 0;
-}
-
 class ElevenApp {
 public:
   struct CreateInfo {
     std::string app_name = "Spokk Application";
     uint32_t window_width = 1280, window_height = 720;
-    HINSTANCE hinstance = 0;
-    int cmd_show = 0;
   };
 
   explicit ElevenApp(const CreateInfo& ci);
@@ -96,9 +78,10 @@ public:
 
 private:
   bool init_successful_ = false;
+  bool force_exit_ = false;  // set to true to exit the main application loop on the next iteration
 
-  HINSTANCE hinstance_ = nullptr;
-  HWND hwnd_ = nullptr;
+  std::shared_ptr<GLFWwindow> window_ = nullptr;
+
   D3d11Device device_ = {};
 
   IDXGISwapChain1* swapchain_ = nullptr;
@@ -108,38 +91,30 @@ private:
   uint32_t frame_index_ = 0;
 };
 
+void MyGlfwErrorCallback(int error, const char* description) {
+  fprintf(stderr, "GLFW Error %d: %s\n", error, description);
+}
+
 ElevenApp::ElevenApp(const CreateInfo& ci) {
   HRESULT hr = S_OK;
-  hinstance_ = ci.hinstance;
 
-  // Initialize window
-  WNDCLASSEXA wcex = {};
-  wcex.cbSize = sizeof(WNDCLASSEXA);
-  wcex.style = CS_HREDRAW | CS_VREDRAW;
-  wcex.lpfnWndProc = WndProc;
-  wcex.cbClsExtra = 0;
-  wcex.cbWndExtra = 0;
-  wcex.hInstance = ci.hinstance;
-  wcex.hIcon = nullptr;
-  wcex.hCursor = nullptr;
-  wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-  wcex.lpszMenuName = nullptr;
-  wcex.lpszClassName = "SpokkWindowClass";
-  wcex.hIconSm = nullptr;
-  if (!RegisterClassExA(&wcex)) {
+  // Initialize GLFW
+  glfwSetErrorCallback(MyGlfwErrorCallback);
+  if (!glfwInit()) {
+    fprintf(stderr, "Failed to initialize GLFW\n");
     return;
   }
-  RECT window_rect = {0, 0, (LONG)ci.window_width, (LONG)ci.window_height};
-  AdjustWindowRect(&window_rect, WS_OVERLAPPEDWINDOW, FALSE);
-  hwnd_ = CreateWindowA(wcex.lpszClassName, ci.app_name.c_str(), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-      window_rect.right - window_rect.left, window_rect.bottom - window_rect.top, nullptr, nullptr, ci.hinstance,
-      nullptr);
-  if (!hwnd_) {
+  if (!glfwVulkanSupported()) {
+    fprintf(stderr, "Vulkan is not available :(\n");
     return;
   }
-  ShowWindow(hwnd_, ci.cmd_show);
+  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+  window_ =
+      std::shared_ptr<GLFWwindow>(glfwCreateWindow(ci.window_width, ci.window_height, ci.app_name.c_str(), NULL, NULL),
+          [](GLFWwindow* w) { glfwDestroyWindow(w); });
+  HWND hwnd = glfwGetWin32Window(window_.get());
 
-  // Enumerate adaptors. This lets the app choose which physical GPU to target (or
+  // Enumerate adapters. This lets the app choose which physical GPU to target (or
   // a software reference implementation). For now, just grab the first one you
   // find that's a hardware device; I'm not picky.
   IDXGIFactory2* dxgi_factory = nullptr;
@@ -166,7 +141,7 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
 
   // Initialize device
   RECT client_rect = {};
-  BOOL rect_error = GetClientRect(hwnd_, &client_rect);
+  BOOL rect_error = GetClientRect(hwnd, &client_rect);
   if (!rect_error) {
     return;
   }
@@ -191,7 +166,7 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
   swapchain_desc_.BufferDesc.RefreshRate.Numerator = 60;
   swapchain_desc_.BufferDesc.RefreshRate.Denominator = 1;
   swapchain_desc_.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-  swapchain_desc_.OutputWindow = hwnd_;
+  swapchain_desc_.OutputWindow = hwnd;
   swapchain_desc_.SampleDesc.Count = 1;
   swapchain_desc_.SampleDesc.Quality = 0;
   swapchain_desc_.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
@@ -222,6 +197,9 @@ ElevenApp::~ElevenApp() {
   back_buffer_rtv_->Release();
   swapchain_->Release();
   device_.Destroy();
+
+  window_.reset();
+  glfwTerminate();
 }
 
 int ElevenApp::Run() {
@@ -229,24 +207,19 @@ int ElevenApp::Run() {
     return -1;
   }
 
-  // Main message loop
-  MSG msg = {0};
-  while (WM_QUIT != msg.message) {
-    if (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
-      TranslateMessage(&msg);
-      DispatchMessageA(&msg);
-    } else {
-      Render(device_.Context());
+  glfwPollEvents();  // prime for first iteration
+  while (!force_exit_ && !glfwWindowShouldClose(window_.get())) {
+    Render(device_.Context());
 
-      // in D3D11, Present() automatically updates the back buffer pointer(s). Simpler times, man.
-      UINT sync_interval = 1;  // 1 = wait for vsync
-      UINT present_flags = 0;
-      swapchain_->Present(sync_interval, present_flags);
+    // in D3D11, Present() automatically updates the back buffer pointer(s). Simpler times, man.
+    UINT sync_interval = 1;  // 1 = wait for vsync
+    UINT present_flags = 0;
+    swapchain_->Present(sync_interval, present_flags);
 
-      ++frame_index_;
-    }
+    glfwPollEvents();
+    ++frame_index_;
   }
-  return (int)msg.wParam;
+  return 0;
 }
 
 void ElevenApp::Update(double /*dt*/) {}
@@ -255,7 +228,7 @@ void ElevenApp::Render(ID3D11DeviceContext* context) {
   context->ClearState();
 
   context->OMSetRenderTargets(1, &back_buffer_rtv_, nullptr);
-  float clear_color[4] = {1.0f, fmodf( (float)frame_index_ * 0.01f, 1.0f), 0.3f, 1.0f};
+  float clear_color[4] = {1.0f, fmodf((float)frame_index_ * 0.01f, 1.0f), 0.3f, 1.0f};
   context->ClearRenderTargetView(back_buffer_rtv_, clear_color);
 
   // Setup the viewport
@@ -266,20 +239,21 @@ void ElevenApp::Render(ID3D11DeviceContext* context) {
   viewport.Height = (float)swapchain_desc_.BufferDesc.Height;
   viewport.MinDepth = 0.0f;
   viewport.MaxDepth = 1.0f;
-  context->RSSetViewports( 1, &viewport );
-
+  context->RSSetViewports(1, &viewport);
 }
 
 }  // namespace
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpCmdLine*/, int nCmdShow) {
-  ElevenApp::CreateInfo app_ci = {};
-  app_ci.app_name = "Eleven!";
-  app_ci.hinstance = hInstance;
-  app_ci.cmd_show = nCmdShow;
+#if 0
+int WINAPI WinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, LPSTR /*lpCmdLine*/, int /*nCmdShow*/) {
+#else
+int main(int /*argc*/, char** /*argv*/) {
+#endif
+ElevenApp::CreateInfo app_ci = {};
+app_ci.app_name = "Eleven!";
 
-  ElevenApp app(app_ci);
-  int run_error = app.Run();
+ElevenApp app(app_ci);
+int run_error = app.Run();
 
-  return run_error;
+return run_error;
 }
