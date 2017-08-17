@@ -102,6 +102,7 @@ private:
   D3d11Device device_ = {};
 
   IDXGISwapChain1* swapchain_ = nullptr;
+  DXGI_SWAP_CHAIN_DESC swapchain_desc_ = {};
   ID3D11RenderTargetView* back_buffer_rtv_ = {};
 
   uint32_t frame_index_ = 0;
@@ -182,19 +183,19 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
       D3D_FEATURE_LEVEL_11_0,
   };
 
-  DXGI_SWAP_CHAIN_DESC swapchain_desc = {};
-  swapchain_desc.BufferCount = 2;
-  swapchain_desc.BufferDesc.Width = client_width;
-  swapchain_desc.BufferDesc.Height = client_height;
-  swapchain_desc.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-  swapchain_desc.BufferDesc.RefreshRate.Numerator = 60;
-  swapchain_desc.BufferDesc.RefreshRate.Denominator = 1;
-  swapchain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-  swapchain_desc.OutputWindow = hwnd_;
-  swapchain_desc.SampleDesc.Count = 1;
-  swapchain_desc.SampleDesc.Quality = 0;
-  swapchain_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
-  swapchain_desc.Windowed = TRUE;
+  swapchain_desc_ = {};
+  swapchain_desc_.BufferCount = 2;
+  swapchain_desc_.BufferDesc.Width = client_width;
+  swapchain_desc_.BufferDesc.Height = client_height;
+  swapchain_desc_.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  swapchain_desc_.BufferDesc.RefreshRate.Numerator = 60;
+  swapchain_desc_.BufferDesc.RefreshRate.Denominator = 1;
+  swapchain_desc_.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+  swapchain_desc_.OutputWindow = hwnd_;
+  swapchain_desc_.SampleDesc.Count = 1;
+  swapchain_desc_.SampleDesc.Quality = 0;
+  swapchain_desc_.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+  swapchain_desc_.Windowed = TRUE;
   hr = E_FAIL;
   {
     ID3D11Device* device = nullptr;
@@ -202,7 +203,7 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
     ID3D11DeviceContext* device_context = nullptr;
     IDXGISwapChain* swapchain0 = nullptr;
     SPOKK_HR_CHECK(D3D11CreateDeviceAndSwapChain(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, create_device_flags,
-        feature_levels.data(), (UINT)feature_levels.size(), D3D11_SDK_VERSION, &swapchain_desc, &swapchain0, &device,
+        feature_levels.data(), (UINT)feature_levels.size(), D3D11_SDK_VERSION, &swapchain_desc_, &swapchain0, &device,
         &device_feature_level, &device_context));
     SPOKK_HR_CHECK(swapchain0->QueryInterface<IDXGISwapChain1>(&swapchain_));
     swapchain0->Release();
@@ -256,6 +257,17 @@ void ElevenApp::Render(ID3D11DeviceContext* context) {
   context->OMSetRenderTargets(1, &back_buffer_rtv_, nullptr);
   float clear_color[4] = {1.0f, fmodf( (float)frame_index_ * 0.01f, 1.0f), 0.3f, 1.0f};
   context->ClearRenderTargetView(back_buffer_rtv_, clear_color);
+
+  // Setup the viewport
+  D3D11_VIEWPORT viewport = {};
+  viewport.TopLeftX = 0;
+  viewport.TopLeftY = 0;
+  viewport.Width = (float)swapchain_desc_.BufferDesc.Width;
+  viewport.Height = (float)swapchain_desc_.BufferDesc.Height;
+  viewport.MinDepth = 0.0f;
+  viewport.MaxDepth = 1.0f;
+  context->RSSetViewports( 1, &viewport );
+
 }
 
 }  // namespace
