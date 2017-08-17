@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.7)
 
 PROJECT(spokk)
 
@@ -154,19 +154,23 @@ SPOKK_ADD_EXECUTABLE(spokk-compute)
 IF(${MSVC})
     # spokk-eleven
     SPOKK_ADD_SOURCES(spokk-eleven samples/eleven/eleven.cpp)
+    SPOKK_ADD_SHADERS(spokk-eleven samples/eleven/test.hlsl)
+    SET_SOURCE_FILES_PROPERTIES(${spokk-eleven_SHADERS} PROPERTIES
+        VS_TOOL_OVERRIDE "None"
+    )
     SOURCE_GROUP("" FILES ${spokk-eleven_SPOKKLE_HEADERS} ${${APP_TARGET}_SOURCES})
     ADD_EXECUTABLE(spokk-eleven ${spokk-eleven_SOURCES} ${spokk-eleven_SHADERS} ${spokk-eleven_HEADERS})
     TARGET_LINK_LIBRARIES(spokk-eleven
         glfw ${GLFW_LIBRARIES}
         d3d11 dxgi
-        )
+    )
     TARGET_INCLUDE_DIRECTORIES(spokk-eleven PUBLIC "${CMAKE_SOURCE_DIR}/src/spokk")
     TARGET_INCLUDE_DIRECTORIES(spokk-eleven PUBLIC "${CMAKE_SOURCE_DIR}/samples")
     SET_TARGET_PROPERTIES(spokk-eleven PROPERTIES
         FOLDER "samples"
         #WIN32_EXECUTABLE TRUE
     )
-    #ADD_DEPENDENCIES(spokk-eleven build-assets)
+    ADD_DEPENDENCIES(spokk-eleven build-assets)
     mathfu_configure_flags(spokk-eleven)
 ENDIF(${MSVC})
 

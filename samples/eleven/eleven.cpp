@@ -88,6 +88,9 @@ private:
   DXGI_SWAP_CHAIN_DESC swapchain_desc_ = {};
   ID3D11RenderTargetView* back_buffer_rtv_ = {};
 
+  ID3D11VertexShader* shader_vs_ = nullptr;
+  ID3D11PixelShader* shader_ps_ = nullptr;
+
   uint32_t frame_index_ = 0;
 };
 
@@ -191,9 +194,35 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
   SPOKK_HR_CHECK(device_.Logical()->CreateRenderTargetView(back_buffer_texture, nullptr, &back_buffer_rtv_));
   back_buffer_texture->Release();
 
+  // Load some shaders
+  FILE* vs_file = zomboFopen("data/test_vs.cso", "rb");
+  ZOMBO_ASSERT(vs_file, "failed to load VS");
+  fseek(vs_file, 0, SEEK_END);
+  size_t vs_nbytes = ftell(vs_file);
+  fseek(vs_file, 0, SEEK_SET);
+  std::vector<uint8_t> vs(vs_nbytes);
+  size_t vs_read_nbytes = fread(vs.data(), 1, vs_nbytes, vs_file);
+  fclose(vs_file);
+  ZOMBO_ASSERT(vs_nbytes == vs_read_nbytes, "file I/O error while reading VS");
+  SPOKK_HR_CHECK(device_.Logical()->CreateVertexShader(vs.data(), vs.size(), nullptr, &shader_vs_));
+
+  FILE* ps_file = zomboFopen("data/test_ps.cso", "rb");
+  ZOMBO_ASSERT(ps_file, "failed to load PS");
+  fseek(ps_file, 0, SEEK_END);
+  size_t ps_nbytes = ftell(ps_file);
+  fseek(ps_file, 0, SEEK_SET);
+  std::vector<uint8_t> ps(ps_nbytes);
+  size_t ps_read_nbytes = fread(ps.data(), 1, ps_nbytes, ps_file);
+  fclose(ps_file);
+  ZOMBO_ASSERT(ps_nbytes == ps_read_nbytes, "file I/O error while reading PS");
+  SPOKK_HR_CHECK(device_.Logical()->CreatePixelShader(ps.data(), ps.size(), nullptr, &shader_ps_));
+
   init_successful_ = true;
 }
 ElevenApp::~ElevenApp() {
+  shader_vs_->Release();
+  shader_ps_->Release();
+
   back_buffer_rtv_->Release();
   swapchain_->Release();
   device_.Destroy();

@@ -47,6 +47,9 @@
 
         { class: "shader", input: "../compute/double_ints.comp", output: "double_ints.comp.spv", stage: "comp", entry: "main", },
 
+        { class: "shader", input: "../eleven/test.hlsl", output: "test_vs.cso", stage: "vertex", entry: "VSMain", },
+        { class: "shader", input: "../eleven/test.hlsl", output: "test_ps.cso", stage: "pixel", entry: "PSMain", },
+
         { class: "shader", input: "../lights/lit_mesh.vert", output: "lit_mesh.vert.spv", stage: "vert", entry: "main", },
         { class: "shader", input: "../lights/lit_mesh.frag", output: "lit_mesh.frag.spv", stage: "frag", entry: "main", },
         { class: "shader", input: "../lights/skybox.vert", output: "skybox.vert.spv", stage: "vert", entry: "main", },
