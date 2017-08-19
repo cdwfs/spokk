@@ -1386,7 +1386,9 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
       UINT compile_flags = 0 | D3DCOMPILE_ENABLE_STRICTNESS  // forbid deprecated syntax
           | D3DCOMPILE_DEBUG  // Emit file/line/type/symbol data
           | D3DCOMPILE_OPTIMIZATION_LEVEL3  // highest optimization level
+#if defined D3DCOMPILE_ALL_RESOURCES_BOUND
           | D3DCOMPILE_ALL_RESOURCES_BOUND  // Compiler can assume the application will not leave resources unbound
+#endif
           ;
       UINT compile_effect_flags = 0;
       // clang-format: on

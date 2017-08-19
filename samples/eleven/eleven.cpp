@@ -6,7 +6,7 @@
 
 #define SPOKK_HR_CHECK(expr) ZOMBO_RETVAL_CHECK(S_OK, expr)
 
-#include <d3d11_4.h>
+#include <d3d11_2.h>
 #include <dxgi1_2.h>
 
 #include <cstdint>
