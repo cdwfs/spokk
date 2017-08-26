@@ -23,33 +23,41 @@ struct DeviceQueue {
 };
 
 //
-// Bundle of Vulkan device context for the application to pass into other parts of the framework.
+// Bundle of Vulkan device state for the application to pass into other parts of the framework.
 //
-class DeviceContext {
+class Device {
 public:
-  DeviceContext()
+  Device()
     : physical_device_(VK_NULL_HANDLE),
-      device_(VK_NULL_HANDLE),
+      logical_device_(VK_NULL_HANDLE),
       pipeline_cache_(VK_NULL_HANDLE),
       host_allocator_(nullptr),
       device_allocator_(nullptr),
       device_properties_{},
       memory_properties_{},
       queues_{} {}
-  DeviceContext(VkDevice device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache,
+  ~Device();
+
+  void Create(VkDevice logical_device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache,
       const DeviceQueue *queues, uint32_t queue_count, const VkPhysicalDeviceFeatures &enabled_device_features,
       const VkAllocationCallbacks *host_allocator = nullptr,
       const DeviceAllocationCallbacks *device_allocator = nullptr);
-  ~DeviceContext();
+  void Destroy();
 
-  VkDevice Device() const { return device_; }
-  VkPhysicalDevice PhysicalDevice() const { return physical_device_; }
+  Device(const Device &) = delete;
+  Device &operator=(const Device &) = delete;
+
+  // Allow implicit conversion to VkDevice, which 99% of the time is what you want from this object.
+  operator VkDevice() const { return logical_device_; }
+
+  VkDevice Logical() const { return logical_device_; }
+  VkPhysicalDevice Physical() const { return physical_device_; }
   VkPipelineCache PipelineCache() const { return pipeline_cache_; }
   const VkAllocationCallbacks *HostAllocator() const { return host_allocator_; }
   const DeviceAllocationCallbacks *DeviceAllocator() const { return device_allocator_; }
 
-  const VkPhysicalDeviceProperties &DeviceProperties() const { return device_properties_; }
-  const VkPhysicalDeviceFeatures &DeviceFeatures() const { return device_features_; }
+  const VkPhysicalDeviceProperties &Properties() const { return device_properties_; }
+  const VkPhysicalDeviceFeatures &Features() const { return device_features_; }
 
   const DeviceQueue *FindQueue(VkQueueFlags queue_flags, VkSurfaceKHR present_surface = VK_NULL_HANDLE) const;
 
@@ -72,7 +80,7 @@ public:
 private:
   // cached Vulkan handles; do not destroy!
   VkPhysicalDevice physical_device_;
-  VkDevice device_;
+  VkDevice logical_device_;
   VkPipelineCache pipeline_cache_;
   const VkAllocationCallbacks *host_allocator_;
   const DeviceAllocationCallbacks *device_allocator_;

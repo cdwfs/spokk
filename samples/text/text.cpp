@@ -105,7 +105,7 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
 
   // Create render pass
   render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
-  SPOKK_VK_CHECK(render_pass_.Finalize(device_context_));
+  SPOKK_VK_CHECK(render_pass_.Finalize(device_));
   render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
@@ -161,12 +161,12 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   atlas_image_ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
   atlas_image_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   atlas_image_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  SPOKK_VK_CHECK(font_atlas_image_.Create(device_context_, atlas_image_ci));
+  SPOKK_VK_CHECK(font_atlas_image_.Create(device_, atlas_image_ci));
   VkImageSubresource dst_subresource = {};
   dst_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   dst_subresource.mipLevel = 0;
   dst_subresource.arrayLayer = 0;
-  int atlas_load_err = font_atlas_image_.LoadSubresourceFromMemory(device_context_, graphics_and_present_queue_,
+  int atlas_load_err = font_atlas_image_.LoadSubresourceFromMemory(device_, graphics_and_present_queue_,
       atlas_image_pixels.data(), atlas_image_pixels.size(), atlas_ci.image_width, atlas_ci.image_height,
       dst_subresource, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT);
   ZOMBO_ASSERT(atlas_load_err == 0, "error (%d) while loading font atlas into memory", atlas_load_err);
@@ -185,7 +185,7 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   mipmap_barrier.subresourceRange.baseArrayLayer = 0;
   mipmap_barrier.subresourceRange.layerCount = 1;
   int mipmap_gen_err =
-      font_atlas_image_.GenerateMipmaps(device_context_, graphics_and_present_queue_, mipmap_barrier, 0, 0);
+      font_atlas_image_.GenerateMipmaps(device_, graphics_and_present_queue_, mipmap_barrier, 0, 0);
   ZOMBO_ASSERT(mipmap_gen_err == 0, "error (%d) while generating atlas mipmaps", mipmap_gen_err);
 
   // Generate quads for a string.
@@ -198,7 +198,7 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   vb_ci.size = sizeof(GlyphVertex) * 6 * string_quad_count_;
   vb_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
   vb_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(string_vb_.Create(device_context_, vb_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+  SPOKK_VK_CHECK(string_vb_.Create(device_, vb_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
   // Convert raw quads into a compressed vertex buffer
   GlyphVertex *verts = (GlyphVertex *)string_vb_.Mapped();
   for (uint32_t i = 0; i < string_quad_count_; ++i) {
@@ -236,11 +236,11 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   string_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
   // Load shader pipelines
-  SPOKK_VK_CHECK(textmesh_vs_.CreateAndLoadSpirvFile(device_context_, "data/textmesh.vert.spv"));
-  SPOKK_VK_CHECK(textmesh_fs_.CreateAndLoadSpirvFile(device_context_, "data/textmesh.frag.spv"));
+  SPOKK_VK_CHECK(textmesh_vs_.CreateAndLoadSpirvFile(device_, "data/textmesh.vert.spv"));
+  SPOKK_VK_CHECK(textmesh_fs_.CreateAndLoadSpirvFile(device_, "data/textmesh.frag.spv"));
   SPOKK_VK_CHECK(textmesh_shader_program_.AddShader(&textmesh_vs_));
   SPOKK_VK_CHECK(textmesh_shader_program_.AddShader(&textmesh_fs_));
-  SPOKK_VK_CHECK(textmesh_shader_program_.Finalize(device_context_));
+  SPOKK_VK_CHECK(textmesh_shader_program_.Finalize(device_));
 
   // Create graphics pipelines
   textmesh_pipeline_.Init(&string_mesh_format_, &textmesh_shader_program_, &render_pass_, 0);
@@ -251,26 +251,26 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   textmesh_pipeline_.color_blend_attachment_states[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
   textmesh_pipeline_.color_blend_attachment_states[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
   // pipeline_.color_blend_state_ci.blendConstants
-  SPOKK_VK_CHECK(textmesh_pipeline_.Finalize(device_context_));
+  SPOKK_VK_CHECK(textmesh_pipeline_.Finalize(device_));
 
   // Create pipelined buffer of shader uniforms
   VkBufferCreateInfo uniform_buffer_ci = {};
   uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   uniform_buffer_ci.size = sizeof(SceneUniforms);
-  uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
   uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(
-      scene_uniforms_.Create(device_context_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+      scene_uniforms_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
   // ...and for strings
   uniform_buffer_ci.size = sizeof(StringUniforms);
   SPOKK_VK_CHECK(
-      string_uniforms_.Create(device_context_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+      string_uniforms_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
   // Descriptor sets
   for (const auto &dset_layout_ci : textmesh_shader_program_.dset_layout_cis) {
     dpool_.Add(dset_layout_ci, PFRAME_COUNT);
   }
-  SPOKK_VK_CHECK(dpool_.Finalize(device_context_));
+  SPOKK_VK_CHECK(dpool_.Finalize(device_));
 
   // Create swapchain-sized resources.
   CreateRenderBuffers(swapchain_extent_);
@@ -281,11 +281,11 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   dset_writer.BindSampler(sampler_, textmesh_fs_.GetDescriptorBindPoint("samp").binding);
   for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
     // TODO(cort): allocate_pipelined_set()?
-    dsets_[pframe] = dpool_.AllocateSet(device_context_, textmesh_shader_program_.dset_layouts[0]);
+    dsets_[pframe] = dpool_.AllocateSet(device_, textmesh_shader_program_.dset_layouts[0]);
     dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), textmesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
     dset_writer.BindBuffer(
         string_uniforms_.Handle(pframe), textmesh_vs_.GetDescriptorBindPoint("string_consts").binding);
-    dset_writer.WriteAll(device_context_, dsets_[pframe]);
+    dset_writer.WriteAll(device_, dsets_[pframe]);
   }
 }
 
@@ -293,28 +293,28 @@ TextApp::~TextApp() {
   if (device_) {
     vkDeviceWaitIdle(device_);
 
-    dpool_.Destroy(device_context_);
+    dpool_.Destroy(device_);
 
-    scene_uniforms_.Destroy(device_context_);
-    string_uniforms_.Destroy(device_context_);
-    string_vb_.Destroy(device_context_);
+    scene_uniforms_.Destroy(device_);
+    string_uniforms_.Destroy(device_);
+    string_vb_.Destroy(device_);
 
-    textmesh_vs_.Destroy(device_context_);
-    textmesh_fs_.Destroy(device_context_);
-    textmesh_shader_program_.Destroy(device_context_);
-    textmesh_pipeline_.Destroy(device_context_);
+    textmesh_vs_.Destroy(device_);
+    textmesh_fs_.Destroy(device_);
+    textmesh_shader_program_.Destroy(device_);
+    textmesh_pipeline_.Destroy(device_);
 
     vkDestroySampler(device_, sampler_, host_allocator_);
-    font_atlas_image_.Destroy(device_context_);
+    font_atlas_image_.Destroy(device_);
     font_.Destroy();
     font_atlas_.Destroy();
 
     for (const auto fb : framebuffers_) {
       vkDestroyFramebuffer(device_, fb, host_allocator_);
     }
-    render_pass_.Destroy(device_context_);
+    render_pass_.Destroy(device_);
 
-    depth_image_.Destroy(device_context_);
+    depth_image_.Destroy(device_);
   }
 }
 
@@ -415,7 +415,7 @@ void TextApp::HandleWindowResize(VkExtent2D new_window_extent) {
     }
   }
   framebuffers_.clear();
-  depth_image_.Destroy(device_context_);
+  depth_image_.Destroy(device_);
 
   float aspect_ratio = (float)new_window_extent.width / (float)new_window_extent.height;
   camera_->setPerspective(FOV_DEGREES, aspect_ratio, Z_NEAR, Z_FAR);
@@ -428,7 +428,7 @@ void TextApp::CreateRenderBuffers(VkExtent2D extent) {
   VkImageCreateInfo depth_image_ci = render_pass_.GetAttachmentImageCreateInfo(1, extent);
   depth_image_ = {};
   SPOKK_VK_CHECK(depth_image_.Create(
-      device_context_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
+      device_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
 
   // Create VkFramebuffers
   std::vector<VkImageView> attachment_views = {

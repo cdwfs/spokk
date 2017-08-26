@@ -1,7 +1,7 @@
 #pragma once
 
 #include "spokk_buffer.h"
-#include "spokk_context.h"
+#include "spokk_device.h"
 #include "spokk_image.h"
 #include "spokk_pipeline.h"
 #include "spokk_renderpass.h"
@@ -129,8 +129,8 @@ class TextRenderer {
 public:
   TextRenderer();
   ~TextRenderer();
-  int Create(const DeviceContext& device_context, const TextRendererCreateInfo& ci);
-  void Destroy(const DeviceContext& device_context);
+  int Create(const Device& device_context, const TextRendererCreateInfo& ci);
+  void Destroy(const Device& device_context);
 
   const MeshFormat& GetMeshFormat(void) const { return mesh_format_; }
   const Image& GetAtlasImage(void) const { return atlas_image_; }

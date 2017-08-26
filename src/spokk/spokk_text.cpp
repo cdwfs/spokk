@@ -185,7 +185,7 @@ void Font::ComputeGlyphInfoAndBitmapDimensions(
     // that you know its contents, or hyphenate a long word. And you need to handle edge cases like a single
     // "word" that won't fit on a single line.
     if (xpos >= info.x_max) {
-      int ch_last = ch;
+      size_t ch_last = ch;
       while (ch > line_start && info.str[--ch] != ' ') {  // TODO(cort): better whitespace test
       }
       if (ch == line_start) {  // entire line is one word; just wrap it.
@@ -268,7 +268,7 @@ struct GlyphVertex {
 
 TextRenderer::TextRenderer() {}
 TextRenderer::~TextRenderer() {}
-int TextRenderer::Create(const DeviceContext &device_context, const TextRendererCreateInfo &ci) {
+int TextRenderer::Create(const Device &device, const TextRendererCreateInfo &ci) {
   // Define the vertex buffer format
   mesh_format_.vertex_buffer_bindings = {
       {0, sizeof(GlyphVertex), VK_VERTEX_INPUT_RATE_VERTEX},
@@ -297,12 +297,12 @@ int TextRenderer::Create(const DeviceContext &device_context, const TextRenderer
   atlas_image_ci.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
   atlas_image_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   atlas_image_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  SPOKK_VK_CHECK(atlas_image_.Create(device_context, atlas_image_ci));
+  SPOKK_VK_CHECK(atlas_image_.Create(device, atlas_image_ci));
   VkImageSubresource dst_subresource = {};
   dst_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   dst_subresource.mipLevel = 0;
   dst_subresource.arrayLayer = 0;
-  int atlas_load_err = atlas_image_.LoadSubresourceFromMemory(device_context, ci.transfer_queue, atlas_pixels.data(),
+  int atlas_load_err = atlas_image_.LoadSubresourceFromMemory(device, ci.transfer_queue, atlas_pixels.data(),
       atlas_pixels.size(), atlas_image_ci.extent.width, atlas_image_ci.extent.height, dst_subresource,
       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
   ZOMBO_ASSERT_RETURN(atlas_load_err == 0, -10, "error (%d) while loading font atlas into memory", atlas_load_err);
@@ -320,7 +320,7 @@ int TextRenderer::Create(const DeviceContext &device_context, const TextRenderer
   mipmap_barrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
   mipmap_barrier.subresourceRange.baseArrayLayer = 0;
   mipmap_barrier.subresourceRange.layerCount = 1;
-  int mipmap_gen_err = atlas_image_.GenerateMipmaps(device_context, ci.transfer_queue, mipmap_barrier, 0, 0);
+  int mipmap_gen_err = atlas_image_.GenerateMipmaps(device, ci.transfer_queue, mipmap_barrier, 0, 0);
   ZOMBO_ASSERT_RETURN(mipmap_gen_err == 0, -20, "error (%d) while generating atlas mipmaps", mipmap_gen_err);
 
   // Create vertex buffer
@@ -330,13 +330,13 @@ int TextRenderer::Create(const DeviceContext &device_context, const TextRenderer
   vertex_buffer_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
   vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(
-      vertex_buffers_.Create(device_context, ci.pframe_count, vertex_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+      vertex_buffers_.Create(device, ci.pframe_count, vertex_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
   return 0;
 }
-void TextRenderer::Destroy(const DeviceContext &device_context) {
-  atlas_image_.Destroy(device_context);
-  vertex_buffers_.Destroy(device_context);
+void TextRenderer::Destroy(const Device &device) {
+  atlas_image_.Destroy(device);
+  vertex_buffers_.Destroy(device);
 }
 
 void TextRenderer::DrawString(VkCommandBuffer cb, const char* str) {

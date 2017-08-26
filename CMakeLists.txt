@@ -55,8 +55,8 @@ SET(SPOKK_HEADERS
     src/spokk/spokk.h
     src/spokk/spokk_application.h
     src/spokk/spokk_buffer.h
-    src/spokk/spokk_context.h
     src/spokk/spokk_debug.h
+    src/spokk/spokk_device.h
     src/spokk/spokk_image.h
     src/spokk/spokk_memory.h
     src/spokk/spokk_mesh.h
@@ -73,7 +73,7 @@ SET(SPOKK_SOURCES
     src/spokk/image_file.c
     src/spokk/spokk_application.cpp
     src/spokk/spokk_buffer.cpp
-    src/spokk/spokk_context.cpp
+    src/spokk/spokk_device.cpp
     src/spokk/spokk_image.cpp
     src/spokk/spokk_memory.cpp
     src/spokk/spokk_mesh.cpp
@@ -124,7 +124,7 @@ FUNCTION (SPOKK_ADD_EXECUTABLE APP_TARGET)
     SOURCE_GROUP("" FILES ${${APP_TARGET}_SPOKKLE_HEADERS} ${${APP_TARGET}_SOURCES})
     ADD_EXECUTABLE(${APP_TARGET} ${${APP_TARGET}_SOURCES} ${${APP_TARGET}_SHADERS} ${${APP_TARGET}_HEADERS})
     TARGET_LINK_LIBRARIES(${APP_TARGET} ${SPOKK_LIB_NAME})
-    TARGET_INCLUDE_DIRECTORIES(${APP_TARGET} PUBLIC "samples")
+    TARGET_INCLUDE_DIRECTORIES(${APP_TARGET} PUBLIC "${CMAKE_SOURCE_DIR}/samples")
     SET_TARGET_PROPERTIES(${APP_TARGET} PROPERTIES FOLDER "samples")
 
     ADD_DEPENDENCIES(${APP_TARGET} build-assets)

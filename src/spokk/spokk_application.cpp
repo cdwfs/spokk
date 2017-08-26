@@ -196,7 +196,7 @@ void InputState::Update(void) {
 //
 // Application
 //
-Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
+Application::Application(const CreateInfo &ci) {
   if (ci.enable_graphics) {
     // Initialize GLFW
     glfwSetErrorCallback(MyGlfwErrorCallback);
@@ -227,7 +227,7 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   }
   std::vector<const char *> optional_instance_layer_names = {
 #if defined(_DEBUG)
-      "VK_LAYER_LUNARG_monitor",
+    "VK_LAYER_LUNARG_monitor",
 #endif
   };
   std::vector<const char *> enabled_instance_layer_names = {};
@@ -279,9 +279,10 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
     SPOKK_VK_CHECK(glfwCreateWindowSurface(instance_, window_.get(), host_allocator_, &surface_));
   }
 
+  VkPhysicalDevice physical_device = VK_NULL_HANDLE;
   std::vector<uint32_t> queue_family_indices;
   SPOKK_VK_CHECK(
-      FindPhysicalDevice(ci.queue_family_requests, instance_, surface_, &physical_device_, &queue_family_indices));
+      FindPhysicalDevice(ci.queue_family_requests, instance_, surface_, &physical_device, &queue_family_indices));
   std::vector<VkDeviceQueueCreateInfo> device_queue_cis = {};
   uint32_t total_queue_count = 0;
   for (uint32_t iQF = 0; iQF < (uint32_t)ci.queue_family_requests.size(); ++iQF) {
@@ -296,7 +297,7 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
         queue_count, queue_priorities.data()});
     queue_priorities.insert(queue_priorities.end(), queue_count, ci.queue_family_requests[iQF].priority);
   };
-  assert(queue_priorities.size() == total_queue_count);
+  ZOMBO_ASSERT(queue_priorities.size() == total_queue_count, "queue count mismatch");
 
   std::vector<const char *> required_device_extension_names = {};
   if (ci.enable_graphics) {
@@ -304,14 +305,15 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   }
   const std::vector<const char *> optional_device_extension_names = {};
   std::vector<const char *> enabled_device_extension_names;
-  SPOKK_VK_CHECK(GetSupportedDeviceExtensions(physical_device_, instance_layers_, required_device_extension_names,
+  SPOKK_VK_CHECK(GetSupportedDeviceExtensions(physical_device, instance_layers_, required_device_extension_names,
       optional_device_extension_names, &device_extensions_, &enabled_device_extension_names));
 
   VkPhysicalDeviceFeatures supported_device_features = {};
-  vkGetPhysicalDeviceFeatures(physical_device_, &supported_device_features);
+  vkGetPhysicalDeviceFeatures(physical_device, &supported_device_features);
   VkBool32 all_required_features_enabled = VK_TRUE;
+  VkPhysicalDeviceFeatures enabled_device_features = {};
   if (ci.pfn_set_device_features != nullptr) {
-    all_required_features_enabled = ci.pfn_set_device_features(supported_device_features, &enabled_device_features_);
+    all_required_features_enabled = ci.pfn_set_device_features(supported_device_features, &enabled_device_features);
   }
   if (!all_required_features_enabled) {
     ZOMBO_ERROR("Device creation failed: not all required features are supported.");
@@ -324,15 +326,17 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
   device_ci.pQueueCreateInfos = device_queue_cis.data();
   device_ci.enabledExtensionCount = (uint32_t)enabled_device_extension_names.size();
   device_ci.ppEnabledExtensionNames = enabled_device_extension_names.data();
-  device_ci.pEnabledFeatures = &enabled_device_features_;
-  SPOKK_VK_CHECK(vkCreateDevice(physical_device_, &device_ci, host_allocator_, &device_));
+  device_ci.pEnabledFeatures = &enabled_device_features;
+  VkDevice logical_device = VK_NULL_HANDLE;
+  SPOKK_VK_CHECK(vkCreateDevice(physical_device, &device_ci, host_allocator_, &logical_device));
 
   uint32_t total_queue_family_count = 0;
-  vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &total_queue_family_count, nullptr);
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &total_queue_family_count, nullptr);
   std::vector<VkQueueFamilyProperties> all_queue_family_properties(total_queue_family_count);
   vkGetPhysicalDeviceQueueFamilyProperties(
-      physical_device_, &total_queue_family_count, all_queue_family_properties.data());
-  queues_.reserve(total_queue_count);
+      physical_device, &total_queue_family_count, all_queue_family_properties.data());
+  std::vector<DeviceQueue> queues;
+  queues.reserve(total_queue_count);
   for (uint32_t iQFR = 0; iQFR < (uint32_t)ci.queue_family_requests.size(); ++iQFR) {
     const QueueFamilyRequest &qfr = ci.queue_family_requests[iQFR];
     const VkDeviceQueueCreateInfo &qci = device_queue_cis[iQFR];
@@ -343,26 +347,29 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
         (qfr.support_present && ((qfp.queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0)) ? surface_ : VK_NULL_HANDLE,
     };
     for (uint32_t iQ = 0; iQ < total_queue_count; ++iQ) {
-      vkGetDeviceQueue(device_, qci.queueFamilyIndex, iQ, &qc.handle);
+      vkGetDeviceQueue(logical_device, qci.queueFamilyIndex, iQ, &qc.handle);
       qc.priority = qci.pQueuePriorities[iQ];
-      queues_.push_back(qc);
+      queues.push_back(qc);
     }
   }
-  assert(queues_.size() == total_queue_count);
+  ZOMBO_ASSERT(queues.size() == total_queue_count, "queue count mismatch");
 
+  // TODO(cort): hmmm, maybe persist this across runs some day...
   VkPipelineCacheCreateInfo pipeline_cache_ci = {};
   pipeline_cache_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-  SPOKK_VK_CHECK(vkCreatePipelineCache(device_, &pipeline_cache_ci, host_allocator_, &pipeline_cache_));
+  VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
+  SPOKK_VK_CHECK(vkCreatePipelineCache(logical_device, &pipeline_cache_ci, host_allocator_, &pipeline_cache));
 
-  device_context_ = DeviceContext(device_, physical_device_, pipeline_cache_, queues_.data(), (uint32_t)queues_.size(),
-      enabled_device_features_, host_allocator_, device_allocator_);
+  // Populate the Device object, which from now on "owns" all of these Vulkan handles.
+  device_.Create(logical_device, physical_device, pipeline_cache, queues.data(), (uint32_t)queues.size(),
+      enabled_device_features, host_allocator_, device_allocator_);
 
   if (ci.enable_graphics) {
     VkExtent2D default_extent = {ci.window_width, ci.window_height};
     CreateSwapchain(default_extent);
   }
 
-  graphics_and_present_queue_ = device_context_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
+  graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
 
   // Allocate command buffers
   VkCommandPoolCreateInfo cpool_ci = {};
@@ -392,10 +399,10 @@ Application::Application(const CreateInfo &ci) : enabled_device_features_{} {
     SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
   }
 
-  init_successful = true;
+  init_successful_ = true;
 }
 Application::~Application() {
-  if (device_) {
+  if (device_ != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(device_);
 
     vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
@@ -404,8 +411,6 @@ Application::~Application() {
       vkDestroyFence(device_, fence, host_allocator_);
     }
     vkDestroyCommandPool(device_, primary_cpool_, host_allocator_);
-
-    vkDestroyPipelineCache(device_, pipeline_cache_, host_allocator_);
 
     if (swapchain_ != VK_NULL_HANDLE) {
       for (auto &view : swapchain_image_views_) {
@@ -420,8 +425,7 @@ Application::~Application() {
     window_.reset();
     glfwTerminate();
   }
-  vkDestroyDevice(device_, host_allocator_);
-  device_ = VK_NULL_HANDLE;
+  device_.Destroy();
   if (debug_report_callback_ != VK_NULL_HANDLE) {
     auto destroy_debug_report_func =
         (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_, "vkDestroyDebugReportCallbackEXT");
@@ -438,7 +442,7 @@ Application::~Application() {
 }
 
 int Application::Run() {
-  if (!init_successful) {
+  if (!init_successful_) {
     return -1;
   }
 
@@ -591,7 +595,7 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   swapchain_images_.clear();
 
   VkSurfaceCapabilitiesKHR surface_caps = {};
-  SPOKK_VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_, surface_, &surface_caps));
+  SPOKK_VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device_.Physical(), surface_, &surface_caps));
 
   // If the surface's current width is -1, this special value indicates that its dimensions will
   // be determined by the application-provided extent during swapchain creation.
@@ -607,11 +611,11 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   std::vector<VkSurfaceFormatKHR> device_surface_formats;
   VkResult result = VK_INCOMPLETE;
   do {
-    result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device_, surface_, &device_surface_format_count, nullptr);
+    result = vkGetPhysicalDeviceSurfaceFormatsKHR(device_.Physical(), surface_, &device_surface_format_count, nullptr);
     if (result == VK_SUCCESS && device_surface_format_count > 0) {
       device_surface_formats.resize(device_surface_format_count);
       result = vkGetPhysicalDeviceSurfaceFormatsKHR(
-          physical_device_, surface_, &device_surface_format_count, device_surface_formats.data());
+          device_.Physical(), surface_, &device_surface_format_count, device_surface_formats.data());
     }
   } while (result == VK_INCOMPLETE);
   if (device_surface_formats.size() == 1 && device_surface_formats[0].format == VK_FORMAT_UNDEFINED) {
@@ -626,11 +630,12 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   uint32_t device_present_mode_count = 0;
   std::vector<VkPresentModeKHR> device_present_modes;
   do {
-    result = vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device_, surface_, &device_present_mode_count, nullptr);
+    result =
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device_.Physical(), surface_, &device_present_mode_count, nullptr);
     if (result == VK_SUCCESS && device_present_mode_count > 0) {
       device_present_modes.resize(device_present_mode_count);
       result = vkGetPhysicalDeviceSurfacePresentModesKHR(
-          physical_device_, surface_, &device_present_mode_count, device_present_modes.data());
+          device_.Physical(), surface_, &device_present_mode_count, device_present_modes.data());
     }
   } while (result == VK_INCOMPLETE);
   std::array<bool, VK_PRESENT_MODE_RANGE_SIZE_KHR> present_mode_supported = {};

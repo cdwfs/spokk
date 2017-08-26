@@ -6,7 +6,7 @@
 
 namespace spokk {
 
-class DeviceContext;
+class Device;
 
 struct MeshFormat {
   MeshFormat();
@@ -26,8 +26,8 @@ struct MeshFormat {
 
 struct Mesh {
   Mesh();
-  int CreateFromFile(const DeviceContext& device_context, const char* mesh_filename);
-  void Destroy(const DeviceContext& device_context);
+  int CreateFromFile(const Device& device, const char* mesh_filename);
+  void Destroy(const Device& device);
 
   // Helper to bind all vertex buffers and index buffers, and draw all indices
   void BindBuffersAndDraw(VkCommandBuffer cb, uint32_t index_cnt, uint32_t instance_cnt = 1, uint32_t first_index = 0,

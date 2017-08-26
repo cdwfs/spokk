@@ -1,6 +1,6 @@
 #pragma once
 
-#include "spokk_context.h"
+#include "spokk_device.h"
 
 #include <array>
 #include <tuple>
@@ -25,9 +25,9 @@ struct Shader {
   Shader()
     : handle(VK_NULL_HANDLE), spirv{}, stage((VkShaderStageFlagBits)0), dset_layout_infos{}, push_constant_range{} {}
 
-  VkResult CreateAndLoadSpirvFile(const DeviceContext& device_context, const std::string& filename);
-  VkResult CreateAndLoadSpirvFp(const DeviceContext& device_context, FILE* fp, int len_bytes);
-  VkResult CreateAndLoadSpirvMem(const DeviceContext& device_context, const void* buffer, int len_bytes);
+  VkResult CreateAndLoadSpirvFile(const Device& device, const std::string& filename);
+  VkResult CreateAndLoadSpirvFp(const Device& device, FILE* fp, int len_bytes);
+  VkResult CreateAndLoadSpirvMem(const Device& device, const void* buffer, int len_bytes);
 
   // After parsing, you can probably get rid of the SPIRV to save some memory.
   void UnloadSpirv(void) { spirv = std::vector<uint32_t>(0); }
@@ -41,7 +41,7 @@ struct Shader {
   // in cases where the same name is used for different bind points in different stages within a single ShaderProgram.
   DescriptorBindPoint GetDescriptorBindPoint(const std::string& name) const;
 
-  void Destroy(const DeviceContext& device_context);
+  void Destroy(const Device& device);
 
   VkShaderModule handle;
   std::vector<uint32_t> spirv;
@@ -50,7 +50,7 @@ struct Shader {
   std::vector<DescriptorSetLayoutInfo> dset_layout_infos;
   VkPushConstantRange push_constant_range;  // range.size = 0 means this stage doesn't use push constants.
 private:
-  VkResult ParseSpirvAndCreate(const DeviceContext& device_context);
+  VkResult ParseSpirvAndCreate(const Device& device);
 };
 
 struct ShaderProgram {
@@ -68,10 +68,9 @@ struct ShaderProgram {
   ShaderProgram& operator=(const ShaderProgram& rhs) = delete;
 
   VkResult AddShader(const Shader* shader, const char* entry_point = "main");
-  static VkResult ForceCompatibleLayoutsAndFinalize(
-      const DeviceContext& device_context, const std::vector<ShaderProgram*> programs);
-  VkResult Finalize(const DeviceContext& device_context);
-  void Destroy(const DeviceContext& device_context);
+  static VkResult ForceCompatibleLayoutsAndFinalize(const Device& device, const std::vector<ShaderProgram*> programs);
+  VkResult Finalize(const Device& device);
+  void Destroy(const Device& device);
 
   std::vector<VkDescriptorSetLayoutCreateInfo> dset_layout_cis;  // one per dset
   std::vector<DescriptorSetLayoutInfo> dset_layout_infos;  // one per dset
@@ -98,15 +97,15 @@ struct DescriptorPool {
   // Shortcut to add a single dset layout
   void Add(const VkDescriptorSetLayoutCreateInfo& dset_layout, uint32_t dset_count = 1);
 
-  VkResult Finalize(const DeviceContext& device_context, VkDescriptorPoolCreateFlags flags = 0);
-  void Destroy(const DeviceContext& device_context);
+  VkResult Finalize(const Device& device, VkDescriptorPoolCreateFlags flags = 0);
+  void Destroy(const Device& device);
 
-  VkResult AllocateSets(const DeviceContext& device_context, uint32_t dset_count,
-      const VkDescriptorSetLayout* dset_layouts, VkDescriptorSet* out_dsets) const;
-  VkDescriptorSet AllocateSet(const DeviceContext& device_context, VkDescriptorSetLayout dset_layout) const;
+  VkResult AllocateSets(const Device& device, uint32_t dset_count, const VkDescriptorSetLayout* dset_layouts,
+      VkDescriptorSet* out_dsets) const;
+  VkDescriptorSet AllocateSet(const Device& device, VkDescriptorSetLayout dset_layout) const;
   // Only if VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT is set at creation time
-  void FreeSets(DeviceContext& device_context, uint32_t set_count, const VkDescriptorSet* sets) const;
-  void FreeSet(DeviceContext& device_context, VkDescriptorSet set) const;
+  void FreeSets(Device& device, uint32_t set_count, const VkDescriptorSet* sets) const;
+  void FreeSet(Device& device, VkDescriptorSet set) const;
 
   VkDescriptorPool handle;
   VkDescriptorPoolCreateInfo ci;
@@ -128,9 +127,8 @@ struct DescriptorSetWriter {
       uint32_t array_element = 0);
   void BindTexelBuffer(VkBufferView view, uint32_t binding, uint32_t array_element = 0);
 
-  void WriteAll(const DeviceContext& device_context, VkDescriptorSet dest_set);
-  void WriteOne(
-      const DeviceContext& device_context, VkDescriptorSet dest_set, uint32_t binding, uint32_t array_element = 0);
+  void WriteAll(const Device& device, VkDescriptorSet dest_set);
+  void WriteOne(const Device& device, VkDescriptorSet dest_set, uint32_t binding, uint32_t array_element = 0);
 
   // Walk through the layout and build the following lists:
   std::vector<VkDescriptorImageInfo> image_infos;

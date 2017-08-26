@@ -2,8 +2,8 @@
 
 #include "spokk_application.h"
 #include "spokk_buffer.h"
-#include "spokk_context.h"
 #include "spokk_debug.h"
+#include "spokk_device.h"
 #include "spokk_image.h"
 #include "spokk_memory.h"
 #include "spokk_mesh.h"
