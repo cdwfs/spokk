@@ -20,6 +20,9 @@ struct DeviceQueue {
   VkExtent3D min_image_transfer_granularity;
   // For graphics queues that support presentation, this is the surface the queue can present to.
   VkSurfaceKHR present_surface;
+
+  // Allow implicit conversion to a VkQueue, which is mostly what you want.
+  operator VkQueue(void) const { return handle; }
 };
 
 //
