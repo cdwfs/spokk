@@ -14,16 +14,6 @@ using namespace spokk;
 namespace {
 const std::string string_text("Watson, come here. I need you.");
 
-struct GlyphVertex {
-#if 1
-  int16_t pos_x0, pos_y0;
-  uint16_t tex_x0, tex_y0;
-#else
-  float pos_x0, pos_y0;
-  float tex_x0, tex_y0;
-#endif
-};
-
 template <typename T>
 T my_clamp(T x, T xmin, T xmax) {
   return (x < xmin) ? xmin : ((x > xmax) ? xmax : x);
@@ -39,11 +29,6 @@ struct SceneUniforms {
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
-
-struct StringUniforms {
-  mathfu::mat4 o2w;
-};
-
 }  // namespace
 
 class TextApp : public spokk::Application {
@@ -71,21 +56,7 @@ private:
 
   Font font_;
   FontAtlas font_atlas_;
-  Image font_atlas_image_;
-  VkSampler sampler_;
-
-  Shader textmesh_vs_, textmesh_fs_;
-  ShaderProgram textmesh_shader_program_;
-  GraphicsPipeline textmesh_pipeline_;
-
-  DescriptorPool dpool_;
-  std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
-
-  PipelinedBuffer scene_uniforms_;
-  PipelinedBuffer string_uniforms_;
-  Buffer string_vb_;
-  uint32_t string_quad_count_;
-  MeshFormat string_mesh_format_;
+  TextRenderer texter_;
 
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDolly> dolly_;
@@ -109,14 +80,10 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
-  // Create sampler
-  VkSamplerCreateInfo sampler_ci =
-      GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
-  SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-
   // Load font
   int font_create_error = font_.Create("data/SourceCodePro-Semibold.ttf");
   ZOMBO_ASSERT(font_create_error == 0, "Font loading error: %d", font_create_error);
+#if 0
   // Test CPU string rastering
   Font::StringRenderInfo string_info = {};
   string_info.font_size = 32;
@@ -132,6 +99,7 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   bmp.assign(bmp.size(), 0);
   int bake_err = font_.RenderStringToBitmap(string_info, bmp_w, bmp_h, bmp.data());
   ZOMBO_ASSERT(bake_err == 0, "bake error: %d", bake_err);
+#endif
 
   // Create font atlas
   FontAtlasCreateInfo atlas_ci = {};
@@ -142,172 +110,32 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   atlas_ci.image_height = 512;
   atlas_ci.codepoint_first = 32;
   atlas_ci.codepoint_count = 96;
-  std::vector<uint8_t> atlas_image_pixels(atlas_ci.image_width * atlas_ci.image_height);
-  atlas_image_pixels.assign(atlas_image_pixels.size(), 0);
-  int atlas_create_err = font_atlas_.Create(atlas_ci, atlas_image_pixels.data());
+  int atlas_create_err = font_atlas_.Create(device_, atlas_ci);
   ZOMBO_ASSERT(atlas_create_err == 0, "Font atlas creation error: %d", atlas_create_err);
-  // Load atlas image
-  VkImageCreateInfo atlas_image_ci = {};
-  atlas_image_ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-  atlas_image_ci.imageType = VK_IMAGE_TYPE_2D;
-  atlas_image_ci.format = VK_FORMAT_R8_UNORM;
-  atlas_image_ci.extent.width = atlas_ci.image_width;
-  atlas_image_ci.extent.height = atlas_ci.image_height;
-  atlas_image_ci.extent.depth = 1;
-  atlas_image_ci.mipLevels = GetMaxMipLevels(atlas_image_ci.extent);
-  atlas_image_ci.arrayLayers = 1;
-  atlas_image_ci.samples = VK_SAMPLE_COUNT_1_BIT;
-  atlas_image_ci.tiling = VK_IMAGE_TILING_OPTIMAL;
-  atlas_image_ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-  atlas_image_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  atlas_image_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  SPOKK_VK_CHECK(font_atlas_image_.Create(device_, atlas_image_ci));
-  VkImageSubresource dst_subresource = {};
-  dst_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  dst_subresource.mipLevel = 0;
-  dst_subresource.arrayLayer = 0;
-  int atlas_load_err = font_atlas_image_.LoadSubresourceFromMemory(device_, graphics_and_present_queue_,
-      atlas_image_pixels.data(), atlas_image_pixels.size(), atlas_ci.image_width, atlas_ci.image_height,
-      dst_subresource, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT);
-  ZOMBO_ASSERT(atlas_load_err == 0, "error (%d) while loading font atlas into memory", atlas_load_err);
-  VkImageMemoryBarrier mipmap_barrier = {};
-  mipmap_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  mipmap_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; // matches final access pass to LoadSubresourceFromMemory
-  mipmap_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-  mipmap_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; // matches final layout to LoadSubresourceFromMemory
-  mipmap_barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  mipmap_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  mipmap_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  mipmap_barrier.image = font_atlas_image_.handle;
-  mipmap_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  mipmap_barrier.subresourceRange.baseMipLevel = 0;
-  mipmap_barrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-  mipmap_barrier.subresourceRange.baseArrayLayer = 0;
-  mipmap_barrier.subresourceRange.layerCount = 1;
-  int mipmap_gen_err =
-      font_atlas_image_.GenerateMipmaps(device_, graphics_and_present_queue_, mipmap_barrier, 0, 0);
-  ZOMBO_ASSERT(mipmap_gen_err == 0, "error (%d) while generating atlas mipmaps", mipmap_gen_err);
 
-  // Generate quads for a string.
-  std::vector<FontAtlas::Quad> quads(string_text.size());
-  string_quad_count_ = 0;
-  font_atlas_.GetStringQuads(string_text.c_str(), string_text.size(), quads.data(), &string_quad_count_);
-  // Create vertex buffer
-  VkBufferCreateInfo vb_ci = {};
-  vb_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  vb_ci.size = sizeof(GlyphVertex) * 6 * string_quad_count_;
-  vb_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-  vb_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(string_vb_.Create(device_, vb_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-  // Convert raw quads into a compressed vertex buffer
-  GlyphVertex *verts = (GlyphVertex *)string_vb_.Mapped();
-  for (uint32_t i = 0; i < string_quad_count_; ++i) {
-    const auto &q = quads[i];
-#if 1
-    verts[6*i+0] = { F32toS16(q.x0), F32toS16(q.y0), F32toU16N(q.s0), F32toU16N(q.t0) };
-    verts[6*i+1] = { F32toS16(q.x0), F32toS16(q.y1), F32toU16N(q.s0), F32toU16N(q.t1) };
-    verts[6*i+2] = { F32toS16(q.x1), F32toS16(q.y0), F32toU16N(q.s1), F32toU16N(q.t0) };
-    verts[6*i+3] = { F32toS16(q.x1), F32toS16(q.y0), F32toU16N(q.s1), F32toU16N(q.t0) };
-    verts[6*i+4] = { F32toS16(q.x0), F32toS16(q.y1), F32toU16N(q.s0), F32toU16N(q.t1) };
-    verts[6*i+5] = { F32toS16(q.x1), F32toS16(q.y1), F32toU16N(q.s1), F32toU16N(q.t1) };
-#else
-    verts[6 * i + 0] = {q.x0, q.y0, q.s0, q.t0};
-    verts[6 * i + 1] = {q.x0, q.y1, q.s0, q.t1};
-    verts[6 * i + 2] = {q.x1, q.y0, q.s1, q.t0};
-    verts[6 * i + 3] = {q.x1, q.y0, q.s1, q.t0};
-    verts[6 * i + 4] = {q.x0, q.y1, q.s0, q.t1};
-    verts[6 * i + 5] = {q.x1, q.y1, q.s1, q.t1};
-#endif
-  }
-  string_vb_.FlushHostCache();
-  // Mesh format
-  string_mesh_format_.vertex_buffer_bindings = {
-      {0, sizeof(GlyphVertex), VK_VERTEX_INPUT_RATE_VERTEX},
-  };
-  string_mesh_format_.vertex_attributes = {
-#if 1
-    {0, 0, VK_FORMAT_R16G16_SINT, 0},
-    {1, 0, VK_FORMAT_R16G16_UNORM, 4},
-#else
-    {0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
-    {1, 0, VK_FORMAT_R32G32_SFLOAT, 8},
-#endif
-  };
-  string_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
-  // Load shader pipelines
-  SPOKK_VK_CHECK(textmesh_vs_.CreateAndLoadSpirvFile(device_, "data/textmesh.vert.spv"));
-  SPOKK_VK_CHECK(textmesh_fs_.CreateAndLoadSpirvFile(device_, "data/textmesh.frag.spv"));
-  SPOKK_VK_CHECK(textmesh_shader_program_.AddShader(&textmesh_vs_));
-  SPOKK_VK_CHECK(textmesh_shader_program_.AddShader(&textmesh_fs_));
-  SPOKK_VK_CHECK(textmesh_shader_program_.Finalize(device_));
-
-  // Create graphics pipelines
-  textmesh_pipeline_.Init(&string_mesh_format_, &textmesh_shader_program_, &render_pass_, 0);
-  textmesh_pipeline_.rasterization_state_ci.cullMode = VK_CULL_MODE_NONE;
-  textmesh_pipeline_.depth_stencil_state_ci.depthTestEnable = VK_FALSE;
-  textmesh_pipeline_.color_blend_attachment_states[0].blendEnable = VK_TRUE;
-  textmesh_pipeline_.color_blend_attachment_states[0].colorBlendOp = VK_BLEND_OP_ADD;
-  textmesh_pipeline_.color_blend_attachment_states[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-  textmesh_pipeline_.color_blend_attachment_states[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
-  // pipeline_.color_blend_state_ci.blendConstants
-  SPOKK_VK_CHECK(textmesh_pipeline_.Finalize(device_));
-
-  // Create pipelined buffer of shader uniforms
-  VkBufferCreateInfo uniform_buffer_ci = {};
-  uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  uniform_buffer_ci.size = sizeof(SceneUniforms);
-  uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-  uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(
-      scene_uniforms_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-  // ...and for strings
-  uniform_buffer_ci.size = sizeof(StringUniforms);
-  SPOKK_VK_CHECK(
-      string_uniforms_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-
-  // Descriptor sets
-  for (const auto &dset_layout_ci : textmesh_shader_program_.dset_layout_cis) {
-    dpool_.Add(dset_layout_ci, PFRAME_COUNT);
-  }
-  SPOKK_VK_CHECK(dpool_.Finalize(device_));
+  // Create text renderer
+  TextRenderer::CreateInfo texter_ci = {};
+  texter_ci.font_atlases.push_back(&font_atlas_);
+  texter_ci.render_pass = &render_pass_;
+  texter_ci.subpass = 0;
+  texter_ci.target_color_attachment_index = 0;
+  texter_ci.pframe_count = PFRAME_COUNT;
+  texter_ci.max_binds_per_pframe = 16;
+  texter_ci.max_glyphs_per_pframe = 1024;
+  int texter_create_err = texter_.Create(device_, texter_ci);
+  ZOMBO_ASSERT(texter_create_err == 0, "Texter create error: %d", texter_create_err);
 
   // Create swapchain-sized resources.
   CreateRenderBuffers(swapchain_extent_);
-
-  DescriptorSetWriter dset_writer(textmesh_shader_program_.dset_layout_cis[0]);
-  dset_writer.BindImage(font_atlas_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-      textmesh_fs_.GetDescriptorBindPoint("atlas_tex").binding);
-  dset_writer.BindSampler(sampler_, textmesh_fs_.GetDescriptorBindPoint("samp").binding);
-  for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-    // TODO(cort): allocate_pipelined_set()?
-    dsets_[pframe] = dpool_.AllocateSet(device_, textmesh_shader_program_.dset_layouts[0]);
-    dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), textmesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
-    dset_writer.BindBuffer(
-        string_uniforms_.Handle(pframe), textmesh_vs_.GetDescriptorBindPoint("string_consts").binding);
-    dset_writer.WriteAll(device_, dsets_[pframe]);
-  }
 }
 
 TextApp::~TextApp() {
   if (device_) {
     vkDeviceWaitIdle(device_);
 
-    dpool_.Destroy(device_);
-
-    scene_uniforms_.Destroy(device_);
-    string_uniforms_.Destroy(device_);
-    string_vb_.Destroy(device_);
-
-    textmesh_vs_.Destroy(device_);
-    textmesh_fs_.Destroy(device_);
-    textmesh_shader_program_.Destroy(device_);
-    textmesh_pipeline_.Destroy(device_);
-
-    vkDestroySampler(device_, sampler_, host_allocator_);
-    font_atlas_image_.Destroy(device_);
+    texter_.Destroy(device_);
+    font_atlas_.Destroy(device_);
     font_.Destroy();
-    font_atlas_.Destroy();
 
     for (const auto fb : framebuffers_) {
       vkDestroyFramebuffer(device_, fb, host_allocator_);
@@ -362,27 +190,6 @@ void TextApp::Update(double dt) {
   camera_eulers[2] = 0;  // disallow roll
   camera_->setOrientation(mathfu::quat::FromEulerAngles(camera_eulers));
   dolly_->Update(camera_accel, (float)dt);
-
-  // Update uniforms
-  SceneUniforms *uniforms = (SceneUniforms *)scene_uniforms_.Mapped(pframe_index_);
-  uniforms->time_and_res =
-      mathfu::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-  uniforms->eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-  mathfu::mat4 w2v = camera_->getViewMatrix();
-  const mathfu::mat4 proj = camera_->getProjectionMatrix();
-  // clang-format off
-  const mathfu::mat4 clip_fixup(
-    +1.0f, +0.0f, +0.0f, +0.0f,
-    +0.0f, -1.0f, +0.0f, +0.0f,
-    +0.0f, +0.0f, +0.5f, +0.5f,
-    +0.0f, +0.0f, +0.0f, +1.0f);
-  // clang-format on
-  uniforms->viewproj = clip_fixup * proj * w2v;
-  scene_uniforms_.FlushPframeHostCache(pframe_index_);
-
-  StringUniforms *string_uniforms = (StringUniforms *)string_uniforms_.Mapped(pframe_index_);
-  string_uniforms->o2w = mathfu::mat4::Identity() * 0.001f;
-  string_uniforms_.FlushPframeHostCache(pframe_index_);
 }
 
 void TextApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
@@ -390,18 +197,22 @@ void TextApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index)
   render_pass_.begin_info.framebuffer = framebuffer;
   render_pass_.begin_info.renderArea.extent = swapchain_extent_;
   vkCmdBeginRenderPass(primary_cb, &render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
-  vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, textmesh_pipeline_.handle);
   VkRect2D scissor_rect = render_pass_.begin_info.renderArea;
   VkViewport viewport = Rect2DToViewport(scissor_rect);
   vkCmdSetViewport(primary_cb, 0, 1, &viewport);
   vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
-  vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      textmesh_pipeline_.shader_program->pipeline_layout, 0, 1, &dsets_[pframe_index_], 0, nullptr);
-  VkDeviceSize vb_offsets[1] = {0};
-  VkBuffer vb_handles[1] = {string_vb_.Handle()};
-  vkCmdBindVertexBuffers(primary_cb, 0, 1, vb_handles, vb_offsets);
-  vkCmdDraw(primary_cb, 6 * string_quad_count_, 1, 0, 0);
 
+  TextRenderer::State text_state = {};
+  text_state.pframe_index = pframe_index_;
+  text_state.color[0] = 1.0f;
+  text_state.color[1] = 1.0f;
+  text_state.color[2] = 0.0f;
+  text_state.color[3] = 1.0f;
+  text_state.viewport = viewport;
+  text_state.font_atlas = &font_atlas_;
+  texter_.BindDrawState(primary_cb, text_state);
+  float str_x = 100.0f, str_y = 100.0f;
+  texter_.Printf(primary_cb, &str_x, &str_y, "Vulkan is %d winners %c render with!", 4, '2');
   vkCmdEndRenderPass(primary_cb);
 }
 
@@ -445,17 +256,16 @@ void TextApp::CreateRenderBuffers(VkExtent2D extent) {
 }
 
 ///////
-const float sdf_size = 128.0;          // the larger this is, the better large font sizes look
+const float sdf_size = 128.0;  // the larger this is, the better large font sizes look
 const float pixel_dist_scale = 64.0;  // trades off precision w/ ability to handle *smaller* sizes
 const int onedge_value = 128;
-const int padding = 3; // not used in shader
+const int padding = 3;  // not used in shader
 
-typedef struct
-{
+typedef struct {
   float advance;
   signed char xoff;
   signed char yoff;
-  unsigned char w,h;
+  unsigned char w, h;
   unsigned char *data;
 } fontchar;
 fontchar fdata[128];
@@ -477,9 +287,9 @@ void DumpSdfGlyphs() {
   stbtt_fontinfo font;
   stbtt_InitFont(&font, data.data(), 0);
   scale = stbtt_ScaleForPixelHeight(&font, sdf_size);
-  for (ch=33; ch < 127; ++ch) {
+  for (ch = 33; ch < 127; ++ch) {
     fontchar fc;
-    int xoff,yoff,w,h, advance;
+    int xoff, yoff, w, h, advance;
     fc.data = stbtt_GetCodepointSDF(&font, scale, ch, padding, onedge_value, pixel_dist_scale, &w, &h, &xoff, &yoff);
     fc.xoff = (char)xoff;
     fc.yoff = (char)yoff;

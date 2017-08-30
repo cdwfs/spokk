@@ -1,10 +1,10 @@
 #pragma once
 
 #include "spokk_buffer.h"
-#include "spokk_device.h"
 #include "spokk_image.h"
 #include "spokk_pipeline.h"
 #include "spokk_renderpass.h"
+#include "spokk_shader.h"
 
 #include <string>
 #include <vector>
@@ -13,6 +13,8 @@
 #include <stb_truetype.h>
 
 namespace spokk {
+
+class Device;
 
 class Font {
 public:
@@ -62,23 +64,25 @@ private:
   friend class FontAtlas;
 };
 
-// A FontAtlas uses a Font to pre-render a range of glyphs to a single image, storing the texture coordinates
-// of each glyph. By rendering quads with appropriate sizes and UVs, dynamic text can be rendered reasonably
-// efficiently at runtime.
+// A FontAtlas manages the mapping of codepoints from a Font to rectangular regions of a 2D image
+// containing the gylph for that codepoint. By rendering quads with appropriate sizes and UVs,
+// dynamic text can be rendered reasonably efficiently at runtime.
+// The FontAtlas handles the generation of quad sizes/locations for a given string, and owns the atlas image
+// itself, but isn't otherwise involved in the actual rendering of those quads; that's the TextRenderer's job.
 struct FontAtlasCreateInfo {
   const Font* font;  // Only needed during creation.
   float font_size;  // in pixels, from the highest ascent to the lowest descent.
   uint32_t image_oversample_x, image_oversample_y;  // 2x in each direction looks good with bilinear filtering
   uint32_t image_width, image_height;
-  // TODO: multiple ranges of codepoints?
+  // TODO(cort): multiple ranges of codepoints?
   uint32_t codepoint_first;
   uint32_t codepoint_count;
 };
 
 class FontAtlas {
 public:
-  int Create(const FontAtlasCreateInfo& ci, uint8_t* out_bitmap);
-  void Destroy(void);
+  int Create(const Device& device, const FontAtlasCreateInfo& ci);
+  void Destroy(const Device& device);
 
   struct Quad {
     float x0, y0, s0, t0;  // top-left
@@ -86,73 +90,73 @@ public:
   };
   void GetStringQuads(const char* str, size_t str_len, Quad* out_quads, uint32_t* out_quad_count) const;
 
+  const Image& GetImage() const { return atlas_image_; }
+  static const MeshFormat& GetQuadFormat();
+
 private:
-  uint32_t image_width_, image_height_;
-  uint32_t codepoint_first_;
-  uint32_t codepoint_count_;
-  std::vector<stbtt_packedchar> char_data_;
+  uint32_t image_width_ = 0, image_height_ = 0;
+  uint32_t codepoint_first_ = 0;
+  uint32_t codepoint_count_ = 0;
+  std::vector<stbtt_packedchar> glyph_data_;
+  Image atlas_image_ = {};
 };
 
-// Hypothetical high-level dynamic text interface:
-// Data:
-// - FontAtlas
-// - Image (atlas + mipmaps)
-// - Sampler (bilinear)
-// - Pipeline (VS/PS, ShaderProgram. Tied to a particular RenderPass, natch.)
-// - Pipelined buffer for vertex data.
-//   - What's the vertex format? Well, a fully naive 96 bytes/quad isn't horrific.
-//     48 bytes per quad is doable, with more CPU work, and the vertex shader needs
-//     to be aware either way.
-// - Array of per-string draw parameters: vb offset, quad count, tint, matrix (x,y,scale)
-//
-// Initialization inputs:
-// - Font
-// - FontAtlasCreateInfo
-// - VkRenderPass + subpass index (for pipeline creation)
-// - VS, PS
-// - max chars per frame (used to determine vertex buffer size)
-// - max strings per frame
-//
-// Every frame, advance to the next vertex buffer and reset.
-// GetStringDimensions(const StringRenderInfo& string_info, uint32_t* out_w, uint32_t* out_h);
-// AddString(const StringRenderInfo& string_info);
-// DrawStrings();
-struct TextRendererCreateInfo {
-  const FontAtlasCreateInfo* font_atlas_ci;
-  const DeviceQueue* transfer_queue;
-  uint32_t pframe_count;
-  uint32_t max_chars_per_pframe;
-  uint32_t max_strings_per_pframe;
-};
-
+// A TextRenderer uses a FontAtlas to generate quads for a given string, and then renders those quads.
 class TextRenderer {
 public:
-  TextRenderer();
-  ~TextRenderer();
-  int Create(const Device& device_context, const TextRendererCreateInfo& ci);
-  void Destroy(const Device& device_context);
+  struct CreateInfo {
+    std::vector<const FontAtlas*> font_atlases;
 
-  const MeshFormat& GetMeshFormat(void) const { return mesh_format_; }
-  const Image& GetAtlasImage(void) const { return atlas_image_; }
+    // Application settings required for pipeline creation.
+    const RenderPass* render_pass;
+    uint32_t subpass;
+    uint32_t target_color_attachment_index;  // Used to set the appropriate bits in the color write mask
 
-  // Generates quads for each glyph of the string, converts them to the renderer's MeshFormat,
-  // appends them to the current pframe's vertex buffer, and emits a draw command to render
-  // the appropriate number of triangles.
-  // It is the caller's responsibility to bind a VkPipeline capable of rendering these glyphs.
-  void DrawString(VkCommandBuffer cb, const char* str);
+    // Upper-bound limits on various quantities, to allow all memory allocations to be made up front.
+    uint32_t pframe_count;  // Number of concurrent frames in flight.
+    uint32_t max_binds_per_pframe;  // Maximum number of times the text draw settings can be changed per frame.
+    uint32_t max_glyphs_per_pframe;  // Maximum number of glyphs that can be rendered per frame.
+  };
+
+  int Create(const Device& device, const CreateInfo& ci);
+  void Destroy(const Device& device);
+
+  struct State {
+    uint32_t pframe_index;  // Which frame's buffer to write to.
+    // float spacing;  // Horizontal spacing to add/subtract between characters, in pixels.
+    float color[4];  // Text color, as RGBA.
+    VkViewport viewport;  // To transform input pixel coordinates to clip space
+    // float v_scale;  // Some mechanism to specify how tall, in pixels, the glyphs should be.
+    // This is independent of the size specified at init time, which is used
+    // to render the font atlas.
+    const FontAtlas* font_atlas;
+  };
+
+  int BindDrawState(VkCommandBuffer cb, const State& state);
+  void Printf(VkCommandBuffer cb, float* x, float* y, const char* format, ...);
 
 private:
-  TextRenderer(const TextRenderer& rhs) = delete;
-  TextRenderer& operator=(const TextRenderer& rhs) = delete;
+  uint32_t pframe_count_ = 0;  // Number of concurrent frames in flight.
+  uint32_t max_binds_per_pframe_ = 0;
+  uint32_t max_glyphs_per_pframe_ = 0;
+  VkDeviceSize uniform_buffer_stride_ = 0;
 
-  MeshFormat mesh_format_;
-  FontAtlas atlas_;
-  Image atlas_image_;
-  PipelinedBuffer vertex_buffers_;
+  uint32_t current_bind_index_ = 0;
+  VkDeviceSize current_glyph_count_ = 0;  // Number of glyphs currently stored in the active vertex buffer.
+  State current_state_ = {};
 
-  uint32_t pframe_index_;
-  uint32_t draw_count_;
-  uint32_t quad_count_;
+  VkSampler sampler_ = VK_NULL_HANDLE;
+  VkPipeline pipeline_ = VK_NULL_HANDLE;
+  Shader vertex_shader_ = {}, fragment_shader_ = {};
+  ShaderProgram program_ = {};
+  DescriptorPool dpool_ = {};
+  Buffer quad_index_buffer_ = {};
+  PipelinedBuffer vertex_buffers_ = {};
+  PipelinedBuffer uniform_buffers_ = {};
+  std::vector<VkDescriptorSet> uniform_dsets_ = {};  // one per pframe
+
+  std::vector<const FontAtlas*> font_atlases_ = {};
+  std::vector<VkDescriptorSet> font_atlas_dsets_ = {};  // one per atlas. Used to bind the atlas image to the shader.
 };
 
 }  // namespace spokk

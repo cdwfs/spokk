@@ -204,7 +204,7 @@ SPOKK_ADD_HEADERS(spokk-text
     samples/common/camera.h
 )
 SPOKK_ADD_SHADERS(spokk-text
-    samples/text/textmesh.vert
-    samples/text/textmesh.frag
+    samples/text/text.vert
+    samples/text/text.frag
 )
 SPOKK_ADD_EXECUTABLE(spokk-text)

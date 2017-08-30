@@ -55,7 +55,7 @@
         { class: "shader", input: "../pillars/pillar.vert", output: "pillar.vert.spv", stage: "vert", entry: "main", },
         { class: "shader", input: "../pillars/pillar.frag", output: "pillar.frag.spv", stage: "frag", entry: "main", },
         { class: "shader", input: "../shadertoy/fullscreen.vert", output: "fullscreen.vert.spv", stage: "vert", entry: "main", },
-        { class: "shader", input: "../text/textmesh.vert", output: "textmesh.vert.spv", stage: "vert", entry: "main", },
-        { class: "shader", input: "../text/textmesh.frag", output: "textmesh.frag.spv", stage: "frag", entry: "main", },
+        { class: "shader", input: "../text/text.vert", output: "text.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../text/text.frag", output: "text.frag.spv", stage: "frag", entry: "main", },
     ],
 }
