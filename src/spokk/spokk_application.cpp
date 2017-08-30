@@ -519,7 +519,7 @@ int Application::Run() {
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = &submit_complete_semaphore_;
     SPOKK_VK_CHECK(
-        vkQueueSubmit(graphics_and_present_queue_->handle, 1, &submit_info, submit_complete_fences_[pframe_index_]));
+        vkQueueSubmit(*graphics_and_present_queue_, 1, &submit_info, submit_complete_fences_[pframe_index_]));
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present_info.pNext = NULL;
@@ -528,7 +528,7 @@ int Application::Run() {
     present_info.pImageIndices = &swapchain_image_index;
     present_info.waitSemaphoreCount = 1;
     present_info.pWaitSemaphores = &submit_complete_semaphore_;
-    VkResult present_result = vkQueuePresentKHR(graphics_and_present_queue_->handle, &present_info);
+    VkResult present_result = vkQueuePresentKHR(*graphics_and_present_queue_, &present_info);
     if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR) {
       // I've never actually seen these error codes returned, but if they were this is probably how they should be
       // handled.

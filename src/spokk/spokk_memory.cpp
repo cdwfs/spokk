@@ -13,13 +13,13 @@ DeviceMemoryBlock::~DeviceMemoryBlock() {
 }
 VkResult DeviceMemoryBlock::Allocate(const Device& device, const VkMemoryAllocateInfo& alloc_info) {
   assert(handle_ == VK_NULL_HANDLE);
-  VkResult result = vkAllocateMemory(device.Logical(), &alloc_info, device.HostAllocator(), &handle_);
+  VkResult result = vkAllocateMemory(device, &alloc_info, device.HostAllocator(), &handle_);
   if (result == VK_SUCCESS) {
     info_ = alloc_info;
-    device_ = device.Logical();
+    device_ = device;
     VkMemoryPropertyFlags properties = device.MemoryTypeProperties(alloc_info.memoryTypeIndex);
     if (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-      result = vkMapMemory(device.Logical(), handle_, 0, VK_WHOLE_SIZE, 0, &mapped_);
+      result = vkMapMemory(device, handle_, 0, VK_WHOLE_SIZE, 0, &mapped_);
     } else {
       mapped_ = nullptr;
     }
@@ -28,8 +28,8 @@ VkResult DeviceMemoryBlock::Allocate(const Device& device, const VkMemoryAllocat
 }
 void DeviceMemoryBlock::Free(const Device& device) {
   if (handle_ != VK_NULL_HANDLE) {
-    assert(device.Logical() == device_);
-    vkFreeMemory(device.Logical(), handle_, device.HostAllocator());
+    assert(device == device_);
+    vkFreeMemory(device, handle_, device.HostAllocator());
     handle_ = VK_NULL_HANDLE;
     mapped_ = nullptr;
   }
