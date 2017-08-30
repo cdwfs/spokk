@@ -7,6 +7,7 @@
 
 namespace spokk {
 
+// TODO(https://github.com/cdwfs/spokk/issues/26): refactor as a factory
 struct ComputePipeline {
   ComputePipeline();
   ComputePipeline(const ComputePipeline& rhs) = delete;
@@ -21,6 +22,7 @@ struct ComputePipeline {
   VkComputePipelineCreateInfo ci;
 };
 
+// TODO(https://github.com/cdwfs/spokk/issues/26): refactor as a factory
 struct GraphicsPipeline {
   GraphicsPipeline();
   GraphicsPipeline(const GraphicsPipeline& rhs) = delete;
