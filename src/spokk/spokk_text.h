@@ -49,6 +49,7 @@ private:
   std::vector<uint8_t> ttf_;
   // Font metadata
   stbtt_fontinfo font_info_;
+  // TODO(cort): expose these, so clients know how much to skip between lines?
   int ascent_, descent_, line_gap_;  // font V-metrics. These must be scaled to be useful.
 
   // Shared code/data for 2D string rendering

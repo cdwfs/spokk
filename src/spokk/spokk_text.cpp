@@ -219,7 +219,7 @@ int FontAtlas::Create(const Device &device, const FontAtlasCreateInfo &ci) {
 
   stbtt_pack_context pack_context = {};
   const int bitmap_row_nbytes = 0;  // 0 = tightly packed
-  const int padding = 1;
+  const int padding = 1;  // TODO(cort): increase this to avoid artifacts under heavy minification.
   void *alloc_context = nullptr;  // when using a custom allocator with stbtt
   int err = stbtt_PackBegin(
       &pack_context, atlas_pixels.data(), image_width_, image_height_, bitmap_row_nbytes, padding, alloc_context);
@@ -426,6 +426,7 @@ int TextRenderer::Create(const Device &device, const CreateInfo &ci) {
       uniform_buffers_.Create(device, ci.pframe_count, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
   // Shaders and shader program
+  // TODO(cort): embed these shaders in the binary?
   SPOKK_VK_CHECK(vertex_shader_.CreateAndLoadSpirvFile(device, "data/text.vert.spv"));
   vertex_shader_.OverrideDescriptorType(0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
   SPOKK_VK_CHECK(program_.AddShader(&vertex_shader_));
@@ -535,7 +536,7 @@ int TextRenderer::BindDrawState(VkCommandBuffer cb, const State &state) {
   uniform_buffers_.FlushPframeHostCache(state.pframe_index, uniform_offset, uniform_buffer_stride_);
   // Bind the pipeline and the appropriate descriptor sets
   vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
-  ZOMBO_ASSERT(state.font_atlas == font_atlases_[0], "font atlas mismatch");
+  ZOMBO_ASSERT(state.font_atlas == font_atlases_[0], "font atlas mismatch");  // TODO(cort): sort out multiple atlas support.
   std::array<VkDescriptorSet, 2> dsets = {{
       uniform_dsets_[state.pframe_index],
       font_atlas_dsets_[0],
