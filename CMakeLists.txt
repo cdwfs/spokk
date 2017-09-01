@@ -143,6 +143,7 @@ ENDFUNCTION(SPOKK_ADD_EXECUTABLE APP_TARGET)
 SPOKK_ADD_SOURCES(spokk-cubeswarm
     samples/common/camera.cpp
     samples/cubeswarm/cubeswarm.cpp
+    ${IMGUI_SOURCE_FILES}
 )
 SPOKK_ADD_HEADERS(spokk-cubeswarm
     samples/common/camera.h

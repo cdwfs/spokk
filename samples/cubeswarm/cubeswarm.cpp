@@ -4,6 +4,9 @@ using namespace spokk;
 #include <common/camera.h>
 #include <common/cube_mesh.h>
 
+#include <imgui/imgui.h>
+#include <imgui/examples/vulkan_example/imgui_impl_glfw_vulkan.h>
+
 #include <array>
 #include <cstdio>
 #include <memory>
@@ -101,10 +104,94 @@ public:
 
     // Create swapchain-sized buffers
     CreateRenderBuffers(swapchain_extent_);
+
+    // imgui setup
+    {
+      VkDescriptorPoolSize pool_size[11] =
+      {
+        { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+        { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+      };
+      VkDescriptorPoolCreateInfo pool_info = {};
+      pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+      pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+      pool_info.maxSets = 1000 * 11;
+      pool_info.poolSizeCount = 11;
+      pool_info.pPoolSizes = pool_size;
+      SPOKK_VK_CHECK(vkCreateDescriptorPool(device_, &pool_info, device_.HostAllocator(), &imgui_dpool_));
+    }
+    // Setup ImGui binding
+    ImGui_ImplGlfwVulkan_Init_Data init_data = {};
+    init_data.allocator = const_cast<VkAllocationCallbacks*>(device_.HostAllocator());
+    init_data.gpu = device_.Physical();
+    init_data.device = device_.Logical();
+    init_data.render_pass = render_pass_.handle;
+    init_data.pipeline_cache = device_.PipelineCache();
+    init_data.descriptor_pool = imgui_dpool_;
+    init_data.check_vk_result = [](VkResult result){ SPOKK_VK_CHECK(result); };
+    ImGui_ImplGlfwVulkan_Init(window_.get(), true, &init_data);
+
+    // Load Fonts
+    // (there is a default font, this is only if you want to change it. see extra_fonts/README.txt for more details)
+    //ImGuiIO& io = ImGui::GetIO();
+    //io.Fonts->AddFontDefault();
+    //io.Fonts->AddFontFromFileTTF("../../extra_fonts/Cousine-Regular.ttf", 15.0f);
+    //io.Fonts->AddFontFromFileTTF("../../extra_fonts/DroidSans.ttf", 16.0f);
+    //io.Fonts->AddFontFromFileTTF("../../extra_fonts/ProggyClean.ttf", 13.0f);
+    //io.Fonts->AddFontFromFileTTF("../../extra_fonts/ProggyTiny.ttf", 10.0f);
+    //io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
+
+    // Upload Fonts
+    {
+      VkCommandPoolCreateInfo cpool_ci = {};
+      cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+      cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+      cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
+      VkCommandPool cpool = VK_NULL_HANDLE;
+      SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, device_.HostAllocator(), &cpool));
+      VkCommandBufferAllocateInfo cb_allocate_info = {};
+      cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+      cb_allocate_info.commandPool = cpool;
+      cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+      cb_allocate_info.commandBufferCount = 1;
+      VkCommandBuffer cb = VK_NULL_HANDLE;
+      SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, &cb));
+
+      VkCommandBufferBeginInfo begin_info = {};
+      begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+      begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+      SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &begin_info));
+
+      ImGui_ImplGlfwVulkan_CreateFontsTexture(cb);
+
+      VkSubmitInfo end_info = {};
+      end_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+      end_info.commandBufferCount = 1;
+      end_info.pCommandBuffers = &cb;
+      SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
+      SPOKK_VK_CHECK(vkQueueSubmit(*(device_.FindQueue(VK_QUEUE_GRAPHICS_BIT)), 1, &end_info, VK_NULL_HANDLE));
+
+      SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
+      ImGui_ImplGlfwVulkan_InvalidateFontUploadObjects();
+
+      vkDestroyCommandPool(device_, cpool, device_.HostAllocator());
+    }
   }
   virtual ~CubeSwarmApp() {
     if (device_ != VK_NULL_HANDLE) {
       vkDeviceWaitIdle(device_);
+
+      ImGui_ImplGlfwVulkan_Shutdown();
+      vkDestroyDescriptorPool(device_, imgui_dpool_, device_.HostAllocator());
 
       dpool_.Destroy(device_);
 
@@ -170,6 +257,9 @@ public:
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+    ImGui_ImplGlfwVulkan_NewFrame();
+    ImGui::ShowTestWindow();
+
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -183,6 +273,7 @@ public:
         0, 1, &dsets_[pframe_index_], 0, nullptr);
     mesh_.BindBuffers(primary_cb);
     vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0, 0, 0);
+    ImGui_ImplGlfwVulkan_Render(primary_cb);
     vkCmdEndRenderPass(primary_cb);
   }
 
@@ -247,6 +338,8 @@ private:
   Mesh mesh_;
   PipelinedBuffer mesh_uniforms_;
   PipelinedBuffer scene_uniforms_;
+
+  VkDescriptorPool imgui_dpool_ = VK_NULL_HANDLE;
 
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDrone> drone_;
