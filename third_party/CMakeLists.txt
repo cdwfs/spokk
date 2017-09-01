@@ -42,6 +42,20 @@ IF(${MSVC})
 ENDIF(${MSVC})
 SET_TARGET_PROPERTIES(${ASSIMP_TARGETS} PROPERTIES FOLDER "assimp")
 
+# dear imgui
+SET(IMGUI_SOURCE_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_demo.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_draw.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_internal.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imconfig.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/imgui/examples/vulkan_example/imgui_impl_glfw_vulkan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/imgui/examples/vulkan_example/imgui_impl_glfw_vulkan.h
+    PARENT_SCOPE
+)
+SOURCE_GROUP("imgui" FILES ${IMGUI_SOURCE_FILES})
+
 # json.h
 set(JSON_H_DIR ${CMAKE_CURRENT_SOURCE_DIR}/json.h PARENT_SCOPE)
 
