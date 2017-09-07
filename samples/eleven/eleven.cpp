@@ -91,6 +91,10 @@ private:
   ID3D11VertexShader* shader_vs_ = nullptr;
   ID3D11PixelShader* shader_ps_ = nullptr;
 
+  ID3D11RasterizerState* rasterizer_state_ = nullptr;
+  ID3D11BlendState* blend_state_ = nullptr;
+  ID3D11DepthStencilState* depth_stencil_state_ = nullptr;
+
   uint32_t frame_index_ = 0;
 };
 
@@ -193,6 +197,7 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
   SPOKK_HR_CHECK(swapchain_->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&back_buffer_texture));
   SPOKK_HR_CHECK(device_.Logical()->CreateRenderTargetView(back_buffer_texture, nullptr, &back_buffer_rtv_));
   back_buffer_texture->Release();
+  device_.Context()->OMSetRenderTargets(1, &back_buffer_rtv_, nullptr);
 
   // Load some shaders
   FILE* vs_file = zomboFopen("data/test_vs.cso", "rb");
@@ -217,9 +222,24 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
   ZOMBO_ASSERT(ps_nbytes == ps_read_nbytes, "file I/O error while reading PS");
   SPOKK_HR_CHECK(device_.Logical()->CreatePixelShader(ps.data(), ps.size(), nullptr, &shader_ps_));
 
+  // Create render state objects
+  D3D11_RASTERIZER_DESC rasterizer_desc = {};
+  rasterizer_desc.FillMode = D3D11_FILL_SOLID;
+  rasterizer_desc.CullMode = D3D11_CULL_BACK;
+  rasterizer_desc.FrontCounterClockwise = TRUE;
+  rasterizer_desc.ScissorEnable= TRUE;
+  SPOKK_HR_CHECK(device_.Logical()->CreateRasterizerState(&rasterizer_desc, &rasterizer_state_));
+  D3D11_BLEND_DESC blend_desc = {};
+  blend_desc.RenderTarget[0].RenderTargetWriteMask= 0xF;
+  SPOKK_HR_CHECK(device_.Logical()->CreateBlendState(&blend_desc, &blend_state_));
+  D3D11_DEPTH_STENCIL_DESC depth_stencil_desc = {};
+  SPOKK_HR_CHECK(device_.Logical()->CreateDepthStencilState(&depth_stencil_desc, &depth_stencil_state_));
   init_successful_ = true;
 }
 ElevenApp::~ElevenApp() {
+  depth_stencil_state_->Release();
+  blend_state_->Release();
+  rasterizer_state_->Release();
   shader_vs_->Release();
   shader_ps_->Release();
 
@@ -256,8 +276,7 @@ void ElevenApp::Update(double /*dt*/) {}
 void ElevenApp::Render(ID3D11DeviceContext* context) {
   context->ClearState();
 
-  context->OMSetRenderTargets(1, &back_buffer_rtv_, nullptr);
-  float clear_color[4] = {1.0f, fmodf((float)frame_index_ * 0.01f, 1.0f), 0.3f, 1.0f};
+  float clear_color[4] = {0.5f, fmodf((float)frame_index_ * 0.01f, 0.5f), 0.3f, 1.0f};
   context->ClearRenderTargetView(back_buffer_rtv_, clear_color);
 
   // Setup the viewport
@@ -269,6 +288,22 @@ void ElevenApp::Render(ID3D11DeviceContext* context) {
   viewport.MinDepth = 0.0f;
   viewport.MaxDepth = 1.0f;
   context->RSSetViewports(1, &viewport);
+  D3D11_RECT scissor_rect = {};
+  scissor_rect.left = 0;
+  scissor_rect.top = 0;
+  scissor_rect.right = swapchain_desc_.BufferDesc.Width;
+  scissor_rect.bottom = swapchain_desc_.BufferDesc.Height;
+  context->RSSetScissorRects(1, &scissor_rect);
+
+  // Bind state
+  context->OMSetRenderTargets(1, &back_buffer_rtv_, nullptr);
+  context->VSSetShader(shader_vs_, nullptr, 0);
+  context->PSSetShader(shader_ps_, nullptr, 0);
+  context->RSSetState(rasterizer_state_);
+  context->OMSetDepthStencilState(depth_stencil_state_, 0);
+  context->OMSetBlendState(blend_state_, NULL, 0xFFFFFFFF);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  context->Draw(3, 0);
 }
 
 }  // namespace
