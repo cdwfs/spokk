@@ -50,7 +50,7 @@ public:
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
         GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
-    SPOKK_VK_CHECK(vkCreateSampler(device_.Logical(), &sampler_ci, host_allocator_, &sampler_));
+    SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
     albedo_tex_.CreateFromFile(device_, graphics_and_present_queue_, "data/redf.ktx");
 
     // Load shader pipelines

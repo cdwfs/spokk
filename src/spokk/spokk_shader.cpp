@@ -197,7 +197,7 @@ VkResult Shader::ParseSpirvAndCreate(const Device& device) {
   shader_ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
   shader_ci.codeSize = spirv.size() * sizeof(uint32_t);  // note: in bytes
   shader_ci.pCode = spirv.data();
-  VkResult result = vkCreateShaderModule(device.Logical(), &shader_ci, device.HostAllocator(), &handle);
+  VkResult result = vkCreateShaderModule(device, &shader_ci, device.HostAllocator(), &handle);
   return result;
 }
 void Shader::OverrideDescriptorType(uint32_t dset, uint32_t binding, VkDescriptorType new_type) {
@@ -234,7 +234,7 @@ DescriptorBindPoint Shader::GetDescriptorBindPoint(const std::string& name) cons
 
 void Shader::Destroy(const Device& device) {
   if (handle) {
-    vkDestroyShaderModule(device.Logical(), handle, device.HostAllocator());
+    vkDestroyShaderModule(device, handle, device.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
   dset_layout_infos.clear();
@@ -471,8 +471,7 @@ VkResult ShaderProgram::Finalize(const Device& device) {
     layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layout_ci.bindingCount = (uint32_t)layout_info.bindings.size();
     layout_ci.pBindings = layout_info.bindings.data();
-    VkResult result =
-        vkCreateDescriptorSetLayout(device.Logical(), &layout_ci, device.HostAllocator(), &dset_layouts[iLayout]);
+    VkResult result = vkCreateDescriptorSetLayout(device, &layout_ci, device.HostAllocator(), &dset_layouts[iLayout]);
     if (result != VK_SUCCESS) {
       return result;
     }
@@ -484,8 +483,7 @@ VkResult ShaderProgram::Finalize(const Device& device) {
   pipeline_layout_ci.pSetLayouts = dset_layouts.data();
   pipeline_layout_ci.pushConstantRangeCount = (uint32_t)push_constant_ranges.size();
   pipeline_layout_ci.pPushConstantRanges = push_constant_ranges.data();
-  VkResult result =
-      vkCreatePipelineLayout(device.Logical(), &pipeline_layout_ci, device.HostAllocator(), &pipeline_layout);
+  VkResult result = vkCreatePipelineLayout(device, &pipeline_layout_ci, device.HostAllocator(), &pipeline_layout);
   // Set entry point names now that the shader count is finalized
   for (size_t iShader = 0; iShader < shader_stage_cis.size(); ++iShader) {
     shader_stage_cis[iShader].pName = entry_point_names[iShader].c_str();
@@ -496,7 +494,7 @@ VkResult ShaderProgram::Finalize(const Device& device) {
 void ShaderProgram::Destroy(const Device& device) {
   for (auto dset_layout : dset_layouts) {
     if (dset_layout != VK_NULL_HANDLE) {
-      vkDestroyDescriptorSetLayout(device.Logical(), dset_layout, device.HostAllocator());
+      vkDestroyDescriptorSetLayout(device, dset_layout, device.HostAllocator());
     }
   }
   dset_layouts.clear();
@@ -506,7 +504,7 @@ void ShaderProgram::Destroy(const Device& device) {
   shader_stage_cis.clear();
   entry_point_names.clear();
   if (pipeline_layout != VK_NULL_HANDLE) {
-    vkDestroyPipelineLayout(device.Logical(), pipeline_layout, device.HostAllocator());
+    vkDestroyPipelineLayout(device, pipeline_layout, device.HostAllocator());
     pipeline_layout = VK_NULL_HANDLE;
   }
   active_stages = 0;
@@ -542,12 +540,12 @@ void DescriptorPool::Add(const VkDescriptorSetLayoutCreateInfo& dset_layout, uin
 }
 VkResult DescriptorPool::Finalize(const Device& device, VkDescriptorPoolCreateFlags flags) {
   ci.flags = flags;
-  VkResult result = vkCreateDescriptorPool(device.Logical(), &ci, device.HostAllocator(), &handle);
+  VkResult result = vkCreateDescriptorPool(device, &ci, device.HostAllocator(), &handle);
   return result;
 }
 void DescriptorPool::Destroy(const Device& device) {
   if (handle != VK_NULL_HANDLE) {
-    vkDestroyDescriptorPool(device.Logical(), handle, device.HostAllocator());
+    vkDestroyDescriptorPool(device, handle, device.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
 }
@@ -558,7 +556,7 @@ VkResult DescriptorPool::AllocateSets(const Device& device, uint32_t dset_count,
   alloc_info.descriptorPool = handle;
   alloc_info.descriptorSetCount = dset_count;
   alloc_info.pSetLayouts = dset_layouts;
-  VkResult result = vkAllocateDescriptorSets(device.Logical(), &alloc_info, out_dsets);
+  VkResult result = vkAllocateDescriptorSets(device, &alloc_info, out_dsets);
   return result;
 }
 VkDescriptorSet DescriptorPool::AllocateSet(const Device& device, VkDescriptorSetLayout dset_layout) const {
@@ -568,12 +566,12 @@ VkDescriptorSet DescriptorPool::AllocateSet(const Device& device, VkDescriptorSe
 }
 void DescriptorPool::FreeSets(Device& device, uint32_t set_count, const VkDescriptorSet* sets) const {
   if (ci.flags & VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT) {
-    vkFreeDescriptorSets(device.Logical(), handle, set_count, sets);
+    vkFreeDescriptorSets(device, handle, set_count, sets);
   }
 }
 void DescriptorPool::FreeSet(Device& device, VkDescriptorSet set) const {
   if (ci.flags & VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT) {
-    vkFreeDescriptorSets(device.Logical(), handle, 1, &set);
+    vkFreeDescriptorSets(device, handle, 1, &set);
   }
 }
 
@@ -705,7 +703,7 @@ void DescriptorSetWriter::WriteAll(const Device& device, VkDescriptorSet dest_se
   for (auto& write : binding_writes) {
     write.dstSet = dest_set;
   }
-  vkUpdateDescriptorSets(device.Logical(), (uint32_t)binding_writes.size(), binding_writes.data(), 0, nullptr);
+  vkUpdateDescriptorSets(device, (uint32_t)binding_writes.size(), binding_writes.data(), 0, nullptr);
 }
 void DescriptorSetWriter::WriteOne(
     const Device& device, VkDescriptorSet dest_set, uint32_t binding, uint32_t array_element) {
@@ -721,7 +719,7 @@ void DescriptorSetWriter::WriteOne(
   } else if (writeCopy.pTexelBufferView != nullptr) {
     writeCopy.pTexelBufferView += array_element;
   }
-  vkUpdateDescriptorSets(device.Logical(), 1, &writeCopy, 0, nullptr);
+  vkUpdateDescriptorSets(device, 1, &writeCopy, 0, nullptr);
 }
 
 }  // namespace spokk

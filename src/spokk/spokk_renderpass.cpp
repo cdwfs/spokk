@@ -217,7 +217,7 @@ VkResult RenderPass::Finalize(const Device& device, VkPipelineBindPoint bind_poi
   render_pass_ci.pSubpasses = subpass_descs.data();
   render_pass_ci.dependencyCount = (uint32_t)subpass_dependencies.size();
   render_pass_ci.pDependencies = subpass_dependencies.data();
-  VkResult create_result = vkCreateRenderPass(device.Logical(), &render_pass_ci, device.HostAllocator(), &handle);
+  VkResult create_result = vkCreateRenderPass(device, &render_pass_ci, device.HostAllocator(), &handle);
 
   // vkBeginRenderPass layers will warn if clearValueCount includes entries that will never be used.
   // So, find the last attachment that's cleared, and only store enough clear values to handle that one.
@@ -327,7 +327,7 @@ VkFramebufferCreateInfo RenderPass::GetFramebufferCreateInfo(VkExtent2D render_a
 
 void RenderPass::Destroy(const Device& device) {
   if (handle != VK_NULL_HANDLE) {
-    vkDestroyRenderPass(device.Logical(), handle, device.HostAllocator());
+    vkDestroyRenderPass(device, handle, device.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
   attachment_descs.clear();
