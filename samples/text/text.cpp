@@ -271,7 +271,7 @@ typedef struct {
 fontchar fdata[128];
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image_write.h>
+#include <stb/stb_image_write.h>
 
 void DumpSdfGlyphs() {
   FILE *font_file = fopen("c:/windows/fonts/times.ttf", "rb");

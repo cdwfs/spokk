@@ -81,7 +81,6 @@ public:
   void HostFree(void *ptr) const;
 
 private:
-  // cached Vulkan handles; do not destroy!
   VkPhysicalDevice physical_device_;
   VkDevice logical_device_;
   VkPipelineCache pipeline_cache_;

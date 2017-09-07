@@ -16,14 +16,14 @@
 #include <unistd.h>
 #endif
 
-#include <array>
 #include <float.h>
 #include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <array>
 #include <map>
 #include <memory>
 #include <mutex>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string>
 #include <vector>
 
@@ -119,27 +119,25 @@ int CombineAbsDirAndPath(const char* abs_dir, const char* path, int* buffer_ncha
     return 0;
   } else {
     // Just smoosh 'em together
-    std::string tmp_path = IsRelativePath(path)
-      ? (std::string(abs_dir) + std::string("/") + std::string(path))
-      : path;
+    std::string tmp_path = IsRelativePath(path) ? (std::string(abs_dir) + std::string("/") + std::string(path)) : path;
     // Frustratingly, realpath() doesn't work if some/all of the path doesn't exist.
     // So, canonicalize manually.
     const char* src = tmp_path.c_str();
     out_buffer[0] = '/';
     char* dst = out_buffer;
-    while(*src != '\0') {
+    while (*src != '\0') {
       ZOMBO_ASSERT(*src == '/', "invariant failure");
-      const char *src_next = strchr(src+1, '/');
+      const char* src_next = strchr(src + 1, '/');
       if (src_next == nullptr) {
         // this is the final component in the path, with no trailing slash.
-        src_next = strchr(src+1, '\0');
+        src_next = strchr(src + 1, '\0');
       }
       ptrdiff_t nchars = src_next - src;
       if (nchars == 1 && *src_next == '\0') {
         // trailing slash at the end of src. Skip it, and we're done.
       } else if (nchars == 1 && *src_next == '/') {
         // consecutive slashes. Skip all but the last one, writing no output
-        while( *(src_next+1) == '/') {
+        while (*(src_next + 1) == '/') {
           ++src_next;
         }
       } else if (nchars == 2 && src[1] == '.') {
@@ -150,7 +148,7 @@ int CombineAbsDirAndPath(const char* abs_dir, const char* path, int* buffer_ncha
         while (dst != out_buffer && *(--dst) != '/') {
         }
       } else {
-        ZOMBO_ASSERT_RETURN(dst+nchars <= out_buffer + *buffer_nchars - 1, -2, "output path len exceeds buffer_size");
+        ZOMBO_ASSERT_RETURN(dst + nchars <= out_buffer + *buffer_nchars - 1, -2, "output path len exceeds buffer_size");
         strncpy(dst, src, nchars);
         dst += nchars;
       }
@@ -207,7 +205,7 @@ int MakeAbsolutePath(const char* path, int* buffer_nchars, char* out_buffer) {
     return 0;
   } else {
     std::vector<char> cwd(PATH_MAX);
-    char *cwd_str = getcwd(cwd.data(), PATH_MAX);
+    char* cwd_str = getcwd(cwd.data(), PATH_MAX);
     if (cwd_str == NULL) {
       return -1;
     }
@@ -237,13 +235,13 @@ int TruncatePathToDir(char* path) {
 #elif defined(ZOMBO_PLATFORM_POSIX)
   int len = strlen(path);
   // remove trailing slashes
-  while(len > 1 && path[len-1] == '/') {
-    path[len-1] = '\0';
+  while (len > 1 && path[len - 1] == '/') {
+    path[len - 1] = '\0';
     --len;
   }
   char* last_slash = strrchr(path, '/');
   if (last_slash) {
-    *(last_slash+1) = '\0';
+    *(last_slash + 1) = '\0';
   }
   return 0;
 #else
@@ -430,16 +428,16 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
 
   // Build vertex buffer
   const spokk::VertexLayout dst_layout = {
-    {SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION, VK_FORMAT_R32G32B32_SFLOAT, 0},
-    {SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL, VK_FORMAT_R32G32B32_SFLOAT, 12},
-    {SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD0, VK_FORMAT_R32G32_SFLOAT, 24},
+      {SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION, VK_FORMAT_R32G32B32_SFLOAT, 0},
+      {SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL, VK_FORMAT_R32G32B32_SFLOAT, 12},
+      {SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD0, VK_FORMAT_R32G32_SFLOAT, 24},
   };
   std::vector<uint8_t> vertices(dst_layout.stride * vertex_count, 0);
   for (const auto& attrib : src_attributes) {
     int convert_error =
-      spokk::ConvertVertexBuffer(attrib.values, attrib.layout, vertices.data(), dst_layout, vertex_count);
+        spokk::ConvertVertexBuffer(attrib.values, attrib.layout, vertices.data(), dst_layout, vertex_count);
     ZOMBO_ASSERT_RETURN(
-      convert_error == 0, -2, "error converting attribute at location %u", attrib.layout.attributes[0].location);
+        convert_error == 0, -2, "error converting attribute at location %u", attrib.layout.attributes[0].location);
   }
 
   // Load index buffer
@@ -453,7 +451,7 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
     if (face.mNumIndices != 3) {
       // skip non-triangles. We triangulated at import time, so these should be lines & points.
       ZOMBO_ASSERT(face.mNumIndices < 3, "face %u has %u indices -- didn't we triangulate & discard degenerates?",
-        iFace, face.mNumIndices);
+          iFace, face.mNumIndices);
       continue;
     }
     if (bytes_per_index == 4) {
@@ -486,15 +484,15 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
     mesh_header.aabb_max[0] = aabb_max.x;
     mesh_header.aabb_max[1] = aabb_max.y;
     mesh_header.aabb_max[2] = aabb_max.z;
-    std::vector<VkVertexInputBindingDescription> vb_descs(mesh_header.vertex_buffer_count,
-      VkVertexInputBindingDescription{});
+    std::vector<VkVertexInputBindingDescription> vb_descs(
+        mesh_header.vertex_buffer_count, VkVertexInputBindingDescription{});
     {
       vb_descs[0].binding = 0;
       vb_descs[0].stride = dst_layout.stride;
       vb_descs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     }
-    std::vector<VkVertexInputAttributeDescription> attr_descs(dst_layout.attributes.size(),
-      VkVertexInputAttributeDescription{});
+    std::vector<VkVertexInputAttributeDescription> attr_descs(
+        dst_layout.attributes.size(), VkVertexInputAttributeDescription{});
     for (size_t iAttr = 0; iAttr < attr_descs.size(); ++iAttr) {
       attr_descs[iAttr].location = dst_layout.attributes[iAttr].location;
       attr_descs[iAttr].binding = 0;
@@ -565,7 +563,7 @@ public:
 
   // Handles shaderc_include_resolver_fn callbacks.
   shaderc_include_result* GetInclude(const char* requested_source, shaderc_include_type type,
-    const char* requesting_source, size_t /*include_depth*/) override {
+      const char* requesting_source, size_t /*include_depth*/) override {
     // Acquire lock
     std::lock_guard<std::mutex> results_lock(mutex_);
     FILE* included_file = nullptr;
@@ -768,11 +766,11 @@ int AssetManifest::Load(const std::string& json5_filename) {
 
   json_parse_result_s parse_result = {};
   json_value_s* manifest = json_parse_ex(manifest_bytes.data(), manifest_bytes.size(),
-    json_parse_flags_allow_json5 | json_parse_flags_allow_location_information, NULL, NULL, &parse_result);
+      json_parse_flags_allow_json5 | json_parse_flags_allow_location_information, NULL, NULL, &parse_result);
   if (!manifest) {
     fprintf(stderr, "%s(%u): error %u at column %u (%s)\n", manifest_filename_.c_str(),
-      (uint32_t)parse_result.error_line_no, (uint32_t)parse_result.error, (uint32_t)parse_result.error_row_no,
-      JsonParseErrorStr((json_parse_error_e)parse_result.error).c_str());
+        (uint32_t)parse_result.error_line_no, (uint32_t)parse_result.error, (uint32_t)parse_result.error_row_no,
+        JsonParseErrorStr((json_parse_error_e)parse_result.error).c_str());
     return -5;
   }
   int parse_error = ParseRoot(manifest);
@@ -858,7 +856,7 @@ int AssetManifest::ParseRoot(const json_value_s* val) {
   size_t i_child = 0;
   int parse_error = 0;
   for (json_object_element_s *child_elem = root_obj->start; i_child < root_obj->length;
-    ++i_child, child_elem = child_elem->next) {
+       ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "assets") == 0) {
       parse_error = ParseAssets(child_elem->value);
       if (parse_error) {
@@ -883,7 +881,7 @@ int AssetManifest::ParseDefaults(const json_value_s* val) {
   size_t i_child = 0;
   int parse_error = 0;
   for (json_object_element_s *child_elem = defaults_obj->start; i_child < defaults_obj->length;
-    ++i_child, child_elem = child_elem->next) {
+       ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "output_root") == 0) {
       parse_error = ParseDefaultOutputRoot(child_elem->value);
       if (parse_error) {
@@ -917,11 +915,11 @@ int AssetManifest::ParseDefaultShaderIncludeDirs(const json_value_s* val) {
   size_t i_child = 0;
   int parse_error = 0;
   for (json_array_element_s *child_elem = includes_array->start; i_child < includes_array->length;
-    ++i_child, child_elem = child_elem->next) {
+       ++i_child, child_elem = child_elem->next) {
     // parse array of shader includes. Combine each dir with the manifest dir and canonicalize
     if (child_elem->value->type != json_type_string) {
       fprintf(stderr, "%s: error: shader_include_dirs element must be a string\n",
-        JsonValueLocationStr(child_elem->value).c_str());
+          JsonValueLocationStr(child_elem->value).c_str());
       return -2;
     }
     const json_string_s* include_dir_str = (const json_string_s*)(child_elem->value->payload);
@@ -945,7 +943,7 @@ int AssetManifest::ParseAssets(const json_value_s* val) {
   size_t i_child = 0;
   int parse_error = 0;
   for (json_array_element_s *child_elem = assets_array->start; i_child < assets_array->length;
-    ++i_child, child_elem = child_elem->next) {
+       ++i_child, child_elem = child_elem->next) {
     parse_error = ParseAsset(child_elem->value);
     if (parse_error) {
       break;
@@ -964,7 +962,7 @@ int AssetManifest::ParseAsset(const json_value_s* val) {
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
   for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
-    ++i_child, child_elem = child_elem->next) {
+       ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       if (child_elem->value->type != json_type_string) {
         fprintf(stderr, "%s: error: asset class payload must be a string\n", JsonValueLocationStr(val).c_str());
@@ -981,7 +979,7 @@ int AssetManifest::ParseAsset(const json_value_s* val) {
         return ParseFontAsset(val);
       } else {
         fprintf(stderr, "%s: error: unknown asset class \"%s\"\n", JsonValueLocationStr(child_elem->value).c_str(),
-          asset_class_str->string);
+            asset_class_str->string);
         return -3;
       }
     }
@@ -996,7 +994,7 @@ int AssetManifest::ParseImageAsset(const json_value_s* val) {
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
   for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
-    ++i_child, child_elem = child_elem->next) {
+       ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
     } else if (strcmp(child_elem->name->string, "input") == 0) {
@@ -1013,7 +1011,7 @@ int AssetManifest::ParseImageAsset(const json_value_s* val) {
       output_path = (const json_string_s*)(child_elem->value->payload);
     } else {
       fprintf(stderr, "%s: warning: ignoring unexpected tag '%s'\n", JsonValueLocationStr(val).c_str(),
-        child_elem->name->string);
+          child_elem->name->string);
     }
   }
   if (!input_path || !output_path) {
@@ -1035,7 +1033,7 @@ int AssetManifest::ParseMeshAsset(const json_value_s* val) {
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
   for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
-    ++i_child, child_elem = child_elem->next) {
+       ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
     } else if (strcmp(child_elem->name->string, "input") == 0) {
@@ -1052,7 +1050,7 @@ int AssetManifest::ParseMeshAsset(const json_value_s* val) {
       output_path = (const json_string_s*)(child_elem->value->payload);
     } else {
       fprintf(stderr, "%s: warning: ignoring unexpected tag '%s'\n", JsonValueLocationStr(val).c_str(),
-        child_elem->name->string);
+          child_elem->name->string);
     }
   }
   if (!input_path || !output_path) {
@@ -1076,7 +1074,7 @@ int AssetManifest::ParseShaderAsset(const json_value_s* val) {
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
   for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
-    ++i_child, child_elem = child_elem->next) {
+       ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
     } else if (strcmp(child_elem->name->string, "input") == 0) {
@@ -1105,7 +1103,7 @@ int AssetManifest::ParseShaderAsset(const json_value_s* val) {
       shader_stage = (const json_string_s*)(child_elem->value->payload);
     } else {
       fprintf(stderr, "%s: warning: ignoring unexpected tag '%s'\n", JsonValueLocationStr(val).c_str(),
-        child_elem->name->string);
+          child_elem->name->string);
     }
   }
   if (!input_path || !output_path) {
@@ -1128,7 +1126,7 @@ int AssetManifest::ParseFontAsset(const json_value_s* val) {
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
   for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
-    ++i_child, child_elem = child_elem->next) {
+       ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
     } else if (strcmp(child_elem->name->string, "input") == 0) {
@@ -1145,7 +1143,7 @@ int AssetManifest::ParseFontAsset(const json_value_s* val) {
       output_path = (const json_string_s*)(child_elem->value->payload);
     } else {
       fprintf(stderr, "%s: warning: ignoring unexpected tag '%s'\n", JsonValueLocationStr(val).c_str(),
-        child_elem->name->string);
+          child_elem->name->string);
     }
   }
   if (!input_path || !output_path) {
@@ -1162,7 +1160,7 @@ int AssetManifest::ParseFontAsset(const json_value_s* val) {
 }
 
 int AssetManifest::IsOutputOutOfDate(
-  const std::string& input_path, const std::string& output_path, bool* out_result) const {
+    const std::string& input_path, const std::string& output_path, bool* out_result) const {
   // Do the files exist? Missing input = error! Missing output = automatic rebuild!
   bool input_exists = FileExists(input_path.c_str());
   if (!input_exists) {
@@ -1226,7 +1224,7 @@ int AssetManifest::CopyAssetFile(const std::string& input_path, const std::strin
     // batch_nbytes may be less than the full batch if it's the last batch of the file
     if (read_nbytes != max_batch_nbytes && copied_nbytes + read_nbytes != input_file_nbytes) {
       fprintf(stderr, "error: I/O error while reading from %s: fread() returned %d, expected %d", input_path.c_str(),
-        (int)read_nbytes, (int)max_batch_nbytes);
+          (int)read_nbytes, (int)max_batch_nbytes);
       copy_error = -10;
       break;
     }
@@ -1234,7 +1232,7 @@ int AssetManifest::CopyAssetFile(const std::string& input_path, const std::strin
     size_t write_nbytes = fwrite(batch_data.data(), 1, read_nbytes, output_file);
     if (write_nbytes != read_nbytes) {
       fprintf(stderr, "error: I/O error writing to %s: fwrite() returned %d, expected %d", output_path.c_str(),
-        (int)write_nbytes, (int)read_nbytes);
+          (int)write_nbytes, (int)read_nbytes);
       copy_error = -11;
       break;
     }
@@ -1250,7 +1248,7 @@ int AssetManifest::ProcessImage(const ImageAsset& image) {
   std::string abs_output_path;
   int path_error = CombineAbsDirAndPath(output_root_.c_str(), image.output_path.c_str(), &abs_output_path);
   ZOMBO_ASSERT_RETURN(!path_error, -1, "CombineAbsDirAndPath('%s', '%s') failed (%d) for image at %s",
-    output_root_.c_str(), image.output_path.c_str(), path_error, image.json_location.c_str());
+      output_root_.c_str(), image.output_path.c_str(), path_error, image.json_location.c_str());
   int query_error = IsOutputOutOfDate(image.input_path, abs_output_path, &build_output);
   if (query_error) {
     return query_error;
@@ -1273,7 +1271,7 @@ int AssetManifest::ProcessMesh(const MeshAsset& mesh) {
   std::string abs_output_path;
   int path_error = CombineAbsDirAndPath(output_root_.c_str(), mesh.output_path.c_str(), &abs_output_path);
   ZOMBO_ASSERT_RETURN(path_error == 0, -1, "CreateAbsoluteOutputPath failed (%d) for mesh at %s", path_error,
-    mesh.json_location.c_str());
+      mesh.json_location.c_str());
   int query_error = IsOutputOutOfDate(mesh.input_path, abs_output_path, &build_output);
   if (query_error) {
     return query_error;
@@ -1295,7 +1293,7 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
   std::string abs_output_path;
   int path_error = CombineAbsDirAndPath(output_root_.c_str(), shader.output_path.c_str(), &abs_output_path);
   ZOMBO_ASSERT_RETURN(path_error == 0, -1, "CreateAbsoluteOutputPath failed (%d) for shader at %s", path_error,
-    shader.json_location.c_str());
+      shader.json_location.c_str());
   int query_error = IsOutputOutOfDate(shader.input_path, abs_output_path, &build_output);
   if (query_error) {
     return query_error;
@@ -1314,13 +1312,13 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
       shader_kind = shaderc_compute_shader;
     } else {
       fprintf(stderr, "%s: error: Unrecognized shader stage '%s'\n", shader.json_location.c_str(),
-        shader.shader_stage.c_str());
+          shader.shader_stage.c_str());
       return -3;
     }
     FILE* source_file = zomboFopen(shader.input_path.c_str(), "rb");
     if (!source_file) {
       fprintf(stderr, "%s: error: could not open '%s' for reading\n", shader.json_location.c_str(),
-        shader.input_path.c_str());
+          shader.input_path.c_str());
       return -4;
     }
     fseek(source_file, 0, SEEK_END);
@@ -1332,17 +1330,17 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
     fclose(source_file);
     if (read_nbytes != source_nbytes) {
       fprintf(stderr, "%s: error: file I/O error while loading %s\n", shader.json_location.c_str(),
-        shader.input_path.c_str());
+          shader.input_path.c_str());
       return -5;
     }
 
     shaderc::CompileOptions options;
     std::unique_ptr<ShaderFileIncluder> includer =
-      my_make_unique<ShaderFileIncluder>(manifest_dir_, shader_include_dirs_);
+        my_make_unique<ShaderFileIncluder>(manifest_dir_, shader_include_dirs_);
     options.SetIncluder(std::move(includer));
     shaderc::Compiler compiler;
     shaderc::SpvCompilationResult compile_result = compiler.CompileGlslToSpv(
-      source_contents.data(), shader_kind, shader.input_path.c_str(), shader.entry_point.c_str(), options);
+        source_contents.data(), shader_kind, shader.input_path.c_str(), shader.entry_point.c_str(), options);
     if (compile_result.GetCompilationStatus() != shaderc_compilation_status_success) {
       fprintf(stderr, "%s\n", compile_result.GetErrorMessage().c_str());
       return compile_result.GetCompilationStatus();
@@ -1352,14 +1350,14 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
     FILE* spv_file = zomboFopen(abs_output_path.c_str(), "wb");
     if (!spv_file) {
       fprintf(stderr, "%s: error: could not open '%s' for writing\n", shader.json_location.c_str(),
-        abs_output_path.c_str());
+          abs_output_path.c_str());
       return -7;
     }
     size_t write_ndwords = fwrite(compile_result.cbegin(), sizeof(uint32_t), spv_dword_count, spv_file);
     fclose(spv_file);
     if (spv_dword_count != write_ndwords) {
       fprintf(stderr, "%s: error: file I/O error while writing %s\n", shader.json_location.c_str(),
-        abs_output_path.c_str());
+          abs_output_path.c_str());
       return -8;
     }
     printf("%s -> %s\n", shader.input_path.c_str(), abs_output_path.c_str());
@@ -1374,7 +1372,7 @@ int AssetManifest::ProcessFont(const FontAsset& font) {
   std::string abs_output_path;
   int path_error = CombineAbsDirAndPath(output_root_.c_str(), font.output_path.c_str(), &abs_output_path);
   ZOMBO_ASSERT_RETURN(!path_error, -1, "CombineAbsDirAndPath('%s', '%s') failed (%d) for image at %s",
-    output_root_.c_str(), font.output_path.c_str(), path_error, font.json_location.c_str());
+      output_root_.c_str(), font.output_path.c_str(), path_error, font.json_location.c_str());
   int query_error = IsOutputOutOfDate(font.input_path, abs_output_path, &build_output);
   if (query_error) {
     return query_error;
@@ -1399,7 +1397,7 @@ Options:
   -h, --help:       Prints this message
   -o <root>         Override output root in manifest with the specified directory.
 )usage",
-argv0);
+      argv0);
 }
 
 int main(int argc, char* argv[]) {

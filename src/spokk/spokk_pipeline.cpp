@@ -22,11 +22,11 @@ void ComputePipeline::Init(const ShaderProgram* shader_program_in) {
   ci.basePipelineIndex = 0;
 }
 VkResult ComputePipeline::Finalize(const Device& device) {
-  return vkCreateComputePipelines(device.Logical(), device.PipelineCache(), 1, &ci, device.HostAllocator(), &handle);
+  return vkCreateComputePipelines(device, device.PipelineCache(), 1, &ci, device.HostAllocator(), &handle);
 }
 void ComputePipeline::Destroy(const Device& device) {
   if (handle != VK_NULL_HANDLE) {
-    vkDestroyPipeline(device.Logical(), handle, device.HostAllocator());
+    vkDestroyPipeline(device, handle, device.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
   shader_program = nullptr;
@@ -133,11 +133,11 @@ void GraphicsPipeline::Init(const MeshFormat* mesh_format_in, const ShaderProgra
   ci.basePipelineIndex = 0;
 }
 VkResult GraphicsPipeline::Finalize(const Device& device) {
-  return vkCreateGraphicsPipelines(device.Logical(), device.PipelineCache(), 1, &ci, device.HostAllocator(), &handle);
+  return vkCreateGraphicsPipelines(device, device.PipelineCache(), 1, &ci, device.HostAllocator(), &handle);
 }
 void GraphicsPipeline::Destroy(const Device& device) {
   if (handle != VK_NULL_HANDLE) {
-    vkDestroyPipeline(device.Logical(), handle, device.HostAllocator());
+    vkDestroyPipeline(device, handle, device.HostAllocator());
     handle = VK_NULL_HANDLE;
   }
   dynamic_states.clear();

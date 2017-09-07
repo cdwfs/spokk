@@ -15,7 +15,7 @@
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"  // L1, L2 are set but unused in debug builds
 #endif
 #define STB_RECT_PACK_IMPLEMENTATION
-#include <stb_rect_pack.h>
+#include <stb/stb_rect_pack.h>
 #if defined(ZOMBO_COMPILER_CLANG)
 #pragma clang diagnostic pop
 #elif defined(ZOMBO_COMPILER_GNU)
@@ -23,7 +23,7 @@
 #endif
 
 #define STB_TRUETYPE_IMPLEMENTATION
-#include <stb_truetype.h>
+#include <stb/stb_truetype.h>
 
 #include <varargs.h>
 #include <algorithm>
@@ -421,7 +421,7 @@ int TextRenderer::Create(const Device &device, const CreateInfo &ci) {
   GraphicsPipeline pipeline_settings = {};
   pipeline_settings.Init(&FontAtlas::GetQuadFormat(), &program_, ci.render_pass, ci.subpass);
   // Disable writes to all but the specified color attachment
-  for(uint32_t i = 0; i < pipeline_settings.color_blend_state_ci.attachmentCount; ++i) {
+  for (uint32_t i = 0; i < pipeline_settings.color_blend_state_ci.attachmentCount; ++i) {
     if (i != ci.target_color_attachment_index) {
       pipeline_settings.color_blend_attachment_states[i].colorWriteMask = 0;
     }
@@ -429,7 +429,7 @@ int TextRenderer::Create(const Device &device, const CreateInfo &ci) {
   // Disable depth test
   pipeline_settings.depth_stencil_state_ci.depthTestEnable = VK_FALSE;
   // Enable additive blending
-  auto& target_attachment_state = pipeline_settings.color_blend_attachment_states[ci.target_color_attachment_index];
+  auto &target_attachment_state = pipeline_settings.color_blend_attachment_states[ci.target_color_attachment_index];
   target_attachment_state.blendEnable = VK_TRUE;
   target_attachment_state.colorBlendOp = VK_BLEND_OP_ADD;
   target_attachment_state.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
