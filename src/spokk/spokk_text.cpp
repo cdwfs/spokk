@@ -29,6 +29,12 @@
 #include <algorithm>
 #include <array>
 
+// If defined, a mipmap chain will be generated for font atlases, and the sampler will be configured
+// for trilinear filtering. This is disabled by default, as glyphs bleed together at lower mip levels.
+// I could probably get away with a few levels by adding sufficient padding, but in general it's best
+// to render as close to the atlas resolution as possible.
+//#define ENABLE_FONT_ATLAS_MIPMAPS
+
 namespace spokk {
 
 //
@@ -249,11 +255,19 @@ int FontAtlas::Create(const Device &device, const FontAtlasCreateInfo &ci) {
   atlas_image_ci.extent.width = ci.image_width;
   atlas_image_ci.extent.height = ci.image_height;
   atlas_image_ci.extent.depth = 1;
-  atlas_image_ci.mipLevels = GetMaxMipLevels(atlas_image_ci.extent);
+  atlas_image_ci.mipLevels =
+#if defined(ENABLE_FONT_ATLAS_MIPMAPS)
+      GetMaxMipLevels(atlas_image_ci.extent);
+#else
+      1;
+#endif
   atlas_image_ci.arrayLayers = 1;
   atlas_image_ci.samples = VK_SAMPLE_COUNT_1_BIT;
   atlas_image_ci.tiling = VK_IMAGE_TILING_OPTIMAL;
-  atlas_image_ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  atlas_image_ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+#if defined(ENABLE_FONT_ATLAS_MIPMAPS)
+  atlas_image_ci.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;  // for mip generation
+#endif
   atlas_image_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   atlas_image_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
   SPOKK_VK_CHECK(atlas_image_.Create(device, atlas_image_ci));
@@ -263,15 +277,15 @@ int FontAtlas::Create(const Device &device, const FontAtlasCreateInfo &ci) {
   dst_subresource.arrayLayer = 0;
   const DeviceQueue *graphics_queue = device.FindQueue(VK_QUEUE_GRAPHICS_BIT);
   int atlas_load_err = atlas_image_.LoadSubresourceFromMemory(device, graphics_queue, atlas_pixels.data(),
-      atlas_pixels.size(), ci.image_width, ci.image_height, dst_subresource, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-      VK_ACCESS_TRANSFER_WRITE_BIT);
+      atlas_pixels.size(), ci.image_width, ci.image_height, dst_subresource, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      VK_ACCESS_SHADER_READ_BIT);
   ZOMBO_ASSERT(atlas_load_err == 0, "error (%d) while loading font atlas into memory", atlas_load_err);
+#if defined(ENABLE_FONT_ATLAS_MIPMAPS)
   VkImageMemoryBarrier mipmap_barrier = {};
   mipmap_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  mipmap_barrier.srcAccessMask =
-      VK_ACCESS_TRANSFER_WRITE_BIT;  // matches final access pass to LoadSubresourceFromMemory
+  mipmap_barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
   mipmap_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-  mipmap_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;  // matches final layout to LoadSubresourceFromMemory
+  mipmap_barrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   mipmap_barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   mipmap_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   mipmap_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -283,6 +297,7 @@ int FontAtlas::Create(const Device &device, const FontAtlasCreateInfo &ci) {
   mipmap_barrier.subresourceRange.layerCount = 1;
   int mipmap_gen_err = atlas_image_.GenerateMipmaps(device, graphics_queue, mipmap_barrier, 0, 0);
   ZOMBO_ASSERT(mipmap_gen_err == 0, "error (%d) while generating atlas mipmaps", mipmap_gen_err);
+#endif
 
   return 0;
 }
@@ -360,8 +375,14 @@ int TextRenderer::Create(const Device &device, const CreateInfo &ci) {
   current_state_.pframe_index = UINT32_MAX;  // Ensure the first call triggers a mismatch
 
   // sampler
-  VkSamplerCreateInfo sampler_ci = spokk::GetSamplerCreateInfo(
-      VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+  VkSamplerMipmapMode mipmap_mode =
+#if ENABLE_FONT_ATLAS_MIPMAPS
+      VK_SAMPLER_MIPMAP_MODE_LINEAR;
+#else
+      VK_SAMPLER_MIPMAP_MODE_NEAREST;
+#endif
+  VkSamplerCreateInfo sampler_ci =
+      spokk::GetSamplerCreateInfo(VK_FILTER_LINEAR, mipmap_mode, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
   SPOKK_VK_CHECK(vkCreateSampler(device, &sampler_ci, device.HostAllocator(), &sampler_));
 
   // index buffer
