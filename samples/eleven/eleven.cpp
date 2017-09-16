@@ -124,10 +124,6 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
     fprintf(stderr, "Failed to initialize GLFW\n");
     return;
   }
-  if (!glfwVulkanSupported()) {
-    fprintf(stderr, "Vulkan is not available :(\n");
-    return;
-  }
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
   window_ =
       std::shared_ptr<GLFWwindow>(glfwCreateWindow(ci.window_width, ci.window_height, ci.app_name.c_str(), NULL, NULL),
