@@ -23,9 +23,7 @@ namespace {
 class D3d11Device {
 public:
   D3d11Device() {}
-  ~D3d11Device() {
-    Destroy();  // safe even if it's already been destroyed
-  }
+  ~D3d11Device() {}
 
   void Create(IDXGIAdapter1* adapter, ID3D11Device* device, ID3D11DeviceContext* immediate_context,
       D3D_FEATURE_LEVEL feature_level) {
