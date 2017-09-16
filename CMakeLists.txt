@@ -163,7 +163,7 @@ IF(${MSVC})
     ADD_EXECUTABLE(spokk-eleven ${spokk-eleven_SOURCES} ${spokk-eleven_SHADERS} ${spokk-eleven_HEADERS})
     TARGET_LINK_LIBRARIES(spokk-eleven
         glfw ${GLFW_LIBRARIES}
-        d3d11 dxgi
+        d3d11 dxgi dxguid
     )
     TARGET_INCLUDE_DIRECTORIES(spokk-eleven PUBLIC "${CMAKE_SOURCE_DIR}/src/spokk")
     TARGET_INCLUDE_DIRECTORIES(spokk-eleven PUBLIC "${CMAKE_SOURCE_DIR}/samples")

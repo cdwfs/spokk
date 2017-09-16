@@ -9,6 +9,11 @@
 #include <d3d11_2.h>
 #include <dxgi1_2.h>
 
+// clang-format off
+#include <initguid.h>  // must be included before dxgidebug.h
+#include <dxgidebug.h>
+// clang-format on
+
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -42,6 +47,16 @@ public:
       adapter_->Release();
       adapter_ = nullptr;
     }
+#if defined(_DEBUG)
+    {
+      IDXGIDebug1* dxgi_debug = nullptr;
+      HRESULT debug_hr = DXGIGetDebugInterface1(0, __uuidof(IDXGIDebug1), (void**)&dxgi_debug);
+      if (debug_hr == S_OK) {
+        dxgi_debug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_ALL);
+        dxgi_debug->Release();
+      }
+    }
+#endif
   }
 
   ID3D11Device* Logical() const { return logical_device_; }
@@ -120,6 +135,17 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
       std::shared_ptr<GLFWwindow>(glfwCreateWindow(ci.window_width, ci.window_height, ci.app_name.c_str(), NULL, NULL),
           [](GLFWwindow* w) { glfwDestroyWindow(w); });
   HWND hwnd = glfwGetWin32Window(window_.get());
+
+#if defined(_DEBUG)
+  {
+    IDXGIDebug1* dxgi_debug = nullptr;
+    HRESULT debug_hr = DXGIGetDebugInterface1(0, __uuidof(IDXGIDebug1), (void**)&dxgi_debug);
+    if (debug_hr == S_OK) {
+      dxgi_debug->EnableLeakTrackingForThread();
+      dxgi_debug->Release();
+    }
+  }
+#endif
 
   // Enumerate adapters. This lets the app choose which physical GPU to target (or
   // a software reference implementation). For now, just grab the first one you
