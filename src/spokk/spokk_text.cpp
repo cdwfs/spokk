@@ -87,7 +87,7 @@ int Font::RenderStringToBitmap(
     return -2;  // Provided bitmap dimensions aren't large enough
   }
 
-  float scale = stbtt_ScaleForPixelHeight(&font_info_, (float)info.font_size);
+  float scale = stbtt_ScaleForMappingEmToPixels(&font_info_, info.font_size);
 
   // Second pass through the string:
   // - Compute sub-pixel shift for each glyph
@@ -160,7 +160,7 @@ void Font::ComputeGlyphInfoAndBitmapDimensions(
     const StringRenderInfo &info, size_t str_length, GlyphInfo *out_glyphs, uint32_t *out_w, uint32_t *out_h) const {
   ZOMBO_ASSERT(info.x_max > info.x_min, "x_max (%d) must be greater than x_min (%d)", info.x_max, info.x_min);
 
-  float scale = stbtt_ScaleForPixelHeight(&font_info_, (float)info.font_size);
+  float scale = stbtt_ScaleForMappingEmToPixels(&font_info_, info.font_size);
   float ypos_inc = float(ascent_ - descent_ + line_gap_) * scale;
 
   // First pass through the string:
@@ -236,7 +236,7 @@ int FontAtlas::Create(const Device &device, const FontAtlasCreateInfo &ci) {
 
   glyph_data_.resize(codepoint_count_);
   const int font_index = 0;
-  err = stbtt_PackFontRange(&pack_context, ci.font->ttf_.data(), font_index, ci.font_size, codepoint_first_,
+  err = stbtt_PackFontRange(&pack_context, ci.font->ttf_.data(), font_index, STBTT_POINT_SIZE(ci.font_size), codepoint_first_,
       codepoint_count_, glyph_data_.data());
   ZOMBO_ASSERT_RETURN(err != 0, -5, "stbtt_PackFontRange() error: %d", err);
 
