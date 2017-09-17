@@ -48,10 +48,19 @@ public:
 #if defined(_DEBUG)
     {
       IDXGIDebug1* dxgi_debug = nullptr;
-      HRESULT debug_hr = DXGIGetDebugInterface1(0, __uuidof(IDXGIDebug1), (void**)&dxgi_debug);
-      if (debug_hr == S_OK) {
-        dxgi_debug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_ALL);
-        dxgi_debug->Release();
+      // This complicated dance is necessary to avoid calling DXGIGetDebugInterface1() on Windows 7,
+      // which crashes the app immediately at startup (even before the call site is reached).
+      HMODULE dxgi_debug_module = GetModuleHandleA("dxgidebug.dll");
+      if (dxgi_debug_module) {
+        typedef HRESULT(WINAPI * PDGDI1)(UINT Flags, REFIID riid, _COM_Outptr_ void** pDebug);
+        PDGDI1 dxgi_get_debug_interface1 = (PDGDI1)GetProcAddress(dxgi_debug_module, "DXGIGetDebugInterface1");
+        if (dxgi_get_debug_interface1) {
+          HRESULT debug_hr = dxgi_get_debug_interface1(0, __uuidof(IDXGIDebug1), (void**)&dxgi_debug);
+          if (debug_hr) {
+            dxgi_debug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_ALL);
+            dxgi_debug->Release();
+          }
+        }
       }
     }
 #endif
@@ -133,10 +142,19 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
 #if defined(_DEBUG)
   {
     IDXGIDebug1* dxgi_debug = nullptr;
-    HRESULT debug_hr = DXGIGetDebugInterface1(0, __uuidof(IDXGIDebug1), (void**)&dxgi_debug);
-    if (debug_hr == S_OK) {
-      dxgi_debug->EnableLeakTrackingForThread();
-      dxgi_debug->Release();
+    // This complicated dance is necessary to avoid calling DXGIGetDebugInterface1() on Windows 7,
+    // which crashes the app immediately at startup (even before the call site is reached).
+    HMODULE dxgi_debug_module = GetModuleHandleA("dxgidebug.dll");
+    if (dxgi_debug_module) {
+      typedef HRESULT(WINAPI * PDGDI1)(UINT Flags, REFIID riid, _COM_Outptr_ void** pDebug);
+      PDGDI1 dxgi_get_debug_interface1 = (PDGDI1)GetProcAddress(dxgi_debug_module, "DXGIGetDebugInterface1");
+      if (dxgi_get_debug_interface1) {
+        HRESULT debug_hr = dxgi_get_debug_interface1(0, __uuidof(IDXGIDebug1), (void**)&dxgi_debug);
+        if (debug_hr == S_OK) {
+          dxgi_debug->EnableLeakTrackingForThread();
+          dxgi_debug->Release();
+        }
+      }
     }
   }
 #endif
@@ -247,10 +265,10 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
   rasterizer_desc.FillMode = D3D11_FILL_SOLID;
   rasterizer_desc.CullMode = D3D11_CULL_BACK;
   rasterizer_desc.FrontCounterClockwise = TRUE;
-  rasterizer_desc.ScissorEnable= TRUE;
+  rasterizer_desc.ScissorEnable = TRUE;
   SPOKK_HR_CHECK(device_.Logical()->CreateRasterizerState(&rasterizer_desc, &rasterizer_state_));
   D3D11_BLEND_DESC blend_desc = {};
-  blend_desc.RenderTarget[0].RenderTargetWriteMask= 0xF;
+  blend_desc.RenderTarget[0].RenderTargetWriteMask = 0xF;
   SPOKK_HR_CHECK(device_.Logical()->CreateBlendState(&blend_desc, &blend_state_));
   D3D11_DEPTH_STENCIL_DESC depth_stencil_desc = {};
   SPOKK_HR_CHECK(device_.Logical()->CreateDepthStencilState(&depth_stencil_desc, &depth_stencil_state_));
