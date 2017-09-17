@@ -531,8 +531,10 @@ int TextRenderer::BindDrawState(VkCommandBuffer cb, const State &state) {
   uniforms->color[1] = state.color[1];
   uniforms->color[2] = state.color[2];
   uniforms->color[3] = state.color[3];
-  uniforms->viewport_to_clip[0] = 1.0f / state.viewport.width;
-  uniforms->viewport_to_clip[1] = 1.0f / state.viewport.height;  // TODO(cort): proper scale/bias
+  uniforms->viewport_to_clip[0] = 2.0f / state.viewport.width;
+  uniforms->viewport_to_clip[1] = 2.0f / state.viewport.height;  // TODO(cort): proper scale/bias
+  uniforms->viewport_to_clip[2] = -1.0f;
+  uniforms->viewport_to_clip[3] = -1.0f;
   uniform_buffers_.FlushPframeHostCache(state.pframe_index, uniform_offset, uniform_buffer_stride_);
   // Bind the pipeline and the appropriate descriptor sets
   vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);

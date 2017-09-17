@@ -12,7 +12,7 @@ layout (set = 0, binding = 0) uniform StringUniforms {
 void main() {
   texcoord.xy = attr.xy;
   gl_Position = vec4(
-    pos_vp.x * string_consts.viewport_to_clip.x,
-    pos_vp.y * string_consts.viewport_to_clip.y,
+    pos_vp.x * string_consts.viewport_to_clip.x + string_consts.viewport_to_clip.z,
+    pos_vp.y * string_consts.viewport_to_clip.y + string_consts.viewport_to_clip.w,
     0, 1);
 }
