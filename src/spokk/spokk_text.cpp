@@ -449,12 +449,12 @@ int TextRenderer::Create(const Device &device, const CreateInfo &ci) {
   }
   // Disable depth test
   pipeline_settings.depth_stencil_state_ci.depthTestEnable = VK_FALSE;
-  // Enable additive blending
+  // Enable blending
   auto &target_attachment_state = pipeline_settings.color_blend_attachment_states[ci.target_color_attachment_index];
   target_attachment_state.blendEnable = VK_TRUE;
   target_attachment_state.colorBlendOp = VK_BLEND_OP_ADD;
-  target_attachment_state.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-  target_attachment_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+  target_attachment_state.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+  target_attachment_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
   SPOKK_VK_CHECK(pipeline_settings.Finalize(device));
   pipeline_ = pipeline_settings.handle;
 

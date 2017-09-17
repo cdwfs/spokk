@@ -77,7 +77,7 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   // Create render pass
   render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
   SPOKK_VK_CHECK(render_pass_.Finalize(device_));
-  render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
+  render_pass_.clear_values[0] = CreateColorClearValue(1.0f, 1.0f, 1.0f, 1.0f);
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
   // Load font
@@ -204,10 +204,10 @@ void TextApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index)
 
   TextRenderer::State text_state = {};
   text_state.pframe_index = pframe_index_;
-  text_state.color[0] = 1.0f;
-  text_state.color[1] = 1.0f;
+  text_state.color[0] = 0.0f;
+  text_state.color[1] = 0.0f;
   text_state.color[2] = 0.0f;
-  text_state.color[3] = 1.0f;
+  text_state.color[3] = 0.0f;
   text_state.viewport = viewport;
   text_state.font_atlas = &font_atlas_;
   texter_.BindDrawState(primary_cb, text_state);
