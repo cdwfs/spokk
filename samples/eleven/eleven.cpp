@@ -50,17 +50,18 @@ public:
       IDXGIDebug1* dxgi_debug = nullptr;
       // This complicated dance is necessary to avoid calling DXGIGetDebugInterface1() on Windows 7,
       // which crashes the app immediately at startup (even before the call site is reached).
-      HMODULE dxgi_debug_module = GetModuleHandleA("dxgidebug.dll");
-      if (dxgi_debug_module) {
+      HMODULE dxgi_module = LoadLibraryA("dxgi.dll");
+      if (dxgi_module) {
         typedef HRESULT(WINAPI * PDGDI1)(UINT Flags, REFIID riid, _COM_Outptr_ void** pDebug);
-        PDGDI1 dxgi_get_debug_interface1 = (PDGDI1)GetProcAddress(dxgi_debug_module, "DXGIGetDebugInterface1");
+        PDGDI1 dxgi_get_debug_interface1 = (PDGDI1)GetProcAddress(dxgi_module, "DXGIGetDebugInterface1");
         if (dxgi_get_debug_interface1) {
           HRESULT debug_hr = dxgi_get_debug_interface1(0, __uuidof(IDXGIDebug1), (void**)&dxgi_debug);
-          if (debug_hr) {
+          if (debug_hr == S_OK) {
             dxgi_debug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_ALL);
             dxgi_debug->Release();
           }
         }
+        FreeLibrary(dxgi_module);
       }
     }
 #endif
@@ -144,10 +145,10 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
     IDXGIDebug1* dxgi_debug = nullptr;
     // This complicated dance is necessary to avoid calling DXGIGetDebugInterface1() on Windows 7,
     // which crashes the app immediately at startup (even before the call site is reached).
-    HMODULE dxgi_debug_module = GetModuleHandleA("dxgidebug.dll");
-    if (dxgi_debug_module) {
+    HMODULE dxgi_module = LoadLibraryA("dxgi.dll");
+    if (dxgi_module) {
       typedef HRESULT(WINAPI * PDGDI1)(UINT Flags, REFIID riid, _COM_Outptr_ void** pDebug);
-      PDGDI1 dxgi_get_debug_interface1 = (PDGDI1)GetProcAddress(dxgi_debug_module, "DXGIGetDebugInterface1");
+      PDGDI1 dxgi_get_debug_interface1 = (PDGDI1)GetProcAddress(dxgi_module, "DXGIGetDebugInterface1");
       if (dxgi_get_debug_interface1) {
         HRESULT debug_hr = dxgi_get_debug_interface1(0, __uuidof(IDXGIDebug1), (void**)&dxgi_debug);
         if (debug_hr == S_OK) {
@@ -155,6 +156,7 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
           dxgi_debug->Release();
         }
       }
+      FreeLibrary(dxgi_module);
     }
   }
 #endif
@@ -276,7 +278,7 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
 }
 ElevenApp::~ElevenApp() {
   depth_stencil_state_->Release();
-  blend_state_->Release();
+  //blend_state_->Release();
   rasterizer_state_->Release();
   shader_vs_->Release();
   shader_ps_->Release();
