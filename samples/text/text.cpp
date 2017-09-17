@@ -255,56 +255,6 @@ void TextApp::CreateRenderBuffers(VkExtent2D extent) {
   }
 }
 
-///////
-const float sdf_size = 128.0;  // the larger this is, the better large font sizes look
-const float pixel_dist_scale = 64.0;  // trades off precision w/ ability to handle *smaller* sizes
-const int onedge_value = 128;
-const int padding = 3;  // not used in shader
-
-typedef struct {
-  float advance;
-  signed char xoff;
-  signed char yoff;
-  unsigned char w, h;
-  unsigned char *data;
-} fontchar;
-fontchar fdata[128];
-
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb/stb_image_write.h>
-
-void DumpSdfGlyphs() {
-  FILE *font_file = fopen("c:/windows/fonts/times.ttf", "rb");
-  fseek(font_file, 0, SEEK_END);
-  size_t font_nbytes = ftell(font_file);
-  fseek(font_file, 0, SEEK_SET);
-  std::vector<uint8_t> data(font_nbytes);
-  fread(data.data(), 1, font_nbytes, font_file);
-  fclose(font_file);
-
-  int ch;
-  float scale;
-  stbtt_fontinfo font;
-  stbtt_InitFont(&font, data.data(), 0);
-  scale = stbtt_ScaleForPixelHeight(&font, sdf_size);
-  for (ch = 33; ch < 127; ++ch) {
-    fontchar fc;
-    int xoff, yoff, w, h, advance;
-    fc.data = stbtt_GetCodepointSDF(&font, scale, ch, padding, onedge_value, pixel_dist_scale, &w, &h, &xoff, &yoff);
-    fc.xoff = (char)xoff;
-    fc.yoff = (char)yoff;
-    fc.w = (unsigned char)w;
-    fc.h = (unsigned char)h;
-    stbtt_GetCodepointHMetrics(&font, ch, &advance, NULL);
-    fc.advance = advance * scale;
-    fdata[ch] = fc;
-    char png_name[32] = {};
-    sprintf(png_name, "%03d.png", ch);
-    stbi_write_png(png_name, w, h, 1, fc.data, 0);
-  }
-}
-//////
-
 int main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;

@@ -243,7 +243,7 @@ int FontAtlas::Create(const Device &device, const FontAtlasCreateInfo &ci) {
   stbtt_PackEnd(&pack_context);
 
 #if 0  // dump font pixels to an image file for verification
-  int write_success = stbi_write_png("font.png", image_width_, image_height_, 1, atlas_pixels_.data(), 0);
+  int write_success = stbi_write_png("atlas.png", image_width_, image_height_, 1, atlas_pixels.data(), 0);
   ZOMBO_ASSERT_RETURN(write_success, -6, "Font image write failure: %d", write_success);
 #endif
 
@@ -558,8 +558,6 @@ void TextRenderer::Printf(VkCommandBuffer cb, float *x, float *y, const char *fo
   std::vector<char> buffer(nchars);
   vsnprintf(buffer.data(), nchars, format, args);
   va_end(args);
-
-  printf("buffer: %s\n", buffer.data());
 
   // Generate quads for a string.
   std::vector<FontAtlas::Quad> quads(nchars);
