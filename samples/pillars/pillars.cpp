@@ -13,11 +13,6 @@ using namespace spokk;
 #include <memory>
 
 namespace {
-struct SceneUniforms {
-  mathfu::vec4_packed time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
-  mathfu::vec4_packed eye;  // xyz: eye position
-  mathfu::mat4 viewproj;
-};
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
@@ -66,7 +61,7 @@ private:
   std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
   Mesh mesh_;
-  PipelinedBuffer scene_uniforms_;
+  PipelinedBuffer camera_constants_;
   PipelinedBuffer heightfield_buffer_;
   PipelinedBuffer visible_cells_buffer_;
 
@@ -168,10 +163,10 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   // Create pipelined buffer of shader uniforms
   VkBufferCreateInfo uniform_buffer_ci = {};
   uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  uniform_buffer_ci.size = sizeof(SceneUniforms);
+  uniform_buffer_ci.size = sizeof(CameraConstants);
   uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
   uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(scene_uniforms_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+  SPOKK_VK_CHECK(camera_constants_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
   // Create buffer of per-cell "height" values
   VkBufferCreateInfo heightfield_buffer_ci = {};
@@ -214,7 +209,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
     // TODO(cort): allocate_pipelined_set()?
     dsets_[pframe] = dpool_.AllocateSet(device_, pillar_shader_program_.dset_layouts[0]);
-    dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), pillar_vs_.GetDescriptorBindPoint("scene_consts").binding);
+    dset_writer.BindBuffer(camera_constants_.Handle(pframe), pillar_vs_.GetDescriptorBindPoint("camera").binding);
     dset_writer.BindTexelBuffer(
         visible_cells_buffer_.View(pframe), pillar_vs_.GetDescriptorBindPoint("visible_cells").binding);
     dset_writer.BindTexelBuffer(
@@ -229,7 +224,7 @@ PillarsApp::~PillarsApp() {
 
     dpool_.Destroy(device_);
 
-    scene_uniforms_.Destroy(device_);
+    camera_constants_.Destroy(device_);
     visible_cells_buffer_.Destroy(device_);
     heightfield_buffer_.Destroy(device_);
 
@@ -299,14 +294,13 @@ void PillarsApp::Update(double dt) {
   dolly_->Update(camera_accel, (float)dt);
 
   // Update uniforms
-  SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
-  uniforms->time_and_res =
-      mathfu::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-  uniforms->eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
+  CameraConstants* camera_consts = (CameraConstants*)camera_constants_.Mapped(pframe_index_);
+  camera_consts->time_and_res = { (float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0 };
+  camera_consts->eye_pos_ws = mathfu::vec4(camera_->getEyePoint(), 1.0f);
   mathfu::mat4 w2v = camera_->getViewMatrix();
   const mathfu::mat4 proj = camera_->getProjectionMatrix();
-  uniforms->viewproj = proj * w2v;
-  scene_uniforms_.FlushPframeHostCache(pframe_index_);
+  camera_consts->viewproj = proj * w2v;
+  camera_constants_.FlushPframeHostCache(pframe_index_);
 
   // Update visible cells
   // - Add a cell as visible the first time it gets within N units of the camera.

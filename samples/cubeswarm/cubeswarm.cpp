@@ -12,11 +12,6 @@ using namespace spokk;
 #include <memory>
 
 namespace {
-struct SceneUniforms {
-  mathfu::vec4_packed time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
-  mathfu::vec4_packed eye;  // xyz: eye position
-  mathfu::mat4 viewproj;
-};
 constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
 struct MeshUniforms {
   mathfu::mat4 o2w[MESH_INSTANCE_COUNT];
@@ -73,13 +68,13 @@ public:
     SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     // Create pipelined buffer of shader uniforms
-    VkBufferCreateInfo scene_uniforms_ci = {};
-    scene_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    scene_uniforms_ci.size = sizeof(SceneUniforms);
-    scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    VkBufferCreateInfo camera_constants_ci = {};
+    camera_constants_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    camera_constants_ci.size = sizeof(CameraConstants);
+    camera_constants_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    camera_constants_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(
-        scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+        camera_constants_.Create(device_, PFRAME_COUNT, camera_constants_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
@@ -97,7 +92,7 @@ public:
         albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mesh_fs_.GetDescriptorBindPoint("tex").binding);
     dset_writer.BindSampler(sampler_, mesh_fs_.GetDescriptorBindPoint("samp").binding);
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
+      dset_writer.BindBuffer(camera_constants_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("camera").binding);
       dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
       dset_writer.WriteAll(device_, dsets_[pframe]);
     }
@@ -112,7 +107,7 @@ public:
       dpool_.Destroy(device_);
 
       mesh_uniforms_.Destroy(device_);
-      scene_uniforms_.Destroy(device_);
+      camera_constants_.Destroy(device_);
 
       mesh_.Destroy(device_);
 
@@ -183,14 +178,14 @@ public:
     dolly_->Update(camera_accel, (float)dt);
 
     // Update uniforms
-    SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
-    uniforms->time_and_res =
+    CameraConstants* camera_consts = (CameraConstants*)camera_constants_.Mapped(pframe_index_);
+    camera_consts->time_and_res =
         mathfu::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-    uniforms->eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
+    camera_consts->eye_pos_ws = mathfu::vec4(camera_->getEyePoint(), 1.0f);
     mathfu::mat4 w2v = camera_->getViewMatrix();
     const mathfu::mat4 proj = camera_->getProjectionMatrix();
-    uniforms->viewproj = proj * w2v;
-    scene_uniforms_.FlushPframeHostCache(pframe_index_);
+    camera_consts->viewproj = proj * w2v;
+    camera_constants_.FlushPframeHostCache(pframe_index_);
 
     // Update object-to-world matrices.
     const float secs = (float)seconds_elapsed_;
@@ -290,7 +285,7 @@ private:
 
   Mesh mesh_;
   PipelinedBuffer mesh_uniforms_;
-  PipelinedBuffer scene_uniforms_;
+  PipelinedBuffer camera_constants_;
 
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDolly> dolly_;

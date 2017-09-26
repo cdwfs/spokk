@@ -1,5 +1,8 @@
 #version 450
 #pragma shader_stage(fragment)
+
+#include <spokk_shader_interface.h>
+
 layout (set = 0, binding = 2) uniform texture2D tex;
 layout (set = 0, binding = 3) uniform sampler samp;
 layout (location = 0) in vec2 texcoord;

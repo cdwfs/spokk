@@ -48,6 +48,7 @@ IF(${MSVC})
     # Windows puts some path-manipulation APIs in an optional library
     TARGET_LINK_LIBRARIES(spokkle shlwapi)
 ENDIF(${MSVC})
+mathfu_configure_flags(spokkle)
 
 # libspokk
 SET(SPOKK_HEADERS
@@ -91,6 +92,7 @@ TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
     ${VULKAN_INCLUDE_DIR}
     "src/spokk"
 )
+mathfu_configure_flags(${SPOKK_LIB_NAME})
 
 # custom target to build/copy sample assets
 ADD_CUSTOM_TARGET(build-assets

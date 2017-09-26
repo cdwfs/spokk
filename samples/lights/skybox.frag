@@ -1,6 +1,8 @@
 #version 450
 #pragma shader_stage(fragment)
 
+#include <spokk_shader_interface.h>
+
 layout (set = 0, binding = 4) uniform textureCube skybox_tex;
 layout (set = 0, binding = 5) uniform sampler skybox_samp;
 
