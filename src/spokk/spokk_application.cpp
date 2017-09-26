@@ -220,16 +220,16 @@ Application::Application(const CreateInfo &ci) {
 
   // Initialize Vulkan
   std::vector<const char *> required_instance_layer_names = {};
-  if (ci.debug_report_flags != 0) {
-#if defined(_DEBUG)
-    required_instance_layer_names.push_back("VK_LAYER_LUNARG_standard_validation");
-#endif
-  }
   std::vector<const char *> optional_instance_layer_names = {
 #if defined(_DEBUG)
     "VK_LAYER_LUNARG_monitor",
 #endif
   };
+  if (ci.debug_report_flags != 0) {
+#if defined(_DEBUG)
+    optional_instance_layer_names.push_back("VK_LAYER_LUNARG_standard_validation");
+#endif
+  }
   std::vector<const char *> enabled_instance_layer_names = {};
   SPOKK_VK_CHECK(GetSupportedInstanceLayers(
       required_instance_layer_names, optional_instance_layer_names, &instance_layers_, &enabled_instance_layer_names));

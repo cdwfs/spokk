@@ -13,7 +13,7 @@ PipelinedBuffer::PipelinedBuffer() : handles_{}, views_{}, depth_(0) {}
 PipelinedBuffer::~PipelinedBuffer() {}
 VkResult PipelinedBuffer::Create(const Device& device, uint32_t depth, const VkBufferCreateInfo& buffer_ci,
     VkMemoryPropertyFlags memory_properties, DeviceAllocationScope allocation_scope) {
-  assert(depth_ == 0);
+  ZOMBO_ASSERT_RETURN(handles_.empty(), VK_ERROR_INITIALIZATION_FAILED, "Can't re-create an existing Buffer");
   depth_ = depth;
   if (depth > 0) {
     handles_.resize(depth);

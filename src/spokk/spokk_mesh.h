@@ -49,6 +49,9 @@ private:
   Mesh& operator=(const Mesh& rhs) = delete;
 };
 
+// Handy debug meshes
+void GenerateMeshBox(const Device& device, Mesh* out_mesh, const float min_extent[3], const float max_extent[3]);
+
 // These don't belong here; need a place for shared runtime/tools declarations.
 constexpr uint32_t MESH_FILE_MAGIC_NUMBER = 0x4853454D;
 struct MeshFileHeader {

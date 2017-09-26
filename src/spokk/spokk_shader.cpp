@@ -37,7 +37,7 @@ static void add_shader_resource_to_dset_layouts(std::vector<DescriptorSetLayoutI
   for (auto arr_size : resource_type.array) {
     array_size *= arr_size;
   }
-  // Add new dset(s) if necessary
+  // Add new (empty) dset(s) if necessary
   if (dset_index >= dset_layout_infos.size()) {
     dset_layout_infos.resize(dset_index + 1);
   }
@@ -275,7 +275,7 @@ VkResult ShaderProgram::AddShader(const Shader* shader, const char* entry_point)
   new_stage_ci.pSpecializationInfo = nullptr;  // Specialization constants are not currently supported.
   shader_stage_cis.push_back(new_stage_ci);
   // Merge shader bindings with existing program bindings
-  // Grow descriptor set layout array if needed
+  // Grow descriptor set layout array if needed, padding gaps with empty layouts
   if (shader->dset_layout_infos.size() > dset_layout_infos.size()) {
     dset_layout_infos.resize(shader->dset_layout_infos.size());
   }
@@ -345,7 +345,7 @@ VkResult ShaderProgram::ForceCompatibleLayoutsAndFinalize(
   for (size_t iProgram = 1; iProgram < programs.size(); ++iProgram) {
     const ShaderProgram& src_program = *programs[iProgram];
     // Merge shader bindings with existing program bindings
-    // Grow descriptor set layout array if needed
+    // Grow descriptor set layout array if needed, padding any gaps with empty layouts
     if (src_program.dset_layout_infos.size() > dst_program.dset_layout_infos.size()) {
       dst_program.dset_layout_infos.resize(src_program.dset_layout_infos.size());
     }
@@ -461,7 +461,7 @@ VkResult ShaderProgram::Finalize(const Device& device) {
 
   // Create the descriptor set layouts, now that their contents are known
   dset_layout_cis.resize(dset_layout_infos.size());
-  dset_layouts.resize(dset_layout_infos.size());
+  dset_layouts.resize(dset_layout_infos.size(), VK_NULL_HANDLE);
   for (uint32_t iLayout = 0; iLayout < dset_layouts.size(); ++iLayout) {
     VkDescriptorSetLayoutCreateInfo& layout_ci = dset_layout_cis[iLayout];
     const DescriptorSetLayoutInfo& layout_info = dset_layout_infos[iLayout];
@@ -471,6 +471,8 @@ VkResult ShaderProgram::Finalize(const Device& device) {
     layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layout_ci.bindingCount = (uint32_t)layout_info.bindings.size();
     layout_ci.pBindings = layout_info.bindings.data();
+    // Arguably, we could skip creating empty dset layouts here. But the spec does imply that bindingCount=0
+    // is valid, so for now I'm going to consider them harmless and leave them in.
     VkResult result = vkCreateDescriptorSetLayout(device, &layout_ci, device.HostAllocator(), &dset_layouts[iLayout]);
     if (result != VK_SUCCESS) {
       return result;
