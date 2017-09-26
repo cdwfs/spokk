@@ -148,11 +148,6 @@ int Font::RenderStringToBitmap(
     }
   }
 
-#if 0
-  int write_success = stbi_write_png("string.png", bitmap_w, bitmap_h, 1, bitmap_pixels, 0);
-  ZOMBO_ASSERT_RETURN(write_success, -1, "String image write failure: %d", write_success);
-#endif
-
   return 0;
 }
 
@@ -236,16 +231,15 @@ int FontAtlas::Create(const Device &device, const FontAtlasCreateInfo &ci) {
 
   glyph_data_.resize(codepoint_count_);
   const int font_index = 0;
-  err = stbtt_PackFontRange(&pack_context, ci.font->ttf_.data(), font_index, STBTT_POINT_SIZE(ci.font_size), codepoint_first_,
-      codepoint_count_, glyph_data_.data());
-  ZOMBO_ASSERT_RETURN(err != 0, -5, "stbtt_PackFontRange() error: %d", err);
-
+  err = stbtt_PackFontRange(&pack_context, ci.font->ttf_.data(), font_index, STBTT_POINT_SIZE(ci.font_size),
+      codepoint_first_, codepoint_count_, glyph_data_.data());
   stbtt_PackEnd(&pack_context);
-
-#if 0  // dump font pixels to an image file for verification
-  int write_success = stbi_write_png("atlas.png", image_width_, image_height_, 1, atlas_pixels.data(), 0);
-  ZOMBO_ASSERT_RETURN(write_success, -6, "Font image write failure: %d", write_success);
-#endif
+  if (err == 0) {
+    // Generally, this means the provided atlas dimensions are too small for the corresponding font size and codepoint
+    // range.
+    return -5;
+  }
+  ZOMBO_ASSERT_RETURN(err != 0, -5, "stbtt_PackFontRange() error: %d", err);
 
   // Create and populate atlas image
   VkImageCreateInfo atlas_image_ci = {};
@@ -303,7 +297,8 @@ int FontAtlas::Create(const Device &device, const FontAtlasCreateInfo &ci) {
 }
 void FontAtlas::Destroy(const Device &device) { atlas_image_.Destroy(device); }
 
-void FontAtlas::GetStringQuads(const char *str, size_t str_len, Quad *out_quads, uint32_t *out_quad_count) const {
+void FontAtlas::GetStringQuads(
+    const char *str, size_t str_len, float spacing, float scale, Quad *out_quads, uint32_t *out_quad_count) const {
   float pos_x = 0, pos_y = 0;
   stbtt_aligned_quad *quads = reinterpret_cast<stbtt_aligned_quad *>(out_quads);
   const int align_to_integer = 0;
@@ -315,6 +310,8 @@ void FontAtlas::GetStringQuads(const char *str, size_t str_len, Quad *out_quads,
     }
     stbtt_GetPackedQuad(glyph_data_.data(), image_width_, image_height_, codepoint - codepoint_first_, &pos_x, &pos_y,
         &quads[next_quad], align_to_integer);
+    // Apply horizontal spacing
+    pos_x += spacing;
     if (str[i] == ' ') {
       // We need to call stbtt_GetPackedQuad regardless in order to advance pos_x/pos_y, but there's
       // no point in storing the resulting quad for rendering.
@@ -322,19 +319,23 @@ void FontAtlas::GetStringQuads(const char *str, size_t str_len, Quad *out_quads,
     }
     ++next_quad;
   }
+  // apply bidirectional scale
+  for (uint32_t i = 0; i < next_quad; ++i) {
+    out_quads[i].x0 *= scale;
+    out_quads[i].y0 *= scale;
+    out_quads[i].x1 *= scale;
+    out_quads[i].y1 *= scale;
+  }
+  pos_x *= scale;
+  pos_y *= scale;
   // TODO(cort: hey, return pos_x and pos_y!
   *out_quad_count = next_quad;
 }
 
 namespace {
 struct GlyphVertex {
-#if 0
-  int16_t pos_x0, pos_y0;
-  uint16_t tex_x0, tex_y0;
-#else
   float pos_x0, pos_y0;
   float tex_x0, tex_y0;
-#endif
 };
 
 }  // namespace
@@ -346,13 +347,8 @@ const MeshFormat &FontAtlas::GetQuadFormat() {
         {0, sizeof(GlyphVertex), VK_VERTEX_INPUT_RATE_VERTEX},
     };
     fmt.vertex_attributes = {
-#if 0
-      {0, 0, VK_FORMAT_R16G16_SINT, 0},
-      {1, 0, VK_FORMAT_R16G16_UNORM, 4},
-#else
       {0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
       {1, 0, VK_FORMAT_R32G32_SFLOAT, 8},
-#endif
     };
     fmt.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
   }
@@ -562,7 +558,8 @@ void TextRenderer::Printf(VkCommandBuffer cb, float *x, float *y, const char *fo
   // Generate quads for a string.
   std::vector<FontAtlas::Quad> quads(nchars);
   uint32_t string_quad_count = 0;
-  current_state_.font_atlas->GetStringQuads(buffer.data(), nchars, quads.data(), &string_quad_count);
+  current_state_.font_atlas->GetStringQuads(
+      buffer.data(), nchars, current_state_.spacing, current_state_.scale, quads.data(), &string_quad_count);
   if (current_glyph_count_ + string_quad_count > max_glyphs_per_pframe_) {
     ZOMBO_ERROR("current glyphs (%d) + string glyphs (%d) > max glyphs (%d)", (uint32_t)current_glyph_count_,
         string_quad_count, max_glyphs_per_pframe_);
@@ -573,17 +570,10 @@ void TextRenderer::Printf(VkCommandBuffer cb, float *x, float *y, const char *fo
   GlyphVertex *verts = (GlyphVertex *)(uintptr_t(vertex_buffers_.Mapped(current_state_.pframe_index)) + vb_offset);
   for (uint32_t i = 0; i < string_quad_count; ++i) {
     const auto &q = quads[i];
-#if 0
-    verts[4 * i + 0] = {F32toS16(q.x0 + *x), F32toS16(q.y0 + *y), F32toU16N(q.s0), F32toU16N(q.t0)};
-    verts[4 * i + 1] = {F32toS16(q.x0 + *x), F32toS16(q.y1 + *y), F32toU16N(q.s0), F32toU16N(q.t1)};
-    verts[4 * i + 2] = {F32toS16(q.x1 + *x), F32toS16(q.y0 + *y), F32toU16N(q.s1), F32toU16N(q.t0)};
-    verts[4 * i + 3] = {F32toS16(q.x1 + *x), F32toS16(q.y1 + *y), F32toU16N(q.s1), F32toU16N(q.t1)};
-#else
     verts[4 * i + 0] = {q.x0 + *x, q.y0 + *y, q.s0, q.t0};
     verts[4 * i + 1] = {q.x0 + *x, q.y1 + *y, q.s0, q.t1};
     verts[4 * i + 2] = {q.x1 + *x, q.y0 + *y, q.s1, q.t0};
     verts[4 * i + 3] = {q.x1 + *x, q.y1 + *y, q.s1, q.t1};
-#endif
   }
   current_glyph_count_ += string_quad_count;
   vertex_buffers_.FlushPframeHostCache(

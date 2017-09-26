@@ -83,28 +83,11 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   // Load font
   int font_create_error = font_.Create("data/SourceCodePro-Semibold.ttf");
   ZOMBO_ASSERT(font_create_error == 0, "Font loading error: %d", font_create_error);
-#if 0
-  // Test CPU string rastering
-  Font::StringRenderInfo string_info = {};
-  string_info.font_size = 32;
-  string_info.x_start = 64;
-  string_info.x_min = 128;
-  string_info.x_max = 512;
-  string_info.str =
-      "This is a long string, just to test out string rendering. It includes one "
-      "longer-than-average-string-to-stress-test the wrapping code.";
-  uint32_t bmp_w = 0, bmp_h = 0;
-  font_.ComputeStringBitmapDimensions(string_info, &bmp_w, &bmp_h);
-  std::vector<uint8_t> bmp(bmp_w * bmp_h);
-  bmp.assign(bmp.size(), 0);
-  int bake_err = font_.RenderStringToBitmap(string_info, bmp_w, bmp_h, bmp.data());
-  ZOMBO_ASSERT(bake_err == 0, "bake error: %d", bake_err);
-#endif
 
   // Create font atlas
   FontAtlasCreateInfo atlas_ci = {};
   atlas_ci.font = &font_;
-  atlas_ci.font_size = 48.0f;
+  atlas_ci.font_size = 36.0f;
   atlas_ci.image_oversample_x = atlas_ci.image_oversample_y = 2;
   atlas_ci.image_width = 512;
   atlas_ci.image_height = 512;
@@ -204,6 +187,8 @@ void TextApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index)
 
   TextRenderer::State text_state = {};
   text_state.pframe_index = pframe_index_;
+  text_state.spacing = 0.0f;
+  text_state.scale = 1.0f;
   text_state.color[0] = 0.0f;
   text_state.color[1] = 0.0f;
   text_state.color[2] = 0.0f;

@@ -81,14 +81,18 @@ struct FontAtlasCreateInfo {
 
 class FontAtlas {
 public:
+  // 0 = success
+  // non-zero = error (specificaly, -5 generally means the atlas dimensions are too small)
   int Create(const Device& device, const FontAtlasCreateInfo& ci);
+
   void Destroy(const Device& device);
 
   struct Quad {
     float x0, y0, s0, t0;  // top-left
     float x1, y1, s1, t1;  // bottom-right
   };
-  void GetStringQuads(const char* str, size_t str_len, Quad* out_quads, uint32_t* out_quad_count) const;
+  void GetStringQuads(
+      const char* str, size_t str_len, float spacing, float scale, Quad* out_quads, uint32_t* out_quad_count) const;
 
   const Image& GetImage() const { return atlas_image_; }
   static const MeshFormat& GetQuadFormat();
@@ -123,16 +127,17 @@ public:
 
   struct State {
     uint32_t pframe_index;  // Which frame's buffer to write to.
-    // float spacing;  // Horizontal spacing to add/subtract between characters, in pixels.
+    float spacing;  // Horizontal spacing to add/subtract between characters, in pixels. 0 is a safe default.
+    float scale;  // Scale factor, applied to quad dimensions. 1.0 is a safe default.
     float color[4];  // Text color, as RGBA.
     VkViewport viewport;  // To transform input pixel coordinates to clip space
-    // float v_scale;  // Some mechanism to specify how tall, in pixels, the glyphs should be.
-    // This is independent of the size specified at init time, which is used
-    // to render the font atlas.
     const FontAtlas* font_atlas;
   };
 
   int BindDrawState(VkCommandBuffer cb, const State& state);
+
+  // x/y here are the coordinates of the point at the baseline where rendering should begin
+  // (*not* the upper-left corner of the first glyph)
   void Printf(VkCommandBuffer cb, float* x, float* y, const char* format, ...);
 
 private:

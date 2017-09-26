@@ -12,5 +12,5 @@ in vec4 gl_FragCoord;
 
 void main() {
   float t = texture(sampler2D(atlas_tex,samp), texcoord).x;
-  out_fragColor = vec4(t * string_consts.color.rgb, t);
+  out_fragColor = vec4(string_consts.color.rgb, t);
 }
