@@ -47,7 +47,7 @@ struct Shader {
   std::vector<uint32_t> spirv;
   VkShaderStageFlagBits stage;
   // Resources used by this shader:
-  std::vector<DescriptorSetLayoutInfo> dset_layout_infos;
+  std::vector<DescriptorSetLayoutInfo> dset_layout_infos;  // one per dset (including empty ones)
   VkPushConstantRange push_constant_range;  // range.size = 0 means this stage doesn't use push constants.
 private:
   VkResult ParseSpirvAndCreate(const Device& device);
@@ -72,8 +72,8 @@ struct ShaderProgram {
   VkResult Finalize(const Device& device);
   void Destroy(const Device& device);
 
-  std::vector<VkDescriptorSetLayoutCreateInfo> dset_layout_cis;  // one per dset
-  std::vector<DescriptorSetLayoutInfo> dset_layout_infos;  // one per dset
+  std::vector<VkDescriptorSetLayoutCreateInfo> dset_layout_cis;  // one per dset. Unused sets are padded with empty layouts.
+  std::vector<DescriptorSetLayoutInfo> dset_layout_infos;  // one per dset. Unused sets are padded with empty layouts.
   std::vector<VkPushConstantRange> push_constant_ranges;  // one per active stage that uses push constants.
 
   std::vector<VkPipelineShaderStageCreateInfo>
@@ -81,7 +81,7 @@ struct ShaderProgram {
   std::vector<std::string> entry_point_names;  // one per active stage.
 
   VkPipelineLayout pipeline_layout;
-  std::vector<VkDescriptorSetLayout> dset_layouts;  // one per dset
+  std::vector<VkDescriptorSetLayout> dset_layouts;  // one per dset (including empty ones)
 
   VkShaderStageFlags active_stages;
 };
