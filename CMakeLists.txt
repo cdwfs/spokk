@@ -160,6 +160,8 @@ SPOKK_ADD_HEADERS(spokk-lights
     samples/common/camera.h
 )
 SPOKK_ADD_SHADERS(spokk-lights
+    samples/lights/emissive.vert
+    samples/lights/emissive.frag
     samples/lights/lit_mesh.vert
     samples/lights/lit_mesh.frag
     samples/lights/skybox.vert

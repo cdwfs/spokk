@@ -75,6 +75,22 @@ public:
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
 
+    // Create emissive geometry and pipeline
+    spokk::Mesh emissive_mesh_;
+    float box_min[3] = { -1, -1, -1 };
+    float box_max[3] = { +1, +1, +1 };
+    spokk::GenerateMeshBox(device_, &emissive_mesh_, box_min, box_max);
+    spokk::Shader emissive_vs_, emissive_fs_;
+    spokk::ShaderProgram emissive_program_;
+    SPOKK_VK_CHECK(emissive_vs_.CreateAndLoadSpirvFile(device_, "data/emissive.vert.spv"));
+    SPOKK_VK_CHECK(emissive_fs_.CreateAndLoadSpirvFile(device_, "data/emissive.frag.spv"));
+    SPOKK_VK_CHECK(emissive_program_.AddShader(&emissive_vs_));
+    SPOKK_VK_CHECK(emissive_program_.AddShader(&emissive_fs_));
+    SPOKK_VK_CHECK(emissive_program_.Finalize(device_));
+    spokk::GraphicsPipeline emissive_pipeline_;
+    emissive_pipeline_.Init(&emissive_mesh_.mesh_format, &emissive_program_, &render_pass_, 0);
+    SPOKK_VK_CHECK(emissive_pipeline_.Finalize(device_));
+
     // Create pipelined buffer of mesh uniforms
     VkBufferCreateInfo mesh_uniforms_ci = {};
     mesh_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
