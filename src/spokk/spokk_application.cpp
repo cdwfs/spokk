@@ -302,6 +302,7 @@ Application::Application(const CreateInfo &ci) {
   std::vector<const char *> required_device_extension_names = {};
   if (ci.enable_graphics) {
     required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
   }
   const std::vector<const char *> optional_device_extension_names = {};
   std::vector<const char *> enabled_device_extension_names;

@@ -233,6 +233,10 @@ public:
     float dsec = (float)(cal->tm_hour * 3600 + cal->tm_min * 60 + cal->tm_sec);
 
     viewport_ = ExtentToViewport(swapchain_extent_);
+    // Convert viewport back to right-handed (flip Y axis, remove Y offset)
+    viewport_.y = 0.0f;
+    viewport_.height *= -1;
+
     scissor_rect_ = ExtentToRect2D(swapchain_extent_);
     ShaderToyUniforms *uniforms = (ShaderToyUniforms*)uniform_buffer_.Mapped(pframe_index_);
     uniforms->iResolution = mathfu::vec4(viewport_.width, viewport_.height, 1.0f, 0.0f);

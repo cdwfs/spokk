@@ -214,20 +214,13 @@ public:
     scene_uniforms->eye_dir_wsn = mathfu::vec4(camera_->getViewDirection().Normalized(), 1.0f);
     const mathfu::mat4 view = camera_->getViewMatrix();
     const mathfu::mat4 proj = camera_->getProjectionMatrix();
-    // clang-format off
-    const mathfu::mat4 clip_fixup(
-      +1.0f, +0.0f, +0.0f, +0.0f,
-      +0.0f, -1.0f, +0.0f, +0.0f,
-      +0.0f, +0.0f, +0.5f, +0.5f,
-      +0.0f, +0.0f, +0.0f, +1.0f);
-    // clang-format on
-    const mathfu::mat4 viewproj = (clip_fixup * proj) * view;
+    const mathfu::mat4 viewproj = proj * view;
     scene_uniforms->viewproj = viewproj;
     scene_uniforms->view = view;
-    scene_uniforms->proj = clip_fixup * proj;
+    scene_uniforms->proj = proj;
     scene_uniforms->viewproj_inv = viewproj.Inverse();
     scene_uniforms->view_inv = view.Inverse();
-    scene_uniforms->proj_inv = (clip_fixup * proj).Inverse();
+    scene_uniforms->proj_inv = proj.Inverse();
     scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
     // Update mesh uniforms

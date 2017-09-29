@@ -305,14 +305,7 @@ void PillarsApp::Update(double dt) {
   uniforms->eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
   mathfu::mat4 w2v = camera_->getViewMatrix();
   const mathfu::mat4 proj = camera_->getProjectionMatrix();
-  // clang-format off
-  const mathfu::mat4 clip_fixup(
-      +1.0f, +0.0f, +0.0f, +0.0f,
-      +0.0f, -1.0f, +0.0f, +0.0f,
-      +0.0f, +0.0f, +0.5f, +0.5f,
-      +0.0f, +0.0f, +0.0f, +1.0f);
-  // clang-format on
-  uniforms->viewproj = clip_fixup * proj * w2v;
+  uniforms->viewproj = proj * w2v;
   scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
   // Update visible cells
