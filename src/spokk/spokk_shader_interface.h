@@ -33,7 +33,7 @@ struct
 #else
 layout (set = 0, binding = 0) uniform
 #endif
-  SceneUniforms {
+  CameraConstants {
   SPOKK_VEC4(time_and_res);  // x:seconds since launch. yz: viewport resolution in pixels. TODO(cort): game-world time (H:M:S), real-world time (H:M:S, D/M/Y)
   SPOKK_VEC4(eye_pos_ws);    // xyz: world-space eye position
   SPOKK_VEC4(eye_dir_wsn);   // xyz: world-space eye direction (normalized)
@@ -47,8 +47,27 @@ layout (set = 0, binding = 0) uniform
 };
 }
 #else
-} scene_consts;
+} camera;
 #endif
+
+#ifdef __cplusplus
+namespace spokk {
+struct
+#else
+layout (set = 2, binding = 0) uniform
+#endif
+InstanceTransforms {
+  SPOKK_MAT4(world);
+  SPOKK_MAT4(world_view);
+  SPOKK_MAT4(world_view_proj);
+  SPOKK_MAT4(world_inv);
+#ifdef __cplusplus
+};
+}
+#else
+} transforms;
+#endif
+
 
 #undef SPOKK_MAT4
 #undef SPOKK_VEC4

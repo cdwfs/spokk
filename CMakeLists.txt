@@ -78,6 +78,7 @@ SET(SPOKK_SOURCES
     src/spokk/spokk_memory.cpp
     src/spokk/spokk_mesh.cpp
     src/spokk/spokk_pipeline.cpp
+    src/spokk/spokk_renderer.cpp
     src/spokk/spokk_renderpass.cpp
     src/spokk/spokk_shader.cpp
     src/spokk/spokk_utilities.cpp
