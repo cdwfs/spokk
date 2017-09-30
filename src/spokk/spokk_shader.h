@@ -72,7 +72,8 @@ struct ShaderProgram {
   VkResult Finalize(const Device& device);
   void Destroy(const Device& device);
 
-  std::vector<VkDescriptorSetLayoutCreateInfo> dset_layout_cis;  // one per dset. Unused sets are padded with empty layouts.
+  std::vector<VkDescriptorSetLayoutCreateInfo>
+      dset_layout_cis;  // one per dset. Unused sets are padded with empty layouts.
   std::vector<DescriptorSetLayoutInfo> dset_layout_infos;  // one per dset. Unused sets are padded with empty layouts.
   std::vector<VkPushConstantRange> push_constant_ranges;  // one per active stage that uses push constants.
 
@@ -99,6 +100,9 @@ struct DescriptorPool {
 
   VkResult Finalize(const Device& device, VkDescriptorPoolCreateFlags flags = 0);
   void Destroy(const Device& device);
+
+  // implicit conversion to VkDescriptorPool
+  operator VkDescriptorPool() const { return handle; }
 
   VkResult AllocateSets(const Device& device, uint32_t dset_count, const VkDescriptorSetLayout* dset_layouts,
       VkDescriptorSet* out_dsets) const;
