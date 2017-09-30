@@ -356,7 +356,8 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
   vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pillar_pipeline_.shader_program->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
-  mesh_.BindBuffersAndDraw(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size());
+  mesh_.BindBuffers(primary_cb);
+  vkCmdDrawIndexed(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size(), 0, 0, 0);
   vkCmdEndRenderPass(primary_cb);
 }
 

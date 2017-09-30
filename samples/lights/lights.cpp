@@ -250,7 +250,8 @@ public:
         0, 1, &dsets_[pframe_index_], 0, nullptr);
     // Render scene
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
-    mesh_.BindBuffersAndDraw(primary_cb, mesh_.index_count);
+    mesh_.BindBuffers(primary_cb);
+    vkCmdDrawIndexed(primary_cb, mesh_.index_count, 1, 0, 0, 0);
     // Render skybox
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, skybox_pipeline_.handle);
     vkCmdDraw(primary_cb, 36, 1, 0, 0);

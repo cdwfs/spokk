@@ -29,9 +29,8 @@ struct Mesh {
   int CreateFromFile(const Device& device, const char* mesh_filename);
   void Destroy(const Device& device);
 
-  // Helper to bind all vertex buffers and index buffers, and draw all indices
-  void BindBuffersAndDraw(VkCommandBuffer cb, uint32_t index_cnt, uint32_t instance_cnt = 1, uint32_t first_index = 0,
-      uint32_t vertex_offset = 0, uint32_t first_instance = 0) const;
+  // Helper to bind all vertex buffers and index buffers
+  void BindBuffers(VkCommandBuffer cb) const;
 
   std::vector<Buffer> vertex_buffers;
   MeshFormat mesh_format;

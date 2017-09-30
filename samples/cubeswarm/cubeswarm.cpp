@@ -225,7 +225,8 @@ public:
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
         0, 1, &dsets_[pframe_index_], 0, nullptr);
-    mesh_.BindBuffersAndDraw(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT);
+    mesh_.BindBuffers(primary_cb);
+    vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0, 0, 0);
     vkCmdEndRenderPass(primary_cb);
   }
 
