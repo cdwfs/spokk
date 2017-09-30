@@ -29,6 +29,6 @@ void main() {
     
   vec4 posw = o2w * vec4(pos,1);
   fromEye = posw.xyz - camera.eye_pos_ws.xyz;
-  vec4 outpos = camera.viewproj * posw;
+  vec4 outpos = camera.view_proj * posw;
   gl_Position = outpos;
 }

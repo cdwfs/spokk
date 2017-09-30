@@ -203,11 +203,11 @@ public:
     camera_consts->eye_dir_wsn = mathfu::vec4(camera_->getViewDirection().Normalized(), 1.0f);
     const mathfu::mat4 view = camera_->getViewMatrix();
     const mathfu::mat4 proj = camera_->getProjectionMatrix();
-    const mathfu::mat4 viewproj = proj * view;
-    camera_consts->viewproj = viewproj;
+    const mathfu::mat4 view_proj = proj * view;
+    camera_consts->view_proj = view_proj;
     camera_consts->view = view;
     camera_consts->proj = proj;
-    camera_consts->viewproj_inv = viewproj.Inverse();
+    camera_consts->view_proj_inv = view_proj.Inverse();
     camera_consts->view_inv = view.Inverse();
     camera_consts->proj_inv = proj.Inverse();
     camera_constants_.FlushPframeHostCache(pframe_index_);

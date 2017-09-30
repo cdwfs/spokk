@@ -26,6 +26,6 @@ void main() {
   vpos.y *= texelFetch(cell_heights, cell).x;
   vec4 posw = vec4(vpos + vec3(cell_x, 0, cell_z), 1);
   fromEye = posw.xyz - camera.eye_pos_ws.xyz;
-  vec4 outpos = camera.viewproj * posw;
+  vec4 outpos = camera.view_proj * posw;
   gl_Position = outpos;
 }

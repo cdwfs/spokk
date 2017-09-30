@@ -182,9 +182,9 @@ public:
     camera_consts->time_and_res =
         mathfu::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
     camera_consts->eye_pos_ws = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-    mathfu::mat4 w2v = camera_->getViewMatrix();
+    mathfu::mat4 view = camera_->getViewMatrix();
     const mathfu::mat4 proj = camera_->getProjectionMatrix();
-    camera_consts->viewproj = proj * w2v;
+    camera_consts->view_proj = proj * view;
     camera_constants_.FlushPframeHostCache(pframe_index_);
 
     // Update object-to-world matrices.

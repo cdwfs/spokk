@@ -19,5 +19,5 @@ void main() {
 
   pos_ws = posw.xyz;
   norm_ws = n2w * normal;
-  gl_Position = camera.viewproj * posw;
+  gl_Position = camera.view_proj * posw;
 }
