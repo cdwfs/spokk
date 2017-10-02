@@ -57,7 +57,7 @@ struct ShaderProgram {
   ShaderProgram()
     : dset_layout_cis{},
       dset_layout_infos{},
-      push_constant_ranges{},
+      push_constant_ranges{{(VkShaderStageFlagBits)0, 0, 0}},
       shader_stage_cis{},
       entry_point_names{},
       pipeline_layout(VK_NULL_HANDLE),
@@ -85,6 +85,12 @@ struct ShaderProgram {
   std::vector<VkDescriptorSetLayout> dset_layouts;  // one per dset (including empty ones)
 
   VkShaderStageFlags active_stages;
+
+private:
+  // Attempts to incorporate the provided dset layouts and push constant ranges into this shader program.
+  // returns non-zero if an incompatibility was detected, in which case no changes are made.
+  int MergeLayouts(const std::vector<DescriptorSetLayoutInfo>& new_dset_layout_infos,
+      const std::vector<VkPushConstantRange> new_push_constant_ranges);
 };
 
 struct DescriptorPool {
