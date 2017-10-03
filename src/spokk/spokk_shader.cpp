@@ -21,9 +21,8 @@ T my_max(T x, T y) {
 namespace spokk {
 
 // Helper for SPIRV-Cross shader resource parsing
-static void add_shader_resource_to_dset_layouts(std::vector<DescriptorSetLayoutInfo>& dset_layout_infos,
-    const spirv_cross::CompilerGLSL& glsl, const spirv_cross::Resource& resource, VkDescriptorType desc_type,
-    VkShaderStageFlagBits stage) {
+void Shader::AddShaderResourceToDescriptorSetLayout(
+    const spirv_cross::CompilerGLSL& glsl, const spirv_cross::Resource& resource, VkDescriptorType desc_type) {
   uint32_t dset_index = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
   uint32_t binding_index = glsl.get_decoration(resource.id, spv::DecorationBinding);
   auto resource_type = glsl.get_type(resource.type_id);
@@ -47,13 +46,11 @@ static void add_shader_resource_to_dset_layouts(std::vector<DescriptorSetLayoutI
   for (uint32_t iBinding = 0; iBinding < layout_info.bindings.size(); ++iBinding) {
     auto& binding = layout_info.bindings[iBinding];
     if (binding.binding == binding_index) {
+      ZOMBO_ERROR("Binding %u appears twice in a Shader? WTF?", binding_index);
       ZOMBO_ASSERT(binding.descriptorType == desc_type, "binding %u appears twice with different types in shader",
           binding_index);
       ZOMBO_ASSERT(binding.descriptorCount == array_size,
           "binding %u appears twice with different array sizes in shader", binding_index);
-      binding.stageFlags |= stage;
-      auto& binding_info = layout_info.binding_infos[iBinding];
-      binding_info.stage_names.push_back(std::make_tuple(stage, glsl.get_name(resource.id)));
       found_binding = true;
       break;
     }
@@ -66,37 +63,40 @@ static void add_shader_resource_to_dset_layouts(std::vector<DescriptorSetLayoutI
     new_binding.stageFlags = stage;
     new_binding.pImmutableSamplers = nullptr;
     layout_info.bindings.push_back(new_binding);
-    DescriptorSetLayoutBindingInfo new_binding_info = {};
-    new_binding_info.stage_names.push_back(std::make_tuple(stage, glsl.get_name(resource.id)));
-    layout_info.binding_infos.push_back(new_binding_info);
+
+    const std::string& binding_name = glsl.get_name(resource.id);
+    ZOMBO_ASSERT(name_to_index_.find(binding_name) == name_to_index_.cend(),
+        "Binding name '%s' appears multiple times in shader?", binding_name.c_str());
+    DescriptorBindPoint bind_point = {};
+    bind_point.set = dset_index;
+    bind_point.binding = binding_index;
+    name_to_index_[binding_name] = bind_point;
   }
 }
 
-static void parse_shader_resources(std::vector<DescriptorSetLayoutInfo>& dset_layout_infos,
-    VkPushConstantRange& push_constant_range, const spirv_cross::CompilerGLSL& glsl, VkShaderStageFlagBits stage) {
+void Shader::ParseShaderResources(const spirv_cross::CompilerGLSL& glsl) {
   spirv_cross::ShaderResources resources = glsl.get_shader_resources();
   // handle shader resources
   for (auto& resource : resources.uniform_buffers) {
-    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, stage);
+    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
   }
   for (auto& resource : resources.storage_buffers) {
-    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, stage);
+    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
   }
   for (auto& resource : resources.storage_images) {
-    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, stage);
+    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
   }
   for (auto& resource : resources.sampled_images) {
-    add_shader_resource_to_dset_layouts(
-        dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, stage);
+    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
   }
   for (auto& resource : resources.separate_images) {
-    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, stage);
+    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
   }
   for (auto& resource : resources.separate_samplers) {
-    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_SAMPLER, stage);
+    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_SAMPLER);
   }
   for (auto& resource : resources.subpass_inputs) {
-    add_shader_resource_to_dset_layouts(dset_layout_infos, glsl, resource, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, stage);
+    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT);
   }
   // Handle push constants. Each shader stage is only allowed to have one push constant block, so if the SPIRV
   // defines more than one range, we have to merge them here.
@@ -196,15 +196,12 @@ VkResult Shader::ParseSpirvAndCreate(const Device& device) {
   }
   ZOMBO_ASSERT_RETURN(stage != 0, VK_ERROR_INITIALIZATION_FAILED, "invalid shader stage %d", stage);
 
-  parse_shader_resources(dset_layout_infos, push_constant_range, glsl, stage);
+  ParseShaderResources(glsl);
 
   // validation
   for (size_t s = 0; s < dset_layout_infos.size(); ++s) {
     const auto& layout_info = dset_layout_infos[s];
     for (size_t b = 0; b < layout_info.bindings.size(); ++b) {
-      // This is no longer valid once you start merging multiple layouts, but should be true at load time.
-      ZOMBO_ASSERT_RETURN(layout_info.binding_infos[b].stage_names.size() == 1, VK_ERROR_INITIALIZATION_FAILED,
-          "invariant failure: set %u binding %u has multiple names in a single shader stage", (uint32_t)s, (uint32_t)b);
       // For a single shader, ensure that each binding's stage matches the stage of the shader itself
       ZOMBO_ASSERT_RETURN(0 != (layout_info.bindings[b].stageFlags & stage), VK_ERROR_INITIALIZATION_FAILED,
           "invariant failure: set %u binding %u binding stageFlags (%u) do not match shader stage (%u)", (uint32_t)s,
@@ -236,18 +233,11 @@ void Shader::OverrideDescriptorType(uint32_t dset, uint32_t binding, VkDescripto
 }
 
 DescriptorBindPoint Shader::GetDescriptorBindPoint(const std::string& name) const {
-  for (size_t i_set = 0; i_set < dset_layout_infos.size(); ++i_set) {
-    const auto& dset_info = dset_layout_infos[i_set];
-    for (size_t i_binding = 0; i_binding < dset_info.bindings.size(); ++i_binding) {
-      // TODO(https://github.com/cdwfs/spokk/issues/14): confirm that this works with multiple names for a single stage
-      for (const auto& stage_name : dset_info.binding_infos[i_binding].stage_names) {
-        if ((std::get<0>(stage_name) & stage) && (std::get<1>(stage_name) == name)) {
-          return {(uint32_t)i_set, dset_info.bindings[i_binding].binding};
-        }
-      }
-    }
+  const auto itor = name_to_index_.find(name);
+  if (itor != name_to_index_.cend()) {
+    return (*itor).second;
   }
-  ZOMBO_ERROR("Desriptor %s not found in shader", name.c_str());
+  ZOMBO_ERROR("Desriptor '%s' not found in shader", name.c_str());
   return {UINT32_MAX, UINT32_MAX};  // TODO(cort): better "not found" error?
 }
 
@@ -376,9 +366,6 @@ VkResult ShaderProgram::Finalize(const Device& device) {
   for (uint32_t iLayout = 0; iLayout < dset_layouts.size(); ++iLayout) {
     VkDescriptorSetLayoutCreateInfo& layout_ci = dset_layout_cis[iLayout];
     const DescriptorSetLayoutInfo& layout_info = dset_layout_infos[iLayout];
-    ZOMBO_ASSERT(layout_info.bindings.size() == layout_info.binding_infos.size(),
-        "invariant failure: layout bindings count (%d) != layout binding_infos count (%d)",
-        (uint32_t)layout_info.bindings.size(), (uint32_t)layout_info.binding_infos.size());
     layout_ci = {};
     layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layout_ci.bindingCount = (uint32_t)layout_info.bindings.size();
@@ -445,11 +432,9 @@ int ShaderProgram::MergeLayouts(const std::vector<DescriptorSetLayoutInfo>& new_
     DescriptorSetLayoutInfo& dst_dset_layout_info = merged_dset_layout_infos[iDS];
     for (size_t iSB = 0; iSB < src_dset_layout_info.bindings.size(); ++iSB) {
       const auto& src_binding = src_dset_layout_info.bindings[iSB];
-      const auto& src_binding_info = src_dset_layout_info.binding_infos[iSB];
       bool found_binding = false;
       for (size_t iDB = 0; iDB < dst_dset_layout_info.bindings.size(); ++iDB) {
         auto& dst_binding = dst_dset_layout_info.bindings[iDB];
-        auto& dst_binding_info = dst_dset_layout_info.binding_infos[iDB];
         // TODO(https://github.com/cdwfs/spokk/issues/13): need to also compare against arrays starting at lower
         // bindings that intersect this binding.
         if (src_binding.binding == dst_binding.binding) {
@@ -461,16 +446,12 @@ int ShaderProgram::MergeLayouts(const std::vector<DescriptorSetLayoutInfo>& new_
               "set %u binding %u used with different array sizes in two stages", (uint32_t)iDS, src_binding.binding);
           // Found a match!
           dst_binding.stageFlags |= src_binding.stageFlags;
-          dst_binding_info.stage_names.push_back(src_binding_info.stage_names[0]);
           found_binding = true;
           break;
         }
       }
       if (!found_binding) {
-        DescriptorSetLayoutBindingInfo new_binding_info = {};
-        new_binding_info.stage_names = src_binding_info.stage_names;
         dst_dset_layout_info.bindings.push_back(src_binding);
-        dst_dset_layout_info.binding_infos.push_back(new_binding_info);
       }
     }
   }
@@ -509,7 +490,7 @@ int ShaderProgram::MergeLayouts(const std::vector<DescriptorSetLayoutInfo>& new_
 //
 // DescriptorPool
 //
-DescriptorPool::DescriptorPool() : handle(VK_NULL_HANDLE), ci{}, pool_sizes{} {
+DescriptorPool::DescriptorPool() {
   ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
   ci.flags = 0;  // overriden in finalize()
   ci.poolSizeCount = (uint32_t)pool_sizes.size();

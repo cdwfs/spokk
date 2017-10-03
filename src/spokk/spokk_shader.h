@@ -3,27 +3,27 @@
 #include "spokk_device.h"
 
 #include <array>
-#include <tuple>
+#include <map>
+#include <string>
 #include <vector>
+
+namespace spirv_cross {
+class CompilerGLSL;
+struct Resource;
+}  // namespace spirv_cross
 
 namespace spokk {
 
-struct DescriptorSetLayoutBindingInfo {
-  // The name of each binding in a given shader stage. Purely for debugging.
-  std::vector<std::tuple<VkShaderStageFlagBits, std::string> > stage_names;
-};
-struct DescriptorSetLayoutInfo {
-  std::vector<VkDescriptorSetLayoutBinding> bindings;
-  std::vector<DescriptorSetLayoutBindingInfo> binding_infos;  // one per binding
-};
 struct DescriptorBindPoint {
   uint32_t set;
   uint32_t binding;
 };
+struct DescriptorSetLayoutInfo {
+  std::vector<VkDescriptorSetLayoutBinding> bindings;
+};
 
 struct Shader {
-  Shader()
-    : handle(VK_NULL_HANDLE), spirv{}, stage((VkShaderStageFlagBits)0), dset_layout_infos{}, push_constant_range{} {}
+  Shader() {}
 
   VkResult CreateAndLoadSpirvFile(const Device& device, const std::string& filename);
   VkResult CreateAndLoadSpirvFp(const Device& device, FILE* fp, int len_bytes);
@@ -37,32 +37,27 @@ struct Shader {
 
   // Look up the bind point for a descriptor, by name. This is not fast; if you need the results more than once,
   // avoid multiple calls and cache the return value yourself.
-  // The stage_mask parameter can optionally be used to limit the search to particular shader stages, to disambiguate
-  // in cases where the same name is used for different bind points in different stages within a single ShaderProgram.
   DescriptorBindPoint GetDescriptorBindPoint(const std::string& name) const;
 
   void Destroy(const Device& device);
 
-  VkShaderModule handle;
-  std::vector<uint32_t> spirv;
-  VkShaderStageFlagBits stage;
+  VkShaderModule handle = VK_NULL_HANDLE;
+  std::vector<uint32_t> spirv = {};
+  VkShaderStageFlagBits stage = (VkShaderStageFlagBits)0;
   // Resources used by this shader:
-  std::vector<DescriptorSetLayoutInfo> dset_layout_infos;  // one per dset (including empty ones)
-  VkPushConstantRange push_constant_range;  // range.size = 0 means this stage doesn't use push constants.
+  std::vector<DescriptorSetLayoutInfo> dset_layout_infos = {};  // one per dset (including empty ones)
+  VkPushConstantRange push_constant_range = {};  // range.size = 0 means this stage doesn't use push constants.
 private:
   VkResult ParseSpirvAndCreate(const Device& device);
+  void ParseShaderResources(const spirv_cross::CompilerGLSL& glsl);
+  void AddShaderResourceToDescriptorSetLayout(
+      const spirv_cross::CompilerGLSL& glsl, const spirv_cross::Resource& resource, VkDescriptorType desc_type);
+
+  std::map<std::string, DescriptorBindPoint> name_to_index_ = {};  // one per binding across all dsets in this Shader.
 };
 
 struct ShaderProgram {
-  ShaderProgram()
-    : dset_layout_cis{},
-      dset_layout_infos{},
-      push_constant_ranges{{(VkShaderStageFlagBits)0, 0, 0}},
-      shader_stage_cis{},
-      entry_point_names{},
-      pipeline_layout(VK_NULL_HANDLE),
-      dset_layouts{},
-      active_stages(0) {}
+  ShaderProgram() {}
 
   ShaderProgram(const ShaderProgram& rhs) = delete;
   ShaderProgram& operator=(const ShaderProgram& rhs) = delete;
@@ -72,19 +67,21 @@ struct ShaderProgram {
   VkResult Finalize(const Device& device);
   void Destroy(const Device& device);
 
-  std::vector<VkDescriptorSetLayoutCreateInfo>
-      dset_layout_cis;  // one per dset. Unused sets are padded with empty layouts.
-  std::vector<DescriptorSetLayoutInfo> dset_layout_infos;  // one per dset. Unused sets are padded with empty layouts.
-  std::vector<VkPushConstantRange> push_constant_ranges;  // one per active stage that uses push constants.
+  std::vector<VkDescriptorSetLayoutCreateInfo> dset_layout_cis =
+      {};  // one per dset. Unused sets are padded with empty layouts.
+  std::vector<DescriptorSetLayoutInfo> dset_layout_infos =
+      {};  // one per dset. Unused sets are padded with empty layouts.
+  std::vector<VkPushConstantRange> push_constant_ranges = {
+      {(VkShaderStageFlagBits)0, 0, 0}};  // one per active stage that uses push constants.
 
-  std::vector<VkPipelineShaderStageCreateInfo>
-      shader_stage_cis;  // one per active stage. used to create graphics pipelines
-  std::vector<std::string> entry_point_names;  // one per active stage.
+  std::vector<VkPipelineShaderStageCreateInfo> shader_stage_cis =
+      {};  // one per active stage. used to create graphics pipelines
+  std::vector<std::string> entry_point_names = {};  // one per active stage.
 
-  VkPipelineLayout pipeline_layout;
-  std::vector<VkDescriptorSetLayout> dset_layouts;  // one per dset (including empty ones)
+  VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
+  std::vector<VkDescriptorSetLayout> dset_layouts = {};  // one per dset (including empty ones)
 
-  VkShaderStageFlags active_stages;
+  VkShaderStageFlags active_stages = 0;
 
 private:
   // Attempts to incorporate the provided dset layouts and push constant ranges into this shader program.
@@ -117,9 +114,9 @@ struct DescriptorPool {
   void FreeSets(Device& device, uint32_t set_count, const VkDescriptorSet* sets) const;
   void FreeSet(Device& device, VkDescriptorSet set) const;
 
-  VkDescriptorPool handle;
-  VkDescriptorPoolCreateInfo ci;
-  std::array<VkDescriptorPoolSize, VK_DESCRIPTOR_TYPE_RANGE_SIZE> pool_sizes;
+  VkDescriptorPool handle = VK_NULL_HANDLE;
+  VkDescriptorPoolCreateInfo ci = {};
+  std::array<VkDescriptorPoolSize, VK_DESCRIPTOR_TYPE_RANGE_SIZE> pool_sizes = {};
 };
 
 struct DescriptorSetWriter {
