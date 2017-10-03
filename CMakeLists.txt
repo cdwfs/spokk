@@ -63,6 +63,7 @@ SET(SPOKK_HEADERS
     src/spokk/spokk_mesh.h
     src/spokk/spokk_pipeline.h
     src/spokk/spokk_platform.h
+    src/spokk/spokk_renderer.h
     src/spokk/spokk_renderpass.h
     src/spokk/spokk_shader.h
     src/spokk/spokk_shader_interface.h

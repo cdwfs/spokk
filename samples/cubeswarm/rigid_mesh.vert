@@ -10,24 +10,13 @@ layout (location = 0) out vec2 texcoord;
 layout (location = 1) out vec3 norm;
 layout (location = 2) out vec3 fromEye;
 
-layout (set = 0, binding = 1) uniform MeshUniforms {
-  vec4 matrix_columns[4*1024];
-} mesh_consts;
-
-
 void main() {
   texcoord = attr;
 
-  mat4 o2w = mat4(
-    mesh_consts.matrix_columns[4*gl_InstanceIndex+0],
-    mesh_consts.matrix_columns[4*gl_InstanceIndex+1],
-    mesh_consts.matrix_columns[4*gl_InstanceIndex+2],
-    mesh_consts.matrix_columns[4*gl_InstanceIndex+3]);
-
-  mat3 n2w = mat3(o2w);
+  mat3 n2w = mat3(transforms.world);
   norm = n2w * normal;
     
-  vec4 posw = o2w * vec4(pos,1);
+  vec4 posw = transforms.world * vec4(pos,1);
   fromEye = posw.xyz - camera.eye_pos_ws.xyz;
   vec4 outpos = camera.view_proj * posw;
   gl_Position = outpos;

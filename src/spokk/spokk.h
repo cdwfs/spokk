@@ -9,6 +9,7 @@
 #include "spokk_mesh.h"
 #include "spokk_pipeline.h"
 #include "spokk_platform.h"
+#include "spokk_renderer.h"
 #include "spokk_renderpass.h"
 #include "spokk_shader.h"
 #include "spokk_shader_interface.h"

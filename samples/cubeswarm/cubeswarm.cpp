@@ -13,9 +13,6 @@ using namespace spokk;
 
 namespace {
 constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
-struct MeshUniforms {
-  mathfu::mat4 o2w[MESH_INSTANCE_COUNT];
-};
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
@@ -42,59 +39,36 @@ public:
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
-    // Load textures and samplers
-    VkSamplerCreateInfo sampler_ci =
-        GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
-    SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-    albedo_tex_.CreateFromFile(device_, graphics_and_present_queue_, "data/redf.ktx");
+    // Renderer
+    Renderer::CreateInfo renderer_ci = {};
+    renderer_ci.pframe_count = PFRAME_COUNT;
+    int renderer_create_error = renderer_.Create(device_, renderer_ci);
+    ZOMBO_ASSERT(!renderer_create_error, "Renderer create returned %d", renderer_create_error);
 
     // Load shader pipelines
     SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_, "data/rigid_mesh.vert.spv"));
     SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_, "data/rigid_mesh.frag.spv"));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_vs_));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_fs_));
+    SPOKK_VK_CHECK(mesh_shader_program_.AddRendererDsets(renderer_));
     SPOKK_VK_CHECK(mesh_shader_program_.Finalize(device_));
 
     // Populate Mesh object
     int mesh_load_error = mesh_.CreateFromFile(device_, "data/teapot.mesh");
     ZOMBO_ASSERT(!mesh_load_error, "load error: %d", mesh_load_error);
 
-    // Create pipelined buffer of per-mesh object-to-world matrices.
-    VkBufferCreateInfo o2w_buffer_ci = {};
-    o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(mathfu::mat4);
-    o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-
-    // Create pipelined buffer of shader uniforms
-    VkBufferCreateInfo camera_constants_ci = {};
-    camera_constants_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    camera_constants_ci.size = sizeof(CameraConstants);
-    camera_constants_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    camera_constants_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(
-        camera_constants_.Create(device_, PFRAME_COUNT, camera_constants_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
 
-    for (const auto& dset_layout_ci : mesh_shader_program_.dset_layout_cis) {
-      dpool_.Add(dset_layout_ci, PFRAME_COUNT);
-    }
-    SPOKK_VK_CHECK(dpool_.Finalize(device_));
-    for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      // TODO(cort): allocate_pipelined_set()?
-      dsets_[pframe] = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
-    }
-    DescriptorSetWriter dset_writer(mesh_shader_program_.dset_layout_cis[0]);
-    dset_writer.BindImage(
-        albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mesh_fs_.GetDescriptorBindPoint("tex").binding);
-    dset_writer.BindSampler(sampler_, mesh_fs_.GetDescriptorBindPoint("samp").binding);
-    for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      dset_writer.BindBuffer(camera_constants_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("camera").binding);
-      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
-      dset_writer.WriteAll(device_, dsets_[pframe]);
+    // Material
+    material_.pipeline = &mesh_pipeline_;
+    material_.material_dsets.resize(PFRAME_COUNT);
+
+    // Mesh Instance
+    for (uint32_t i = 0; i < MESH_INSTANCE_COUNT; ++i) {
+      MeshInstance* instance = renderer_.CreateInstance(&mesh_, &material_);
+      ZOMBO_ASSERT(instance, "Failed to add mesh instance");
+      mesh_instances_.push_back(instance);
     }
 
     // Create swapchain-sized buffers
@@ -104,10 +78,7 @@ public:
     if (device_ != VK_NULL_HANDLE) {
       vkDeviceWaitIdle(device_);
 
-      dpool_.Destroy(device_);
-
-      mesh_uniforms_.Destroy(device_);
-      camera_constants_.Destroy(device_);
+      renderer_.Destroy(device_);
 
       mesh_.Destroy(device_);
 
@@ -115,9 +86,6 @@ public:
       mesh_fs_.Destroy(device_);
       mesh_shader_program_.Destroy(device_);
       mesh_pipeline_.Destroy(device_);
-
-      vkDestroySampler(device_, sampler_, host_allocator_);
-      albedo_tex_.Destroy(device_);
 
       for (const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
@@ -177,35 +145,21 @@ public:
     camera_->setOrientation(mathfu::quat::FromEulerAngles(camera_eulers));
     dolly_->Update(camera_accel, (float)dt);
 
-    // Update uniforms
-    CameraConstants* camera_consts = (CameraConstants*)camera_constants_.Mapped(pframe_index_);
-    camera_consts->time_and_res =
-        mathfu::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-    camera_consts->eye_pos_ws = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-    mathfu::mat4 view = camera_->getViewMatrix();
-    const mathfu::mat4 proj = camera_->getProjectionMatrix();
-    camera_consts->view_proj = proj * view;
-    camera_constants_.FlushPframeHostCache(pframe_index_);
-
-    // Update object-to-world matrices.
+    // Update transforms
     const float secs = (float)seconds_elapsed_;
-    MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
     const mathfu::vec3 swarm_center(0, 0, -2);
-    for (uint32_t iMesh = 0; iMesh < MESH_INSTANCE_COUNT; ++iMesh) {
-      // clang-format off
-      mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(1,2,3).Normalized());
-      mesh_uniforms->o2w[iMesh] = mathfu::mat4::Identity()
-        * mathfu::mat4::FromTranslationVector(mathfu::vec3(
+    for (size_t iMesh = 0; iMesh < mesh_instances_.size(); ++iMesh) {
+      mesh_instances_[iMesh]->transform_.orientation =
+          mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(1, 2, 3).Normalized());
+      mesh_instances_[iMesh]->transform_.pos = mathfu::vec3(
+          // clang-format off
           40.0f * cosf(0.2f * secs + float(9*iMesh) + 0.4f) + swarm_center[0],
           20.5f * sinf(0.3f * secs + float(11*iMesh) + 5.0f) + swarm_center[1],
           30.0f * sinf(0.5f * secs + float(13*iMesh) + 2.0f) + swarm_center[2]
-        ))
-        * q.ToMatrix4()
-        * mathfu::mat4::FromScaleVector( mathfu::vec3(3.0f, 3.0f, 3.0f) )
-        ;
-      // clang-format on
+          // clang-format on
+      );
+      mesh_instances_[iMesh]->transform_.scale = 3.0f;
     }
-    mesh_uniforms_.FlushPframeHostCache(pframe_index_);
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
@@ -213,15 +167,12 @@ public:
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
     vkCmdBeginRenderPass(primary_cb, &render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
     VkRect2D scissor_rect = render_pass_.begin_info.renderArea;
     VkViewport viewport = Rect2DToViewport(scissor_rect);
     vkCmdSetViewport(primary_cb, 0, 1, &viewport);
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
-    vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
-        0, 1, &dsets_[pframe_index_], 0, nullptr);
-    mesh_.BindBuffers(primary_cb);
-    vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0, 0, 0);
+    renderer_.RenderView(primary_cb, camera_->getViewMatrix(), camera_->getProjectionMatrix(),
+        mathfu::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0));
     vkCmdEndRenderPass(primary_cb);
   }
 
@@ -273,19 +224,14 @@ private:
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
 
-  Image albedo_tex_;
-  VkSampler sampler_;
-
   Shader mesh_vs_, mesh_fs_;
   ShaderProgram mesh_shader_program_;
   GraphicsPipeline mesh_pipeline_;
 
-  DescriptorPool dpool_;
-  std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
-
   Mesh mesh_;
-  PipelinedBuffer mesh_uniforms_;
-  PipelinedBuffer camera_constants_;
+  Material material_;
+  std::vector<MeshInstance*> mesh_instances_;
+  Renderer renderer_;
 
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDolly> dolly_;
