@@ -1,7 +1,19 @@
 #if !defined(CAMERA_H)
 #define CAMERA_H
 
-#include <mathfu/glsl_mappings.h>
+#include <glm/mat4x4.hpp>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable:4701)  // potentially uninitialized return value
+#endif
+#include <glm/gtc/quaternion.hpp>
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
 #include <float.h>
 
 class Camera {
@@ -10,32 +22,32 @@ class Camera {
     Camera& operator=(const Camera &rhs) = delete;
 
     //! Returns the position in world-space from which the Camera is viewing
-    mathfu::vec3		getEyePoint() const { return mEyePoint; }
+    glm::vec3		getEyePoint() const { return mEyePoint; }
     //! Sets the position in world-space from which the Camera is viewing
-    void		setEyePoint( const mathfu::vec3 &eyePoint );
+    void		setEyePoint( const glm::vec3 &eyePoint );
 
-    //! Returns the vector in world-space which represents "up" - typically mathfu::vec3( 0, 1, 0 )
-    mathfu::vec3		getWorldUp() const { return mWorldUp; }
-    //! Sets the vector in world-space which represents "up" - typically mathfu::vec3( 0, 1, 0 )
-    void		setWorldUp( const mathfu::vec3 &worldUp );
+    //! Returns the vector in world-space which represents "up" - typically glm::vec3( 0, 1, 0 )
+    glm::vec3		getWorldUp() const { return mWorldUp; }
+    //! Sets the vector in world-space which represents "up" - typically glm::vec3( 0, 1, 0 )
+    void		setWorldUp( const glm::vec3 &worldUp );
 
     //! Modifies the view direction to look from the current eyePoint to \a target. Also updates the pivot distance.
-    void		lookAt( const mathfu::vec3 &target );
+    void		lookAt( const glm::vec3 &target );
     //! Modifies the eyePoint and view direction to look from \a eyePoint to \a target. Also updates the pivot distance.
-    void		lookAt( const mathfu::vec3 &eyePoint, const mathfu::vec3 &target );
+    void		lookAt( const glm::vec3 &eyePoint, const glm::vec3 &target );
     //! Modifies the eyePoint and view direction to look from \a eyePoint to \a target with up vector \a up (to achieve camera roll). Also updates the pivot distance.
-    void		lookAt( const mathfu::vec3 &eyePoint, const mathfu::vec3 &target, const mathfu::vec3 &up );
+    void		lookAt( const glm::vec3 &eyePoint, const glm::vec3 &target, const glm::vec3 &up );
     //! Returns the world-space vector along which the camera is oriented
-    mathfu::vec3		getViewDirection() const { return mViewDirection; }
+    glm::vec3		getViewDirection() const { return mViewDirection; }
     //! Sets the world-space vector along which the camera is oriented
-    void		setViewDirection( const mathfu::vec3 &viewDirection );
+    void		setViewDirection( const glm::vec3 &viewDirection );
 
     //! Returns the world-space quaternion that expresses the camera's orientation
-    mathfu::quat		getOrientation() const { return mOrientation; }
+    glm::quat		getOrientation() const { return mOrientation; }
     //! Returns the world-space Euler angles in Yaw, Pitch, Roll order with +Y=up, -Z=forward.
-    mathfu::vec3    getEulersYPR() const;
+    glm::vec3    getEulersYPR() const;
     //! Sets the camera's orientation with world-space quaternion \a orientation
-    void		setOrientation( const mathfu::quat &orientation );
+    void		setOrientation( const glm::quat &orientation );
 
     //! Returns the camera's vertical field of view measured in degrees.
     float	getFov() const { return mFov; }
@@ -53,7 +65,7 @@ class Camera {
     //! Primarily for user interaction, such as with CameraUi. Sets the distance from the camera along the view direction relative to which tumbling and dollying occur.
     void	setPivotDistance( float distance ) { mPivotDistance = distance; }
     //! Primarily for user interaction, such as with CameraUi. Returns the world-space point relative to which tumbling and dollying occur.
-    mathfu::vec3	getPivotPoint() const { return mEyePoint + mViewDirection * mPivotDistance; }
+    glm::vec3	getPivotPoint() const { return mEyePoint + mViewDirection * mPivotDistance; }
 
     //! Returns the aspect ratio of the image plane - its width divided by its height
     float	getAspectRatio() const { return mAspectRatio; }
@@ -69,9 +81,9 @@ class Camera {
     void	setFarClip( float farClip ) { mFarClip = farClip; mProjectionCached = false; }
 
     //! Returns the four corners of the Camera's Near clipping plane, expressed in world-space
-    virtual void	getNearClipCoordinates( mathfu::vec3 *topLeft, mathfu::vec3 *topRight, mathfu::vec3 *bottomLeft, mathfu::vec3 *bottomRight ) const;
+    virtual void	getNearClipCoordinates( glm::vec3 *topLeft, glm::vec3 *topRight, glm::vec3 *bottomLeft, glm::vec3 *bottomRight ) const;
     //! Returns the four corners of the Camera's Far clipping plane, expressed in world-space
-    virtual void	getFarClipCoordinates( mathfu::vec3 *topLeft, mathfu::vec3 *topRight, mathfu::vec3 *bottomLeft, mathfu::vec3 *bottomRight ) const;
+    virtual void	getFarClipCoordinates( glm::vec3 *topLeft, glm::vec3 *topRight, glm::vec3 *bottomLeft, glm::vec3 *bottomRight ) const;
 
     //! Returns the coordinates of the camera's frustum, suitable for passing to \c glFrustum
     void	getFrustum( float *left, float *top, float *right, float *bottom, float *near, float *far ) const;
@@ -79,38 +91,38 @@ class Camera {
     virtual bool isPersp() const = 0;
 
     //! Returns the Camera's Projection matrix, which converts view-space into clip-space
-    virtual const mathfu::mat4&	getProjectionMatrix() const { if( ! mProjectionCached ) calcProjection(); return mProjectionMatrix; }
+    virtual const glm::mat4&	getProjectionMatrix() const { if( ! mProjectionCached ) calcProjection(); return mProjectionMatrix; }
     //! Returns the Camera's View matrix, which converts world-space into view-space
-    virtual const mathfu::mat4&	getViewMatrix() const { if( ! mModelViewCached ) calcViewMatrix(); return mViewMatrix; }
+    virtual const glm::mat4&	getViewMatrix() const { if( ! mModelViewCached ) calcViewMatrix(); return mViewMatrix; }
     //! Returns the Camera's Inverse View matrix, which converts view-space into world-space
-    virtual const mathfu::mat4&	getInverseViewMatrix() const { if( ! mInverseModelViewCached ) calcInverseView(); return mInverseModelViewMatrix; }
+    virtual const glm::mat4&	getInverseViewMatrix() const { if( ! mInverseModelViewCached ) calcInverseView(); return mInverseModelViewMatrix; }
 
     //! Returns a Ray that passes through the image plane coordinates (\a u, \a v) (expressed in the range [0,1]) on an image plane of aspect ratio \a imagePlaneAspectRatio
 //	Ray		generateRay( float u, float v, float imagePlaneAspectRatio ) const { return calcRay( u, v, imagePlaneAspectRatio ); }
     //! Returns a Ray that passes through the pixels coordinates \a posPixels on an image of size \a imageSizePixels
-//	Ray		generateRay( const mathfu::vec2 &posPixels, const mathfu::vec2 &imageSizePixels ) const { return calcRay( posPixels.x / imageSizePixels.x, ( imageSizePixels.y - posPixels.y ) / imageSizePixels.y, imageSizePixels.x / imageSizePixels.y ); }
+//	Ray		generateRay( const glm::vec2 &posPixels, const glm::vec2 &imageSizePixels ) const { return calcRay( posPixels.x / imageSizePixels.x, ( imageSizePixels.y - posPixels.y ) / imageSizePixels.y, imageSizePixels.x / imageSizePixels.y ); }
     //! Returns the \a right and \a up vectors suitable for billboarding relative to the Camera
-    void	getBillboardVectors( mathfu::vec3 *right, mathfu::vec3 *up ) const;
+    void	getBillboardVectors( glm::vec3 *right, glm::vec3 *up ) const;
 
     //! Converts a world-space coordinate \a worldCoord to screen coordinates as viewed by the camera, based on a screen which is \a screenWidth x \a screenHeight pixels.
-    mathfu::vec2 worldToScreen( const mathfu::vec3 &worldCoord, float screenWidth, float screenHeight ) const;
+    glm::vec2 worldToScreen( const glm::vec3 &worldCoord, float screenWidth, float screenHeight ) const;
     //! Converts a eye-space coordinate \a eyeCoord to screen coordinates as viewed by the camera
-    mathfu::vec2 eyeToScreen( const mathfu::vec3 &eyeCoord, const mathfu::vec2 &screenSizePixels ) const;
+    glm::vec2 eyeToScreen( const glm::vec3 &eyeCoord, const glm::vec2 &screenSizePixels ) const;
     //! Converts a world-space coordinate \a worldCoord to eye-space, also known as camera-space. -Z is along the view direction.
-    mathfu::vec3 worldToEye( const mathfu::vec3 &worldCoord ) const	{ return (getViewMatrix() * mathfu::vec4( worldCoord, 1 )).xyz(); }
+    glm::vec3 worldToEye( const glm::vec3 &worldCoord ) const	{ return glm::vec3((getViewMatrix() * glm::vec4( worldCoord, 1 ))); }
     //! Converts a world-space coordinate \a worldCoord to the z axis of eye-space, also known as camera-space. -Z is along the view direction. Suitable for depth sorting.
-    float worldToEyeDepth( const mathfu::vec3 &worldCoord ) const;
+    float worldToEyeDepth( const glm::vec3 &worldCoord ) const;
     //! Converts a world-space coordinate \a worldCoord to normalized device coordinates
-    mathfu::vec3 worldToNdc( const mathfu::vec3 &worldCoord ) const;
+    glm::vec3 worldToNdc( const glm::vec3 &worldCoord ) const;
 
     //! Calculates the area of the screen-space elliptical projection of \a sphere
-//	float	calcScreenArea( const Sphere &sphere, const mathfu::vec2 &screenSizePixels ) const;
+//	float	calcScreenArea( const Sphere &sphere, const glm::vec2 &screenSizePixels ) const;
     //! Calculates the screen-space elliptical projection of \a sphere, putting the results in \a outCenter, \a outAxisA and \a outAxisB
-//	void	calcScreenProjection( const Sphere &sphere, const mathfu::vec2 &screenSizePixels, mathfu::vec2 *outCenter, mathfu::vec2 *outAxisA, mathfu::vec2 *outAxisB ) const;
+//	void	calcScreenProjection( const Sphere &sphere, const glm::vec2 &screenSizePixels, glm::vec2 *outCenter, glm::vec2 *outAxisA, glm::vec2 *outAxisB ) const;
 
   protected:
     Camera()
-        : mWorldUp( mathfu::vec3( 0, 1, 0 ) ), mPivotDistance( 0 ), mProjectionCached( false ), mModelViewCached( false ), mInverseModelViewCached( false )
+        : mWorldUp( glm::vec3( 0, 1, 0 ) ), mPivotDistance( 0 ), mProjectionCached( false ), mModelViewCached( false ), mInverseModelViewCached( false )
     {}
 
     void			calcMatrices() const;
@@ -121,10 +133,10 @@ class Camera {
 
 //	virtual Ray		calcRay( float u, float v, float imagePlaneAspectRatio ) const;
 
-    mathfu::vec3	mEyePoint;
-    mathfu::vec3	mViewDirection;
-    mathfu::quat	mOrientation;
-    mathfu::vec3	mWorldUp;
+    glm::vec3	mEyePoint;
+    glm::vec3	mViewDirection;
+    glm::quat	mOrientation;
+    glm::vec3	mWorldUp;
 
     float	mFov; // vertical field of view in degrees
     float	mAspectRatio;
@@ -132,15 +144,15 @@ class Camera {
     float	mFarClip;
     float	mPivotDistance;
 
-    mutable mathfu::vec3	mU;	// Right vector
-    mutable mathfu::vec3	mV;	// Readjust up-vector
-    mutable mathfu::vec3	mW;	// Negative view direction
+    mutable glm::vec3	mU;	// Right vector
+    mutable glm::vec3	mV;	// Readjust up-vector
+    mutable glm::vec3	mW;	// Negative view direction
 
-    mutable mathfu::mat4	mProjectionMatrix, mInverseProjectionMatrix;
+    mutable glm::mat4	mProjectionMatrix, mInverseProjectionMatrix;
     mutable bool	mProjectionCached;
-    mutable mathfu::mat4	mViewMatrix;
+    mutable glm::mat4	mViewMatrix;
     mutable bool	mModelViewCached;
-    mutable mathfu::mat4	mInverseModelViewMatrix;
+    mutable glm::mat4	mInverseModelViewMatrix;
     mutable bool	mInverseModelViewCached;
 
     mutable float	mFrustumLeft, mFrustumRight, mFrustumTop, mFrustumBottom;
@@ -166,7 +178,7 @@ class CameraPersp : public Camera {
     /** Returns both the horizontal and vertical lens shift.
         A horizontal lens shift of 1 (-1) will shift the view right (left) by half the width of the viewport.
         A vertical lens shift of 1 (-1) will shift the view up (down) by half the height of the viewport. */
-    mathfu::vec2	getLensShift() const { return mLensShift; }
+    glm::vec2	getLensShift() const { return mLensShift; }
     /** Sets both the horizontal and vertical lens shift.
         A horizontal lens shift of 1 (-1) will shift the view right (left) by half the width of the viewport.
         A vertical lens shift of 1 (-1) will shift the view up (down) by half the height of the viewport. */
@@ -174,7 +186,7 @@ class CameraPersp : public Camera {
     /** Sets both the horizontal and vertical lens shift.
         A horizontal lens shift of 1 (-1) will shift the view right (left) by half the width of the viewport.
         A vertical lens shift of 1 (-1) will shift the view up (down) by half the height of the viewport. */
-    void	setLensShift( const mathfu::vec2 &shift ) { setLensShift( shift.x, shift.y ); }
+    void	setLensShift( const glm::vec2 &shift ) { setLensShift( shift.x, shift.y ); }
     //! Returns the horizontal lens shift. A horizontal lens shift of 1 (-1) will shift the view right (left) by half the width of the viewport.
     float	getLensShiftHorizontal() const { return mLensShift.x; }
     /** Sets the horizontal lens shift.
@@ -192,7 +204,7 @@ class CameraPersp : public Camera {
 //	CameraPersp		calcFraming( const Sphere &worldSpaceSphere ) const;
 
   protected:
-    mathfu::vec2	mLensShift;
+    glm::vec2	mLensShift;
 
     void	calcProjection() const override;
 //	Ray		calcRay( float u, float v, float imagePlaneAspectRatio ) const override;
@@ -234,7 +246,7 @@ class CameraStereo : public CameraPersp {
     //! Sets the distance between the camera's for the left and right eyes. This affects the parallax effect.
     void			setEyeSeparation( float distance ) { mEyeSeparation = distance; mModelViewCached = false; mProjectionCached = false; }
     //! Returns the location of the currently enabled eye camera.
-    mathfu::vec3			getEyePointShifted() const;
+    glm::vec3			getEyePointShifted() const;
 
     //! Enables the left eye camera.
     void			enableStereoLeft() { mIsStereo = true; mIsLeft = true; }
@@ -249,18 +261,18 @@ class CameraStereo : public CameraPersp {
     //! Returns whether stereoscopic rendering is enabled.
     bool			isStereoEnabled() const { return mIsStereo; }
 
-    void	getNearClipCoordinates( mathfu::vec3 *topLeft, mathfu::vec3 *topRight, mathfu::vec3 *bottomLeft, mathfu::vec3 *bottomRight ) const override;
-    void	getFarClipCoordinates( mathfu::vec3 *topLeft, mathfu::vec3 *topRight, mathfu::vec3 *bottomLeft, mathfu::vec3 *bottomRight ) const override;
+    void	getNearClipCoordinates( glm::vec3 *topLeft, glm::vec3 *topRight, glm::vec3 *bottomLeft, glm::vec3 *bottomRight ) const override;
+    void	getFarClipCoordinates( glm::vec3 *topLeft, glm::vec3 *topRight, glm::vec3 *bottomLeft, glm::vec3 *bottomRight ) const override;
 
-    const mathfu::mat4&	getProjectionMatrix() const override;
-    const mathfu::mat4&	getViewMatrix() const override;
-    const mathfu::mat4&	getInverseViewMatrix() const override;
+    const glm::mat4&	getProjectionMatrix() const override;
+    const glm::mat4&	getViewMatrix() const override;
+    const glm::mat4&	getInverseViewMatrix() const override;
 
   protected:
-    mutable mathfu::mat4	mProjectionMatrixLeft, mInverseProjectionMatrixLeft;
-    mutable mathfu::mat4	mProjectionMatrixRight, mInverseProjectionMatrixRight;
-    mutable mathfu::mat4	mViewMatrixLeft, mInverseModelViewMatrixLeft;
-    mutable mathfu::mat4	mViewMatrixRight, mInverseModelViewMatrixRight;
+    mutable glm::mat4	mProjectionMatrixLeft, mInverseProjectionMatrixLeft;
+    mutable glm::mat4	mProjectionMatrixRight, mInverseProjectionMatrixRight;
+    mutable glm::mat4	mViewMatrixLeft, mInverseModelViewMatrixLeft;
+    mutable glm::mat4	mViewMatrixRight, mInverseModelViewMatrixRight;
 
     void	calcViewMatrix() const override;
     void	calcInverseView() const override;
@@ -290,41 +302,19 @@ public:
   CameraDolly& operator=(const CameraDolly&) = delete;
 
   // If SetBounds() isn't called, the default bounds are +/-FLT_MAX.
-  void SetBounds(mathfu::vec3 aabb_min, mathfu::vec3 aabb_max) {
+  void SetBounds(glm::vec3 aabb_min, glm::vec3 aabb_max) {
     pos_min_ = aabb_min;
     pos_max_ = aabb_max;
   }
   Camera& GetCamera() { return camera_; }
   const Camera& GetCamera() const { return camera_; }
-  void Update(mathfu::vec3 accel, float dt) {
-    mathfu::vec3 vel_dir = (velocity_.LengthSquared() > 0) ? velocity_.Normalized() : mathfu::vec3(0,0,0);
-    // TODO(cort): would love to define drag in terms of something intuitive like max_velocity
-    mathfu::vec3 drag = drag_coeff_ * velocity_.LengthSquared() * -vel_dir;
-    mathfu::vec3 accel_final = accel + drag;
-
-    mathfu::vec3 new_eye = ((0.5f * accel_final * dt) + velocity_) * dt + camera_.getEyePoint();
-    new_eye = mathfu::vec3::Max(new_eye, pos_min_);
-    new_eye = mathfu::vec3::Min(new_eye, pos_max_);
-    camera_.setEyePoint(new_eye);
-
-    velocity_ += accel_final * dt;
-    // Totally non-physical constant deceleration if not actively accelerating.
-    float speed = velocity_.Length();
-    if (accel.LengthSquared() == 0 && speed > 0) {
-      const float idle_decel = -8.0f;
-      float new_speed = std::max(speed + idle_decel*dt, 0.0f);
-      velocity_ *= new_speed / speed;
-    }
-    if (velocity_.LengthSquared() < 0.001f) {
-      velocity_ = mathfu::vec3(0,0,0);
-    }
-  }
+  void Update(glm::vec3 accel, float dt);
 
 private:
   Camera& camera_;
-  mathfu::vec3 velocity_;
+  glm::vec3 velocity_;
   float drag_coeff_;
-  mathfu::vec3 pos_min_, pos_max_;
+  glm::vec3 pos_min_, pos_max_;
 };
 
 #endif //!defined(CAMERA_H)

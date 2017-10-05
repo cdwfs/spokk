@@ -4,22 +4,19 @@ using namespace spokk;
 #include <common/camera.h>
 #include <common/cube_mesh.h>
 
-#include <mathfu/glsl_mappings.h>
-#include <mathfu/vector.h>
-
 #include <array>
 #include <cstdio>
 #include <memory>
 
 namespace {
 struct SceneUniforms {
-  mathfu::vec4_packed time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
-  mathfu::vec4_packed eye;  // xyz: eye position
-  mathfu::mat4 viewproj;
+  glm::vec4 time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
+  glm::vec4 eye;  // xyz: eye position
+  glm::mat4 viewproj;
 };
 constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
 struct MeshUniforms {
-  mathfu::mat4 o2w[MESH_INSTANCE_COUNT];
+  glm::mat4 o2w[MESH_INSTANCE_COUNT];
 };
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
@@ -35,9 +32,9 @@ public:
 
     camera_ =
         my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
-    const mathfu::vec3 initial_camera_pos(-1, 0, 6);
-    const mathfu::vec3 initial_camera_target(0, 0, 0);
-    const mathfu::vec3 initial_camera_up(0, 1, 0);
+    const glm::vec3 initial_camera_pos(-1, 0, 6);
+    const glm::vec3 initial_camera_target(0, 0, 0);
+    const glm::vec3 initial_camera_up(0, 1, 0);
     camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
     dolly_ = my_make_unique<CameraDolly>(*camera_);
 
@@ -67,7 +64,7 @@ public:
     // Create pipelined buffer of per-mesh object-to-world matrices.
     VkBufferCreateInfo o2w_buffer_ci = {};
     o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(mathfu::mat4);
+    o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(glm::mat4);
     o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
@@ -141,37 +138,36 @@ public:
     seconds_elapsed_ += dt;
 
     // Update camera
-    mathfu::vec3 camera_accel_dir(0, 0, 0);
+    glm::vec3 camera_accel_dir(0, 0, 0);
     const float CAMERA_ACCEL_MAG = 100.0f, CAMERA_TURN_SPEED = 0.001f;
     if (input_state_.GetDigital(InputState::DIGITAL_LPAD_UP)) {
       camera_accel_dir += camera_->getViewDirection();
     }
     if (input_state_.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
-      mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
+      glm::vec3 viewRight = camera_->getOrientation() * glm::vec3(1, 0, 0);
       camera_accel_dir -= viewRight;
     }
     if (input_state_.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
       camera_accel_dir -= camera_->getViewDirection();
     }
     if (input_state_.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
-      mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
+      glm::vec3 viewRight = camera_->getOrientation() * glm::vec3(1, 0, 0);
       camera_accel_dir += viewRight;
     }
     if (input_state_.GetDigital(InputState::DIGITAL_RPAD_LEFT)) {
-      mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
+      glm::vec3 viewUp = camera_->getOrientation() * glm::vec3(0, 1, 0);
       camera_accel_dir -= viewUp;
     }
     if (input_state_.GetDigital(InputState::DIGITAL_RPAD_DOWN)) {
-      mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
+      glm::vec3 viewUp = camera_->getOrientation() * glm::vec3(0, 1, 0);
       camera_accel_dir += viewUp;
     }
-    mathfu::vec3 camera_accel = (camera_accel_dir.LengthSquared() > 0)
-        ? camera_accel_dir.Normalized() * CAMERA_ACCEL_MAG
-        : mathfu::vec3(0, 0, 0);
+    glm::vec3 camera_accel =
+        (glm::length2(camera_accel_dir) > 0) ? glm::normalize(camera_accel_dir) * CAMERA_ACCEL_MAG : glm::vec3(0, 0, 0);
 
     // Update camera based on acceleration vector and mouse delta
-    mathfu::vec3 camera_eulers = camera_->getEulersYPR() +
-        mathfu::vec3(-CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
+    glm::vec3 camera_eulers = camera_->getEulersYPR() +
+        glm::vec3(-CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
             -CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_X), 0);
     if (camera_eulers[0] >= float(M_PI_2 - 0.01f)) {
       camera_eulers[0] = float(M_PI_2 - 0.01f);
@@ -179,35 +175,34 @@ public:
       camera_eulers[0] = float(-M_PI_2 + 0.01f);
     }
     camera_eulers[2] = 0;  // disallow roll
-    camera_->setOrientation(mathfu::quat::FromEulerAngles(camera_eulers));
+    camera_->setOrientation(glm::quat(camera_eulers));
     dolly_->Update(camera_accel, (float)dt);
 
     // Update uniforms
     SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
     uniforms->time_and_res =
-        mathfu::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-    uniforms->eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-    mathfu::mat4 w2v = camera_->getViewMatrix();
-    const mathfu::mat4 proj = camera_->getProjectionMatrix();
+        glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+    uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
+    glm::mat4 w2v = camera_->getViewMatrix();
+    const glm::mat4 proj = camera_->getProjectionMatrix();
     uniforms->viewproj = proj * w2v;
     scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
     // Update object-to-world matrices.
     const float secs = (float)seconds_elapsed_;
     MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
-    const mathfu::vec3 swarm_center(0, 0, -2);
+    const glm::vec3 swarm_center(0, 0, -2);
     for (uint32_t iMesh = 0; iMesh < MESH_INSTANCE_COUNT; ++iMesh) {
       // clang-format off
-      mathfu::quat q = mathfu::quat::FromAngleAxis(secs + (float)iMesh, mathfu::vec3(1,2,3).Normalized());
-      mesh_uniforms->o2w[iMesh] = mathfu::mat4::Identity()
-        * mathfu::mat4::FromTranslationVector(mathfu::vec3(
+      mesh_uniforms->o2w[iMesh] = ComposeTransform(
+        glm::vec3(
           40.0f * cosf(0.2f * secs + float(9*iMesh) + 0.4f) + swarm_center[0],
           20.5f * sinf(0.3f * secs + float(11*iMesh) + 5.0f) + swarm_center[1],
-          30.0f * sinf(0.5f * secs + float(13*iMesh) + 2.0f) + swarm_center[2]
-        ))
-        * q.ToMatrix4()
-        * mathfu::mat4::FromScaleVector( mathfu::vec3(3.0f, 3.0f, 3.0f) )
-        ;
+          30.0f * sinf(0.5f * secs + float(13*iMesh) + 2.0f) + swarm_center[2]),
+        glm::angleAxis(
+          secs + (float)iMesh,
+          glm::normalize(glm::vec3(1,2,3))),
+        3.0f);
       // clang-format on
     }
     mesh_uniforms_.FlushPframeHostCache(pframe_index_);

@@ -59,6 +59,7 @@ SET(SPOKK_HEADERS
     src/spokk/spokk_device.h
     src/spokk/spokk_image.h
     src/spokk/spokk_input.h
+    src/spokk/spokk_math.h
     src/spokk/spokk_memory.h
     src/spokk/spokk_mesh.h
     src/spokk/spokk_pipeline.h
@@ -76,6 +77,7 @@ SET(SPOKK_SOURCES
     src/spokk/spokk_device.cpp
     src/spokk/spokk_image.cpp
     src/spokk/spokk_input.cpp
+    src/spokk/spokk_math.cpp
     src/spokk/spokk_memory.cpp
     src/spokk/spokk_mesh.cpp
     src/spokk/spokk_pipeline.cpp
@@ -89,6 +91,7 @@ SOURCE_GROUP("" FILES ${SPOKK_HEADERS} ${SPOKK_SOURCES})
 ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC ${SPOKK_SOURCES} ${SPOKK_HEADERS})
 TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} spirv-cross-cpp ${libs} ${VULKAN_LIBRARY})
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
+    "third_party/glm"
     "third_party"
     ${VULKAN_INCLUDE_DIR}
     "src/spokk"
@@ -129,7 +132,6 @@ FUNCTION (SPOKK_ADD_EXECUTABLE APP_TARGET)
     SET_TARGET_PROPERTIES(${APP_TARGET} PROPERTIES FOLDER "samples")
 
     ADD_DEPENDENCIES(${APP_TARGET} build-assets)
-    mathfu_configure_flags(${APP_TARGET})
 ENDFUNCTION(SPOKK_ADD_EXECUTABLE APP_TARGET)
 
 # spokk-cubeswarm

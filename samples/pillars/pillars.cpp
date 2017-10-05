@@ -4,9 +4,6 @@ using namespace spokk;
 #include <common/camera.h>
 #include <common/cube_mesh.h>
 
-#include <mathfu/glsl_mappings.h>
-#include <mathfu/vector.h>
-
 #include <array>
 #include <cstdio>
 #include <cstring>
@@ -14,9 +11,9 @@ using namespace spokk;
 
 namespace {
 struct SceneUniforms {
-  mathfu::vec4_packed time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
-  mathfu::vec4_packed eye;  // xyz: eye position
-  mathfu::mat4 viewproj;
+  glm::vec4 time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
+  glm::vec4 eye;  // xyz: eye position
+  glm::mat4 viewproj;
 };
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
@@ -83,13 +80,13 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   seconds_elapsed_ = 0;
 
   camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
-  const mathfu::vec3 initial_camera_pos(HEIGHTFIELD_DIMX / 2, 2.0f, HEIGHTFIELD_DIMY / 2);
-  const mathfu::vec3 initial_camera_target(0, 0, 0);
-  const mathfu::vec3 initial_camera_up(0, 1, 0);
+  const glm::vec3 initial_camera_pos(HEIGHTFIELD_DIMX / 2, 2.0f, HEIGHTFIELD_DIMY / 2);
+  const glm::vec3 initial_camera_target(0, 0, 0);
+  const glm::vec3 initial_camera_up(0, 1, 0);
   camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
   dolly_ = my_make_unique<CameraDolly>(*camera_);
-  dolly_->SetBounds(mathfu::vec3(VISIBLE_RADIUS, 1, VISIBLE_RADIUS),
-      mathfu::vec3(HEIGHTFIELD_DIMX - VISIBLE_RADIUS - 1, 30, HEIGHTFIELD_DIMY - VISIBLE_RADIUS - 1));
+  dolly_->SetBounds(glm::vec3(VISIBLE_RADIUS, 1, VISIBLE_RADIUS),
+      glm::vec3(HEIGHTFIELD_DIMX - VISIBLE_RADIUS - 1, 30, HEIGHTFIELD_DIMY - VISIBLE_RADIUS - 1));
 
   // Create render pass
   render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
@@ -257,37 +254,36 @@ void PillarsApp::Update(double dt) {
   seconds_elapsed_ += dt;
 
   // Update camera
-  mathfu::vec3 camera_accel_dir(0, 0, 0);
+  glm::vec3 camera_accel_dir(0, 0, 0);
   const float CAMERA_ACCEL_MAG = 100.0f, CAMERA_TURN_SPEED = 0.001f;
   if (input_state_.GetDigital(InputState::DIGITAL_LPAD_UP)) {
     camera_accel_dir += camera_->getViewDirection();
   }
   if (input_state_.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
-    mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
+    glm::vec3 viewRight = camera_->getOrientation() * glm::vec3(1, 0, 0);
     camera_accel_dir -= viewRight;
   }
   if (input_state_.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
     camera_accel_dir -= camera_->getViewDirection();
   }
   if (input_state_.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
-    mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
+    glm::vec3 viewRight = camera_->getOrientation() * glm::vec3(1, 0, 0);
     camera_accel_dir += viewRight;
   }
   if (input_state_.GetDigital(InputState::DIGITAL_RPAD_LEFT)) {
-    mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
+    glm::vec3 viewUp = camera_->getOrientation() * glm::vec3(0, 1, 0);
     camera_accel_dir -= viewUp;
   }
   if (input_state_.GetDigital(InputState::DIGITAL_RPAD_DOWN)) {
-    mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
+    glm::vec3 viewUp = camera_->getOrientation() * glm::vec3(0, 1, 0);
     camera_accel_dir += viewUp;
   }
-  mathfu::vec3 camera_accel = (camera_accel_dir.LengthSquared() > 0)
-    ? camera_accel_dir.Normalized() * CAMERA_ACCEL_MAG
-    : mathfu::vec3(0, 0, 0);
+  glm::vec3 camera_accel =
+    (glm::length2(camera_accel_dir) > 0) ? glm::normalize(camera_accel_dir) * CAMERA_ACCEL_MAG : glm::vec3(0, 0, 0);
 
   // Update camera based on acceleration vector and mouse delta
-  mathfu::vec3 camera_eulers = camera_->getEulersYPR() +
-    mathfu::vec3(-CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
+  glm::vec3 camera_eulers = camera_->getEulersYPR() +
+    glm::vec3(-CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
       -CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_X), 0);
   if (camera_eulers[0] >= float(M_PI_2 - 0.01f)) {
     camera_eulers[0] = float(M_PI_2 - 0.01f);
@@ -295,16 +291,16 @@ void PillarsApp::Update(double dt) {
     camera_eulers[0] = float(-M_PI_2 + 0.01f);
   }
   camera_eulers[2] = 0;  // disallow roll
-  camera_->setOrientation(mathfu::quat::FromEulerAngles(camera_eulers));
+  camera_->setOrientation(glm::quat(camera_eulers));
   dolly_->Update(camera_accel, (float)dt);
 
   // Update uniforms
   SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
   uniforms->time_and_res =
-      mathfu::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-  uniforms->eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-  mathfu::mat4 w2v = camera_->getViewMatrix();
-  const mathfu::mat4 proj = camera_->getProjectionMatrix();
+      glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+  uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
+  glm::mat4 w2v = camera_->getViewMatrix();
+  const glm::mat4 proj = camera_->getProjectionMatrix();
   uniforms->viewproj = proj * w2v;
   scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
