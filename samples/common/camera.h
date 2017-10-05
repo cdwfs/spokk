@@ -286,20 +286,30 @@ class CameraStereo : public CameraPersp {
     float			mEyeSeparation;
 };
 
-// Just a quick hacked-up "physical" representation of a Camera -- it has momentum,
-// it can be pushed around, and can be constrained to move within an AABB.
-class CameraDolly
-{
+namespace spokk {
+class InputState;
+}  // namespace spokk
+
+// Just a quick hacked-up "physical" representation of an object that you steer around with a Camera on it.
+// It can be steered around by the user (controls are currently hard-coded to WASD+mouse)
+// It only supports 360-degree yaw and 180-degree pitch rotation (like an FPS camera -- no vertical flips, no rolls)
+// It has some momentum.
+// It can be constrained to stay within an AABB.
+// It has NO conception of colliding with anything in the scene.
+// It has NO concept of gravity.
+// It can't be scripted.
+// It is a total placeholder until I need something better.
+class CameraDrone {
 public:
-  explicit CameraDolly(Camera &cam) :
+  explicit CameraDrone(Camera &cam) :
       camera_(cam),
       velocity_(0,0,0),
       drag_coeff_(0.5f),
       pos_min_(-FLT_MAX, -FLT_MAX, -FLT_MAX),
       pos_max_(FLT_MAX, FLT_MAX, FLT_MAX) {
   }
-  ~CameraDolly() = default;
-  CameraDolly& operator=(const CameraDolly&) = delete;
+  ~CameraDrone() = default;
+  CameraDrone& operator=(const CameraDrone&) = delete;
 
   // If SetBounds() isn't called, the default bounds are +/-FLT_MAX.
   void SetBounds(glm::vec3 aabb_min, glm::vec3 aabb_max) {
@@ -308,7 +318,7 @@ public:
   }
   Camera& GetCamera() { return camera_; }
   const Camera& GetCamera() const { return camera_; }
-  void Update(glm::vec3 accel, float dt);
+  void Update(const spokk::InputState& input_state, float dt);
 
 private:
   Camera& camera_;

@@ -71,7 +71,7 @@ private:
   std::array<float, HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY> heightfield_;
 
   std::unique_ptr<CameraPersp> camera_;
-  std::unique_ptr<CameraDolly> dolly_;
+  std::unique_ptr<CameraDrone> drone_;
 };
 
 PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
@@ -84,8 +84,8 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   const glm::vec3 initial_camera_target(0, 0, 0);
   const glm::vec3 initial_camera_up(0, 1, 0);
   camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
-  dolly_ = my_make_unique<CameraDolly>(*camera_);
-  dolly_->SetBounds(glm::vec3(VISIBLE_RADIUS, 1, VISIBLE_RADIUS),
+  drone_ = my_make_unique<CameraDrone>(*camera_);
+  drone_->SetBounds(glm::vec3(VISIBLE_RADIUS, 1, VISIBLE_RADIUS),
       glm::vec3(HEIGHTFIELD_DIMX - VISIBLE_RADIUS - 1, 30, HEIGHTFIELD_DIMY - VISIBLE_RADIUS - 1));
 
   // Create render pass
@@ -253,46 +253,7 @@ void PillarsApp::Update(double dt) {
   Application::Update(dt);
   seconds_elapsed_ += dt;
 
-  // Update camera
-  glm::vec3 camera_accel_dir(0, 0, 0);
-  const float CAMERA_ACCEL_MAG = 100.0f, CAMERA_TURN_SPEED = 0.001f;
-  if (input_state_.GetDigital(InputState::DIGITAL_LPAD_UP)) {
-    camera_accel_dir += camera_->getViewDirection();
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
-    glm::vec3 viewRight = camera_->getOrientation() * glm::vec3(1, 0, 0);
-    camera_accel_dir -= viewRight;
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
-    camera_accel_dir -= camera_->getViewDirection();
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
-    glm::vec3 viewRight = camera_->getOrientation() * glm::vec3(1, 0, 0);
-    camera_accel_dir += viewRight;
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_RPAD_LEFT)) {
-    glm::vec3 viewUp = camera_->getOrientation() * glm::vec3(0, 1, 0);
-    camera_accel_dir -= viewUp;
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_RPAD_DOWN)) {
-    glm::vec3 viewUp = camera_->getOrientation() * glm::vec3(0, 1, 0);
-    camera_accel_dir += viewUp;
-  }
-  glm::vec3 camera_accel =
-    (glm::length2(camera_accel_dir) > 0) ? glm::normalize(camera_accel_dir) * CAMERA_ACCEL_MAG : glm::vec3(0, 0, 0);
-
-  // Update camera based on acceleration vector and mouse delta
-  glm::vec3 camera_eulers = camera_->getEulersYPR() +
-    glm::vec3(-CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
-      -CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_X), 0);
-  if (camera_eulers[0] >= float(M_PI_2 - 0.01f)) {
-    camera_eulers[0] = float(M_PI_2 - 0.01f);
-  } else if (camera_eulers[0] <= float(-M_PI_2 + 0.01f)) {
-    camera_eulers[0] = float(-M_PI_2 + 0.01f);
-  }
-  camera_eulers[2] = 0;  // disallow roll
-  camera_->setOrientation(glm::quat(camera_eulers));
-  dolly_->Update(camera_accel, (float)dt);
+  drone_->Update(input_state_, (float)dt);
 
   // Update uniforms
   SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);

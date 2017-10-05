@@ -685,11 +685,53 @@ void CameraStereo::calcProjection() const
 
 ////////////////////
 
-void CameraDolly::Update(glm::vec3 accel, float dt) {
+#include <spokk_input.h>
+
+void CameraDrone::Update(const spokk::InputState& input_state, float dt) {
+  // Update camera
+  glm::vec3 camera_accel_dir(0, 0, 0);
+  const float CAMERA_ACCEL_MAG = 100.0f, CAMERA_TURN_SPEED = 0.001f;
+  if (input_state.GetDigital(spokk::InputState::DIGITAL_LPAD_UP)) {
+    camera_accel_dir += camera_.getViewDirection();
+  }
+  if (input_state.GetDigital(spokk::InputState::DIGITAL_LPAD_LEFT)) {
+    glm::vec3 viewRight = camera_.getOrientation() * glm::vec3(1, 0, 0);
+    camera_accel_dir -= viewRight;
+  }
+  if (input_state.GetDigital(spokk::InputState::DIGITAL_LPAD_DOWN)) {
+    camera_accel_dir -= camera_.getViewDirection();
+  }
+  if (input_state.GetDigital(spokk::InputState::DIGITAL_LPAD_RIGHT)) {
+    glm::vec3 viewRight = camera_.getOrientation() * glm::vec3(1, 0, 0);
+    camera_accel_dir += viewRight;
+  }
+  if (input_state.GetDigital(spokk::InputState::DIGITAL_RPAD_LEFT)) {
+    glm::vec3 viewUp = camera_.getOrientation() * glm::vec3(0, 1, 0);
+    camera_accel_dir -= viewUp;
+  }
+  if (input_state.GetDigital(spokk::InputState::DIGITAL_RPAD_DOWN)) {
+    glm::vec3 viewUp = camera_.getOrientation() * glm::vec3(0, 1, 0);
+    camera_accel_dir += viewUp;
+  }
+  glm::vec3 camera_accel =
+    (glm::length2(camera_accel_dir) > 0) ? glm::normalize(camera_accel_dir) * CAMERA_ACCEL_MAG : glm::vec3(0, 0, 0);
+
+  // Update camera based on acceleration vector and mouse delta
+  glm::vec3 camera_eulers = camera_.getEulersYPR() +
+    glm::vec3(-CAMERA_TURN_SPEED * input_state.GetAnalogDelta(spokk::InputState::ANALOG_MOUSE_Y),
+      -CAMERA_TURN_SPEED * input_state.GetAnalogDelta(spokk::InputState::ANALOG_MOUSE_X), 0);
+  if (camera_eulers[0] >= float(M_PI_2 - 0.01f)) {
+    camera_eulers[0] = float(M_PI_2 - 0.01f);
+  } else if (camera_eulers[0] <= float(-M_PI_2 + 0.01f)) {
+    camera_eulers[0] = float(-M_PI_2 + 0.01f);
+  }
+  camera_eulers[2] = 0;  // disallow roll
+  camera_.setOrientation(glm::quat(camera_eulers));
+
   glm::vec3 vel_dir = (glm::length2(velocity_) > 0) ? glm::normalize(velocity_) : glm::vec3(0,0,0);
   // TODO(cort): would love to define drag in terms of something intuitive like max_velocity
   glm::vec3 drag = drag_coeff_ * glm::length2(velocity_) * -vel_dir;
-  glm::vec3 accel_final = accel + drag;
+  glm::vec3 accel_final = camera_accel + drag;
 
   glm::vec3 new_eye = ((0.5f * accel_final * dt) + velocity_) * dt + camera_.getEyePoint();
   new_eye = glm::max(new_eye, pos_min_);
@@ -699,7 +741,7 @@ void CameraDolly::Update(glm::vec3 accel, float dt) {
   velocity_ += accel_final * dt;
   // Totally non-physical constant deceleration if not actively accelerating.
   float speed = glm::length(velocity_);
-  if (glm::length2(accel) == 0 && speed > 0) {
+  if (glm::length2(camera_accel) == 0 && speed > 0) {
     const float idle_decel = -8.0f;
     float new_speed = std::max(speed + idle_decel*dt, 0.0f);
     velocity_ *= new_speed / speed;
