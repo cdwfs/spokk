@@ -5,6 +5,7 @@
 #include "spokk_debug.h"
 #include "spokk_device.h"
 #include "spokk_image.h"
+#include "spokk_input.h"
 #include "spokk_memory.h"
 #include "spokk_mesh.h"
 #include "spokk_pipeline.h"
