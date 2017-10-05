@@ -451,6 +451,7 @@ int TextRenderer::Create(const Device &device, const CreateInfo &ci) {
   target_attachment_state.colorBlendOp = VK_BLEND_OP_ADD;
   target_attachment_state.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
   target_attachment_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+  pipeline_settings.rasterization_state_ci.cullMode = VK_CULL_MODE_NONE;
   SPOKK_VK_CHECK(pipeline_settings.Finalize(device));
   pipeline_ = pipeline_settings.handle;
 
@@ -530,7 +531,7 @@ int TextRenderer::BindDrawState(VkCommandBuffer cb, const State &state) {
   uniforms->viewport_to_clip[0] = 2.0f / state.viewport.width;
   uniforms->viewport_to_clip[1] = 2.0f / state.viewport.height;  // TODO(cort): proper scale/bias
   uniforms->viewport_to_clip[2] = -1.0f;
-  uniforms->viewport_to_clip[3] = -1.0f;
+  uniforms->viewport_to_clip[3] = (state.viewport.height < 0) ? +1.0f : -1.0f;
   uniform_buffers_.FlushPframeHostCache(state.pframe_index, uniform_offset, uniform_buffer_stride_);
   // Bind the pipeline and the appropriate descriptor sets
   vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);

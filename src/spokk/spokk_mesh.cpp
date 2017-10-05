@@ -134,8 +134,7 @@ void Mesh::Destroy(const Device& device) {
   index_count = 0;
 }
 
-void Mesh::BindBuffersAndDraw(VkCommandBuffer cb, uint32_t index_cnt, uint32_t instance_cnt, uint32_t first_index,
-    uint32_t vertex_offset, uint32_t first_instance) const {
+void Mesh::BindBuffers(VkCommandBuffer cb) const {
   ZOMBO_ASSERT((uint32_t)vertex_buffers.size() == mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount,
       "Mesh's vertex buffer count (%u) does not match count in MeshFormat (%u)", (uint32_t)vertex_buffers.size(),
       mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount);
@@ -145,7 +144,6 @@ void Mesh::BindBuffersAndDraw(VkCommandBuffer cb, uint32_t index_cnt, uint32_t i
         cb, mesh_format.vertex_buffer_bindings[i].binding, 1, &handle, &vertex_buffer_byte_offsets[i]);
   }
   vkCmdBindIndexBuffer(cb, index_buffer.Handle(), index_buffer_byte_offset, index_type);
-  vkCmdDrawIndexed(cb, index_cnt, instance_cnt, first_index, vertex_offset, first_instance);
 }
 
 ////////////////////////////

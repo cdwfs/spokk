@@ -17,6 +17,9 @@ OPTION(GLFW_INSTALL "Generate installation target" OFF)
 OPTION(USE_MSVC_RUNTIME_LIBRARY_DLL "Use MSVC runtime library DLL" ON)
 ADD_SUBDIRECTORY(glfw)
 
+# GLM
+# Nothing to do here if not building self-tests
+
 # assimp
 OPTION(ASSIMP_BUILD_ASSIMP_TOOLS "If the supplementary tools for Assimp are built in addition to the library." OFF)
 OPTION(ASSIMP_BUILD_TESTS "If the test suite for Assimp is built in addition to the library." OFF)
@@ -53,14 +56,6 @@ SET(SPIRV_CROSS_TARGETS
     spirv-cross
 )
 SET_TARGET_PROPERTIES(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
-
-# fplutil (dependency of mathfu). This also implicitly sets the location of vectorial.
-SET(dependencies_fplutil_dir ${CMAKE_CURRENT_SOURCE_DIR}/fplutil CACHE PATH "base directory of fplutil repository" FORCE)
-# Mathfu
-SET(mathfu_build_benchmarks OFF CACHE BOOL "")
-SET(mathfu_build_tests OFF CACHE BOOL "")
-SET(mathfu_enable_simd ON CACHE BOOL "")
-ADD_SUBDIRECTORY(mathfu)
 
 # shaderc
 SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
