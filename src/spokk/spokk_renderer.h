@@ -1,15 +1,14 @@
 #include "spokk_device.h"
+#include "spokk_math.h"
 #include "spokk_mesh.h"
 #include "spokk_pipeline.h"
-
-#include <mathfu/glsl_mappings.h>
 
 namespace spokk {
 
 struct Transform {
-  mathfu::vec3 pos;
+  glm::vec3 pos;
   float scale;
-  mathfu::quat orientation;
+  glm::quat orientation;
 };
 
 class Material {
@@ -42,8 +41,7 @@ public:
   MeshInstance* CreateInstance(const Mesh* mesh, const Material* material);
   // ignore DeleteInstance for now
 
-  void RenderView(
-      VkCommandBuffer cb, const mathfu::mat4& view, const mathfu::mat4& proj, const mathfu::vec4& time_and_res);
+  void RenderView(VkCommandBuffer cb, const glm::mat4& view, const glm::mat4& proj, const glm::vec4& time_and_res);
 
   const std::vector<DescriptorSetLayoutInfo> GetCommonDescriptorSetLayoutInfos(void) const {
     DescriptorSetLayoutInfo empty_material_layout = {};

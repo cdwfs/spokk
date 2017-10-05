@@ -1,9 +1,6 @@
 #include <spokk.h>
 using namespace spokk;
 
-#include <mathfu/glsl_mappings.h>
-#include <mathfu/vector.h>
-
 #include <array>
 #include <cstdio>
 

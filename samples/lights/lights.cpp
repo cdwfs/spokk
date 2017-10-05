@@ -4,16 +4,13 @@ using namespace spokk;
 #include <common/camera.h>
 #include <common/cube_mesh.h>
 
-#include <mathfu/glsl_mappings.h>
-#include <mathfu/vector.h>
-
 #include <array>
 #include <cstdio>
 #include <memory>
 
 namespace {
 struct MeshUniforms {
-  mathfu::mat4 o2w;
+  glm::mat4 o2w;
 };
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
@@ -29,11 +26,11 @@ public:
 
     camera_ =
         my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
-    const mathfu::vec3 initial_camera_pos(-1, 0, 6);
-    const mathfu::vec3 initial_camera_target(0, 0, 0);
-    const mathfu::vec3 initial_camera_up(0, 1, 0);
+    const glm::vec3 initial_camera_pos(-1, 0, 6);
+    const glm::vec3 initial_camera_target(0, 0, 0);
+    const glm::vec3 initial_camera_up(0, 1, 0);
     camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
-    dolly_ = my_make_unique<CameraDolly>(*camera_);
+    drone_ = my_make_unique<CameraDrone>(*camera_);
 
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
@@ -94,7 +91,7 @@ public:
     // Create pipelined buffer of mesh uniforms
     VkBufferCreateInfo mesh_uniforms_ci = {};
     mesh_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    mesh_uniforms_ci.size = sizeof(mathfu::mat4);
+    mesh_uniforms_ci.size = sizeof(glm::mat4);
     mesh_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     mesh_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(
@@ -169,75 +166,28 @@ public:
     Application::Update(dt);
     seconds_elapsed_ += dt;
 
-    // Update camera
-    mathfu::vec3 camera_accel_dir(0, 0, 0);
-    const float CAMERA_ACCEL_MAG = 100.0f, CAMERA_TURN_SPEED = 0.001f;
-    if (input_state_.GetDigital(InputState::DIGITAL_LPAD_UP)) {
-      camera_accel_dir += camera_->getViewDirection();
-    }
-    if (input_state_.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
-      mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
-      camera_accel_dir -= viewRight;
-    }
-    if (input_state_.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
-      camera_accel_dir -= camera_->getViewDirection();
-    }
-    if (input_state_.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
-      mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
-      camera_accel_dir += viewRight;
-    }
-    if (input_state_.GetDigital(InputState::DIGITAL_RPAD_LEFT)) {
-      mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
-      camera_accel_dir -= viewUp;
-    }
-    if (input_state_.GetDigital(InputState::DIGITAL_RPAD_DOWN)) {
-      mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
-      camera_accel_dir += viewUp;
-    }
-    mathfu::vec3 camera_accel = (camera_accel_dir.LengthSquared() > 0)
-      ? camera_accel_dir.Normalized() * CAMERA_ACCEL_MAG
-      : mathfu::vec3(0, 0, 0);
-
-    // Update camera based on acceleration vector and mouse delta
-    mathfu::vec3 camera_eulers = camera_->getEulersYPR() +
-      mathfu::vec3(-CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
-        -CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_X), 0);
-    if (camera_eulers[0] >= float(M_PI_2 - 0.01f)) {
-      camera_eulers[0] = float(M_PI_2 - 0.01f);
-    } else if (camera_eulers[0] <= float(-M_PI_2 + 0.01f)) {
-      camera_eulers[0] = float(-M_PI_2 + 0.01f);
-    }
-    camera_eulers[2] = 0;  // disallow roll
-    camera_->setOrientation(mathfu::quat::FromEulerAngles(camera_eulers));
-    dolly_->Update(camera_accel, (float)dt);
+    drone_->Update(input_state_, (float)dt);
 
     // Update uniforms
     CameraConstants* camera_consts = (CameraConstants*)camera_constants_.Mapped(pframe_index_);
     camera_consts->time_and_res =
-        mathfu::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-    camera_consts->eye_pos_ws = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-    camera_consts->eye_dir_wsn = mathfu::vec4(camera_->getViewDirection().Normalized(), 1.0f);
-    const mathfu::mat4 view = camera_->getViewMatrix();
-    const mathfu::mat4 proj = camera_->getProjectionMatrix();
-    const mathfu::mat4 view_proj = proj * view;
+        glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+    camera_consts->eye_pos_ws = glm::vec4(camera_->getEyePoint(), 1.0f);
+    camera_consts->eye_dir_wsn = glm::normalize(glm::vec4(camera_->getViewDirection(), 1.0f));
+    const glm::mat4 view = camera_->getViewMatrix();
+    const glm::mat4 proj = camera_->getProjectionMatrix();
+    const glm::mat4 view_proj = proj * view;
     camera_consts->view_proj = view_proj;
     camera_consts->view = view;
     camera_consts->proj = proj;
-    camera_consts->view_proj_inv = view_proj.Inverse();
-    camera_consts->view_inv = view.Inverse();
-    camera_consts->proj_inv = proj.Inverse();
+    camera_consts->view_proj_inv = glm::inverse(view_proj);
+    camera_consts->view_inv = glm::inverse(view);
+    camera_consts->proj_inv = glm::inverse(proj);
     camera_constants_.FlushPframeHostCache(pframe_index_);
 
     // Update mesh uniforms
-    // clang-format off
-    mathfu::quat q = mathfu::quat::identity;
     MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
-    mesh_uniforms->o2w = mathfu::mat4::Identity()
-      * mathfu::mat4::FromTranslationVector(mathfu::vec3(0.0f, 0.0f, 0.0f))
-      * q.ToMatrix4()
-      * mathfu::mat4::FromScaleVector( mathfu::vec3(5.0f, 5.0f, 5.0f) )
-      ;
-    // clang-format on
+    mesh_uniforms->o2w = ComposeTransform(glm::vec3(0.0f, 0.0f, 0.0f),glm::quat_identity<float,glm::highp>(), 5.0f);
     mesh_uniforms_.FlushPframeHostCache(pframe_index_);
   }
 
@@ -331,7 +281,7 @@ private:
   PipelinedBuffer camera_constants_;
 
   std::unique_ptr<CameraPersp> camera_;
-  std::unique_ptr<CameraDolly> dolly_;
+  std::unique_ptr<CameraDrone> drone_;
 };
 
 int main(int argc, char* argv[]) {

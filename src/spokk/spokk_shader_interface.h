@@ -17,11 +17,11 @@
 #define SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD3   13
 // clang-format on
 
-
 #ifdef __cplusplus
-#include <mathfu/glsl_mappings.h>
-#define SPOKK_MAT4(var_name) mathfu::mat4 var_name
-#define SPOKK_VEC4(var_name) mathfu::vec4 var_name
+#include <glm/vec4.hpp>
+#include <glm/mat4x4.hpp>
+#define SPOKK_MAT4(var_name) glm::mat4 var_name
+#define SPOKK_VEC4(var_name) glm::vec4 var_name
 #else
 #define SPOKK_MAT4(var_name) mat4 var_name
 #define SPOKK_VEC4(var_name) vec4 var_name

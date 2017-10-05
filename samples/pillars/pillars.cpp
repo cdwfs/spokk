@@ -4,9 +4,6 @@ using namespace spokk;
 #include <common/camera.h>
 #include <common/cube_mesh.h>
 
-#include <mathfu/glsl_mappings.h>
-#include <mathfu/vector.h>
-
 #include <array>
 #include <cstdio>
 #include <cstring>
@@ -69,7 +66,7 @@ private:
   std::array<float, HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY> heightfield_;
 
   std::unique_ptr<CameraPersp> camera_;
-  std::unique_ptr<CameraDolly> dolly_;
+  std::unique_ptr<CameraDrone> drone_;
 };
 
 PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
@@ -78,13 +75,13 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   seconds_elapsed_ = 0;
 
   camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
-  const mathfu::vec3 initial_camera_pos(HEIGHTFIELD_DIMX / 2, 2.0f, HEIGHTFIELD_DIMY / 2);
-  const mathfu::vec3 initial_camera_target(0, 0, 0);
-  const mathfu::vec3 initial_camera_up(0, 1, 0);
+  const glm::vec3 initial_camera_pos(HEIGHTFIELD_DIMX / 2, 2.0f, HEIGHTFIELD_DIMY / 2);
+  const glm::vec3 initial_camera_target(0, 0, 0);
+  const glm::vec3 initial_camera_up(0, 1, 0);
   camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
-  dolly_ = my_make_unique<CameraDolly>(*camera_);
-  dolly_->SetBounds(mathfu::vec3(VISIBLE_RADIUS, 1, VISIBLE_RADIUS),
-      mathfu::vec3(HEIGHTFIELD_DIMX - VISIBLE_RADIUS - 1, 30, HEIGHTFIELD_DIMY - VISIBLE_RADIUS - 1));
+  drone_ = my_make_unique<CameraDrone>(*camera_);
+  drone_->SetBounds(glm::vec3(VISIBLE_RADIUS, 1, VISIBLE_RADIUS),
+      glm::vec3(HEIGHTFIELD_DIMX - VISIBLE_RADIUS - 1, 30, HEIGHTFIELD_DIMY - VISIBLE_RADIUS - 1));
 
   // Create render pass
   render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
@@ -251,54 +248,14 @@ void PillarsApp::Update(double dt) {
   Application::Update(dt);
   seconds_elapsed_ += dt;
 
-  // Update camera
-  mathfu::vec3 camera_accel_dir(0, 0, 0);
-  const float CAMERA_ACCEL_MAG = 100.0f, CAMERA_TURN_SPEED = 0.001f;
-  if (input_state_.GetDigital(InputState::DIGITAL_LPAD_UP)) {
-    camera_accel_dir += camera_->getViewDirection();
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
-    mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
-    camera_accel_dir -= viewRight;
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
-    camera_accel_dir -= camera_->getViewDirection();
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
-    mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
-    camera_accel_dir += viewRight;
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_RPAD_LEFT)) {
-    mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
-    camera_accel_dir -= viewUp;
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_RPAD_DOWN)) {
-    mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
-    camera_accel_dir += viewUp;
-  }
-  mathfu::vec3 camera_accel = (camera_accel_dir.LengthSquared() > 0)
-    ? camera_accel_dir.Normalized() * CAMERA_ACCEL_MAG
-    : mathfu::vec3(0, 0, 0);
-
-  // Update camera based on acceleration vector and mouse delta
-  mathfu::vec3 camera_eulers = camera_->getEulersYPR() +
-    mathfu::vec3(-CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
-      -CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_X), 0);
-  if (camera_eulers[0] >= float(M_PI_2 - 0.01f)) {
-    camera_eulers[0] = float(M_PI_2 - 0.01f);
-  } else if (camera_eulers[0] <= float(-M_PI_2 + 0.01f)) {
-    camera_eulers[0] = float(-M_PI_2 + 0.01f);
-  }
-  camera_eulers[2] = 0;  // disallow roll
-  camera_->setOrientation(mathfu::quat::FromEulerAngles(camera_eulers));
-  dolly_->Update(camera_accel, (float)dt);
+  drone_->Update(input_state_, (float)dt);
 
   // Update uniforms
   CameraConstants* camera_consts = (CameraConstants*)camera_constants_.Mapped(pframe_index_);
   camera_consts->time_and_res = { (float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0 };
-  camera_consts->eye_pos_ws = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-  mathfu::mat4 view = camera_->getViewMatrix();
-  const mathfu::mat4 proj = camera_->getProjectionMatrix();
+  camera_consts->eye_pos_ws = glm::vec4(camera_->getEyePoint(), 1.0f);
+  glm::mat4 view = camera_->getViewMatrix();
+  const glm::mat4 proj = camera_->getProjectionMatrix();
   camera_consts->view_proj = proj * view;
   camera_constants_.FlushPframeHostCache(pframe_index_);
 
