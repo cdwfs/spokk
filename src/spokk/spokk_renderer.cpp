@@ -4,12 +4,78 @@
 #include "spokk_platform.h"
 #include "spokk_shader_interface.h"
 
+/*
+- The world is full of instances.
+- A instance has a unique transform. The transform may be updated every simulation tick.
+- A instance references a (potentially shared) mesh and material.
+- A instance may be active or inactive. If inactive, it does not participate in any rendering.
+- instances are sorted by Material, then by ShaderProgram, then by Mesh. This sorting is stable across
+  frames, so may as well be done once up front. Ideally, the sorted list of instances is static;
+  adding/removing is handled by activating and deactivating.
+  - Why am I sorting by shader again? Probably a concession to D3D, where shaders are bound separately from
+    render state.
+  - How are mesh instances initially allocated? We can't sort them until we know each one's mesh/material.
+    - One idea: pre-allocate instance counts for each mesh/material pair at renderer init time. Then they
+      can be pre-sorted, and later allocated directly (and we know immediately if we exceed the quota for
+      a given mesh/material pair).
+    - Another idea: don't expose instance pointers. Access them through a handle. This has other benefits,
+      as it lets instances be stored as SOA rather than AOS without users needing to be aware of that. It does
+      mean operations on instances must be pretty formalized: set transform, get transform, anything else?
+- Once per simulation tick, the transforms of all active instances are baked into object-to-world matrices.
+  And maybe the inverse as well, if it's needed. This would be the time to do it.
+  - The object-to-world matrices are pipelined.
+  - This should be a compute shader.
+- The world's instances may be rendered from several different views over the course of a frame. Examples:
+  - stereo rendering for VR (render two views from different eye positions)
+  - dynamic cubemap generation (render six views from the same origin, pointing along each axis)
+  - shadow map generation (render one view from a light's point of view)
+  - deferred rendering (render the scene 1+ times from the same same, depending on the algorithm.
+    Depth pass, gbuffer pass, etc.
+- When rendering from a view:
+  - camera matrices are extracted, composed, and baked (view, proj, view_proj, inverses)
+  - frustum culling is performed on all active instances in world space, to generate a (smaller)
+    list of active visible instances for this view.
+    - Short term, this can be a no-op. All instances are visible in all views. yolo.
+    - Multiple views can compute visibility in parallel.
+    - This should be a compute shader.
+  - The active visible instances are now assigned indices in a compact array, maintaining sort order.
+  - Each instance's final transformation matrices are composed (world_view, world_view_proj, inverses).
+    in a compact array.
+    - This should be a compute shader.
+  - Descriptor sets for the instance-specific transform data need to be populated. Hrm.
+    - Rewrite instance dsets every frame with the correct offset into the transform buffer.
+      Only need a dset per draw call, not a dset per mesh. So, ranges of instances that can be rendered in
+      a single draw call are identified here. In fact, I guess this is where we build our draw call list.
+      - PROS: Plain old instanced draws can be used.
+      - CONS: dsets must be pipelined, but that's probably already necessary.
+              dsets must be rewritten every frame.
+  - Walk the draw call list.
+    - If it's a different material, bind it.
+    - If it's a new mesh, bind it.
+    - draw
+*/
+
+/*
+TODO:
+- transform composition as a compute shader. the inverse world matrix in particular is a killer on the CPU.
+  - This would be faster if the source transform data for all instances was contiguous in memory.
+- Sort out how to support instanced draws. Draw calls are still expensive, with validation enabled.
+  - The Material would need to be instancing-specific (accept an array of transform matrices, and use gl_InstanceIndex
+    to select one.
+  - Not all instances will be visible/active every frame. How to ensure the visible instances' final transforms are
+    contiguous in memory? Seems like a more dynamic mapping of MeshInstance -> transform is necessary.
+  - The descriptor set writer needs to know how large a range to bind from the instance const buffer. So, I guess
+    dsets can't be static either?
+  - Materials are still totally placeholder
+*/
+
 namespace {
 #if defined(ZOMBO_COMPILER_MSVC)
 #pragma float_control(precise, on, push)
 #endif
 glm::vec3 ExtractViewPos(const glm::mat4& view) {
-  glm::mat3 view_rot(view[0][0], view[0][1], view[0][2], view[1][0], view[1][1], view[1][2], view[2][0], view[2][1], view[2][2]);
+  glm::mat3 view_rot(
+      view[0][0], view[0][1], view[0][2], view[1][0], view[1][1], view[1][2], view[2][0], view[2][1], view[2][2]);
   glm::vec3 d(view[3][0], view[3][1], view[3][2]);
   return -d * view_rot;
 }
@@ -26,7 +92,7 @@ Renderer::~Renderer() {}
 int Renderer::Create(const Device& device, const CreateInfo& ci) {
   pframe_count_ = ci.pframe_count;
 
-  // technically, we can work with this, but let's be strict & not waste memory
+  // technically, we can work with this by padding out to this boundary, but let's be strict & not waste memory
   ZOMBO_ASSERT_RETURN((sizeof(InstanceTransforms) % device.Properties().limits.minUniformBufferOffsetAlignment) == 0,
       -1, "sizeof(InstanceTranforms) [%d] is not disibile by device's minUniformBufferOffsetAlignment [%d]",
       (int)sizeof(InstanceTransforms), (int)device.Properties().limits.minUniformBufferOffsetAlignment);
@@ -124,7 +190,7 @@ MeshInstance* Renderer::CreateInstance(const Mesh* mesh, const Material* materia
       instance_dsets_.begin() + pframe_count_ * index, instance_dsets_.begin() + pframe_count_ * (index + 1));
   instances_[index].is_active_ = true;
   instances_[index].transform_.pos = glm::vec3(0, 0, 0);
-  instances_[index].transform_.orientation = glm::quat_identity<float,glm::highp>();
+  instances_[index].transform_.orientation = glm::quat_identity<float, glm::highp>();
   instances_[index].transform_.scale = 1.0f;
   return &instances_[index];
 }
@@ -229,8 +295,6 @@ precondition: world transforms are baked
          - bind instance dset
          - vkCmdDraw
 TODO:
-- how to leverage instanced draws?
-  - Need to ensure all instances of a given mesh have contiguous constant buffers
 - how to avoid requiring MAX_NUM_VIEWS full copies of every resource in memory simultaneously?
   - ring buffers ahoy.
   - but it's not THAT awful, is it? 10000 instances is 2.5MB. How many views in a scene? 32?
