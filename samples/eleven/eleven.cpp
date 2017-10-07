@@ -81,6 +81,10 @@ private:
   D3D_FEATURE_LEVEL feature_level_ = D3D_FEATURE_LEVEL_11_0;
 };
 
+void MyGlfwErrorCallback(int error, const char* description) {
+  fprintf(stderr, "GLFW Error %d: %s\n", error, description);
+}
+
 class ElevenApp {
 public:
   struct CreateInfo {
@@ -111,19 +115,29 @@ private:
   DXGI_SWAP_CHAIN_DESC swapchain_desc_ = {};
   ID3D11RenderTargetView* back_buffer_rtv_ = {};
 
+  ID3D11Texture2D* depth_stencil_texture_ = nullptr;
+  ID3D10DepthStencilView* depth_stencil_dsv_ = nullptr;
+
   ID3D11VertexShader* shader_vs_ = nullptr;
   ID3D11PixelShader* shader_ps_ = nullptr;
 
   ID3D11RasterizerState* rasterizer_state_ = nullptr;
   ID3D11BlendState* blend_state_ = nullptr;
   ID3D11DepthStencilState* depth_stencil_state_ = nullptr;
+  ID3D11InputLayout* input_layout_ = nullptr;
+
+  ID3D11Buffer* mesh_index_buffer_ = nullptr;
+  ID3D11Buffer* mesh_vertex_buffer_ = nullptr;
+  ID3D11Buffer* mesh_constant_buffer_ = nullptr;
+  UINT mesh_vertex_count_ = 0;
+  UINT mesh_vertex_buffer_stride_ = 0;
+  UINT mesh_vertex_buffer_offset_ = 0;
+  UINT mesh_index_count_ = 0;
+  DXGI_FORMAT mesh_index_format_ = DXGI_FORMAT_UNKNOWN;
+  UINT mesh_index_buffer_offset_ = 0;
 
   uint32_t frame_index_ = 0;
 };
-
-void MyGlfwErrorCallback(int error, const char* description) {
-  fprintf(stderr, "GLFW Error %d: %s\n", error, description);
-}
 
 ElevenApp::ElevenApp(const CreateInfo& ci) {
   HRESULT hr = S_OK;
@@ -262,7 +276,51 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
   ZOMBO_ASSERT(ps_nbytes == ps_read_nbytes, "file I/O error while reading PS");
   SPOKK_HR_CHECK(device_.Logical()->CreatePixelShader(ps.data(), ps.size(), nullptr, &shader_ps_));
 
+  // Load some mesh data
+  const std::vector<uint16_t> mesh_indices = {
+      // clang-format off
+      0, 1, 2,
+      2, 1, 3,
+      // clang-format on
+  };
+  D3D11_SUBRESOURCE_DATA mesh_indices_data = {mesh_indices.data()};
+  D3D11_BUFFER_DESC index_buffer_desc = {};
+  index_buffer_desc.ByteWidth = (UINT)mesh_indices.size() * sizeof(mesh_indices[0]);
+  index_buffer_desc.Usage = D3D11_USAGE_IMMUTABLE;
+  index_buffer_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+  SPOKK_HR_CHECK(device_.Logical()->CreateBuffer(&index_buffer_desc, &mesh_indices_data, &mesh_index_buffer_));
+  mesh_index_count_ = (UINT)mesh_indices.size();
+  mesh_index_format_ = DXGI_FORMAT_R16_UINT;
+  mesh_index_buffer_offset_ = 0;
+
+  const std::vector<float> mesh_vertices = {
+      // clang-format off
+      -0.75f,-0.75f,0.0f,  0,0,  0,0,1,
+      +0.75f,-0.75f,0.0f,  1,0,  0,0,1,
+      -0.75f,+0.75f,0.0f,  0,1,  0,0,1,
+      +0.75f,+0.75f,0.0f,  1,1,  0,0,1,
+      // clang-format on
+  };
+  const std::vector<D3D11_INPUT_ELEMENT_DESC> mesh_element_descs = {
+      // clang-format off
+      {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      // clang-format on
+  };
+  D3D11_SUBRESOURCE_DATA mesh_vertices_data = {mesh_vertices.data()};
+  D3D11_BUFFER_DESC vertex_buffer_desc = {};
+  vertex_buffer_desc.ByteWidth = (UINT)mesh_vertices.size() * sizeof(mesh_vertices[0]);
+  vertex_buffer_desc.Usage = D3D11_USAGE_IMMUTABLE;
+  vertex_buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+  SPOKK_HR_CHECK(device_.Logical()->CreateBuffer(&vertex_buffer_desc, &mesh_vertices_data, &mesh_vertex_buffer_));
+  mesh_vertex_buffer_stride_ = (3 + 2 + 3) * sizeof(float);
+  mesh_vertex_buffer_offset_ = 0;
+  mesh_vertex_count_ = (UINT)vertex_buffer_desc.ByteWidth / mesh_vertex_buffer_stride_;
+
   // Create render state objects
+  SPOKK_HR_CHECK(device_.Logical()->CreateInputLayout(
+      mesh_element_descs.data(), (UINT)mesh_element_descs.size(), vs.data(), vs.size(), &input_layout_));
   D3D11_RASTERIZER_DESC rasterizer_desc = {};
   rasterizer_desc.FillMode = D3D11_FILL_SOLID;
   rasterizer_desc.CullMode = D3D11_CULL_BACK;
@@ -277,8 +335,12 @@ ElevenApp::ElevenApp(const CreateInfo& ci) {
   init_successful_ = true;
 }
 ElevenApp::~ElevenApp() {
+  mesh_index_buffer_->Release();
+  mesh_vertex_buffer_->Release();
+
+  input_layout_->Release();
   depth_stencil_state_->Release();
-  //blend_state_->Release();
+  blend_state_->Release();
   rasterizer_state_->Release();
   shader_vs_->Release();
   shader_ps_->Release();
@@ -316,10 +378,12 @@ void ElevenApp::Update(double /*dt*/) {}
 void ElevenApp::Render(ID3D11DeviceContext* context) {
   context->ClearState();
 
+  // Bind render targets
+  context->OMSetRenderTargets(1, &back_buffer_rtv_, nullptr);
   float clear_color[4] = {0.5f, fmodf((float)frame_index_ * 0.01f, 0.5f), 0.3f, 1.0f};
   context->ClearRenderTargetView(back_buffer_rtv_, clear_color);
 
-  // Setup the viewport
+  // Bind pipeline
   D3D11_VIEWPORT viewport = {};
   viewport.TopLeftX = 0;
   viewport.TopLeftY = 0;
@@ -334,16 +398,18 @@ void ElevenApp::Render(ID3D11DeviceContext* context) {
   scissor_rect.right = swapchain_desc_.BufferDesc.Width;
   scissor_rect.bottom = swapchain_desc_.BufferDesc.Height;
   context->RSSetScissorRects(1, &scissor_rect);
-
-  // Bind state
-  context->OMSetRenderTargets(1, &back_buffer_rtv_, nullptr);
   context->VSSetShader(shader_vs_, nullptr, 0);
   context->PSSetShader(shader_ps_, nullptr, 0);
   context->RSSetState(rasterizer_state_);
   context->OMSetDepthStencilState(depth_stencil_state_, 0);
   context->OMSetBlendState(blend_state_, NULL, 0xFFFFFFFF);
+  context->IASetInputLayout(input_layout_);
   context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-  context->Draw(3, 0);
+
+  // Draw
+  context->IASetIndexBuffer(mesh_index_buffer_, mesh_index_format_, mesh_index_buffer_offset_);
+  context->IASetVertexBuffers(0, 1, &mesh_vertex_buffer_, &mesh_vertex_buffer_stride_, &mesh_vertex_buffer_offset_);
+  context->DrawIndexed(mesh_index_count_, 0, 0);
 }
 
 }  // namespace
