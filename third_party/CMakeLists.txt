@@ -57,18 +57,14 @@ SET(IMGUI_SOURCE_FILES
 # json.h
 set(JSON_H_DIR ${CMAKE_CURRENT_SOURCE_DIR}/json.h PARENT_SCOPE)
 
-# SPIRV-Cross
-ADD_SUBDIRECTORY(SPIRV-Cross)
-SET(SPIRV_CROSS_TARGETS
-    spirv-cross-core
-    spirv-cross-glsl
-    spirv-cross-hlsl
-    spirv-cross-cpp
-    spirv-cross-msl
-    spirv-cross-util
-    spirv-cross
+# SPIRV-Reflect
+SET(SPIRV_REFLECT_SOURCE_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/SPIRV-Reflect/spirv_reflect.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/SPIRV-Reflect/spirv_reflect.h
+    PARENT_SCOPE
 )
-SET_TARGET_PROPERTIES(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
+
+# Nothing to configure
 
 # shaderc
 SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
@@ -140,7 +136,6 @@ SET_TARGET_PROPERTIES(${SHADERC_TARGETS} PROPERTIES FOLDER "shaderc")
 
 # Skip executable targets; we only care about the library anyway.
 FOREACH(SHADERC_TARGET IN LISTS
-        SPIRV_CROSS_TARGETS
         GLSLANG_TARGETS
         SPIRV_HEADERS_TARGETS
         SPIRV_TOOLS_TARGETS
