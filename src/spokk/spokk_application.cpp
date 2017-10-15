@@ -29,15 +29,6 @@ using namespace spokk;
 
 namespace {
 
-template <typename T>
-T my_min(T x, T y) {
-  return (x < y) ? x : y;
-}
-template <typename T>
-T my_max(T x, T y) {
-  return (x > y) ? x : y;
-}
-
 void MyGlfwErrorCallback(int error, const char *description) {
   fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }

@@ -4,6 +4,7 @@ using namespace spokk;
 #include <common/camera.h>
 #include <common/cube_mesh.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstring>
@@ -274,10 +275,10 @@ void PillarsApp::Update(double dt) {
   float eye_y = camera_->getEyePoint().z;
   int32_t cell_x = uint32_t(eye_x);
   int32_t cell_y = uint32_t(eye_y);
-  int32_t min_x = my_max(0, cell_x - VISIBLE_RADIUS);
-  int32_t max_x = my_min(HEIGHTFIELD_DIMX - 1, cell_x + VISIBLE_RADIUS);
-  int32_t min_y = my_max(0, cell_y - VISIBLE_RADIUS);
-  int32_t max_y = my_min(HEIGHTFIELD_DIMY - 1, cell_y + VISIBLE_RADIUS);
+  int32_t min_x = std::max(0, cell_x - VISIBLE_RADIUS);
+  int32_t max_x = std::min(HEIGHTFIELD_DIMX - 1, cell_x + VISIBLE_RADIUS);
+  int32_t min_y = std::max(0, cell_y - VISIBLE_RADIUS);
+  int32_t max_y = std::min(HEIGHTFIELD_DIMY - 1, cell_y + VISIBLE_RADIUS);
   for (int32_t iY = min_y; iY <= max_y; ++iY) {
     float fY = float(iY);
     for (int32_t iX = min_x; iX <= max_x; ++iX) {
@@ -289,9 +290,9 @@ void PillarsApp::Update(double dt) {
       }
       if (abs(iX - cell_x) <= EFFECT_RADIUS && abs(iY - cell_y) <= EFFECT_RADIUS) {
         float fX = float(iX);
-        float dx = 1.0f * my_max(fabsf(fX - eye_x) - 3.0f, 0.0f);
-        float dy = 1.0f * my_max(fabsf(fY - eye_y) - 3.0f, 0.0f);
-        heightfield_.at(cell) = my_min(heightfield_.at(cell), 1.6f * sqrtf(dx * dx + dy * dy));
+        float dx = 1.0f * std::max(fabsf(fX - eye_x) - 3.0f, 0.0f);
+        float dy = 1.0f * std::max(fabsf(fY - eye_y) - 3.0f, 0.0f);
+        heightfield_.at(cell) = std::min(heightfield_.at(cell), 1.6f * sqrtf(dx * dx + dy * dy));
       }
     }
   }

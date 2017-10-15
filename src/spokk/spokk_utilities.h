@@ -15,24 +15,6 @@ std::unique_ptr<T> my_make_unique(Ts&&... params) {
   return std::unique_ptr<T>(new T(std::forward<Ts>(params)...));
 }
 
-template <typename T>
-T my_min(const T& a, const T& b) {
-  if (a < b) {
-    return a;
-  } else {
-    return b;
-  }
-}
-
-template <typename T>
-T my_max(const T& a, const T& b) {
-  if (a > b) {
-    return a;
-  } else {
-    return b;
-  }
-}
-
 VkImageAspectFlags GetImageAspectFlags(VkFormat format);
 
 // Utilities for constructing viewports and scissor rects

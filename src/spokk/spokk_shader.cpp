@@ -3,20 +3,8 @@
 
 #include <spirv_glsl.hpp>
 
+#include <algorithm>
 #include <cstdint>
-
-namespace {
-
-template <typename T>
-T my_min(T x, T y) {
-  return (x < y) ? x : y;
-}
-template <typename T>
-T my_max(T x, T y) {
-  return (x > y) ? x : y;
-}
-
-}  // namespace
 
 namespace spokk {
 
@@ -472,8 +460,8 @@ int ShaderProgram::MergeLayouts(const std::vector<DescriptorSetLayoutInfo>& new_
       merged_range = new_range;
     } else if (new_range.size > 0) {
       // src and dst are both valid; merge them
-      uint32_t first_unused_offset = my_max(merged_range.offset + merged_range.size, new_range.offset + new_range.size);
-      merged_range.offset = my_min(merged_range.offset, new_range.offset);
+      uint32_t first_unused_offset = std::max(merged_range.offset + merged_range.size, new_range.offset + new_range.size);
+      merged_range.offset = std::min(merged_range.offset, new_range.offset);
       merged_range.size = first_unused_offset - merged_range.offset;
       merged_range.stageFlags |= new_range.stageFlags;
     } else {
