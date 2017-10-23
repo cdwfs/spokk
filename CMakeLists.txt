@@ -29,13 +29,17 @@ ENDIF()
 SET(SPOKKLE_SOURCES
     src/spokkle/spokkle.cpp
     src/spokk/spokk_vertex.cpp
-    ${JSON_H_DIR}/json.c
 )
 SET(SPOKKLE_HEADERS
-    ${JSON_H_DIR}/json.h
 )
 SOURCE_GROUP("" FILES ${SPOKKLE_HEADERS} ${SPOKKLE_SOURCES})
-ADD_EXECUTABLE(spokkle ${SPOKKLE_SOURCES} ${SPOKKLE_HEADERS})
+SOURCE_GROUP("json.h" REGULAR_EXPRESSION "json.[ch]$")
+ADD_EXECUTABLE(spokkle
+    ${SPOKKLE_SOURCES}
+    ${SPOKKLE_HEADERS}
+    ${JSON_H_DIR}/json.c
+    ${JSON_H_DIR}/json.h
+)
 TARGET_LINK_LIBRARIES(spokkle assimp shaderc ${VULKAN_LIBRARY})
 TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     ${CMAKE_BINARY_DIR}/third_party/assimp/include # for config.h
