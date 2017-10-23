@@ -44,7 +44,7 @@ using namespace spokk;
   operator glm::vec4() const { return glm::vec4(x, y, z, w); }
 // clang-format off
 #include <imgui/imgui.h>
-#include <imgui/examples/vulkan_example/imgui_impl_glfw_vulkan.h>
+#include "spokk_imgui_impl_glfw_vulkan.h"
 // clang-format on
 
 #include <cassert>

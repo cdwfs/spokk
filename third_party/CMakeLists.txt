@@ -50,8 +50,6 @@ SET(IMGUI_SOURCE_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_draw.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_internal.h
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imconfig.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/imgui/examples/vulkan_example/imgui_impl_glfw_vulkan.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/imgui/examples/vulkan_example/imgui_impl_glfw_vulkan.h
     PARENT_SCOPE
 )
 
