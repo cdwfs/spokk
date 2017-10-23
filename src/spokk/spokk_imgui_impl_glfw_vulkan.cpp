@@ -828,7 +828,8 @@ void ImGui_ImplGlfwVulkan_NewFrame()
     g_MouseWheel = 0.0f;
 
     // Hide OS mouse cursor if ImGui is drawing it
-    glfwSetInputMode(g_Window, GLFW_CURSOR, io.MouseDrawCursor ? GLFW_CURSOR_HIDDEN : GLFW_CURSOR_NORMAL);
+    // spokk: This is handled by the application
+    //glfwSetInputMode(g_Window, GLFW_CURSOR, io.MouseDrawCursor ? GLFW_CURSOR_HIDDEN : GLFW_CURSOR_NORMAL);
 
     // Start the frame
     ImGui::NewFrame();
@@ -840,4 +841,18 @@ void ImGui_ImplGlfwVulkan_Render(VkCommandBuffer command_buffer)
     ImGui::Render();
     g_CommandBuffer = VK_NULL_HANDLE;
     g_FrameIndex = (g_FrameIndex + 1) % IMGUI_VK_QUEUED_FRAMES;
+}
+
+// spokk: show/hide the UI (basically, NULL out or restore the render callback
+void ImGui_ImplGlfwVulkan_Show()
+{
+  ImGuiIO& io = ImGui::GetIO();
+  io.RenderDrawListsFn = ImGui_ImplGlfwVulkan_RenderDrawLists;
+  glfwSetInputMode(g_Window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+}
+void ImGui_ImplGlfwVulkan_Hide()
+{
+  ImGuiIO& io = ImGui::GetIO();
+  io.RenderDrawListsFn = NULL;
+  glfwSetInputMode(g_Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 }

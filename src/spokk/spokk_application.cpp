@@ -42,6 +42,7 @@ using namespace spokk;
     w = f.w;                   \
   }                            \
   operator glm::vec4() const { return glm::vec4(x, y, z, w); }
+#define IMGUI_VK_QUEUED_FRAMES spokk::PFRAME_COUNT;
 // clang-format off
 #include <imgui/imgui.h>
 #include "spokk_imgui_impl_glfw_vulkan.h"
@@ -455,12 +456,20 @@ int Application::Run() {
     const double dt = (float)zomboTicksToSeconds(ticks_now - ticks_prev);
     ticks_prev = ticks_now;
 
-    if (is_imgui_active_) {
+    if (is_imgui_enabled_) {
       ImGui_ImplGlfwVulkan_NewFrame();
-      ImGui::ShowTestWindow();
+
+      if (is_imgui_visible_) {
+        ImGui::ShowTestWindow();
+      }
     }
 
     input_state_.Update();
+    if (input_state_.IsPressed(InputState::DIGITAL_MENU)) {
+      ShowImgui(!is_imgui_visible_);
+      printf("menu delta: %d\n", input_state_.GetDigitalDelta(InputState::DIGITAL_MENU));
+      printf("GUI %s\n", is_imgui_visible_ ? "visible" : "hidden");
+    }
     Update(dt);
     if (force_exit_) {
       break;
@@ -651,9 +660,22 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
   SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
   ImGui_ImplGlfwVulkan_InvalidateFontUploadObjects();
   vkDestroyCommandPool(device_, cpool, device_.HostAllocator());
-
-  is_imgui_active_ = true;
+  
+  is_imgui_enabled_ = true;
+  ShowImgui(true);
   return true;
+}
+
+void Application::ShowImgui(bool visible) {
+  if (visible && !is_imgui_visible_) {
+    // invisible -> visible
+    ImGui_ImplGlfwVulkan_Show();
+  } else if (!visible && is_imgui_visible_) {
+    // visible -> invisible
+    ImGui_ImplGlfwVulkan_Hide();
+    input_state_.ClearHistory();
+  }
+  is_imgui_visible_ = visible;
 }
 
 void Application::RenderImgui(VkCommandBuffer cb) const { ImGui_ImplGlfwVulkan_Render(cb); }
@@ -666,8 +688,9 @@ void Application::DestroyImgui(void) {
     vkDestroyDescriptorPool(device_, imgui_dpool_, device_.HostAllocator());
     imgui_dpool_ = VK_NULL_HANDLE;
 
+    ShowImgui(false);
+    is_imgui_enabled_ = false;
   }
-  is_imgui_active_ = false;
 }
 
 VkResult Application::CreateSwapchain(VkExtent2D extent) {

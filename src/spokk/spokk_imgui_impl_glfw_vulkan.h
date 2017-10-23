@@ -8,7 +8,10 @@
 
 struct GLFWwindow;
 
+// spokk: Allow application to override queued frame count
+#if !defined(IMGUI_VK_QUEUED_FRAMES)
 #define IMGUI_VK_QUEUED_FRAMES 2
+#endif
 
 struct ImGui_ImplGlfwVulkan_Init_Data
 {
@@ -25,6 +28,9 @@ IMGUI_API bool        ImGui_ImplGlfwVulkan_Init(GLFWwindow* window, bool install
 IMGUI_API void        ImGui_ImplGlfwVulkan_Shutdown();
 IMGUI_API void        ImGui_ImplGlfwVulkan_NewFrame();
 IMGUI_API void        ImGui_ImplGlfwVulkan_Render(VkCommandBuffer command_buffer);
+// spokk: show/hide the UI (basically, NULL out or restore the render callback
+IMGUI_API void        ImGui_ImplGlfwVulkan_Show();
+IMGUI_API void        ImGui_ImplGlfwVulkan_Hide();
 
 // Use if you want to reset your rendering device without losing ImGui state.
 IMGUI_API void        ImGui_ImplGlfwVulkan_InvalidateFontUploadObjects();

@@ -95,6 +95,12 @@ protected:
   // Initialize imgui. The provided render pass must be the one that will be active when
   // RenderImgui() will be called.
   bool InitImgui(VkRenderPass ui_render_pass);
+  // If visible=true, the imgui will be rendered, the cursor will be visible, and any
+  // keyboard/mouse consumed by imgui will be ignored by InputState.
+  // If visible=false, imgui will not be rendered (but UI controls throughout the code will still
+  // be processed, so if they're expensive, maybe make them conditional). The mouse cursor will
+  // be hidden, and InputState will get updated keyboard/mouse input every frame.
+  void ShowImgui(bool visible);
   // Generate the commands to render the IMGUI elements created earlier in the frame.
   // This function must only be called when the ui_render_pass passed to InitImgui() is active.
   void RenderImgui(VkCommandBuffer cb) const;
@@ -146,7 +152,8 @@ private:
   VkSemaphore submit_complete_semaphore_;
   std::array<VkFence, PFRAME_COUNT> submit_complete_fences_;
 
-  bool is_imgui_active_ = false;  // "active" meaning "visible". If true, InputState stops receiving updates.
+  bool is_imgui_enabled_ = false;  // Used to avoid calling functions that will crash if the app does not enable imgui.
+  bool is_imgui_visible_ = false;  // Tracks whether the UI is visible or not.
   VkDescriptorPool imgui_dpool_ = VK_NULL_HANDLE;
 };
 
