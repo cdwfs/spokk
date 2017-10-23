@@ -72,7 +72,14 @@ public:
 
   int Run();
 
-  virtual void Update(double dt);
+  // Update() is intended for non-graphics-related per-frame operations. When this
+  // function is called, the input state has been updated for a new frame, but the
+  // graphics resources this frame will use may stay be in use by a previous frame.
+  virtual void Update(double dt) = 0;
+
+  // When Render() is called, vkAcquireNextImageKHR() has already returned, and the
+  // resources for the current pframe are guaranteed not to be in use by a previous
+  // frame.
   virtual void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) = 0;
 
 protected:

@@ -201,9 +201,9 @@ public:
   const ShaderToyApp& operator=(const ShaderToyApp&) = delete;
 
   void Update(double dt) override {
-    Application::Update(dt);
     seconds_elapsed_ += dt;
 
+    // TODO(https://github.com/cdwfs/spokk/issues/28): shader/uniform updates must be moved to Render()
     // Reload shaders, if necessary
     bool reload = false;
     swap_shader_.compare_exchange_strong(reload, false);

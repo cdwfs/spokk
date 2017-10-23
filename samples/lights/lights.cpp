@@ -158,12 +158,12 @@ public:
   const LightsApp& operator=(const LightsApp&) = delete;
 
   virtual void Update(double dt) override {
-    Application::Update(dt);
     seconds_elapsed_ += dt;
 
     drone_->Update(input_state_, (float)dt);
 
     // Update uniforms
+    // TODO(https://github.com/cdwfs/spokk/issues/28): uniform buffer updates must be moved to Render()
     SceneUniforms* scene_uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
     scene_uniforms->time_and_res =
         glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);

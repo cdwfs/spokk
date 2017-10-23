@@ -423,6 +423,7 @@ int Application::Run() {
     const double dt = (float)zomboTicksToSeconds(ticks_now - ticks_prev);
     ticks_prev = ticks_now;
 
+    input_state_.Update();
     Update(dt);
     if (force_exit_) {
       break;
@@ -506,8 +507,6 @@ int Application::Run() {
   }
   return 0;
 }
-
-void Application::Update(double /*dt*/) { input_state_.Update(); }
 
 bool Application::IsInstanceLayerEnabled(const std::string &layer_name) const {
   for (const auto &layer : instance_layers_) {
