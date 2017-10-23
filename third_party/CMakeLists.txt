@@ -54,7 +54,6 @@ SET(IMGUI_SOURCE_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/examples/vulkan_example/imgui_impl_glfw_vulkan.h
     PARENT_SCOPE
 )
-SOURCE_GROUP("imgui" FILES ${IMGUI_SOURCE_FILES})
 
 # json.h
 set(JSON_H_DIR ${CMAKE_CURRENT_SOURCE_DIR}/json.h PARENT_SCOPE)
