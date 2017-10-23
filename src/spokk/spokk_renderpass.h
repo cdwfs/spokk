@@ -35,6 +35,9 @@ struct RenderPass {
   VkResult Finalize(const Device& device, VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS,
       VkSubpassDescriptionFlags flags = 0);
 
+  // Allow implicit conversion to VkRenderPass
+  operator VkRenderPass() const { return handle; }
+
   VkImageCreateInfo GetAttachmentImageCreateInfo(uint32_t attachment_index, VkExtent2D render_area) const;
   VkImageViewCreateInfo GetAttachmentImageViewCreateInfo(uint32_t attachment_index, VkImage image) const;
   VkFramebufferCreateInfo GetFramebufferCreateInfo(VkExtent2D render_area) const;
