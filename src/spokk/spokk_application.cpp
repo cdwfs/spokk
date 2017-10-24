@@ -467,8 +467,6 @@ int Application::Run() {
     input_state_.Update();
     if (input_state_.IsPressed(InputState::DIGITAL_MENU)) {
       ShowImgui(!is_imgui_visible_);
-      printf("menu delta: %d\n", input_state_.GetDigitalDelta(InputState::DIGITAL_MENU));
-      printf("GUI %s\n", is_imgui_visible_ ? "visible" : "hidden");
     }
     Update(dt);
     if (force_exit_) {
