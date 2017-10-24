@@ -4,6 +4,7 @@ using namespace spokk;
 #include <common/camera.h>
 #include <common/cube_mesh.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstring>
@@ -75,8 +76,6 @@ private:
 };
 
 PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
-  glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
   seconds_elapsed_ = 0;
 
   camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
@@ -93,6 +92,10 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   SPOKK_VK_CHECK(render_pass_.Finalize(device_));
   render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
+
+  // Initialize IMGUI
+  InitImgui(render_pass_);
+  ShowImgui(false);
 
   // Load textures and samplers
   VkSamplerCreateInfo sampler_ci =
@@ -224,6 +227,8 @@ PillarsApp::~PillarsApp() {
   if (device_) {
     vkDeviceWaitIdle(device_);
 
+    DestroyImgui();
+
     dpool_.Destroy(device_);
 
     scene_uniforms_.Destroy(device_);
@@ -250,12 +255,12 @@ PillarsApp::~PillarsApp() {
 }
 
 void PillarsApp::Update(double dt) {
-  Application::Update(dt);
   seconds_elapsed_ += dt;
 
   drone_->Update(input_state_, (float)dt);
 
   // Update uniforms
+  // TODO(https://github.com/cdwfs/spokk/issues/28): uniform buffer updates must be moved to Render()
   SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
   uniforms->time_and_res =
       glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
@@ -274,10 +279,10 @@ void PillarsApp::Update(double dt) {
   float eye_y = camera_->getEyePoint().z;
   int32_t cell_x = uint32_t(eye_x);
   int32_t cell_y = uint32_t(eye_y);
-  int32_t min_x = my_max(0, cell_x - VISIBLE_RADIUS);
-  int32_t max_x = my_min(HEIGHTFIELD_DIMX - 1, cell_x + VISIBLE_RADIUS);
-  int32_t min_y = my_max(0, cell_y - VISIBLE_RADIUS);
-  int32_t max_y = my_min(HEIGHTFIELD_DIMY - 1, cell_y + VISIBLE_RADIUS);
+  int32_t min_x = std::max(0, cell_x - VISIBLE_RADIUS);
+  int32_t max_x = std::min(HEIGHTFIELD_DIMX - 1, cell_x + VISIBLE_RADIUS);
+  int32_t min_y = std::max(0, cell_y - VISIBLE_RADIUS);
+  int32_t max_y = std::min(HEIGHTFIELD_DIMY - 1, cell_y + VISIBLE_RADIUS);
   for (int32_t iY = min_y; iY <= max_y; ++iY) {
     float fY = float(iY);
     for (int32_t iX = min_x; iX <= max_x; ++iX) {
@@ -289,9 +294,9 @@ void PillarsApp::Update(double dt) {
       }
       if (abs(iX - cell_x) <= EFFECT_RADIUS && abs(iY - cell_y) <= EFFECT_RADIUS) {
         float fX = float(iX);
-        float dx = 1.0f * my_max(fabsf(fX - eye_x) - 3.0f, 0.0f);
-        float dy = 1.0f * my_max(fabsf(fY - eye_y) - 3.0f, 0.0f);
-        heightfield_.at(cell) = my_min(heightfield_.at(cell), 1.6f * sqrtf(dx * dx + dy * dy));
+        float dx = 1.0f * std::max(fabsf(fX - eye_x) - 3.0f, 0.0f);
+        float dy = 1.0f * std::max(fabsf(fY - eye_y) - 3.0f, 0.0f);
+        heightfield_.at(cell) = std::min(heightfield_.at(cell), 1.6f * sqrtf(dx * dx + dy * dy));
       }
     }
   }
@@ -315,6 +320,7 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
       0, 1, &dsets_[pframe_index_], 0, nullptr);
   mesh_.BindBuffers(primary_cb);
   vkCmdDrawIndexed(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size(), 0, 0, 0);
+  RenderImgui(primary_cb);
   vkCmdEndRenderPass(primary_cb);
 }
 

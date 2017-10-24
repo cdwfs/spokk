@@ -9,10 +9,6 @@ template <typename T>
 T my_clamp(T x, T xmin, T xmax) {
   return (x < xmin) ? xmin : ((x > xmax) ? xmax : x);
 }
-template <typename T>
-T my_max(T x, T y) {
-  return (x > y) ? x : y;
-}
 
 struct AttributeFormatInfo {
   VkFormat format;

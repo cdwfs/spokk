@@ -29,13 +29,17 @@ ENDIF()
 SET(SPOKKLE_SOURCES
     src/spokkle/spokkle.cpp
     src/spokk/spokk_vertex.cpp
-    ${JSON_H_DIR}/json.c
 )
 SET(SPOKKLE_HEADERS
-    ${JSON_H_DIR}/json.h
 )
 SOURCE_GROUP("" FILES ${SPOKKLE_HEADERS} ${SPOKKLE_SOURCES})
-ADD_EXECUTABLE(spokkle ${SPOKKLE_SOURCES} ${SPOKKLE_HEADERS})
+SOURCE_GROUP("json.h" REGULAR_EXPRESSION "json.[ch]$")
+ADD_EXECUTABLE(spokkle
+    ${SPOKKLE_SOURCES}
+    ${SPOKKLE_HEADERS}
+    ${JSON_H_DIR}/json.c
+    ${JSON_H_DIR}/json.h
+)
 TARGET_LINK_LIBRARIES(spokkle assimp shaderc ${VULKAN_LIBRARY})
 TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     ${CMAKE_BINARY_DIR}/third_party/assimp/include # for config.h
@@ -58,6 +62,7 @@ SET(SPOKK_HEADERS
     src/spokk/spokk_debug.h
     src/spokk/spokk_device.h
     src/spokk/spokk_image.h
+    src/spokk/spokk_imgui_impl_glfw_vulkan.h
     src/spokk/spokk_input.h
     src/spokk/spokk_math.h
     src/spokk/spokk_memory.h
@@ -77,6 +82,7 @@ SET(SPOKK_SOURCES
     src/spokk/spokk_buffer.cpp
     src/spokk/spokk_device.cpp
     src/spokk/spokk_image.cpp
+    src/spokk/spokk_imgui_impl_glfw_vulkan.cpp
     src/spokk/spokk_input.cpp
     src/spokk/spokk_math.cpp
     src/spokk/spokk_memory.cpp
@@ -88,12 +94,18 @@ SET(SPOKK_SOURCES
     src/spokk/spokk_text.cpp
     src/spokk/spokk_vertex.cpp
 )
-SET(SPOKK_LIB_NAME spokk)
 SOURCE_GROUP("" FILES ${SPOKK_HEADERS} ${SPOKK_SOURCES})
-ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC ${SPOKK_SOURCES} ${SPOKK_HEADERS})
+SET(SPOKK_LIB_NAME spokk)
+SOURCE_GROUP("imgui" REGULAR_EXPRESSION "imgui/.*$")
+ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC
+    ${SPOKK_SOURCES}
+    ${SPOKK_HEADERS}
+    ${IMGUI_SOURCE_FILES}
+)
 TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} spirv-cross-cpp ${libs} ${VULKAN_LIBRARY})
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
     "third_party/glm"
+    "third_party/imgui"
     "third_party"
     ${VULKAN_INCLUDE_DIR}
     "src/spokk"

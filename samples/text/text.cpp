@@ -60,8 +60,6 @@ private:
 };
 
 TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
-  glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
   seconds_elapsed_ = 0;
 
   camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
@@ -76,6 +74,10 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   SPOKK_VK_CHECK(render_pass_.Finalize(device_));
   render_pass_.clear_values[0] = CreateColorClearValue(1.0f, 1.0f, 1.0f, 1.0f);
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
+
+  // Initialize IMGUI
+  InitImgui(render_pass_);
+  ShowImgui(false);
 
   // Load font
   int font_create_error = font_.Create("data/SourceCodePro-Semibold.ttf");
@@ -127,7 +129,6 @@ TextApp::~TextApp() {
 }
 
 void TextApp::Update(double dt) {
-  Application::Update(dt);
   seconds_elapsed_ += dt;
 
   drone_->Update(input_state_, (float)dt);
@@ -156,6 +157,7 @@ void TextApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index)
   texter_.BindDrawState(primary_cb, text_state);
   float str_x = 100.0f, str_y = 100.0f;
   texter_.Printf(primary_cb, &str_x, &str_y, "Vulkan is %d winners %c render with!", 4, '2');
+  RenderImgui(primary_cb);
   vkCmdEndRenderPass(primary_cb);
 }
 

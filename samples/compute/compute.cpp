@@ -147,6 +147,9 @@ public:
   ComputeApp(const ComputeApp &) = delete;
   const ComputeApp &operator=(const ComputeApp &) = delete;
 
+  void Update(double) override {
+    // nothing to do in a compute sample
+  }
   void Render(VkCommandBuffer, uint32_t) override {
     // nothing to do in a compute sample
   }
