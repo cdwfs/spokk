@@ -25,6 +25,11 @@ struct SceneUniforms {
 struct MeshUniforms {
   glm::mat4 o2w;
 };
+struct MaterialUniforms {
+  glm::vec4 albedo;  // xyz: albedo RGB
+  glm::vec4 spec_color;  // xyz: specular color
+  glm::vec4 spec_exp_intensity;  // x: specular exponent, y: specular intensity
+};
 struct LightUniforms {
   glm::vec4 hemi_down_color;
   glm::vec4 hemi_up_color;
@@ -112,6 +117,18 @@ public:
     lights_.point_pos_ws_inverse_range = glm::vec4(+0.000f, +0.000f, -5.000f, 1.0f / 10000.0f);
     lights_.point_color = glm::vec4(0.000f, 0.000f, 1.000f, 0.0f);
 
+    // Create pipelined buffer of light uniforms
+    VkBufferCreateInfo material_uniforms_ci = {};
+    material_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    material_uniforms_ci.size = sizeof(MaterialUniforms);
+    material_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    material_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(
+        material_uniforms_.Create(device_, PFRAME_COUNT, material_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    material_.albedo = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    material_.spec_color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    material_.spec_exp_intensity = glm::vec4(1000.0f, 1.0f, 0.0f, 0.0f);
+
     // Create pipelined buffer of mesh uniforms
     VkBufferCreateInfo mesh_uniforms_ci = {};
     mesh_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -145,6 +162,7 @@ public:
       dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
       dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
       dset_writer.BindBuffer(light_uniforms_.Handle(pframe), mesh_fs_.GetDescriptorBindPoint("light_consts").binding);
+      dset_writer.BindBuffer(material_uniforms_.Handle(pframe), mesh_fs_.GetDescriptorBindPoint("mat_consts").binding);
       dset_writer.WriteAll(device_, dsets_[pframe]);
     }
 
@@ -158,6 +176,7 @@ public:
       dpool_.Destroy(device_);
 
       light_uniforms_.Destroy(device_);
+      material_uniforms_.Destroy(device_);
       mesh_uniforms_.Destroy(device_);
       scene_uniforms_.Destroy(device_);
 
@@ -215,19 +234,37 @@ public:
     mesh_uniforms->o2w = ComposeTransform(glm::vec3(0.0f, 0.0f, 0.0f), glm::quat_identity<float, glm::highp>(), 5.0f);
     mesh_uniforms_.FlushPframeHostCache(pframe_index_);
 
+    // Update material uniforms
+    if (ImGui::TreeNode("Material")) {
+      ImGui::ColorEdit3("Albedo", &material_.albedo.x, ImGuiColorEditFlags_Float);
+      ImGui::Text("Specular:");
+      ImGui::ColorEdit3("Color", &material_.spec_color.x, ImGuiColorEditFlags_Float);
+      ImGui::SliderFloat("Exponent", &material_.spec_exp_intensity.x, 1.0f, 100000.0f, "%.2f", 10.0f);
+      ImGui::SliderFloat("Intensity", &lights_.hemi_down_color.w, 0.0f, 1.0f);
+      ImGui::TreePop();
+    }
+    MaterialUniforms* material_uniforms = (MaterialUniforms*)material_uniforms_.Mapped(pframe_index_);
+    *material_uniforms = material_;
+    material_uniforms_.FlushPframeHostCache(pframe_index_);
+
     // Update light uniforms
     if (ImGui::TreeNode("Lights")) {
-      ImGui::ColorPicker3("Hemi Up", &lights_.hemi_up_color.x);
-      ImGui::ColorPicker3("Hemi Down", &lights_.hemi_up_color.x);
-      ImGui::SliderFloat("Hemi Intensity", &lights_.hemi_down_color.w, 0.0f, 1.0f);
-
-      ImGui::ColorPicker3("Dir Color", &lights_.dir_color.x);
-      ImGui::SliderFloat("Dir Intensity", &lights_.dir_color.w, 0.0f, 1.0f);
-
-      ImGui::InputFloat3("Point Pos", &lights_.point_pos_ws_inverse_range.x);
-      ImGui::InputFloat("Point Inv. Range", &lights_.point_pos_ws_inverse_range.w);
-      ImGui::ColorPicker3("Point Color", &lights_.point_color.x);
-      ImGui::SliderFloat("Point Intensity", &lights_.point_color.w, 0.0f, 1.0f);
+      ImGui::Text("Hemi Light");
+      ImGui::ColorEdit3("Up Color##Hemi", &lights_.hemi_up_color.x, ImGuiColorEditFlags_Float);
+      ImGui::ColorEdit3("Down Color##Hemi", &lights_.hemi_down_color.x, ImGuiColorEditFlags_Float);
+      ImGui::SliderFloat("Intensity##Hemi", &lights_.hemi_down_color.w, 0.0f, 1.0f);
+      ImGui::Separator();
+      ImGui::Text("Dir Light:");
+      ImGui::ColorEdit3("Color##Dir", &lights_.dir_color.x, ImGuiColorEditFlags_Float);
+      ImGui::SliderFloat("Intensity##Dir", &lights_.dir_color.w, 0.0f, 1.0f);
+      ImGui::Separator();
+      ImGui::Text("Point Light:");
+      float range = 1.0f / lights_.point_pos_ws_inverse_range.w;
+      ImGui::InputFloat3("Position##Point", &lights_.point_pos_ws_inverse_range.x);
+      ImGui::SliderFloat("Range##Point", &range, 0.001f, 1000000.0f, "%.3f", 10.0f);
+      ImGui::ColorEdit3("Color##Point", &lights_.point_color.x, ImGuiColorEditFlags_Float);
+      ImGui::SliderFloat("Intensity##Point", &lights_.point_color.w, 0.0f, 1.0f);
+      lights_.point_pos_ws_inverse_range.w = 1.0f / range;
       ImGui::TreePop();
     }
     LightUniforms* light_uniforms = (LightUniforms*)light_uniforms_.Mapped(pframe_index_);
@@ -322,10 +359,12 @@ private:
   GraphicsPipeline mesh_pipeline_;
   Mesh mesh_;
   PipelinedBuffer light_uniforms_;
+  PipelinedBuffer material_uniforms_;
   PipelinedBuffer mesh_uniforms_;
   PipelinedBuffer scene_uniforms_;
 
   LightUniforms lights_;
+  MaterialUniforms material_;
 
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDrone> drone_;
