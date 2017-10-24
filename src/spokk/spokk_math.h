@@ -47,10 +47,6 @@
 #define _MATH_DEFINES_DEFINED
 #endif
 
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable:4701)  // potentially uninitialized return value
-#endif
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_access.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -58,9 +54,6 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/norm.hpp>
 #include <glm/gtx/quaternion.hpp>
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
 
 namespace spokk {
 
