@@ -18,8 +18,6 @@ constexpr float Z_FAR = 100.0f;
 class CubeSwarmApp : public spokk::Application {
 public:
   explicit CubeSwarmApp(Application::CreateInfo& ci) : Application(ci) {
-    glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
     seconds_elapsed_ = 0;
 
     camera_ =
@@ -35,6 +33,10 @@ public:
     SPOKK_VK_CHECK(render_pass_.Finalize(device_));
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
+
+    // Initialize IMGUI
+    InitImgui(render_pass_);
+    ShowImgui(false);
 
     // Renderer
     Renderer::CreateInfo renderer_ci = {};
@@ -97,7 +99,6 @@ public:
   const CubeSwarmApp& operator=(const CubeSwarmApp&) = delete;
 
   virtual void Update(double dt) override {
-    Application::Update(dt);
     seconds_elapsed_ += dt;
 
     drone_->Update(input_state_, (float)dt);
@@ -130,6 +131,7 @@ public:
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
     renderer_.RenderView(primary_cb, camera_->getViewMatrix(), camera_->getProjectionMatrix(),
         glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0));
+    RenderImgui(primary_cb);
     vkCmdEndRenderPass(primary_cb);
   }
 

@@ -26,6 +26,8 @@ public:
     DIGITAL_RPAD_RIGHT = 6,
     DIGITAL_RPAD_DOWN = 7,
 
+    DIGITAL_MENU = 8,
+
     DIGITAL_COUNT
   };
   enum Analog {
@@ -46,6 +48,8 @@ public:
 
   bool IsPressed(Digital id) const { return GetDigitalDelta(id) > 0; }
   bool IsReleased(Digital id) const { return GetDigitalDelta(id) < 0; }
+
+  void ClearHistory();
 
 private:
   struct {
