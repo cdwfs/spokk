@@ -95,6 +95,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
 
   // Initialize IMGUI
   InitImgui(render_pass_);
+  ShowImgui(false);
 
   // Load textures and samplers
   VkSamplerCreateInfo sampler_ci =
