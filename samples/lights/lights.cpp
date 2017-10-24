@@ -241,7 +241,7 @@ public:
       ImGui::Text("Specular:");
       ImGui::ColorEdit3("Color", &material_.spec_color.x, ImGuiColorEditFlags_Float);
       ImGui::SliderFloat("Exponent", &material_.spec_exp_intensity.x, 1.0f, 100000.0f, "%.2f", 10.0f);
-      ImGui::SliderFloat("Intensity", &lights_.hemi_down_color.w, 0.0f, 1.0f);
+      ImGui::SliderFloat("Intensity", &material_.spec_exp_intensity.y, 0.0f, 1.0f);
       ImGui::TreePop();
     }
     MaterialUniforms* material_uniforms = (MaterialUniforms*)material_uniforms_.Mapped(pframe_index_);
