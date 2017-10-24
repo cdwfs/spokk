@@ -34,7 +34,7 @@ namespace spokk {
 //     early, it can queue frame N+1 for presentation and get started on frame N+2; if it finishes *that*
 //     before the GPU finishes frame N, then frame N+1 is discarded and frame N+2 is queued for
 //     presentation instead, and the CPU starts work on frame N+3. And so on.
-const uint32_t PFRAME_COUNT = 2;
+constexpr uint32_t PFRAME_COUNT = 2;
 
 //
 // Application base class
@@ -92,6 +92,24 @@ protected:
   // no resources are in use on the GPU and can be safely destroyed/recreated.
   virtual void HandleWindowResize(VkExtent2D new_window_extent);
 
+  // Initialize imgui. The provided render pass must be the one that will be active when
+  // RenderImgui() will be called.
+  bool InitImgui(VkRenderPass ui_render_pass);
+  // If visible=true, the imgui will be rendered, the cursor will be visible, and any
+  // keyboard/mouse consumed by imgui will be ignored by InputState.
+  // If visible=false, imgui will not be rendered (but UI controls throughout the code will still
+  // be processed, so if they're expensive, maybe make them conditional). The mouse cursor will
+  // be hidden, and InputState will get updated keyboard/mouse input every frame.
+  void ShowImgui(bool visible);
+  // Generate the commands to render the IMGUI elements created earlier in the frame.
+  // This function must only be called when the ui_render_pass passed to InitImgui() is active.
+  void RenderImgui(VkCommandBuffer cb) const;
+  // Cleans up all IMGUI resources. This is automatically called during application shutdown, but
+  // would need to be called manually to reinitialize the GUI subsystem at runtime (e,g. with a
+  // different render pass).
+  // Safe to call, even if IMGUI was not initialized or has already been destroyed.
+  void DestroyImgui(void);
+
   // TODO(https://github.com/cdwfs/spokk/issues/24): Move layer/extension lists into DeviceContext.
   const VkAllocationCallbacks* host_allocator_ = nullptr;
   const DeviceAllocationCallbacks* device_allocator_ = nullptr;
@@ -133,6 +151,10 @@ private:
   VkSemaphore image_acquire_semaphore_;
   VkSemaphore submit_complete_semaphore_;
   std::array<VkFence, PFRAME_COUNT> submit_complete_fences_;
+
+  bool is_imgui_enabled_ = false;  // Used to avoid calling functions that will crash if the app does not enable imgui.
+  bool is_imgui_visible_ = false;  // Tracks whether the UI is visible or not.
+  VkDescriptorPool imgui_dpool_ = VK_NULL_HANDLE;
 };
 
 }  // namespace spokk

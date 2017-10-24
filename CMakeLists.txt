@@ -62,6 +62,7 @@ SET(SPOKK_HEADERS
     src/spokk/spokk_debug.h
     src/spokk/spokk_device.h
     src/spokk/spokk_image.h
+    src/spokk/spokk_imgui_impl_glfw_vulkan.h
     src/spokk/spokk_input.h
     src/spokk/spokk_math.h
     src/spokk/spokk_memory.h
@@ -80,6 +81,7 @@ SET(SPOKK_SOURCES
     src/spokk/spokk_buffer.cpp
     src/spokk/spokk_device.cpp
     src/spokk/spokk_image.cpp
+    src/spokk/spokk_imgui_impl_glfw_vulkan.cpp
     src/spokk/spokk_input.cpp
     src/spokk/spokk_math.cpp
     src/spokk/spokk_memory.cpp
@@ -90,12 +92,18 @@ SET(SPOKK_SOURCES
     src/spokk/spokk_utilities.cpp
     src/spokk/spokk_vertex.cpp
 )
-SET(SPOKK_LIB_NAME spokk)
 SOURCE_GROUP("" FILES ${SPOKK_HEADERS} ${SPOKK_SOURCES})
-ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC ${SPOKK_SOURCES} ${SPOKK_HEADERS})
+SET(SPOKK_LIB_NAME spokk)
+SOURCE_GROUP("imgui" REGULAR_EXPRESSION "imgui/.*$")
+ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC
+    ${SPOKK_SOURCES}
+    ${SPOKK_HEADERS}
+    ${IMGUI_SOURCE_FILES}
+)
 TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} spirv-cross-cpp ${libs} ${VULKAN_LIBRARY})
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
     "third_party/glm"
+    "third_party/imgui"
     "third_party"
     ${VULKAN_INCLUDE_DIR}
     "src/spokk"

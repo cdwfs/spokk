@@ -26,8 +26,6 @@ constexpr float Z_FAR = 100.0f;
 class CubeSwarmApp : public spokk::Application {
 public:
   explicit CubeSwarmApp(Application::CreateInfo& ci) : Application(ci) {
-    glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
     seconds_elapsed_ = 0;
 
     camera_ =
@@ -43,6 +41,10 @@ public:
     SPOKK_VK_CHECK(render_pass_.Finalize(device_));
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
+
+    // Initialize IMGUI
+    InitImgui(render_pass_);
+    ShowImgui(false);
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
@@ -183,6 +185,7 @@ public:
         0, 1, &dsets_[pframe_index_], 0, nullptr);
     mesh_.BindBuffers(primary_cb);
     vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0, 0, 0);
+    RenderImgui(primary_cb);
     vkCmdEndRenderPass(primary_cb);
   }
 

@@ -14,6 +14,8 @@
 #pragma warning(pop)
 #endif
 
+#include <imgui.h>
+
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 
@@ -726,7 +728,6 @@ void CameraDrone::Update(const spokk::InputState& input_state, float dt) {
     camera_eulers[0] = float(-M_PI_2 + 0.01f);
   }
   camera_eulers[2] = 0;  // disallow roll
-  camera_.setOrientation(glm::quat(camera_eulers));
 
   glm::vec3 vel_dir = (glm::length2(velocity_) > 0) ? glm::normalize(velocity_) : glm::vec3(0,0,0);
   // TODO(cort): would love to define drag in terms of something intuitive like max_velocity
@@ -736,6 +737,13 @@ void CameraDrone::Update(const spokk::InputState& input_state, float dt) {
   glm::vec3 new_eye = ((0.5f * accel_final * dt) + velocity_) * dt + camera_.getEyePoint();
   new_eye = glm::max(new_eye, pos_min_);
   new_eye = glm::min(new_eye, pos_max_);
+  if (ImGui::TreeNode("Camera")) {
+    ImGui::InputFloat3("Pos", &new_eye.x, 2);
+    ImGui::DragFloat("Yaw", &camera_eulers.y, 0.01f, (float)-M_PI, (float)+M_PI);
+    ImGui::DragFloat("Pitch", &camera_eulers.x, 0.01f, (float)-M_PI_2, (float)+M_PI_2);
+    ImGui::TreePop();
+  }
+  camera_.setOrientation(glm::quat(camera_eulers));
   camera_.setEyePoint(new_eye);
 
   velocity_ += accel_final * dt;

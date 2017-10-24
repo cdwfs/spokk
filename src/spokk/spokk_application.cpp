@@ -21,6 +21,33 @@
 #include "spokk_utilities.h"
 using namespace spokk;
 
+#include <glm/vec2.hpp>
+#include <glm/vec4.hpp>
+#define IMGUI_DISABLE_INCLUDE_IMCONFIG_H
+#define IM_ASSERT(_EXPR) ZOMBO_ASSERT(_EXPR, "IMGUI assertion failed: %s", #_EXPR)
+#define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+#define IMGUI_STB_NAMESPACE ImGuiStb
+#define IM_VEC2_CLASS_EXTRA    \
+  ImVec2(const glm::vec2 &f) { \
+    x = f.x;                   \
+    y = f.y;                   \
+  }                            \
+  operator glm::vec2() const { return glm::vec2(x, y); }
+
+#define IM_VEC4_CLASS_EXTRA    \
+  ImVec4(const glm::vec4 &f) { \
+    x = f.x;                   \
+    y = f.y;                   \
+    z = f.z;                   \
+    w = f.w;                   \
+  }                            \
+  operator glm::vec4() const { return glm::vec4(x, y, z, w); }
+#define IMGUI_VK_QUEUED_FRAMES spokk::PFRAME_COUNT;
+// clang-format off
+#include <imgui/imgui.h>
+#include "spokk_imgui_impl_glfw_vulkan.h"
+// clang-format on
+
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -299,7 +326,11 @@ Application::Application(const CreateInfo &ci) {
     const VkDeviceQueueCreateInfo &qci = device_queue_cis[iQFR];
     const VkQueueFamilyProperties &qfp = all_queue_family_properties[qci.queueFamilyIndex];
     DeviceQueue qc = {
-        VK_NULL_HANDLE, qci.queueFamilyIndex, 0.0f, qfp.queueFlags, qfp.timestampValidBits,
+        VK_NULL_HANDLE,
+        qci.queueFamilyIndex,
+        0.0f,
+        qfp.queueFlags,
+        qfp.timestampValidBits,
         qfp.minImageTransferGranularity,
         (qfr.support_present && ((qfp.queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0)) ? surface_ : VK_NULL_HANDLE,
     };
@@ -362,6 +393,8 @@ Application::~Application() {
   if (device_ != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(device_);
 
+    DestroyImgui();
+
     vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
     vkDestroySemaphore(device_, submit_complete_semaphore_, host_allocator_);
     for (auto fence : submit_complete_fences_) {
@@ -423,7 +456,18 @@ int Application::Run() {
     const double dt = (float)zomboTicksToSeconds(ticks_now - ticks_prev);
     ticks_prev = ticks_now;
 
+    if (is_imgui_enabled_) {
+      ImGui_ImplGlfwVulkan_NewFrame();
+
+      if (is_imgui_visible_) {
+        ImGui::ShowTestWindow();
+      }
+    }
+
     input_state_.Update();
+    if (input_state_.IsPressed(InputState::DIGITAL_MENU)) {
+      ShowImgui(!is_imgui_visible_);
+    }
     Update(dt);
     if (force_exit_) {
       break;
@@ -536,6 +580,115 @@ bool Application::IsDeviceExtensionEnabled(const std::string &extension_name) co
 void Application::HandleWindowResize(VkExtent2D new_window_extent) {
   SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
   SPOKK_VK_CHECK(CreateSwapchain(new_window_extent));
+}
+
+bool Application::InitImgui(VkRenderPass ui_render_pass) {
+  VkDescriptorPoolSize pool_size[11] = {
+      // clang-format off
+      {VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
+      {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000}, 
+      {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
+      {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
+      {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
+      {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
+      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
+      {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
+      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
+      {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
+      {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}
+      // clang-format on
+  };
+  VkDescriptorPoolCreateInfo pool_info = {};
+  pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+  pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+  pool_info.maxSets = 1000 * 11;
+  pool_info.poolSizeCount = 11;
+  pool_info.pPoolSizes = pool_size;
+  SPOKK_VK_CHECK(vkCreateDescriptorPool(device_, &pool_info, device_.HostAllocator(), &imgui_dpool_));
+
+  // Setup ImGui binding
+  ImGui_ImplGlfwVulkan_Init_Data init_data = {};
+  init_data.allocator = const_cast<VkAllocationCallbacks *>(device_.HostAllocator());
+  init_data.gpu = device_.Physical();
+  init_data.device = device_.Logical();
+  init_data.render_pass = ui_render_pass;
+  init_data.pipeline_cache = device_.PipelineCache();
+  init_data.descriptor_pool = imgui_dpool_;
+  init_data.check_vk_result = [](VkResult result) { SPOKK_VK_CHECK(result); };
+  bool install_glfw_input_callbacks = true;
+  bool init_success = ImGui_ImplGlfwVulkan_Init(window_.get(), install_glfw_input_callbacks, &init_data);
+  ZOMBO_ASSERT_RETURN(init_success, false, "IMGUI init failed");
+
+  // Load Fonts
+  // (there is a default font, this is only if you want to change it. see extra_fonts/README.txt for more details)
+  // ImGuiIO& io = ImGui::GetIO();
+  // io.Fonts->AddFontDefault();
+  // io.Fonts->AddFontFromFileTTF("../../extra_fonts/Cousine-Regular.ttf", 15.0f);
+  // io.Fonts->AddFontFromFileTTF("../../extra_fonts/DroidSans.ttf", 16.0f);
+  // io.Fonts->AddFontFromFileTTF("../../extra_fonts/ProggyClean.ttf", 13.0f);
+  // io.Fonts->AddFontFromFileTTF("../../extra_fonts/ProggyTiny.ttf", 10.0f);
+  // io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
+
+  // Upload Fonts
+  VkCommandPoolCreateInfo cpool_ci = {};
+  cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+  cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
+  VkCommandPool cpool = VK_NULL_HANDLE;
+  SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, device_.HostAllocator(), &cpool));
+  VkCommandBufferAllocateInfo cb_allocate_info = {};
+  cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  cb_allocate_info.commandPool = cpool;
+  cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  cb_allocate_info.commandBufferCount = 1;
+  VkCommandBuffer cb = VK_NULL_HANDLE;
+  SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, &cb));
+  VkCommandBufferBeginInfo begin_info = {};
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &begin_info));
+  bool font_create_success = ImGui_ImplGlfwVulkan_CreateFontsTexture(cb);
+  ZOMBO_ASSERT_RETURN(font_create_success, false, "IMGUI failed to create fonts");
+  VkSubmitInfo end_info = {};
+  end_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  end_info.commandBufferCount = 1;
+  end_info.pCommandBuffers = &cb;
+  SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
+  SPOKK_VK_CHECK(vkQueueSubmit(*(device_.FindQueue(VK_QUEUE_GRAPHICS_BIT)), 1, &end_info, VK_NULL_HANDLE));
+  SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
+  ImGui_ImplGlfwVulkan_InvalidateFontUploadObjects();
+  vkDestroyCommandPool(device_, cpool, device_.HostAllocator());
+  
+  is_imgui_enabled_ = true;
+  ShowImgui(true);
+  return true;
+}
+
+void Application::ShowImgui(bool visible) {
+  if (visible && !is_imgui_visible_) {
+    // invisible -> visible
+    ImGui_ImplGlfwVulkan_Show();
+  } else if (!visible && is_imgui_visible_) {
+    // visible -> invisible
+    ImGui_ImplGlfwVulkan_Hide();
+    input_state_.ClearHistory();
+  }
+  is_imgui_visible_ = visible;
+}
+
+void Application::RenderImgui(VkCommandBuffer cb) const { ImGui_ImplGlfwVulkan_Render(cb); }
+
+void Application::DestroyImgui(void) {
+  if (device_.Logical() != VK_NULL_HANDLE && imgui_dpool_ != VK_NULL_HANDLE) {
+    vkDeviceWaitIdle(device_);
+
+    ImGui_ImplGlfwVulkan_Shutdown();
+    vkDestroyDescriptorPool(device_, imgui_dpool_, device_.HostAllocator());
+    imgui_dpool_ = VK_NULL_HANDLE;
+
+    ShowImgui(false);
+    is_imgui_enabled_ = false;
+  }
 }
 
 VkResult Application::CreateSwapchain(VkExtent2D extent) {

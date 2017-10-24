@@ -11,34 +11,50 @@ layout (set = 0, binding = 0) uniform SceneUniforms {
   vec4 eye_dir_wsn;   // xyz: world-space eye direction (normalized)
   // truncated; this should really be in a header file
 } scene_consts;
+layout (set = 0, binding = 2) uniform LightUniforms {
+  vec4 hemi_down_color;  // xyz: RGB color, w: intensity
+  vec4 hemi_up_color;  // xyz: RGB color
+
+  vec4 dir_color;  // xyz: RGB color, w: intensity
+  vec4 dir_to_light_wsn; // xyz: world-space normalized vector towards light
+
+  vec4 point_pos_ws_inverse_range; // xyz: world-space light pos, w: inverse range of light
+  vec4 point_color;  // xyz: RGB color, w: intensity
+} light_consts;
+
+layout (set = 0, binding = 3) uniform MaterialUniforms {
+  vec4 albedo;  // xyz: albedo RGB
+  vec4 spec_color;  // xyz: specular RGB
+  vec4 spec_exp_intensity;  // x: specular exponent, y: specular intensity
+} mat_consts;
 
 
 #include <common/cookbook.glsl>
 
 void main() {
-  vec3 albedo = vec3(1,1,1);
-
   Material mat;
+  mat.albedo_color = mat_consts.albedo.xyz;
   mat.normal_wsn = normalize(norm_ws);
-  mat.spec_exp = 1000.0;
-  mat.spec_intensity = 1.0;
+  mat.spec_color = mat_consts.spec_color.xyz;
+  mat.spec_exp = mat_consts.spec_exp_intensity.x;
+  mat.spec_intensity = mat_consts.spec_exp_intensity.y;
 
   HemiLight hemi_light;
-  hemi_light.down_color = vec3(0.471,0.412,0.282);
-  hemi_light.up_color = vec3(0.29, 0.39, 0.545);
-  vec3 hemi_color = 0.75 * ApplyHemiLight(mat, hemi_light);
+  hemi_light.down_color = light_consts.hemi_down_color.xyz;
+  hemi_light.up_color = light_consts.hemi_up_color.xyz;
+  vec3 hemi_color = light_consts.hemi_down_color.w * ApplyHemiLight(mat, hemi_light);
 
   DirLight dir_light;
-  dir_light.to_light_wsn = vec3(-1,1,1);
-  dir_light.color = vec3(1,1,1);
-  vec3 dir_color = 0.5 * ApplyDirLight(pos_ws, scene_consts.eye_pos_ws.xyz, mat, dir_light);
+  dir_light.to_light_wsn = light_consts.dir_to_light_wsn.xyz;
+  dir_light.color = light_consts.dir_color.xyz;
+  vec3 dir_color = light_consts.dir_color.w * ApplyDirLight(pos_ws, scene_consts.eye_pos_ws.xyz, mat, dir_light);
 
   PointLight point_light;
-  point_light.pos_ws = vec3(0,0,-5);
-  point_light.inverse_range = 0.0001f;
-  point_light.color = vec3(0,0,1);
-  vec3 point_color = 0.0 * ApplyPointLight(pos_ws, scene_consts.eye_pos_ws.xyz, mat, point_light);
+  point_light.pos_ws = light_consts.point_pos_ws_inverse_range.xyz;
+  point_light.inverse_range = light_consts.point_pos_ws_inverse_range.w;
+  point_light.color = light_consts.point_color.xyz;
+  vec3 point_color = light_consts.point_color.w * ApplyPointLight(pos_ws, scene_consts.eye_pos_ws.xyz, mat, point_light);
 
-  out_fragColor.xyz = (hemi_color + dir_color + point_color) * albedo;
+  out_fragColor.xyz = hemi_color + dir_color + point_color;
   out_fragColor.w = 1;
 }

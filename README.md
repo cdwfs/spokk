@@ -14,6 +14,7 @@ spokk builds upon the following projects, which will be automatically included a
 - [sheredom/json.h](https://github.com/sheredom/json.h) for JSON parsing.
 - [g-truc/glm](https://github.com/google/mathfu) for 3D math.
 - [google/shaderc](https://github.com/google/shaderc) for shader compilation.
+- [ocornut/imgui](https://github.com/ocornut/imgui) for quick & dirty runtime GUI.
 - [KhronosGroup/SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) for introspection of
   SPIR-V shaders (used to automatically generate descriptor set layouts).
 - [nothings/stb](https://github.com/nothings/stb) for loading common image formats (`stb_image`), writing
