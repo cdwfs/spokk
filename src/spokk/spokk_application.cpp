@@ -600,6 +600,8 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   }
   VkPresentModeKHR present_mode;
   // TODO(https://github.com/cdwfs/spokk/issues/12): Put this logic under application control
+  // TODO(https://github.com/cdwfs/spokk/issues/30): Let this be tweaked at runtime through imgui
+#if 0
   if (present_mode_supported[VK_PRESENT_MODE_IMMEDIATE_KHR]) {
     present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
   } else if (present_mode_supported[VK_PRESENT_MODE_MAILBOX_KHR]) {
@@ -609,6 +611,9 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
     ZOMBO_ASSERT(present_mode_supported[VK_PRESENT_MODE_FIFO_KHR], "FIFO present mode unsupported?!?");
     present_mode = VK_PRESENT_MODE_FIFO_KHR;
   }
+#else
+  present_mode = VK_PRESENT_MODE_FIFO_KHR;
+#endif
 
   uint32_t desired_swapchain_image_count = surface_caps.minImageCount + 1;
   if (surface_caps.maxImageCount > 0 && desired_swapchain_image_count > surface_caps.maxImageCount) {
