@@ -24,8 +24,9 @@ layout (set = 0, binding = 2) uniform LightUniforms {
 
 layout (set = 0, binding = 3) uniform MaterialUniforms {
   vec4 albedo;  // xyz: albedo RGB
-  vec4 spec_color;  // xyz: specular RGB
-  vec4 spec_exp_intensity;  // x: specular exponent, y: specular intensity
+  vec4 emissive_color;  // xyz: emissive color, w: intensity
+  vec4 spec_color;  // xyz: specular RGB, w: intensity
+  vec4 spec_exp;  // x: specular exponent
 } mat_consts;
 
 
@@ -36,8 +37,8 @@ void main() {
   mat.albedo_color = mat_consts.albedo.xyz;
   mat.normal_wsn = normalize(norm_ws);
   mat.spec_color = mat_consts.spec_color.xyz;
-  mat.spec_exp = mat_consts.spec_exp_intensity.x;
-  mat.spec_intensity = mat_consts.spec_exp_intensity.y;
+  mat.spec_intensity = mat_consts.spec_color.w;
+  mat.spec_exp = mat_consts.spec_exp.x;
 
   HemiLight hemi_light;
   hemi_light.down_color = light_consts.hemi_down_color.xyz;
@@ -55,6 +56,7 @@ void main() {
   point_light.color = light_consts.point_color.xyz;
   vec3 point_color = light_consts.point_color.w * ApplyPointLight(pos_ws, scene_consts.eye_pos_ws.xyz, mat, point_light);
 
-  out_fragColor.xyz = hemi_color + dir_color + point_color;
+  vec3 emissive_color = mat_consts.emissive_color.xyz * mat_consts.emissive_color.w;
+  out_fragColor.xyz = hemi_color + dir_color + point_color + emissive_color;
   out_fragColor.w = 1;
 }

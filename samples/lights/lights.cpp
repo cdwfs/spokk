@@ -27,18 +27,19 @@ struct MeshUniforms {
 };
 struct MaterialUniforms {
   glm::vec4 albedo;  // xyz: albedo RGB
-  glm::vec4 spec_color;  // xyz: specular color
-  glm::vec4 spec_exp_intensity;  // x: specular exponent, y: specular intensity
+  glm::vec4 emissive_color;  // xyz: emissive color, w: intensity
+  glm::vec4 spec_color;  // xyz: specular color, w: intensity
+  glm::vec4 spec_exp;  // x: specular exponent
 };
 struct LightUniforms {
   glm::vec4 hemi_down_color;
   glm::vec4 hemi_up_color;
 
-  glm::vec4 dir_color;
+  glm::vec4 dir_color;  // xyz: color, w: intensity
   glm::vec4 dir_to_light_wsn;  // xyz: world-space normalized vector towards light
 
   glm::vec4 point_pos_ws_inverse_range;  // xyz: world-space light pos, w: inverse range of light
-  glm::vec4 point_color;
+  glm::vec4 point_color; // xyz: color, w: intensity
 };
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
@@ -127,8 +128,9 @@ public:
     SPOKK_VK_CHECK(
         material_uniforms_.Create(device_, PFRAME_COUNT, material_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
     material_.albedo = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    material_.emissive_color = glm::vec4(0.5f, 0.5f, 0.0f, 0.0f);
     material_.spec_color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-    material_.spec_exp_intensity = glm::vec4(1000.0f, 1.0f, 0.0f, 0.0f);
+    material_.spec_exp = glm::vec4(1000.0f, 0.0f, 0.0f, 0.0f);
 
     // Create pipelined buffer of mesh uniforms
     VkBufferCreateInfo mesh_uniforms_ci = {};
@@ -236,12 +238,18 @@ public:
     mesh_uniforms_.FlushPframeHostCache(pframe_index_);
 
     // Update material uniforms
+    const ImGuiColorEditFlags default_color_edit_flags = ImGuiColorEditFlags_Float | ImGuiColorEditFlags_PickerHueWheel;
     if (ImGui::TreeNode("Material")) {
-      ImGui::ColorEdit3("Albedo", &material_.albedo.x, ImGuiColorEditFlags_Float);
+      ImGui::ColorEdit3("Albedo", &material_.albedo.x, default_color_edit_flags);
+      ImGui::Separator();
+      ImGui::Text("Emissive:");
+      ImGui::ColorEdit3("Color##Emissive", &material_.emissive_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Emissive", &material_.emissive_color.w, 0.0f, 1.0f);
+      ImGui::Separator();
       ImGui::Text("Specular:");
-      ImGui::ColorEdit3("Color", &material_.spec_color.x, ImGuiColorEditFlags_Float);
-      ImGui::SliderFloat("Exponent", &material_.spec_exp_intensity.x, 1.0f, 100000.0f, "%.2f", 10.0f);
-      ImGui::SliderFloat("Intensity", &material_.spec_exp_intensity.y, 0.0f, 1.0f);
+      ImGui::ColorEdit3("Color##Spec", &material_.spec_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Spec", &material_.spec_color.w, 0.0f, 1.0f);
+      ImGui::SliderFloat("Exponent##Spec", &material_.spec_exp.x, 1.0f, 100000.0f, "%.2f", 10.0f);
       ImGui::TreePop();
     }
     MaterialUniforms* material_uniforms = (MaterialUniforms*)material_uniforms_.Mapped(pframe_index_);
@@ -251,19 +259,19 @@ public:
     // Update light uniforms
     if (ImGui::TreeNode("Lights")) {
       ImGui::Text("Hemi Light");
-      ImGui::ColorEdit3("Up Color##Hemi", &lights_.hemi_up_color.x, ImGuiColorEditFlags_Float);
-      ImGui::ColorEdit3("Down Color##Hemi", &lights_.hemi_down_color.x, ImGuiColorEditFlags_Float);
+      ImGui::ColorEdit3("Up Color##Hemi", &lights_.hemi_up_color.x, default_color_edit_flags);
+      ImGui::ColorEdit3("Down Color##Hemi", &lights_.hemi_down_color.x, default_color_edit_flags);
       ImGui::SliderFloat("Intensity##Hemi", &lights_.hemi_down_color.w, 0.0f, 1.0f);
       ImGui::Separator();
       ImGui::Text("Dir Light:");
-      ImGui::ColorEdit3("Color##Dir", &lights_.dir_color.x, ImGuiColorEditFlags_Float);
+      ImGui::ColorEdit3("Color##Dir", &lights_.dir_color.x, default_color_edit_flags);
       ImGui::SliderFloat("Intensity##Dir", &lights_.dir_color.w, 0.0f, 1.0f);
       ImGui::Separator();
       ImGui::Text("Point Light:");
       float range = 1.0f / lights_.point_pos_ws_inverse_range.w;
       ImGui::InputFloat3("Position##Point", &lights_.point_pos_ws_inverse_range.x);
       ImGui::SliderFloat("Range##Point", &range, 0.001f, 1000000.0f, "%.3f", 10.0f);
-      ImGui::ColorEdit3("Color##Point", &lights_.point_color.x, ImGuiColorEditFlags_Float);
+      ImGui::ColorEdit3("Color##Point", &lights_.point_color.x, default_color_edit_flags);
       ImGui::SliderFloat("Intensity##Point", &lights_.point_color.w, 0.0f, 1.0f);
       lights_.point_pos_ws_inverse_range.w = 1.0f / range;
       ImGui::TreePop();
