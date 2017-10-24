@@ -26,8 +26,6 @@ constexpr float Z_FAR = 100.0f;
 class CubeSwarmApp : public spokk::Application {
 public:
   explicit CubeSwarmApp(Application::CreateInfo& ci) : Application(ci) {
-    glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
     seconds_elapsed_ = 0;
 
     camera_ =

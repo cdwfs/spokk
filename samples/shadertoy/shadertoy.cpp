@@ -96,6 +96,9 @@ public:
     render_pass_.attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     SPOKK_VK_CHECK(render_pass_.Finalize(device_));
 
+    // Initialize IMGUI
+    InitImgui(render_pass_);
+
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
         GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
@@ -271,6 +274,7 @@ public:
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
         pipelines_[active_pipeline_index_].shader_program->pipeline_layout, 0, 1, &dsets_[pframe_index_], 0, nullptr);
     vkCmdDraw(primary_cb, 3, 1, 0, 0);
+    RenderImgui(primary_cb);
     vkCmdEndRenderPass(primary_cb);
   }
 

@@ -76,8 +76,6 @@ private:
 };
 
 PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
-  glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
   seconds_elapsed_ = 0;
 
   camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
@@ -94,6 +92,9 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   SPOKK_VK_CHECK(render_pass_.Finalize(device_));
   render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
+
+  // Initialize IMGUI
+  InitImgui(render_pass_);
 
   // Load textures and samplers
   VkSamplerCreateInfo sampler_ci =
@@ -225,6 +226,8 @@ PillarsApp::~PillarsApp() {
   if (device_) {
     vkDeviceWaitIdle(device_);
 
+    DestroyImgui();
+
     dpool_.Destroy(device_);
 
     scene_uniforms_.Destroy(device_);
@@ -316,6 +319,7 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
       0, 1, &dsets_[pframe_index_], 0, nullptr);
   mesh_.BindBuffers(primary_cb);
   vkCmdDrawIndexed(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size(), 0, 0, 0);
+  RenderImgui(primary_cb);
   vkCmdEndRenderPass(primary_cb);
 }
 

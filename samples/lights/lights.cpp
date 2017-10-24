@@ -31,8 +31,6 @@ constexpr float Z_FAR = 100.0f;
 class LightsApp : public spokk::Application {
 public:
   explicit LightsApp(Application::CreateInfo& ci) : Application(ci) {
-    glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
     seconds_elapsed_ = 0;
 
     camera_ =
@@ -48,6 +46,9 @@ public:
     SPOKK_VK_CHECK(render_pass_.Finalize(device_));
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
+
+    // Initialize IMGUI
+    InitImgui(render_pass_);
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
@@ -205,7 +206,7 @@ public:
     // Render skybox
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, skybox_pipeline_.handle);
     vkCmdDraw(primary_cb, 36, 1, 0, 0);
-
+    RenderImgui(primary_cb);
     vkCmdEndRenderPass(primary_cb);
   }
 
