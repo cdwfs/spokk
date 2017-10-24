@@ -4,6 +4,8 @@ using namespace spokk;
 #include <common/camera.h>
 #include <common/cube_mesh.h>
 
+#include <imgui.h>
+
 #include <array>
 #include <cstdio>
 #include <memory>
@@ -23,6 +25,16 @@ struct SceneUniforms {
 struct MeshUniforms {
   glm::mat4 o2w;
 };
+struct LightUniforms {
+  glm::vec4 hemi_down_color;
+  glm::vec4 hemi_up_color;
+
+  glm::vec4 dir_color;
+  glm::vec4 dir_to_light_wsn;  // xyz: world-space normalized vector towards light
+
+  glm::vec4 point_pos_ws_inverse_range;  // xyz: world-space light pos, w: inverse range of light
+  glm::vec4 point_color;
+};
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
@@ -35,8 +47,8 @@ public:
 
     camera_ =
         my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
-    const glm::vec3 initial_camera_pos(-1, 0, 6);
-    const glm::vec3 initial_camera_target(0, 0, 0);
+    const glm::vec3 initial_camera_pos(-3.63f, 4.27f, 9.17f);
+    const glm::vec3 initial_camera_target(0, 3, 0);
     const glm::vec3 initial_camera_up(0, 1, 0);
     camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
     drone_ = my_make_unique<CameraDrone>(*camera_);
@@ -84,14 +96,29 @@ public:
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
 
+    // Create pipelined buffer of light uniforms
+    VkBufferCreateInfo light_uniforms_ci = {};
+    light_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    light_uniforms_ci.size = sizeof(LightUniforms);
+    light_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    light_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(
+        light_uniforms_.Create(device_, PFRAME_COUNT, light_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    // Default light settings
+    lights_.hemi_down_color = glm::vec4(0.471f, 0.412f, 0.282f, 0.75f);
+    lights_.hemi_up_color = glm::vec4(0.290f, 0.390f, 0.545f, 0.0f);
+    lights_.dir_to_light_wsn = glm::vec4(-1.0f, +1.0f, +1.0f, 0.0f);
+    lights_.dir_color = glm::vec4(1.000f, 1.000f, 1.000f, 0.5f);
+    lights_.point_pos_ws_inverse_range = glm::vec4(+0.000f, +0.000f, -5.000f, 1.0f / 10000.0f);
+    lights_.point_color = glm::vec4(0.000f, 0.000f, 1.000f, 0.0f);
+
     // Create pipelined buffer of mesh uniforms
     VkBufferCreateInfo mesh_uniforms_ci = {};
     mesh_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    mesh_uniforms_ci.size = sizeof(glm::mat4);
+    mesh_uniforms_ci.size = sizeof(MeshUniforms);
     mesh_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     mesh_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(
-      mesh_uniforms_.Create(device_, PFRAME_COUNT, mesh_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, mesh_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     // Create pipelined buffer of shader uniforms
     VkBufferCreateInfo scene_uniforms_ci = {};
@@ -117,6 +144,7 @@ public:
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
       dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
+      dset_writer.BindBuffer(light_uniforms_.Handle(pframe), mesh_fs_.GetDescriptorBindPoint("light_consts").binding);
       dset_writer.WriteAll(device_, dsets_[pframe]);
     }
 
@@ -129,6 +157,7 @@ public:
 
       dpool_.Destroy(device_);
 
+      light_uniforms_.Destroy(device_);
       mesh_uniforms_.Destroy(device_);
       scene_uniforms_.Destroy(device_);
 
@@ -183,8 +212,27 @@ public:
 
     // Update mesh uniforms
     MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
-    mesh_uniforms->o2w = ComposeTransform(glm::vec3(0.0f, 0.0f, 0.0f),glm::quat_identity<float,glm::highp>(), 5.0f);
+    mesh_uniforms->o2w = ComposeTransform(glm::vec3(0.0f, 0.0f, 0.0f), glm::quat_identity<float, glm::highp>(), 5.0f);
     mesh_uniforms_.FlushPframeHostCache(pframe_index_);
+
+    // Update light uniforms
+    if (ImGui::TreeNode("Lights")) {
+      ImGui::ColorPicker3("Hemi Up", &lights_.hemi_up_color.x);
+      ImGui::ColorPicker3("Hemi Down", &lights_.hemi_up_color.x);
+      ImGui::SliderFloat("Hemi Intensity", &lights_.hemi_down_color.w, 0.0f, 1.0f);
+
+      ImGui::ColorPicker3("Dir Color", &lights_.dir_color.x);
+      ImGui::SliderFloat("Dir Intensity", &lights_.dir_color.w, 0.0f, 1.0f);
+
+      ImGui::InputFloat3("Point Pos", &lights_.point_pos_ws_inverse_range.x);
+      ImGui::InputFloat("Point Inv. Range", &lights_.point_pos_ws_inverse_range.w);
+      ImGui::ColorPicker3("Point Color", &lights_.point_color.x);
+      ImGui::SliderFloat("Point Intensity", &lights_.point_color.w, 0.0f, 1.0f);
+      ImGui::TreePop();
+    }
+    LightUniforms* light_uniforms = (LightUniforms*)light_uniforms_.Mapped(pframe_index_);
+    *light_uniforms = lights_;
+    light_uniforms_.FlushPframeHostCache(pframe_index_);
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
@@ -273,8 +321,11 @@ private:
   ShaderProgram mesh_shader_program_;
   GraphicsPipeline mesh_pipeline_;
   Mesh mesh_;
+  PipelinedBuffer light_uniforms_;
   PipelinedBuffer mesh_uniforms_;
   PipelinedBuffer scene_uniforms_;
+
+  LightUniforms lights_;
 
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDrone> drone_;
