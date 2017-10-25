@@ -286,7 +286,7 @@ public:
       ImGui::InputFloat3("Direction##Spot", &spot_dir_wsn.x, 3);
       ImGui::SliderFloat("Inner Angle##Spot", &spot_falloff_degrees_inner, 0.0f, 90.0f);
       ImGui::SliderFloat("Outer Angle##Spot", &spot_falloff_degrees_outer, 0.0f, 90.0f);
-      lights_.point_pos_ws_inverse_range.w = 1.0f / spot_range;
+      lights_.spot_pos_ws_inverse_range.w = 1.0f / spot_range;
       lights_.spot_neg_dir_wsn = glm::vec4(-spot_dir_wsn, 0.0f);
       if (spot_falloff_degrees_inner != spot_falloff_degrees_inner_original &&
         spot_falloff_degrees_inner > spot_falloff_degrees_outer) {
