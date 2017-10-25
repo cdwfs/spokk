@@ -233,33 +233,9 @@ public:
 
   virtual void Update(double dt) override {
     seconds_elapsed_ += dt;
-
     drone_->Update(input_state_, (float)dt);
 
-    // Update uniforms
-    // TODO(https://github.com/cdwfs/spokk/issues/28): uniform buffer updates must be moved to Render()
-    SceneUniforms* scene_uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
-    scene_uniforms->time_and_res =
-        glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-    scene_uniforms->eye_pos_ws = glm::vec4(camera_->getEyePoint(), 1.0f);
-    scene_uniforms->eye_dir_wsn = glm::vec4(glm::normalize(camera_->getViewDirection()), 1.0f);
-    const glm::mat4 view = camera_->getViewMatrix();
-    const glm::mat4 proj = camera_->getProjectionMatrix();
-    const glm::mat4 viewproj = proj * view;
-    scene_uniforms->viewproj = viewproj;
-    scene_uniforms->view = view;
-    scene_uniforms->proj = proj;
-    scene_uniforms->viewproj_inv = glm::inverse(viewproj);
-    scene_uniforms->view_inv = glm::inverse(view);
-    scene_uniforms->proj_inv = glm::inverse(proj);
-    scene_uniforms_.FlushPframeHostCache(pframe_index_);
-
-    // Update mesh uniforms
-    MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
-    mesh_uniforms->o2w = ComposeTransform(glm::vec3(0.0f, 0.0f, 0.0f), glm::quat_identity<float, glm::highp>(), 5.0f);
-    mesh_uniforms_.FlushPframeHostCache(pframe_index_);
-
-    // Update material uniforms
+    // Tweakable light/material settings
     const ImGuiColorEditFlags default_color_edit_flags = ImGuiColorEditFlags_Float | ImGuiColorEditFlags_PickerHueWheel;
     if (ImGui::TreeNode("Material")) {
       ImGui::ColorEdit3("Albedo", &material_.albedo.x, default_color_edit_flags);
@@ -274,11 +250,6 @@ public:
       ImGui::SliderFloat("Exponent##Spec", &material_.spec_exp.x, 1.0f, 100000.0f, "%.2f", 10.0f);
       ImGui::TreePop();
     }
-    MaterialUniforms* material_uniforms = (MaterialUniforms*)material_uniforms_.Mapped(pframe_index_);
-    *material_uniforms = material_;
-    material_uniforms_.FlushPframeHostCache(pframe_index_);
-
-    // Update light uniforms
     if (ImGui::TreeNode("Lights")) {
       ImGui::Text("Hemi Light");
       ImGui::ColorEdit3("Up Color##Hemi", &lights_.hemi_up_color.x, default_color_edit_flags);
@@ -305,7 +276,7 @@ public:
       glm::vec3 spot_dir_wsn = -lights_.spot_neg_dir_wsn;
       float spot_falloff_degrees_outer = 0, spot_falloff_degrees_inner = 0;
       DecodeSpotlightFalloffAngles(
-          &spot_falloff_degrees_inner, &spot_falloff_degrees_outer, lights_.spot_falloff_angles);
+        &spot_falloff_degrees_inner, &spot_falloff_degrees_outer, lights_.spot_falloff_angles);
       float spot_falloff_degrees_inner_original = spot_falloff_degrees_inner;
       float spot_falloff_degrees_outer_original = spot_falloff_degrees_outer;
       ImGui::InputFloat3("Position##Spot", &lights_.spot_pos_ws_inverse_range.x);
@@ -318,23 +289,53 @@ public:
       lights_.point_pos_ws_inverse_range.w = 1.0f / spot_range;
       lights_.spot_neg_dir_wsn = glm::vec4(-spot_dir_wsn, 0.0f);
       if (spot_falloff_degrees_inner != spot_falloff_degrees_inner_original &&
-          spot_falloff_degrees_inner > spot_falloff_degrees_outer) {
+        spot_falloff_degrees_inner > spot_falloff_degrees_outer) {
         spot_falloff_degrees_outer = spot_falloff_degrees_inner;
       } else if (spot_falloff_degrees_outer != spot_falloff_degrees_outer_original &&
-          spot_falloff_degrees_outer < spot_falloff_degrees_inner) {
+        spot_falloff_degrees_outer < spot_falloff_degrees_inner) {
         spot_falloff_degrees_inner = spot_falloff_degrees_outer;
       }
       EncodeSpotlightFalloffAngles(
-          &lights_.spot_falloff_angles, spot_falloff_degrees_inner, spot_falloff_degrees_outer);
+        &lights_.spot_falloff_angles, spot_falloff_degrees_inner, spot_falloff_degrees_outer);
 
       ImGui::TreePop();
     }
-    LightUniforms* light_uniforms = (LightUniforms*)light_uniforms_.Mapped(pframe_index_);
-    *light_uniforms = lights_;
-    light_uniforms_.FlushPframeHostCache(pframe_index_);
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+    // Update uniforms
+    SceneUniforms* scene_uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
+    scene_uniforms->time_and_res =
+      glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+    scene_uniforms->eye_pos_ws = glm::vec4(camera_->getEyePoint(), 1.0f);
+    scene_uniforms->eye_dir_wsn = glm::vec4(glm::normalize(camera_->getViewDirection()), 1.0f);
+    const glm::mat4 view = camera_->getViewMatrix();
+    const glm::mat4 proj = camera_->getProjectionMatrix();
+    const glm::mat4 viewproj = proj * view;
+    scene_uniforms->viewproj = viewproj;
+    scene_uniforms->view = view;
+    scene_uniforms->proj = proj;
+    scene_uniforms->viewproj_inv = glm::inverse(viewproj);
+    scene_uniforms->view_inv = glm::inverse(view);
+    scene_uniforms->proj_inv = glm::inverse(proj);
+    scene_uniforms_.FlushPframeHostCache(pframe_index_);
+
+    // Update mesh uniforms
+    MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
+    mesh_uniforms->o2w = ComposeTransform(glm::vec3(0.0f, 0.0f, 0.0f), glm::quat_identity<float, glm::highp>(), 5.0f);
+    mesh_uniforms_.FlushPframeHostCache(pframe_index_);
+
+    // Update material uniforms
+    MaterialUniforms* material_uniforms = (MaterialUniforms*)material_uniforms_.Mapped(pframe_index_);
+    *material_uniforms = material_;
+    material_uniforms_.FlushPframeHostCache(pframe_index_);
+
+    // Update light uniforms
+    LightUniforms* light_uniforms = (LightUniforms*)light_uniforms_.Mapped(pframe_index_);
+    *light_uniforms = lights_;
+    light_uniforms_.FlushPframeHostCache(pframe_index_);
+
+    // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;

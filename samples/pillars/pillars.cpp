@@ -256,19 +256,7 @@ PillarsApp::~PillarsApp() {
 
 void PillarsApp::Update(double dt) {
   seconds_elapsed_ += dt;
-
   drone_->Update(input_state_, (float)dt);
-
-  // Update uniforms
-  // TODO(https://github.com/cdwfs/spokk/issues/28): uniform buffer updates must be moved to Render()
-  SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
-  uniforms->time_and_res =
-      glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-  uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
-  glm::mat4 w2v = camera_->getViewMatrix();
-  const glm::mat4 proj = camera_->getProjectionMatrix();
-  uniforms->viewproj = proj * w2v;
-  scene_uniforms_.FlushPframeHostCache(pframe_index_);
 
   // Update visible cells
   // - Add a cell as visible the first time it gets within N units of the camera.
@@ -300,13 +288,25 @@ void PillarsApp::Update(double dt) {
       }
     }
   }
+}
+
+void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
+  // Update uniforms
+  SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
+  uniforms->time_and_res =
+    glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+  uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
+  glm::mat4 w2v = camera_->getViewMatrix();
+  const glm::mat4 proj = camera_->getProjectionMatrix();
+  uniforms->viewproj = proj * w2v;
+  scene_uniforms_.FlushPframeHostCache(pframe_index_);
+
   memcpy(visible_cells_buffer_.Mapped(pframe_index_), visible_cells_.data(), visible_cells_.size() * sizeof(int32_t));
   visible_cells_buffer_.FlushPframeHostCache(pframe_index_);
   memcpy(heightfield_buffer_.Mapped(pframe_index_), heightfield_.data(), heightfield_.size() * sizeof(float));
   heightfield_buffer_.FlushPframeHostCache(pframe_index_);
-}
 
-void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
+  // Write command buffer
   VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
   render_pass_.begin_info.framebuffer = framebuffer;
   render_pass_.begin_info.renderArea.extent = swapchain_extent_;
