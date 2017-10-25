@@ -52,7 +52,28 @@
   - Walk the draw call list.
     - If it's a different material, bind it.
     - If it's a new mesh, bind it.
-    - draw
+    - draw!
+
+  Questions:
+  - How is instancing (specifically, loading per-instance shader constants) generally implemented in
+    shader code? Big flat fixed-size array in the constant buffer? open-ended structured buffer?
+    - NV constant buffers are limited to 64KB; AMD's can be larger. The spec only guarantees a minimum of
+      16 KB. So, effective max instance count per draw would vary wildly, and can't easily be accounted
+      for at shader compile time (without just using the lowest guaranteed value everywhere).
+    - structured buffers would certainly be easier, if they're performant.
+  - How to not use every per-instance matrix for every instance? Most draws will only need 1-2 of the six
+    possible matrix varieties (W, WV, WVP, inverses). It's wasteful to compute all matrices for all instances,
+    and certainly wasteful to store unused matrices in potentially limited constant buffer space.
+    - 16 KB constant buffers:
+      - 6 matrices = 384 bytes = 42 instances per constant buffer.
+      - 1 matrix = 64 bytes = 256 instances per constant buffer
+      - raw translate/quat/scale = 32 bytes = 512 instances per constant buffer
+  - Shaders will use resources beyond those expected by the renderer (globals in set 0, material in set 1,
+    instance transforms in set 2). How to plumb these into the renderer?
+    - Can they just be inserted into the existing dsets at the appropriate frequency? Materials control
+      their own dsets, and can stuff whatever they want in them; the renderer has no expectations there.
+    - Who controls global and per-instance dsets? What constraints are on the layout of each? How would a shader
+      declare/bind its own global or per-instance resources?
 */
 
 /*
