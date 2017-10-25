@@ -69,4 +69,41 @@ vec3 ApplyPointLight(vec3 pos_ws, vec3 eye_pos_ws, Material mat, PointLight ligh
   attenuation *= attenuation;
 
   return (dif_color * mat.albedo_color + spec_color * mat.spec_color) * attenuation;
-}
+}
+
+//////////////////////
+
+struct SpotLight {
+  vec3 pos_ws;
+  float inverse_range;
+  vec3 neg_light_dir_wsn;
+  float inv_inner_outer;  // 1.0 / (cos(inner) - cos(outer))
+  float cosine_outer;
+  vec3 color;
+};
+
+vec3 ApplySpotLight(vec3 pos_ws, vec3 eye_pos_ws, Material mat, SpotLight light) {
+  vec3 to_light = light.pos_ws - pos_ws;
+  float to_light_len = length(to_light);
+  vec3 to_light_wsn = to_light / to_light_len;
+  float n_dot_l = dot(to_light_wsn, mat.normal_wsn);
+  vec3 dif_color = light.color * clamp(n_dot_l, 0, 1);
+
+  vec3 spec_color = vec3(0, 0, 0);
+  if (mat.spec_exp != 1.0) {
+    vec3 to_eye_wsn = normalize(eye_pos_ws - pos_ws);
+    vec3 halfway_wsn = normalize(to_eye_wsn + to_light_wsn);
+    float n_dot_h = clamp(dot(halfway_wsn, mat.normal_wsn), 0, 1);
+    spec_color += light.color.rgb * pow(n_dot_h, mat.spec_exp) * mat.spec_intensity;
+  }
+
+  float attenuation = 1.0 - clamp(to_light_len * light.inverse_range, 0, 1);
+  attenuation *= attenuation;
+
+  float cos_ang = dot(to_light_wsn, light.neg_light_dir_wsn);
+  float cone_attenuation = clamp((cos_ang - light.cosine_outer) * light.inv_inner_outer, 0, 1);
+  cone_attenuation *= cone_attenuation;
+
+  return (dif_color * mat.albedo_color + spec_color * mat.spec_color)
+      * attenuation * cone_attenuation;
+}
