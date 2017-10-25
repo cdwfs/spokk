@@ -39,7 +39,7 @@ struct LightUniforms {
   glm::vec4 dir_to_light_wsn;  // xyz: world-space normalized vector towards light
 
   glm::vec4 point_pos_ws_inverse_range;  // xyz: world-space light pos, w: inverse range of light
-  glm::vec4 point_color; // xyz: color, w: intensity
+  glm::vec4 point_color;  // xyz: color, w: intensity
 };
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
@@ -262,18 +262,20 @@ public:
       ImGui::ColorEdit3("Up Color##Hemi", &lights_.hemi_up_color.x, default_color_edit_flags);
       ImGui::ColorEdit3("Down Color##Hemi", &lights_.hemi_down_color.x, default_color_edit_flags);
       ImGui::SliderFloat("Intensity##Hemi", &lights_.hemi_down_color.w, 0.0f, 1.0f);
+
       ImGui::Separator();
       ImGui::Text("Dir Light:");
       ImGui::ColorEdit3("Color##Dir", &lights_.dir_color.x, default_color_edit_flags);
       ImGui::SliderFloat("Intensity##Dir", &lights_.dir_color.w, 0.0f, 1.0f);
+
       ImGui::Separator();
       ImGui::Text("Point Light:");
-      float range = 1.0f / lights_.point_pos_ws_inverse_range.w;
+      float point_range = 1.0f / lights_.point_pos_ws_inverse_range.w;
       ImGui::InputFloat3("Position##Point", &lights_.point_pos_ws_inverse_range.x);
-      ImGui::SliderFloat("Range##Point", &range, 0.001f, 1000000.0f, "%.3f", 10.0f);
+      ImGui::SliderFloat("Range##Point", &point_range, 0.001f, 1000000.0f, "%.3f", 10.0f);
       ImGui::ColorEdit3("Color##Point", &lights_.point_color.x, default_color_edit_flags);
       ImGui::SliderFloat("Intensity##Point", &lights_.point_color.w, 0.0f, 1.0f);
-      lights_.point_pos_ws_inverse_range.w = 1.0f / range;
+      lights_.point_pos_ws_inverse_range.w = 1.0f / point_range;
       ImGui::TreePop();
     }
     LightUniforms* light_uniforms = (LightUniforms*)light_uniforms_.Mapped(pframe_index_);
