@@ -459,9 +459,11 @@ int Application::Run() {
     if (is_imgui_enabled_) {
       ImGui_ImplGlfwVulkan_NewFrame();
 
+#if 0 // IMGUI demo window
       if (is_imgui_visible_) {
         ImGui::ShowTestWindow();
       }
+#endif
     }
 
     input_state_.Update();
