@@ -453,7 +453,7 @@ int Application::Run() {
     }
 
     uint64_t ticks_now = zomboClockTicks();
-    const double dt = (float)zomboTicksToSeconds(ticks_now - ticks_prev);
+    const double dt = zomboTicksToSeconds(ticks_now - ticks_prev);
     ticks_prev = ticks_now;
 
     if (is_imgui_enabled_) {
@@ -546,10 +546,7 @@ int Application::Run() {
 
     glfwPollEvents();
     frame_index_ += 1;
-    pframe_index_ += 1;
-    if (pframe_index_ == PFRAME_COUNT) {
-      pframe_index_ = 0;
-    }
+    pframe_index_ = (pframe_index_ + 1) % PFRAME_COUNT;
   }
   return 0;
 }
@@ -660,9 +657,10 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
   SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
   ImGui_ImplGlfwVulkan_InvalidateFontUploadObjects();
   vkDestroyCommandPool(device_, cpool, device_.HostAllocator());
-  
+
   is_imgui_enabled_ = true;
   ShowImgui(true);
+
   return true;
 }
 
