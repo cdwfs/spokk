@@ -393,6 +393,8 @@ Application::~Application() {
   if (device_ != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(device_);
 
+    vkDestroyQueryPool(device_, timestamp_query_pool_, host_allocator_);
+
     DestroyImgui();
 
     vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
@@ -455,6 +457,15 @@ int Application::Run() {
     uint64_t ticks_now = zomboClockTicks();
     const double dt = zomboTicksToSeconds(ticks_now - ticks_prev);
     ticks_prev = ticks_now;
+    const uint32_t cpu_stats_frame_index = uint32_t(frame_index_ % STATS_FRAME_COUNT);
+    float total_frame_time = 1000.0f * (float)dt;
+    average_total_frame_time_ms_ +=
+        (total_frame_time - total_frame_times_ms_[cpu_stats_frame_index]) / (float)STATS_FRAME_COUNT;
+    total_frame_times_ms_[cpu_stats_frame_index] = total_frame_time;
+    // Some counters don't get updated until after we've already drawn the stats display,
+    // so we zero them out initially. They'll get correct data for the long-term plots.
+    submit_wait_times_ms_[cpu_stats_frame_index] = 0.0f;
+    present_wait_times_ms_[cpu_stats_frame_index] = 0.0f;
 
     if (is_imgui_enabled_) {
       ImGui_ImplGlfwVulkan_NewFrame();
@@ -476,7 +487,10 @@ int Application::Run() {
     }
 
     // Wait for the command buffer previously used to generate this swapchain image to be submitted.
+    uint64_t fence_wait_start_ticks = zomboClockTicks();
     vkWaitForFences(device_, 1, &submit_complete_fences_[pframe_index_], VK_TRUE, UINT64_MAX);
+    fence_wait_times_ms_[cpu_stats_frame_index] =
+        1000.0f * (float)zomboTicksToSeconds(zomboClockTicks() - fence_wait_start_ticks);
     vkResetFences(device_, 1, &submit_complete_fences_[pframe_index_]);
 
     // The host can now safely reset and rebuild this command buffer, even if the GPU hasn't finished presenting the
@@ -487,8 +501,11 @@ int Application::Run() {
     VkFence image_acquire_fence =
         VK_NULL_HANDLE;  // currently unused, but if you want the CPU to wait for an image to be acquired...
     uint32_t swapchain_image_index = 0;
+    uint64_t acquire_wait_start_ticks = zomboClockTicks();
     VkResult acquire_result = vkAcquireNextImageKHR(
         device_, swapchain_, UINT64_MAX, image_acquire_semaphore_, image_acquire_fence, &swapchain_image_index);
+    acquire_wait_times_ms_[cpu_stats_frame_index] =
+        1000.0f * (float)zomboTicksToSeconds(zomboClockTicks() - acquire_wait_start_ticks);
     if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR || acquire_result == VK_SUBOPTIMAL_KHR) {
       // I've never actually seen these error codes returned, but if they were this is probably how they should be
       // handled.
@@ -500,16 +517,84 @@ int Application::Run() {
       SPOKK_VK_CHECK(acquire_result);
     }
 
+    // Retrieve timestamp values from the frame that just completed rendering.
+    // Note that these times correspond to a frame some distance in the past (in contrast to
+    // the CPU times, which are for the frame currently being prepared). Care must be taken:
+    // 1) ...to ensure we retrieve the correct set of timestamps. To be safe, we use swapchain
+    //    image index rather than pframe index to access the appropriate range of queries.
+    // 2) ...to match up a set of GPU times to the corresponding CPU times.
+    // 3) ...to not retrieve queries the first time a given swapchain image is being rendered
+    //    (or, at least, to ignore the resulting error in that case)
+    uint32_t query_id_offset = TIMESTAMP_ID_COUNT * swapchain_image_index;
+    std::array<uint64_t, TIMESTAMP_ID_COUNT> timestamps_raw = {};
+    VkResult timestamp_result =
+        vkGetQueryPoolResults(device_, timestamp_query_pool_, query_id_offset, TIMESTAMP_ID_COUNT,
+            timestamps_raw.size() * sizeof(uint64_t), timestamps_raw.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
+    if (timestamp_result == VK_NOT_READY) {
+      // skip this frame
+    } else if (timestamp_result == VK_SUCCESS) {
+      const uint32_t gpu_stats_frame_index =
+          (uint32_t)(swapchain_image_frames_[swapchain_image_index] % STATS_FRAME_COUNT);
+      const uint64_t valid_mask = (graphics_and_present_queue_->timestamp_valid_bits == 64)
+          ? UINT64_MAX
+          : ((1ULL << graphics_and_present_queue_->timestamp_valid_bits) - 1);
+      const double seconds_per_tick = (double)device_.Properties().limits.timestampPeriod / 1e9;
+      std::array<double, TIMESTAMP_ID_COUNT> timestamps_seconds = {};
+      for (uint32_t tsid = 0; tsid < TIMESTAMP_ID_COUNT; ++tsid) {
+        // mask out the valid bits of the timestamp
+        timestamps_raw[tsid] &= valid_mask;
+        // Convert timestamp readings to seconds
+        timestamps_seconds[tsid] = (double)timestamps_raw[tsid] * seconds_per_tick;
+      }
+      float primary_time = 1000.0f *
+          (float)(timestamps_seconds[TIMESTAMP_ID_END_PRIMARY] - timestamps_seconds[TIMESTAMP_ID_BEGIN_PRIMARY]);
+      average_total_gpu_primary_time_ms_ +=
+          (primary_time - total_gpu_primary_times_ms_[gpu_stats_frame_index]) / (float)STATS_FRAME_COUNT;
+      total_gpu_primary_times_ms_[gpu_stats_frame_index] = primary_time;
+    } else {
+      SPOKK_VK_CHECK(timestamp_result);
+    }
+    // Zero out the GPU times for the CPU's current frame, to indicate that we don't know them yet.
+    //total_gpu_primary_times_ms_[cpu_stats_frame_index] = 0.0f;
+    // It's now safe to update the frame index for this swapchain image
+    swapchain_image_frames_[swapchain_image_index] = frame_index_;
+
+    ImGui::Begin("Stats");
+    char average_total_frame_time_str[32];
+    sprintf(average_total_frame_time_str, "avg: %.3fms", average_total_frame_time_ms_);
+    ImGui::PlotLines("Frame Time (ms)", total_frame_times_ms_.data(), (int)total_frame_times_ms_.size(),
+        cpu_stats_frame_index, average_total_frame_time_str, 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    ImGui::PlotLines("Fence (ms)", fence_wait_times_ms_.data(), (int)fence_wait_times_ms_.size(), cpu_stats_frame_index,
+        nullptr, 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    ImGui::PlotLines("Acquire (ms)", acquire_wait_times_ms_.data(), (int)acquire_wait_times_ms_.size(),
+        cpu_stats_frame_index, "min: 0.0\nmax: 0.0", 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    ImGui::PlotLines("Submit (ms)", submit_wait_times_ms_.data(), (int)submit_wait_times_ms_.size(),
+        cpu_stats_frame_index, nullptr, 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    ImGui::PlotLines("Present (ms)", present_wait_times_ms_.data(), (int)present_wait_times_ms_.size(),
+        cpu_stats_frame_index, nullptr, 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    char average_total_gpu_primary_time_str[32];
+    sprintf(average_total_gpu_primary_time_str, "avg: %.3fms", average_total_gpu_primary_time_ms_);
+    ImGui::PlotLines("Primary CB (ms)", total_gpu_primary_times_ms_.data(), (int)total_gpu_primary_times_ms_.size(),
+        cpu_stats_frame_index, average_total_gpu_primary_time_str, 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    ImGui::End();
+
     VkCommandBufferBeginInfo cb_begin_info = {};
     cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info));
 
+    // Reset this frame's range of the query pools
+    vkCmdResetQueryPool(cb, timestamp_query_pool_, query_id_offset, TIMESTAMP_ID_COUNT);
+
     // Applications-specific render code
+    vkCmdWriteTimestamp(
+        cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestamp_query_pool_, query_id_offset + TIMESTAMP_ID_BEGIN_PRIMARY);
     Render(cb, swapchain_image_index);
     if (force_exit_) {
       break;
     }
+    vkCmdWriteTimestamp(
+        cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool_, query_id_offset + TIMESTAMP_ID_END_PRIMARY);
 
     SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
     const VkPipelineStageFlags submit_wait_stages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -522,8 +607,11 @@ int Application::Run() {
     submit_info.pCommandBuffers = &cb;
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = &submit_complete_semaphore_;
+    uint64_t submit_wait_start_ticks = zomboClockTicks();
     SPOKK_VK_CHECK(
         vkQueueSubmit(*graphics_and_present_queue_, 1, &submit_info, submit_complete_fences_[pframe_index_]));
+    submit_wait_times_ms_[cpu_stats_frame_index] =
+        1000.0f * (float)zomboTicksToSeconds(zomboClockTicks() - submit_wait_start_ticks);
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present_info.pNext = NULL;
@@ -532,7 +620,10 @@ int Application::Run() {
     present_info.pImageIndices = &swapchain_image_index;
     present_info.waitSemaphoreCount = 1;
     present_info.pWaitSemaphores = &submit_complete_semaphore_;
+    uint64_t present_wait_start_ticks = zomboClockTicks();
     VkResult present_result = vkQueuePresentKHR(*graphics_and_present_queue_, &present_info);
+    present_wait_times_ms_[cpu_stats_frame_index] =
+        1000.0f * (float)zomboTicksToSeconds(zomboClockTicks() - present_wait_start_ticks);
     if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR) {
       // I've never actually seen these error codes returned, but if they were this is probably how they should be
       // handled.
@@ -660,6 +751,12 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
 
   is_imgui_enabled_ = true;
   ShowImgui(true);
+
+  // Create query pool
+  VkQueryPoolCreateInfo timestamp_query_pool_ci = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+  timestamp_query_pool_ci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+  timestamp_query_pool_ci.queryCount = TIMESTAMP_ID_COUNT * (uint32_t)swapchain_images_.size();
+  SPOKK_VK_CHECK(vkCreateQueryPool(device_, &timestamp_query_pool_ci, host_allocator_, &timestamp_query_pool_));
 
   return true;
 }
@@ -834,5 +931,6 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
     SPOKK_VK_CHECK(vkCreateImageView(device_, &image_view_ci, host_allocator_, &view));
     swapchain_image_views_.push_back(view);
   }
+  swapchain_image_frames_.resize(swapchain_images_.size(), 0);
   return VK_SUCCESS;
 }

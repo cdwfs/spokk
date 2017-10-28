@@ -125,6 +125,7 @@ protected:
   VkExtent2D swapchain_extent_;
   std::vector<VkImage> swapchain_images_ = {};
   std::vector<VkImageView> swapchain_image_views_ = {};
+  std::vector<uint64_t> swapchain_image_frames_ = {};  // frame index most recently rendered by each swapchain image
 
   std::shared_ptr<GLFWwindow> window_ = nullptr;
 
@@ -155,6 +156,26 @@ private:
   bool is_imgui_enabled_ = false;  // Used to avoid calling functions that will crash if the app does not enable imgui.
   bool is_imgui_visible_ = false;  // Tracks whether the UI is visible or not.
   VkDescriptorPool imgui_dpool_ = VK_NULL_HANDLE;
+
+  enum TimestampId {
+    TIMESTAMP_ID_BEGIN_PRIMARY = 0,
+    TIMESTAMP_ID_END_PRIMARY = 1,
+
+    TIMESTAMP_ID_COUNT
+  };
+  VkQueryPool timestamp_query_pool_ = VK_NULL_HANDLE;
+
+  // Frame timing stats
+  static constexpr uint32_t STATS_FRAME_COUNT = 100;
+  std::array<float, STATS_FRAME_COUNT> total_frame_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> fence_wait_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> acquire_wait_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> submit_wait_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> present_wait_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> total_gpu_primary_times_ms_ = {};  // time to execute primary command buffer
+
+  float average_total_frame_time_ms_ = 0;
+  float average_total_gpu_primary_time_ms_ = 0;
 };
 
 }  // namespace spokk
