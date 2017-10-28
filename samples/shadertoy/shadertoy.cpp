@@ -256,7 +256,7 @@ public:
       (float)active_images_[3]->image_ci.extent.height, (float)active_images_[3]->image_ci.extent.depth, 0.0f);
     uniforms->iGlobalTime = (float)seconds_elapsed_;
     uniforms->iTimeDelta = current_dt_;
-    uniforms->iFrame = frame_index_;
+    uniforms->iFrame = (int)frame_index_;
     uniforms->iMouse = glm::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
     uniforms->iDate = glm::vec4(year, month, mday, dsec);
     uniforms->iSampleRate = 44100.0f;

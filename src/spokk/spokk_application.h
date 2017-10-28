@@ -136,7 +136,7 @@ protected:
   // Queue used by the framework for primary graphics/command buffer submission.
   const DeviceQueue* graphics_and_present_queue_;
 
-  uint32_t frame_index_;  // Frame number since launch
+  uint64_t frame_index_;  // Frame number since launch
   uint32_t pframe_index_;  // current pframe (pipelined frame) index; cycles from 0 to PFRAME_COUNT-1, then back to 0.
 
   bool force_exit_ = false;  // Application can set this to true to exit at the next available chance.
