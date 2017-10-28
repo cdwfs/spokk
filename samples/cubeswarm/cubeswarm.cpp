@@ -80,6 +80,14 @@ public:
     SPOKK_VK_CHECK(
         scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
+    // Create indirect draw parameter buffer
+    VkBufferCreateInfo indirect_draw_buffers_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    indirect_draw_buffers_ci.size = MESH_INSTANCE_COUNT * sizeof(VkDrawIndexedIndirectCommand);
+    indirect_draw_buffers_ci.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    indirect_draw_buffers_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(indirect_draw_buffers_.Create(
+        device_, PFRAME_COUNT, indirect_draw_buffers_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
 
@@ -110,6 +118,7 @@ public:
 
       dpool_.Destroy(device_);
 
+      indirect_draw_buffers_.Destroy(device_);
       mesh_uniforms_.Destroy(device_);
       scene_uniforms_.Destroy(device_);
 
@@ -165,10 +174,22 @@ public:
         glm::angleAxis(
           secs + (float)iMesh,
           glm::normalize(glm::vec3(1,2,3))),
-        3.0f);
+        0.01f);//3.0f);
       // clang-format on
     }
     mesh_uniforms_.FlushPframeHostCache(pframe_index_);
+
+    // Write indirect draw commands
+    VkDrawIndexedIndirectCommand* indirect_draws =
+        (VkDrawIndexedIndirectCommand*)indirect_draw_buffers_.Mapped(pframe_index_);
+    for (uint32_t i = 0; i < MESH_INSTANCE_COUNT; ++i) {
+      indirect_draws[i].indexCount = 3;  //mesh_.index_count;
+      indirect_draws[i].instanceCount = 1;
+      indirect_draws[i].firstIndex = 0;
+      indirect_draws[i].vertexOffset = 0;
+      indirect_draws[i].firstInstance = i;
+    }
+    indirect_draw_buffers_.FlushPframeHostCache(pframe_index_);
 
     // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
@@ -180,10 +201,34 @@ public:
     VkViewport viewport = Rect2DToViewport(scissor_rect);
     vkCmdSetViewport(primary_cb, 0, 1, &viewport);
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
+    mesh_.BindBuffers(primary_cb);
+#if 1
+    // One instanced draw call
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
         0, 1, &dsets_[pframe_index_], 0, nullptr);
-    mesh_.BindBuffers(primary_cb);
-    vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0, 0, 0);
+    vkCmdDrawIndexed(primary_cb, 3, MESH_INSTANCE_COUNT, 0, 0, 0);
+#elif 1
+    // One draw call per instance
+    vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
+        0, 1, &dsets_[pframe_index_], 0, nullptr);
+    for (uint32_t i = 0; i < MESH_INSTANCE_COUNT; ++i) {
+      vkCmdDrawIndexed(primary_cb, 3, 1, 0, 0, i);
+    }
+#elif 1
+    // Multi draw indirect
+    vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
+        0, 1, &dsets_[pframe_index_], 0, nullptr);
+    vkCmdDrawIndexedIndirect(primary_cb, indirect_draw_buffers_.Handle(pframe_index_), 0, MESH_INSTANCE_COUNT,
+        sizeof(VkDrawIndexedIndirectCommand));
+#elif 1
+    // One indirect draw call per instance
+    vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
+        0, 1, &dsets_[pframe_index_], 0, nullptr);
+    for (uint32_t i = 0; i < MESH_INSTANCE_COUNT; ++i) {
+      vkCmdDrawIndexedIndirect(primary_cb, indirect_draw_buffers_.Handle(pframe_index_),
+          i * sizeof(VkDrawIndexedIndirectCommand), 1, sizeof(VkDrawIndexedIndirectCommand));
+    }
+#endif
     RenderImgui(primary_cb);
     vkCmdEndRenderPass(primary_cb);
   }
@@ -250,9 +295,30 @@ private:
   PipelinedBuffer mesh_uniforms_;
   PipelinedBuffer scene_uniforms_;
 
+  PipelinedBuffer indirect_draw_buffers_;
+
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDrone> drone_;
 };
+
+static VkBool32 EnableDeviceFeatures(
+    const VkPhysicalDeviceFeatures& supported_features, VkPhysicalDeviceFeatures* enabled_features) {
+  if (!EnableMinimumDeviceFeatures(supported_features, enabled_features)) {
+    return false;
+  }
+
+  if (!supported_features.multiDrawIndirect) {
+    return VK_FALSE;
+  }
+  enabled_features->multiDrawIndirect = VK_TRUE;
+
+  if (!supported_features.drawIndirectFirstInstance) {
+    return VK_FALSE;
+  }
+  enabled_features->drawIndirectFirstInstance = VK_TRUE;
+
+  return VK_TRUE;
+}
 
 int main(int argc, char* argv[]) {
   (void)argc;
@@ -262,8 +328,7 @@ int main(int argc, char* argv[]) {
       {(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT), true, 1, 0.0f}};
   Application::CreateInfo app_ci = {};
   app_ci.queue_family_requests = queue_requests;
-  app_ci.pfn_set_device_features = EnableMinimumDeviceFeatures;
-
+  app_ci.pfn_set_device_features = EnableDeviceFeatures;
   CubeSwarmApp app(app_ci);
   int run_error = app.Run();
 
