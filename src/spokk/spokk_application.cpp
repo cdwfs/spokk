@@ -610,6 +610,8 @@ int Application::Run() {
     swapchain_image_frames_[swapchain_image_index] = frame_index_;
 
     ImGui::Begin("Stats");
+    ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.6f,0.6f,0,1));
+    ImGui::PushStyleColor(ImGuiCol_PlotLinesHovered, ImVec4(1,0,1,1));
     char average_total_frame_time_str[32];
     sprintf(average_total_frame_time_str, "avg: %.3fms", average_total_frame_time_ms_);
     ImGui::PlotLines("Frame Time (ms)", total_frame_times_ms_.data(), (int)total_frame_times_ms_.size(),
@@ -626,6 +628,7 @@ int Application::Run() {
     sprintf(average_total_gpu_primary_time_str, "avg: %.3fms", average_total_gpu_primary_time_ms_);
     ImGui::PlotLines("Primary CB (ms)", total_gpu_primary_times_ms_.data(), (int)total_gpu_primary_times_ms_.size(),
         cpu_stats_frame_index, average_total_gpu_primary_time_str, 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    ImGui::PopStyleColor(2);
     ImGui::End();
 
     VkCommandBufferBeginInfo cb_begin_info = {};
