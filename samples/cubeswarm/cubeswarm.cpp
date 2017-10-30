@@ -42,10 +42,6 @@ public:
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
-    // Initialize IMGUI
-    InitImgui(render_pass_);
-    ShowImgui(false);
-
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
         GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
@@ -184,7 +180,6 @@ public:
         0, 1, &dsets_[pframe_index_], 0, nullptr);
     mesh_.BindBuffers(primary_cb);
     vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0, 0, 0);
-    RenderImgui(primary_cb);
     vkCmdEndRenderPass(primary_cb);
   }
 

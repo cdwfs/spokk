@@ -352,12 +352,52 @@ Application::Application(const CreateInfo &ci) {
   device_.Create(logical_device, physical_device, pipeline_cache, queues.data(), (uint32_t)queues.size(),
       enabled_device_features, host_allocator_, device_allocator_);
 
+  graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
+
   if (ci.enable_graphics) {
     VkExtent2D default_extent = {ci.window_width, ci.window_height};
     CreateSwapchain(default_extent);
-  }
 
-  graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
+    // Create imgui render pass. This is an optional pass on the final swapchain image
+    // to render the UI as an overlay. It's less performant than rendering the UI in one of
+    // the app's main render pass, but less intrusive.
+    imgui_render_pass_.attachment_descs.resize(1);
+    imgui_render_pass_.attachment_descs[0].format = swapchain_surface_format_.format;
+    imgui_render_pass_.attachment_descs[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    imgui_render_pass_.attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    imgui_render_pass_.attachment_descs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    imgui_render_pass_.attachment_descs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    imgui_render_pass_.attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    imgui_render_pass_.attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    imgui_render_pass_.attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    imgui_render_pass_.subpass_attachments.resize(1);
+    imgui_render_pass_.subpass_attachments[0].color_refs.push_back({0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+    imgui_render_pass_.subpass_dependencies.resize(1);
+    imgui_render_pass_.subpass_dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    imgui_render_pass_.subpass_dependencies[0].dstSubpass = 0;
+    imgui_render_pass_.subpass_dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    imgui_render_pass_.subpass_dependencies[0].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    imgui_render_pass_.subpass_dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    imgui_render_pass_.subpass_dependencies[0].dstAccessMask =
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+    imgui_render_pass_.subpass_dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    SPOKK_VK_CHECK(imgui_render_pass_.Finalize(device_));
+    // Create framebuffers for imgui render pass
+    VkFramebufferCreateInfo framebuffer_ci = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+    framebuffer_ci.renderPass = imgui_render_pass_.handle;
+    framebuffer_ci.attachmentCount = 1;
+    framebuffer_ci.width = swapchain_extent_.width;
+    framebuffer_ci.height = swapchain_extent_.height;
+    framebuffer_ci.layers = 1;
+    imgui_framebuffers_.resize(swapchain_image_views_.size());
+    for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
+      framebuffer_ci.pAttachments = &swapchain_image_views_[i];
+      SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &imgui_framebuffers_[i]));
+    }
+
+    InitImgui(imgui_render_pass_.handle);
+    ShowImgui(false);
+  }
 
   // Allocate command buffers
   VkCommandPoolCreateInfo cpool_ci = {};
@@ -394,6 +434,10 @@ Application::~Application() {
     vkDeviceWaitIdle(device_);
 
     DestroyImgui();
+    for (auto fb : imgui_framebuffers_) {
+      vkDestroyFramebuffer(device_, fb, host_allocator_);
+    }
+    imgui_render_pass_.Destroy(device_);
 
     vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
     vkDestroySemaphore(device_, submit_complete_semaphore_, host_allocator_);
@@ -459,7 +503,7 @@ int Application::Run() {
     if (is_imgui_enabled_) {
       ImGui_ImplGlfwVulkan_NewFrame();
 
-#if 0 // IMGUI demo window
+#if 0  // IMGUI demo window
       if (is_imgui_visible_) {
         ImGui::ShowTestWindow();
       }
@@ -509,6 +553,15 @@ int Application::Run() {
     Render(cb, swapchain_image_index);
     if (force_exit_) {
       break;
+    }
+
+    // optional UI render pass
+    if (is_imgui_visible_) {
+      imgui_render_pass_.begin_info.framebuffer = imgui_framebuffers_[swapchain_image_index];
+      imgui_render_pass_.begin_info.renderArea.extent = swapchain_extent_;
+      vkCmdBeginRenderPass(cb, &imgui_render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
+      RenderImgui(cb);
+      vkCmdEndRenderPass(cb);
     }
 
     SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
@@ -579,6 +632,22 @@ bool Application::IsDeviceExtensionEnabled(const std::string &extension_name) co
 void Application::HandleWindowResize(VkExtent2D new_window_extent) {
   SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
   SPOKK_VK_CHECK(CreateSwapchain(new_window_extent));
+
+  // Create framebuffers for imgui render pass
+  VkFramebufferCreateInfo framebuffer_ci = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+  framebuffer_ci.renderPass = imgui_render_pass_.handle;
+  framebuffer_ci.attachmentCount = 1;
+  framebuffer_ci.width = swapchain_extent_.width;
+  framebuffer_ci.height = swapchain_extent_.height;
+  framebuffer_ci.layers = 1;
+  imgui_framebuffers_.resize(swapchain_image_views_.size());
+  for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
+    if (imgui_framebuffers_[i] != VK_NULL_HANDLE) {
+      vkDestroyFramebuffer(device_, imgui_framebuffers_[i], host_allocator_);
+    }
+    framebuffer_ci.pAttachments = &swapchain_image_views_[i];
+    SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &imgui_framebuffers_[i]));
+  }
 }
 
 bool Application::InitImgui(VkRenderPass ui_render_pass) {

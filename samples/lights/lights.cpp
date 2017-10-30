@@ -83,10 +83,6 @@ public:
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
-    // Initialize IMGUI
-    InitImgui(render_pass_);
-    ShowImgui(false);
-
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
         GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
@@ -354,7 +350,6 @@ public:
     // Render skybox
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, skybox_pipeline_.handle);
     vkCmdDraw(primary_cb, 36, 1, 0, 0);
-    RenderImgui(primary_cb);
     vkCmdEndRenderPass(primary_cb);
   }
 
