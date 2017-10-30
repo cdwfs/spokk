@@ -202,28 +202,22 @@ public:
     vkCmdSetViewport(primary_cb, 0, 1, &viewport);
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
     mesh_.BindBuffers(primary_cb);
-#if 1
-    // One instanced draw call
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
         0, 1, &dsets_[pframe_index_], 0, nullptr);
+#if 0
+    // One instanced draw call
     vkCmdDrawIndexed(primary_cb, 3, MESH_INSTANCE_COUNT, 0, 0, 0);
 #elif 1
     // One draw call per instance
-    vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
-        0, 1, &dsets_[pframe_index_], 0, nullptr);
     for (uint32_t i = 0; i < MESH_INSTANCE_COUNT; ++i) {
       vkCmdDrawIndexed(primary_cb, 3, 1, 0, 0, i);
     }
 #elif 1
     // Multi draw indirect
-    vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
-        0, 1, &dsets_[pframe_index_], 0, nullptr);
     vkCmdDrawIndexedIndirect(primary_cb, indirect_draw_buffers_.Handle(pframe_index_), 0, MESH_INSTANCE_COUNT,
         sizeof(VkDrawIndexedIndirectCommand));
 #elif 1
     // One indirect draw call per instance
-    vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
-        0, 1, &dsets_[pframe_index_], 0, nullptr);
     for (uint32_t i = 0; i < MESH_INSTANCE_COUNT; ++i) {
       vkCmdDrawIndexedIndirect(primary_cb, indirect_draw_buffers_.Handle(pframe_index_),
           i * sizeof(VkDrawIndexedIndirectCommand), 1, sizeof(VkDrawIndexedIndirectCommand));
