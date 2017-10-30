@@ -179,7 +179,7 @@ public:
     VkDrawIndexedIndirectCommand* indirect_draws =
         (VkDrawIndexedIndirectCommand*)indirect_draw_buffers_.Mapped(pframe_index_);
     for (uint32_t i = 0; i < MESH_INSTANCE_COUNT; ++i) {
-      indirect_draws[i].indexCount = 3;  //mesh_.index_count;
+      indirect_draws[i].indexCount = 3;  // mesh_.index_count;
       indirect_draws[i].instanceCount = 1;
       indirect_draws[i].firstIndex = 0;
       indirect_draws[i].vertexOffset = 0;
