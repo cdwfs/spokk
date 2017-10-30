@@ -387,6 +387,12 @@ Application::Application(const CreateInfo &ci) {
     SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
   }
 
+  // Create query pool
+  VkQueryPoolCreateInfo timestamp_query_pool_ci = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+  timestamp_query_pool_ci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+  timestamp_query_pool_ci.queryCount = TIMESTAMP_ID_COUNT * (uint32_t)swapchain_images_.size();
+  SPOKK_VK_CHECK(vkCreateQueryPool(device_, &timestamp_query_pool_ci, host_allocator_, &timestamp_query_pool_));
+
   init_successful_ = true;
 }
 Application::~Application() {
@@ -751,12 +757,6 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
 
   is_imgui_enabled_ = true;
   ShowImgui(true);
-
-  // Create query pool
-  VkQueryPoolCreateInfo timestamp_query_pool_ci = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
-  timestamp_query_pool_ci.queryType = VK_QUERY_TYPE_TIMESTAMP;
-  timestamp_query_pool_ci.queryCount = TIMESTAMP_ID_COUNT * (uint32_t)swapchain_images_.size();
-  SPOKK_VK_CHECK(vkCreateQueryPool(device_, &timestamp_query_pool_ci, host_allocator_, &timestamp_query_pool_));
 
   return true;
 }
