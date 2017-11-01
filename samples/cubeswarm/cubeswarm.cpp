@@ -15,6 +15,7 @@ struct SceneUniforms {
   glm::mat4 viewproj;
 };
 constexpr uint32_t MESH_INSTANCE_COUNT = 1024;
+constexpr uint32_t INDIRECT_DRAW_COUNT = 10 * MESH_INSTANCE_COUNT;
 struct MeshUniforms {
   glm::mat4 o2w[MESH_INSTANCE_COUNT];
 };
@@ -78,7 +79,7 @@ public:
 
     // Create indirect draw parameter buffer
     VkBufferCreateInfo indirect_draw_buffers_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    indirect_draw_buffers_ci.size = MESH_INSTANCE_COUNT * sizeof(VkDrawIndexedIndirectCommand);
+    indirect_draw_buffers_ci.size = INDIRECT_DRAW_COUNT * sizeof(VkDrawIndexedIndirectCommand);
     indirect_draw_buffers_ci.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
     indirect_draw_buffers_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(indirect_draw_buffers_.Create(
@@ -178,6 +179,7 @@ public:
     // Write indirect draw commands
     VkDrawIndexedIndirectCommand* indirect_draws =
         (VkDrawIndexedIndirectCommand*)indirect_draw_buffers_.Mapped(pframe_index_);
+    memset(indirect_draws, 0, indirect_draw_buffers_.BytesPerPframe());
     for (uint32_t i = 0; i < MESH_INSTANCE_COUNT; ++i) {
       indirect_draws[i].indexCount = 3;  // mesh_.index_count;
       indirect_draws[i].instanceCount = 1;
@@ -218,6 +220,10 @@ public:
       vkCmdDrawIndexedIndirect(primary_cb, indirect_draw_buffers_.Handle(pframe_index_),
           i * sizeof(VkDrawIndexedIndirectCommand), 1, sizeof(VkDrawIndexedIndirectCommand));
     }
+#elif 1
+    // Sparse Multi draw indirect
+    vkCmdDrawIndexedIndirect(primary_cb, indirect_draw_buffers_.Handle(pframe_index_), 0, INDIRECT_DRAW_COUNT,
+      sizeof(VkDrawIndexedIndirectCommand));
 #endif
     vkCmdEndRenderPass(primary_cb);
   }
