@@ -22,6 +22,13 @@ struct MeshUniforms {
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
+
+enum TimestampId {
+  TIMESTAMP_BEFORE_DRAW = 0,
+  TIMESTAMP_AFTER_DRAW = 1,
+  TIMESTAMP_COUNT,
+};
+
 }  // namespace
 
 class CubeSwarmApp : public spokk::Application {
@@ -106,12 +113,20 @@ public:
       dset_writer.WriteAll(device_, dsets_[pframe]);
     }
 
+    TimestampQueryPool::CreateInfo tspool_ci = {};
+    tspool_ci.swapchain_image_count = (uint32_t)swapchain_images_.size();
+    tspool_ci.timestamp_id_count = TIMESTAMP_COUNT;
+    tspool_ci.queue_family_index = graphics_and_present_queue_->family;
+    SPOKK_VK_CHECK(timestamp_pool_.Create(device_, tspool_ci));
+
     // Create swapchain-sized buffers
     CreateRenderBuffers(swapchain_extent_);
   }
   virtual ~CubeSwarmApp() {
     if (device_ != VK_NULL_HANDLE) {
       vkDeviceWaitIdle(device_);
+
+      timestamp_pool_.Destroy(device_);
 
       dpool_.Destroy(device_);
 
@@ -189,7 +204,26 @@ public:
     }
     indirect_draw_buffers_.FlushPframeHostCache(pframe_index_);
 
+    // Retrieve earlier timestamps
+    std::array<double, TIMESTAMP_COUNT> timestamps_seconds;
+    std::array<bool, TIMESTAMP_COUNT> timestamps_validity;
+    int64_t timestamps_frame_index = -1;
+    SPOKK_VK_CHECK(timestamp_pool_.GetResults(device_, swapchain_image_index, TIMESTAMP_COUNT,
+      timestamps_seconds.data(), timestamps_validity.data(), &timestamps_frame_index));
+    if (timestamps_validity[TIMESTAMP_BEFORE_DRAW] && timestamps_validity[TIMESTAMP_AFTER_DRAW]) {
+      float draw_time_ms = 1000.0f *
+        (float)(timestamps_seconds[TIMESTAMP_AFTER_DRAW] - timestamps_seconds[TIMESTAMP_BEFORE_DRAW]);
+      const uint32_t gpu_stats_frame_index = (uint32_t)(timestamps_frame_index % FRAME_TIME_COUNT);
+      gpu_draw_times_average_ms_ +=
+        (draw_time_ms - gpu_draw_times_ms_[gpu_stats_frame_index]) / (float)FRAME_TIME_COUNT;
+      gpu_draw_times_ms_[gpu_stats_frame_index] = draw_time_ms;
+      if (gpu_stats_frame_index == FRAME_TIME_COUNT-1) {
+        printf("avg: %.3fms\n", gpu_draw_times_average_ms_);
+      }
+    }
+
     // Write command buffer
+    timestamp_pool_.SetTargetFrame(primary_cb, swapchain_image_index, frame_index_);
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -202,7 +236,8 @@ public:
     mesh_.BindBuffers(primary_cb);
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
         0, 1, &dsets_[pframe_index_], 0, nullptr);
-#if 0
+    timestamp_pool_.WriteTimestamp(primary_cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, TIMESTAMP_BEFORE_DRAW);
+#if 1
     // One instanced draw call
     vkCmdDrawIndexed(primary_cb, 3, MESH_INSTANCE_COUNT, 0, 0, 0);
 #elif 1
@@ -223,8 +258,9 @@ public:
 #elif 1
     // Sparse Multi draw indirect
     vkCmdDrawIndexedIndirect(primary_cb, indirect_draw_buffers_.Handle(pframe_index_), 0, INDIRECT_DRAW_COUNT,
-      sizeof(VkDrawIndexedIndirectCommand));
+        sizeof(VkDrawIndexedIndirectCommand));
 #endif
+    timestamp_pool_.WriteTimestamp(primary_cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, TIMESTAMP_AFTER_DRAW);
     vkCmdEndRenderPass(primary_cb);
   }
 
@@ -291,6 +327,11 @@ private:
   PipelinedBuffer scene_uniforms_;
 
   PipelinedBuffer indirect_draw_buffers_;
+
+  TimestampQueryPool timestamp_pool_;
+  static constexpr size_t FRAME_TIME_COUNT = 100;
+  std::array<float, FRAME_TIME_COUNT> gpu_draw_times_ms_ = {};
+  float gpu_draw_times_average_ms_ = 0.0f;
 
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDrone> drone_;
