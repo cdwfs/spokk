@@ -14,5 +14,6 @@
 #include "spokk_renderpass.h"
 #include "spokk_shader.h"
 #include "spokk_shader_interface.h"
+#include "spokk_time.h"
 #include "spokk_utilities.h"
 #include "spokk_vertex.h"

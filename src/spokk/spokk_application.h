@@ -12,6 +12,7 @@
 #include "spokk_input.h"
 #include "spokk_memory.h"
 #include "spokk_pipeline.h"
+#include "spokk_time.h"
 #include "spokk_utilities.h"
 #include "spokk_vertex.h"
 
@@ -159,13 +160,7 @@ private:
   RenderPass imgui_render_pass_ = {};
   std::vector<VkFramebuffer> imgui_framebuffers_;
 
-  enum TimestampId {
-    TIMESTAMP_ID_BEGIN_PRIMARY = 0,
-    TIMESTAMP_ID_END_PRIMARY = 1,
-
-    TIMESTAMP_ID_COUNT
-  };
-  VkQueryPool timestamp_query_pool_ = VK_NULL_HANDLE;
+  TimestampQueryPool timestamp_query_pool_;
 
   // Frame timing stats
   static constexpr uint32_t STATS_FRAME_COUNT = 100;

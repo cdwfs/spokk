@@ -56,6 +56,13 @@ using namespace spokk;
 
 namespace {
 
+enum TimestampId {
+  TIMESTAMP_ID_BEGIN_PRIMARY = 0,
+  TIMESTAMP_ID_END_PRIMARY = 1,
+
+  TIMESTAMP_ID_COUNT
+};
+
 void MyGlfwErrorCallback(int error, const char *description) {
   fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
@@ -428,11 +435,12 @@ Application::Application(const CreateInfo &ci) {
   }
 
   if (ci.enable_graphics) {
-    // Create query pool
-    VkQueryPoolCreateInfo timestamp_query_pool_ci = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
-    timestamp_query_pool_ci.queryType = VK_QUERY_TYPE_TIMESTAMP;
-    timestamp_query_pool_ci.queryCount = TIMESTAMP_ID_COUNT * (uint32_t)swapchain_images_.size();
-    SPOKK_VK_CHECK(vkCreateQueryPool(device_, &timestamp_query_pool_ci, host_allocator_, &timestamp_query_pool_));
+    // Create timestamp query pool
+    TimestampQueryPool::CreateInfo tspool_ci = {};
+    tspool_ci.swapchain_image_count = (uint32_t)swapchain_images_.size();
+    tspool_ci.timestamp_id_count = TIMESTAMP_ID_COUNT;
+    tspool_ci.queue_family_index = graphics_and_present_queue_->family;
+    SPOKK_VK_CHECK(timestamp_query_pool_.Create(device_, tspool_ci));
   }
 
   init_successful_ = true;
@@ -441,9 +449,7 @@ Application::~Application() {
   if (device_ != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(device_);
 
-    if (timestamp_query_pool_) {
-      vkDestroyQueryPool(device_, timestamp_query_pool_, host_allocator_);
-    }
+    timestamp_query_pool_.Destroy(device_);
 
     DestroyImgui();
     for (auto fb : imgui_framebuffers_) {
@@ -579,43 +585,25 @@ int Application::Run() {
     // 2) ...to match up a set of GPU times to the corresponding CPU times.
     // 3) ...to not retrieve queries the first time a given swapchain image is being rendered
     //    (or, at least, to ignore the resulting error in that case)
-    uint32_t query_id_offset = TIMESTAMP_ID_COUNT * swapchain_image_index;
-    std::array<uint64_t, TIMESTAMP_ID_COUNT> timestamps_raw = {};
-    VkResult timestamp_result =
-        vkGetQueryPoolResults(device_, timestamp_query_pool_, query_id_offset, TIMESTAMP_ID_COUNT,
-            timestamps_raw.size() * sizeof(uint64_t), timestamps_raw.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
-    if (timestamp_result == VK_NOT_READY) {
-      // skip this frame
-    } else if (timestamp_result == VK_SUCCESS) {
-      const uint32_t gpu_stats_frame_index =
-          (uint32_t)(swapchain_image_frames_[swapchain_image_index] % STATS_FRAME_COUNT);
-      const uint64_t valid_mask = (graphics_and_present_queue_->timestamp_valid_bits == 64)
-          ? UINT64_MAX
-          : ((1ULL << graphics_and_present_queue_->timestamp_valid_bits) - 1);
-      const double seconds_per_tick = (double)device_.Properties().limits.timestampPeriod / 1e9;
-      std::array<double, TIMESTAMP_ID_COUNT> timestamps_seconds = {};
-      for (uint32_t tsid = 0; tsid < TIMESTAMP_ID_COUNT; ++tsid) {
-        // mask out the valid bits of the timestamp
-        timestamps_raw[tsid] &= valid_mask;
-        // Convert timestamp readings to seconds
-        timestamps_seconds[tsid] = (double)timestamps_raw[tsid] * seconds_per_tick;
-      }
+    std::array<double, TIMESTAMP_ID_COUNT> timestamps_seconds;
+    std::array<bool, TIMESTAMP_ID_COUNT> timestamps_validity;
+    int64_t timestamps_frame_index = -1;
+    SPOKK_VK_CHECK(timestamp_query_pool_.GetResults(device_, swapchain_image_index, TIMESTAMP_ID_COUNT,
+    timestamps_seconds.data(), timestamps_validity.data(), &timestamps_frame_index));
+    if (timestamps_validity[TIMESTAMP_ID_BEGIN_PRIMARY] && timestamps_validity[TIMESTAMP_ID_END_PRIMARY]) {
       float primary_time = 1000.0f *
           (float)(timestamps_seconds[TIMESTAMP_ID_END_PRIMARY] - timestamps_seconds[TIMESTAMP_ID_BEGIN_PRIMARY]);
+      const uint32_t gpu_stats_frame_index = (uint32_t)(timestamps_frame_index % STATS_FRAME_COUNT);
       average_total_gpu_primary_time_ms_ +=
           (primary_time - total_gpu_primary_times_ms_[gpu_stats_frame_index]) / (float)STATS_FRAME_COUNT;
       total_gpu_primary_times_ms_[gpu_stats_frame_index] = primary_time;
-    } else {
-      SPOKK_VK_CHECK(timestamp_result);
     }
     // Zero out the GPU times for the CPU's current frame, to indicate that we don't know them yet.
-    //total_gpu_primary_times_ms_[cpu_stats_frame_index] = 0.0f;
-    // It's now safe to update the frame index for this swapchain image
-    swapchain_image_frames_[swapchain_image_index] = frame_index_;
+    // total_gpu_primary_times_ms_[cpu_stats_frame_index] = 0.0f;
 
     ImGui::Begin("Stats");
-    ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.6f,0.6f,0,1));
-    ImGui::PushStyleColor(ImGuiCol_PlotLinesHovered, ImVec4(1,0,1,1));
+    ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.6f, 0.6f, 0, 1));
+    ImGui::PushStyleColor(ImGuiCol_PlotLinesHovered, ImVec4(1, 0, 1, 1));
     char average_total_frame_time_str[32];
     sprintf(average_total_frame_time_str, "avg: %.3fms", average_total_frame_time_ms_);
     ImGui::PlotLines("Frame Time (ms)", total_frame_times_ms_.data(), (int)total_frame_times_ms_.size(),
@@ -641,17 +629,15 @@ int Application::Run() {
     SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info));
 
     // Reset this frame's range of the query pools
-    vkCmdResetQueryPool(cb, timestamp_query_pool_, query_id_offset, TIMESTAMP_ID_COUNT);
+    timestamp_query_pool_.SetTargetFrame(cb, swapchain_image_index, frame_index_);
 
     // Applications-specific render code
-    vkCmdWriteTimestamp(
-        cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestamp_query_pool_, query_id_offset + TIMESTAMP_ID_BEGIN_PRIMARY);
+    timestamp_query_pool_.WriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, TIMESTAMP_ID_BEGIN_PRIMARY);
     Render(cb, swapchain_image_index);
     if (force_exit_) {
       break;
     }
-    vkCmdWriteTimestamp(
-        cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool_, query_id_offset + TIMESTAMP_ID_END_PRIMARY);
+    timestamp_query_pool_.WriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, TIMESTAMP_ID_END_PRIMARY);
 
     // optional UI render pass
     if (is_imgui_visible_) {

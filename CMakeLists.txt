@@ -72,6 +72,7 @@ SET(SPOKK_HEADERS
     src/spokk/spokk_renderpass.h
     src/spokk/spokk_shader.h
     src/spokk/spokk_shader_interface.h
+    src/spokk/spokk_time.h
     src/spokk/spokk_utilities.h
     src/spokk/spokk_vertex.h
 )
@@ -89,6 +90,7 @@ SET(SPOKK_SOURCES
     src/spokk/spokk_pipeline.cpp
     src/spokk/spokk_renderpass.cpp
     src/spokk/spokk_shader.cpp
+    src/spokk/spokk_time.cpp    
     src/spokk/spokk_utilities.cpp
     src/spokk/spokk_vertex.cpp
 )
