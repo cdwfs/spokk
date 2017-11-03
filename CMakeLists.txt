@@ -148,6 +148,25 @@ FUNCTION (SPOKK_ADD_EXECUTABLE APP_TARGET)
     ADD_DEPENDENCIES(${APP_TARGET} build-assets)
 ENDFUNCTION(SPOKK_ADD_EXECUTABLE APP_TARGET)
 
+# spokk-benchmark
+SPOKK_ADD_SOURCES(spokk-benchmark
+    samples/common/camera.cpp
+    samples/benchmark/benchmark.cpp
+)
+SPOKK_ADD_HEADERS(spokk-benchmark
+    samples/common/camera.h
+)
+SPOKK_ADD_SHADERS(spokk-benchmark
+    samples/benchmark/rigid_mesh.vert
+    samples/benchmark/rigid_mesh.frag
+)
+SPOKK_ADD_EXECUTABLE(spokk-benchmark)
+
+# spokk-compute
+SPOKK_ADD_SOURCES(spokk-compute samples/compute/compute.cpp)
+SPOKK_ADD_SHADERS(spokk-compute samples/compute/double_ints.comp)
+SPOKK_ADD_EXECUTABLE(spokk-compute)
+
 # spokk-cubeswarm
 SPOKK_ADD_SOURCES(spokk-cubeswarm
     samples/common/camera.cpp
@@ -161,11 +180,6 @@ SPOKK_ADD_SHADERS(spokk-cubeswarm
     samples/cubeswarm/rigid_mesh.frag
 )
 SPOKK_ADD_EXECUTABLE(spokk-cubeswarm)
-
-# spokk-compute
-SPOKK_ADD_SOURCES(spokk-compute samples/compute/compute.cpp)
-SPOKK_ADD_SHADERS(spokk-compute samples/compute/double_ints.comp)
-SPOKK_ADD_EXECUTABLE(spokk-compute)
 
 # spokk-lights
 SPOKK_ADD_SOURCES(spokk-lights
