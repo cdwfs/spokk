@@ -91,15 +91,20 @@ SET(GLSLANG_TARGETS
     NightlyMemoryCheck
 
 )
+SET(SPIRV_HEADERS_TARGETS
+    install-headers
+    SPIRV-Headers-example
+    SPIRV-Headers-example-1.1
+)
 SET(SPIRV_TOOLS_TARGETS
     spirv-as
     spirv-cfg
     spirv-dis
-    spirv-markv
+    spirv-link
     spirv-opt
     spirv-stats
     SPIRV-Tools
-    SPIRV-Tools-comp
+    SPIRV-Tools-link
     spirv-tools-build-version
     spirv-tools-cpp-example
     spirv-tools-spv-amd-gcn-shader
@@ -118,16 +123,23 @@ SET(SHADERC_TARGETS
     glslc_exe
     shaderc
     shaderc_combined_genfile
+    shaderc_shared
     shaderc_util
     shaderc-online-compile
     testdata
 )
 SET_TARGET_PROPERTIES(${GLSLANG_TARGETS} PROPERTIES FOLDER "shaderc/glslang")
+SET_TARGET_PROPERTIES(${SPIRV_HEADERS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-headers")
 SET_TARGET_PROPERTIES(${SPIRV_TOOLS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-tools")
 SET_TARGET_PROPERTIES(${SHADERC_TARGETS} PROPERTIES FOLDER "shaderc")
 
 # Skip executable targets; we only care about the library anyway.
-FOREACH(SHADERC_TARGET IN LISTS SPIRV_CROSS_TARGETS GLSLANG_TARGETS SPIRV_TOOLS_TARGETS SHADERC_TARGETS)
+FOREACH(SHADERC_TARGET IN LISTS
+        SPIRV_CROSS_TARGETS
+        GLSLANG_TARGETS
+        SPIRV_HEADERS_TARGETS
+        SPIRV_TOOLS_TARGETS
+        SHADERC_TARGETS)
     GET_TARGET_PROPERTY(TARGET_TYPE ${SHADERC_TARGET} TYPE)
     IF(${TARGET_TYPE} STREQUAL EXECUTABLE)
         SET_TARGET_PROPERTIES(${SHADERC_TARGET} PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD TRUE)
