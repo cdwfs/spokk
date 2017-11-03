@@ -127,7 +127,6 @@ protected:
   std::vector<VkImage> swapchain_images_ = {};
   std::vector<VkImageView> swapchain_image_views_ = {};
   std::vector<uint64_t> swapchain_image_frames_ = {};  // frame index most recently rendered by each swapchain image
-
   std::shared_ptr<GLFWwindow> window_ = nullptr;
 
   InputState input_state_;
@@ -161,6 +160,9 @@ private:
   std::vector<VkFramebuffer> imgui_framebuffers_;
 
   TimestampQueryPool timestamp_query_pool_;
+
+  // Changing this takes effect at the next HandleWindowResize().
+  VkPresentModeKHR swapchain_present_mode_ = VK_PRESENT_MODE_FIFO_KHR;
 
   // Frame timing stats
   static constexpr uint32_t STATS_FRAME_COUNT = 100;

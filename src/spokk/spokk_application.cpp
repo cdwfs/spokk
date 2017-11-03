@@ -537,6 +537,16 @@ int Application::Run() {
 #endif
     }
 
+    ImGui::Begin("Present");
+    const char *present_mode_combo_names = "IMMEDIATE\0MAILBOX\0FIFO\0FIFO_RELAXED\0\0";
+    VkPresentModeKHR new_present_mode = swapchain_present_mode_;
+    ImGui::Combo("Present Mode", (int *)&new_present_mode, present_mode_combo_names, 4);
+    if (new_present_mode != swapchain_present_mode_) {
+      swapchain_present_mode_ = new_present_mode;
+      HandleWindowResize(swapchain_extent_);
+    }
+    ImGui::End();
+
     input_state_.Update();
     if (input_state_.IsPressed(InputState::DIGITAL_MENU)) {
       ShowImgui(!is_imgui_visible_);
@@ -906,26 +916,20 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
           device_.Physical(), surface_, &device_present_mode_count, device_present_modes.data());
     }
   } while (result == VK_INCOMPLETE);
-  std::array<bool, VK_PRESENT_MODE_RANGE_SIZE_KHR> present_mode_supported = {};
+  std::array<bool, 4> present_mode_supported = {};
   for (auto mode : device_present_modes) {
     present_mode_supported[mode] = true;
   }
-  VkPresentModeKHR present_mode;
   // TODO(https://github.com/cdwfs/spokk/issues/12): Put this logic under application control
   // TODO(https://github.com/cdwfs/spokk/issues/30): Let this be tweaked at runtime through imgui
-#if 0
-  if (present_mode_supported[VK_PRESENT_MODE_IMMEDIATE_KHR]) {
-    present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
-  } else if (present_mode_supported[VK_PRESENT_MODE_MAILBOX_KHR]) {
-    present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
-  } else {
-    // FIFO support is required by the spec; its absence is a major problem.
-    ZOMBO_ASSERT(present_mode_supported[VK_PRESENT_MODE_FIFO_KHR], "FIFO present mode unsupported?!?");
-    present_mode = VK_PRESENT_MODE_FIFO_KHR;
+  if (swapchain_present_mode_ >= present_mode_supported.size()) {
+    fprintf(stderr, "ERROR: invalid present mode (%d); defaulting to FIFO\n", swapchain_present_mode_);
+    swapchain_present_mode_ = VK_PRESENT_MODE_FIFO_KHR;
+  } else if (!present_mode_supported[swapchain_present_mode_]) {
+    fprintf(stderr, "ERROR: unsupported present mode (%d); defaulting to FIFO\n", swapchain_present_mode_);
+    swapchain_present_mode_ = VK_PRESENT_MODE_FIFO_KHR;
   }
-#else
-  present_mode = VK_PRESENT_MODE_FIFO_KHR;
-#endif
+  ZOMBO_ASSERT(present_mode_supported[VK_PRESENT_MODE_FIFO_KHR], "FIFO present mode unsupported?!?");
 
   uint32_t desired_swapchain_image_count = surface_caps.minImageCount + 1;
   if (surface_caps.maxImageCount > 0 && desired_swapchain_image_count > surface_caps.maxImageCount) {
@@ -954,7 +958,7 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   swapchain_ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
   swapchain_ci.preTransform = surface_transform;
   swapchain_ci.compositeAlpha = composite_alpha;
-  swapchain_ci.presentMode = present_mode;
+  swapchain_ci.presentMode = swapchain_present_mode_;
   swapchain_ci.clipped = VK_TRUE;
   swapchain_ci.oldSwapchain = old_swapchain;
   SPOKK_VK_CHECK(vkCreateSwapchainKHR(device_, &swapchain_ci, host_allocator_, &swapchain_));
