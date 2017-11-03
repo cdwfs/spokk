@@ -427,11 +427,13 @@ Application::Application(const CreateInfo &ci) {
     SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
   }
 
-  // Create query pool
-  VkQueryPoolCreateInfo timestamp_query_pool_ci = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
-  timestamp_query_pool_ci.queryType = VK_QUERY_TYPE_TIMESTAMP;
-  timestamp_query_pool_ci.queryCount = TIMESTAMP_ID_COUNT * (uint32_t)swapchain_images_.size();
-  SPOKK_VK_CHECK(vkCreateQueryPool(device_, &timestamp_query_pool_ci, host_allocator_, &timestamp_query_pool_));
+  if (ci.enable_graphics) {
+    // Create query pool
+    VkQueryPoolCreateInfo timestamp_query_pool_ci = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+    timestamp_query_pool_ci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    timestamp_query_pool_ci.queryCount = TIMESTAMP_ID_COUNT * (uint32_t)swapchain_images_.size();
+    SPOKK_VK_CHECK(vkCreateQueryPool(device_, &timestamp_query_pool_ci, host_allocator_, &timestamp_query_pool_));
+  }
 
   init_successful_ = true;
 }
@@ -439,7 +441,9 @@ Application::~Application() {
   if (device_ != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(device_);
 
-    vkDestroyQueryPool(device_, timestamp_query_pool_, host_allocator_);
+    if (timestamp_query_pool_) {
+      vkDestroyQueryPool(device_, timestamp_query_pool_, host_allocator_);
+    }
 
     DestroyImgui();
     for (auto fb : imgui_framebuffers_) {
