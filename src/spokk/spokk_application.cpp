@@ -589,7 +589,7 @@ int Application::Run() {
     std::array<bool, TIMESTAMP_ID_COUNT> timestamps_validity;
     int64_t timestamps_frame_index = -1;
     SPOKK_VK_CHECK(timestamp_query_pool_.GetResults(device_, swapchain_image_index, TIMESTAMP_ID_COUNT,
-    timestamps_seconds.data(), timestamps_validity.data(), &timestamps_frame_index));
+        timestamps_seconds.data(), timestamps_validity.data(), &timestamps_frame_index));
     if (timestamps_validity[TIMESTAMP_ID_BEGIN_PRIMARY] && timestamps_validity[TIMESTAMP_ID_END_PRIMARY]) {
       float primary_time = 1000.0f *
           (float)(timestamps_seconds[TIMESTAMP_ID_END_PRIMARY] - timestamps_seconds[TIMESTAMP_ID_BEGIN_PRIMARY]);
