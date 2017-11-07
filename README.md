@@ -6,6 +6,19 @@ Just a framework for building simple [Vulkan](https://www.khronos.org/vulkan/) a
 ![image](https://raw.githubusercontent.com/cdwfs/spokk/master/samples/lights/screenshot.jpg)
 ![image](https://raw.githubusercontent.com/cdwfs/spokk/master/samples/pillars/screenshot.jpg)
 
+How To Build
+------------
+All external dependencies are configured as submodules; after cloning the spokk repo, run the
+following commands to clone and sync the appropriate revisions:
+
+```
+$ git submodule init
+$ git submodule update
+```
+
+Next, use CMake in the traditional platform-appropriate fashion to generate the project files of
+your choice. Build and run any of the "samples" projects.
+
 Acknowledgements
 ----------------
 spokk builds upon the following projects, which will be automatically included and configured as submodules):
