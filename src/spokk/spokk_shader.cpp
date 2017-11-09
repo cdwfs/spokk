@@ -515,6 +515,12 @@ void DescriptorPool::Add(const VkDescriptorSetLayoutCreateInfo& dset_layout, uin
 }
 VkResult DescriptorPool::Finalize(const Device& device, VkDescriptorPoolCreateFlags flags) {
   ci.flags = flags;
+  // descriptor counts can't be zero. Let's just bump them up to one, it won't hurt anything.
+  for(auto& pool_size : pool_sizes) {
+    if (pool_size.descriptorCount == 0) {
+      pool_size.descriptorCount += 1;
+    }
+  }
   VkResult result = vkCreateDescriptorPool(device, &ci, device.HostAllocator(), &handle);
   return result;
 }

@@ -88,10 +88,6 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
-  // Initialize IMGUI
-  InitImgui(render_pass_);
-  ShowImgui(false);
-
   // Load textures and samplers
   VkSamplerCreateInfo sampler_ci =
       GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
@@ -222,8 +218,6 @@ PillarsApp::~PillarsApp() {
   if (device_) {
     vkDeviceWaitIdle(device_);
 
-    DestroyImgui();
-
     dpool_.Destroy(device_);
 
     camera_constants_.Destroy(device_);
@@ -251,18 +245,7 @@ PillarsApp::~PillarsApp() {
 
 void PillarsApp::Update(double dt) {
   seconds_elapsed_ += dt;
-
   drone_->Update(input_state_, (float)dt);
-
-  // Update uniforms
-  // TODO(https://github.com/cdwfs/spokk/issues/28): uniform buffer updates must be moved to Render()
-  CameraConstants* camera_consts = (CameraConstants*)camera_constants_.Mapped(pframe_index_);
-  camera_consts->time_and_res = { (float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0 };
-  camera_consts->eye_pos_ws = glm::vec4(camera_->getEyePoint(), 1.0f);
-  glm::mat4 view = camera_->getViewMatrix();
-  const glm::mat4 proj = camera_->getProjectionMatrix();
-  camera_consts->view_proj = proj * view;
-  camera_constants_.FlushPframeHostCache(pframe_index_);
 
   // Update visible cells
   // - Add a cell as visible the first time it gets within N units of the camera.
@@ -294,13 +277,24 @@ void PillarsApp::Update(double dt) {
       }
     }
   }
+}
+
+void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
+  // Update uniforms
+  CameraConstants* camera_consts = (CameraConstants*)camera_constants_.Mapped(pframe_index_);
+  camera_consts->time_and_res = { (float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0 };
+  camera_consts->eye_pos_ws = glm::vec4(camera_->getEyePoint(), 1.0f);
+  glm::mat4 view = camera_->getViewMatrix();
+  const glm::mat4 proj = camera_->getProjectionMatrix();
+  camera_consts->view_proj = proj * view;
+  camera_constants_.FlushPframeHostCache(pframe_index_);
+
   memcpy(visible_cells_buffer_.Mapped(pframe_index_), visible_cells_.data(), visible_cells_.size() * sizeof(int32_t));
   visible_cells_buffer_.FlushPframeHostCache(pframe_index_);
   memcpy(heightfield_buffer_.Mapped(pframe_index_), heightfield_.data(), heightfield_.size() * sizeof(float));
   heightfield_buffer_.FlushPframeHostCache(pframe_index_);
-}
 
-void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
+  // Write command buffer
   VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
   render_pass_.begin_info.framebuffer = framebuffer;
   render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -314,7 +308,6 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
       0, 1, &dsets_[pframe_index_], 0, nullptr);
   mesh_.BindBuffers(primary_cb);
   vkCmdDrawIndexed(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size(), 0, 0, 0);
-  RenderImgui(primary_cb);
   vkCmdEndRenderPass(primary_cb);
 }
 

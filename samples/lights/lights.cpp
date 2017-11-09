@@ -16,22 +16,41 @@ struct MeshUniforms {
 };
 struct MaterialUniforms {
   glm::vec4 albedo;  // xyz: albedo RGB
-  glm::vec4 spec_color;  // xyz: specular color
-  glm::vec4 spec_exp_intensity;  // x: specular exponent, y: specular intensity
+  glm::vec4 emissive_color;  // xyz: emissive color, w: intensity
+  glm::vec4 spec_color;  // xyz: specular color, w: intensity
+  glm::vec4 spec_exp;  // x: specular exponent
 };
 struct LightUniforms {
   glm::vec4 hemi_down_color;
   glm::vec4 hemi_up_color;
 
-  glm::vec4 dir_color;
+  glm::vec4 dir_color;  // xyz: color, w: intensity
   glm::vec4 dir_to_light_wsn;  // xyz: world-space normalized vector towards light
 
   glm::vec4 point_pos_ws_inverse_range;  // xyz: world-space light pos, w: inverse range of light
-  glm::vec4 point_color;
+  glm::vec4 point_color;  // xyz: color, w: intensity
+
+  glm::vec4 spot_pos_ws_inverse_range;  // xyz: world-space light pos, w: inverse range of light
+  glm::vec4 spot_color;  // xyz: RGB color, w: intensity
+  glm::vec4 spot_neg_dir_wsn;  // xyz: world-space normalized light direction (negated)
+  glm::vec4 spot_falloff_angles;  // x: 1/(cos(inner)-cos(outer)), y: cos(outer)
 };
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
+
+void EncodeSpotlightFalloffAngles(glm::vec4* out_encoded, float inner_degrees, float outer_degrees) {
+  float cos_inner = cosf(((float)M_PI / 180.0f) * inner_degrees);
+  float cos_outer = cosf(((float)M_PI / 180.0f) * outer_degrees);
+  *out_encoded = glm::vec4(1.0f / (cos_inner - cos_outer), cos_outer, 0.0f, 0.0f);
+}
+void DecodeSpotlightFalloffAngles(float* out_inner_degrees, float* out_outer_degrees, glm::vec4 encoded) {
+  float cos_outer = encoded.y;
+  float cos_inner = (1.0f / encoded.x) + cos_outer;
+  *out_outer_degrees = (180.0f / (float)M_PI) * acosf(cos_outer);
+  *out_inner_degrees = (180.0f / (float)M_PI) * acosf(cos_inner);
+}
+
 }  // namespace
 
 class LightsApp : public spokk::Application {
@@ -52,10 +71,6 @@ public:
     SPOKK_VK_CHECK(render_pass_.Finalize(device_));
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
-
-    // Initialize IMGUI
-    InitImgui(render_pass_);
-    ShowImgui(false);
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
@@ -122,6 +137,10 @@ public:
     lights_.dir_color = glm::vec4(1.000f, 1.000f, 1.000f, 0.5f);
     lights_.point_pos_ws_inverse_range = glm::vec4(+0.000f, +0.000f, -5.000f, 1.0f / 10000.0f);
     lights_.point_color = glm::vec4(0.000f, 0.000f, 1.000f, 0.0f);
+    lights_.spot_pos_ws_inverse_range = glm::vec4(-10.0f, 0.0f, 0.0f, 1.0 / 1000.0f);
+    lights_.spot_color = glm::vec4(0.3f, 1.0f, 0.2f, 0.4f);
+    lights_.spot_neg_dir_wsn = -glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+    EncodeSpotlightFalloffAngles(&lights_.spot_falloff_angles, 10.0f, 20.0f);
 
     // Create pipelined buffer of light uniforms
     VkBufferCreateInfo material_uniforms_ci = {};
@@ -132,8 +151,9 @@ public:
     SPOKK_VK_CHECK(
         material_uniforms_.Create(device_, PFRAME_COUNT, material_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
     material_.albedo = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    material_.emissive_color = glm::vec4(0.5f, 0.5f, 0.0f, 0.0f);
     material_.spec_color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-    material_.spec_exp_intensity = glm::vec4(1000.0f, 1.0f, 0.0f, 0.0f);
+    material_.spec_exp = glm::vec4(1000.0f, 0.0f, 0.0f, 0.0f);
 
     // Create pipelined buffer of mesh uniforms
     VkBufferCreateInfo mesh_uniforms_ci = {};
@@ -214,11 +234,77 @@ public:
 
   virtual void Update(double dt) override {
     seconds_elapsed_ += dt;
-
     drone_->Update(input_state_, (float)dt);
 
+    // Tweakable light/material settings
+    const ImGuiColorEditFlags default_color_edit_flags = ImGuiColorEditFlags_Float | ImGuiColorEditFlags_PickerHueWheel;
+    if (ImGui::TreeNode("Material")) {
+      ImGui::ColorEdit3("Albedo", &material_.albedo.x, default_color_edit_flags);
+      ImGui::Separator();
+      ImGui::Text("Emissive:");
+      ImGui::ColorEdit3("Color##Emissive", &material_.emissive_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Emissive", &material_.emissive_color.w, 0.0f, 1.0f);
+      ImGui::Separator();
+      ImGui::Text("Specular:");
+      ImGui::ColorEdit3("Color##Spec", &material_.spec_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Spec", &material_.spec_color.w, 0.0f, 1.0f);
+      ImGui::SliderFloat("Exponent##Spec", &material_.spec_exp.x, 1.0f, 100000.0f, "%.2f", 10.0f);
+      ImGui::TreePop();
+    }
+    if (ImGui::TreeNode("Lights")) {
+      ImGui::Text("Hemi Light");
+      ImGui::ColorEdit3("Up Color##Hemi", &lights_.hemi_up_color.x, default_color_edit_flags);
+      ImGui::ColorEdit3("Down Color##Hemi", &lights_.hemi_down_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Hemi", &lights_.hemi_down_color.w, 0.0f, 1.0f);
+
+      ImGui::Separator();
+      ImGui::Text("Dir Light:");
+      ImGui::ColorEdit3("Color##Dir", &lights_.dir_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Dir", &lights_.dir_color.w, 0.0f, 1.0f);
+
+      ImGui::Separator();
+      ImGui::Text("Point Light:");
+      float point_range = 1.0f / lights_.point_pos_ws_inverse_range.w;
+      ImGui::InputFloat3("Position##Point", &lights_.point_pos_ws_inverse_range.x);
+      ImGui::SliderFloat("Range##Point", &point_range, 0.001f, 1000000.0f, "%.3f", 10.0f);
+      ImGui::ColorEdit3("Color##Point", &lights_.point_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Point", &lights_.point_color.w, 0.0f, 1.0f);
+      lights_.point_pos_ws_inverse_range.w = 1.0f / point_range;
+
+      ImGui::Separator();
+      ImGui::Text("Spot Light:");
+      float spot_range = 1.0f / lights_.spot_pos_ws_inverse_range.w;
+      glm::vec3 spot_dir_wsn = -lights_.spot_neg_dir_wsn;
+      float spot_falloff_degrees_outer = 0, spot_falloff_degrees_inner = 0;
+      DecodeSpotlightFalloffAngles(
+        &spot_falloff_degrees_inner, &spot_falloff_degrees_outer, lights_.spot_falloff_angles);
+      float spot_falloff_degrees_inner_original = spot_falloff_degrees_inner;
+      float spot_falloff_degrees_outer_original = spot_falloff_degrees_outer;
+      ImGui::InputFloat3("Position##Spot", &lights_.spot_pos_ws_inverse_range.x);
+      ImGui::SliderFloat("Range##Spot", &spot_range, 0.001f, 1000000.0f, "%.3f", 10.0f);
+      ImGui::ColorEdit3("Color##Spot", &lights_.spot_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Spot", &lights_.spot_color.w, 0.0f, 1.0f);
+      ImGui::InputFloat3("Direction##Spot", &spot_dir_wsn.x, 3);
+      ImGui::SliderFloat("Inner Angle##Spot", &spot_falloff_degrees_inner, 0.0f, 90.0f);
+      ImGui::SliderFloat("Outer Angle##Spot", &spot_falloff_degrees_outer, 0.0f, 90.0f);
+      lights_.spot_pos_ws_inverse_range.w = 1.0f / spot_range;
+      lights_.spot_neg_dir_wsn = glm::vec4(-spot_dir_wsn, 0.0f);
+      if (spot_falloff_degrees_inner != spot_falloff_degrees_inner_original &&
+        spot_falloff_degrees_inner > spot_falloff_degrees_outer) {
+        spot_falloff_degrees_outer = spot_falloff_degrees_inner;
+      } else if (spot_falloff_degrees_outer != spot_falloff_degrees_outer_original &&
+        spot_falloff_degrees_outer < spot_falloff_degrees_inner) {
+        spot_falloff_degrees_inner = spot_falloff_degrees_outer;
+      }
+      EncodeSpotlightFalloffAngles(
+        &lights_.spot_falloff_angles, spot_falloff_degrees_inner, spot_falloff_degrees_outer);
+
+      ImGui::TreePop();
+    }
+  }
+
+  void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
     // Update uniforms
-    // TODO(https://github.com/cdwfs/spokk/issues/28): uniform buffer updates must be moved to Render()
     CameraConstants* camera_consts = (CameraConstants*)camera_constants_.Mapped(pframe_index_);
     camera_consts->time_and_res =
         glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
@@ -241,44 +327,16 @@ public:
     mesh_uniforms_.FlushPframeHostCache(pframe_index_);
 
     // Update material uniforms
-    if (ImGui::TreeNode("Material")) {
-      ImGui::ColorEdit3("Albedo", &material_.albedo.x, ImGuiColorEditFlags_Float);
-      ImGui::Text("Specular:");
-      ImGui::ColorEdit3("Color", &material_.spec_color.x, ImGuiColorEditFlags_Float);
-      ImGui::SliderFloat("Exponent", &material_.spec_exp_intensity.x, 1.0f, 100000.0f, "%.2f", 10.0f);
-      ImGui::SliderFloat("Intensity", &lights_.hemi_down_color.w, 0.0f, 1.0f);
-      ImGui::TreePop();
-    }
     MaterialUniforms* material_uniforms = (MaterialUniforms*)material_uniforms_.Mapped(pframe_index_);
     *material_uniforms = material_;
     material_uniforms_.FlushPframeHostCache(pframe_index_);
 
     // Update light uniforms
-    if (ImGui::TreeNode("Lights")) {
-      ImGui::Text("Hemi Light");
-      ImGui::ColorEdit3("Up Color##Hemi", &lights_.hemi_up_color.x, ImGuiColorEditFlags_Float);
-      ImGui::ColorEdit3("Down Color##Hemi", &lights_.hemi_down_color.x, ImGuiColorEditFlags_Float);
-      ImGui::SliderFloat("Intensity##Hemi", &lights_.hemi_down_color.w, 0.0f, 1.0f);
-      ImGui::Separator();
-      ImGui::Text("Dir Light:");
-      ImGui::ColorEdit3("Color##Dir", &lights_.dir_color.x, ImGuiColorEditFlags_Float);
-      ImGui::SliderFloat("Intensity##Dir", &lights_.dir_color.w, 0.0f, 1.0f);
-      ImGui::Separator();
-      ImGui::Text("Point Light:");
-      float range = 1.0f / lights_.point_pos_ws_inverse_range.w;
-      ImGui::InputFloat3("Position##Point", &lights_.point_pos_ws_inverse_range.x);
-      ImGui::SliderFloat("Range##Point", &range, 0.001f, 1000000.0f, "%.3f", 10.0f);
-      ImGui::ColorEdit3("Color##Point", &lights_.point_color.x, ImGuiColorEditFlags_Float);
-      ImGui::SliderFloat("Intensity##Point", &lights_.point_color.w, 0.0f, 1.0f);
-      lights_.point_pos_ws_inverse_range.w = 1.0f / range;
-      ImGui::TreePop();
-    }
     LightUniforms* light_uniforms = (LightUniforms*)light_uniforms_.Mapped(pframe_index_);
     *light_uniforms = lights_;
     light_uniforms_.FlushPframeHostCache(pframe_index_);
-  }
 
-  void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+    // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -297,7 +355,6 @@ public:
     // Render skybox
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, skybox_pipeline_.handle);
     vkCmdDraw(primary_cb, 36, 1, 0, 0);
-    RenderImgui(primary_cb);
     vkCmdEndRenderPass(primary_cb);
   }
 

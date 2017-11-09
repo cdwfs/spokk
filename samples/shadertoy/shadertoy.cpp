@@ -96,10 +96,6 @@ public:
     render_pass_.attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     SPOKK_VK_CHECK(render_pass_.Finalize(device_));
 
-    // Initialize IMGUI
-    InitImgui(render_pass_);
-    ShowImgui(false);
-
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
         GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
@@ -206,8 +202,10 @@ public:
 
   void Update(double dt) override {
     seconds_elapsed_ += dt;
+    current_dt_ = (float)dt;
+  }
 
-    // TODO(https://github.com/cdwfs/spokk/issues/28): shader/uniform updates must be moved to Render()
+  void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
     // Reload shaders, if necessary
     bool reload = false;
     swap_shader_.compare_exchange_strong(reload, false);
@@ -227,19 +225,16 @@ public:
     if (glfwGetMouseButton(window_.get(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
       mouse_pos_ = glm::vec2((float)mouse_x, (float)mouse_y);
     }
-
     std::time_t now = std::time(nullptr);
     const std::tm* cal = std::localtime(&now);
     float year = (float)cal->tm_year;
     float month = (float)cal->tm_mon;
     float mday = (float)cal->tm_mday;
     float dsec = (float)(cal->tm_hour * 3600 + cal->tm_min * 60 + cal->tm_sec);
-
     viewport_ = ExtentToViewport(swapchain_extent_);
     // Convert viewport back to right-handed (flip Y axis, remove Y offset)
     viewport_.y = 0.0f;
     viewport_.height *= -1;
-
     scissor_rect_ = ExtentToRect2D(swapchain_extent_);
     ShaderToyUniforms *uniforms = (ShaderToyUniforms*)uniform_buffer_.Mapped(pframe_index_);
     uniforms->iResolution = glm::vec4(viewport_.width, viewport_.height, 1.0f, 0.0f);
@@ -248,23 +243,22 @@ public:
     uniforms->iChannelTime[2] = glm::vec4(2.0f, 0.0f, 0.0f, 0.0f);
     uniforms->iChannelTime[3] = glm::vec4(3.0f, 0.0f, 0.0f, 0.0f);
     uniforms->iChannelResolution[0] = glm::vec4((float)active_images_[0]->image_ci.extent.width,
-        (float)active_images_[0]->image_ci.extent.height, (float)active_images_[0]->image_ci.extent.depth, 0.0f);
+      (float)active_images_[0]->image_ci.extent.height, (float)active_images_[0]->image_ci.extent.depth, 0.0f);
     uniforms->iChannelResolution[1] = glm::vec4((float)active_images_[1]->image_ci.extent.width,
-        (float)active_images_[1]->image_ci.extent.height, (float)active_images_[1]->image_ci.extent.depth, 0.0f);
+      (float)active_images_[1]->image_ci.extent.height, (float)active_images_[1]->image_ci.extent.depth, 0.0f);
     uniforms->iChannelResolution[2] = glm::vec4((float)active_images_[2]->image_ci.extent.width,
-        (float)active_images_[2]->image_ci.extent.height, (float)active_images_[2]->image_ci.extent.depth, 0.0f);
+      (float)active_images_[2]->image_ci.extent.height, (float)active_images_[2]->image_ci.extent.depth, 0.0f);
     uniforms->iChannelResolution[3] = glm::vec4((float)active_images_[3]->image_ci.extent.width,
-        (float)active_images_[3]->image_ci.extent.height, (float)active_images_[3]->image_ci.extent.depth, 0.0f);
+      (float)active_images_[3]->image_ci.extent.height, (float)active_images_[3]->image_ci.extent.depth, 0.0f);
     uniforms->iGlobalTime = (float)seconds_elapsed_;
-    uniforms->iTimeDelta = (float)dt;
-    uniforms->iFrame = frame_index_;
+    uniforms->iTimeDelta = current_dt_;
+    uniforms->iFrame = (int)frame_index_;
     uniforms->iMouse = glm::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
     uniforms->iDate = glm::vec4(year, month, mday, dsec);
     uniforms->iSampleRate = 44100.0f;
     uniform_buffer_.FlushPframeHostCache(pframe_index_);
-  }
 
-  void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+    // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -275,7 +269,6 @@ public:
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
         pipelines_[active_pipeline_index_].shader_program->pipeline_layout, 0, 1, &dsets_[pframe_index_], 0, nullptr);
     vkCmdDraw(primary_cb, 3, 1, 0, 0);
-    RenderImgui(primary_cb);
     vkCmdEndRenderPass(primary_cb);
   }
 
@@ -415,6 +408,7 @@ private:
   }
 
   double seconds_elapsed_;
+  float current_dt_;
 
   std::atomic_bool swap_shader_;
   std::thread shader_reloader_thread_;

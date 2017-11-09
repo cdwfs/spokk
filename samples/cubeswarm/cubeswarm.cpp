@@ -100,9 +100,10 @@ public:
 
   virtual void Update(double dt) override {
     seconds_elapsed_ += dt;
-
     drone_->Update(input_state_, (float)dt);
+  }
 
+  void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
     // Update transforms
     const float secs = (float)seconds_elapsed_;
     const glm::vec3 swarm_center(0, 0, -2);
@@ -118,9 +119,8 @@ public:
       );
       mesh_instances_[iMesh]->transform_.scale = 3.0f;
     }
-  }
 
-  void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+    // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -131,7 +131,6 @@ public:
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
     renderer_.RenderView(primary_cb, camera_->getViewMatrix(), camera_->getProjectionMatrix(),
         glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0));
-    RenderImgui(primary_cb);
     vkCmdEndRenderPass(primary_cb);
   }
 
