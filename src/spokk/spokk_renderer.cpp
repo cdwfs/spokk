@@ -6,9 +6,9 @@
 
 /*
 - The world is full of instances.
-- A instance has a unique transform. The transform may be updated every simulation tick.
-- A instance references a (potentially shared) mesh and material.
-- A instance may be active or inactive. If inactive, it does not participate in any rendering.
+- An instance has a unique transform. The transform may be updated every simulation tick.
+- An instance references a (potentially shared) mesh and material.
+- An instance may be active or inactive. If inactive, it does not participate in any rendering.
 - instances are sorted by Material, then by ShaderProgram, then by Mesh. This sorting is stable across
   frames, so may as well be done once up front. Ideally, the sorted list of instances is static;
   adding/removing is handled by activating and deactivating.
@@ -57,9 +57,9 @@
   Questions:
   - How is instancing (specifically, loading per-instance shader constants) generally implemented in
     shader code? Big flat fixed-size array in the constant buffer? open-ended structured buffer?
-    - NV constant buffers are limited to 64KB; AMD's can be larger. The spec only guarantees a minimum of
-      16 KB. So, effective max instance count per draw would vary wildly, and can't easily be accounted
-      for at shader compile time (without just using the lowest guaranteed value everywhere).
+    * NV constant buffers are limited to 64KB; AMD's can be larger. The spec only guarantees a minimum of
+      16 KB. So, effective max instance count per draw would vary wildly, and patching in the appropriate limit
+      at shader compile time would be an interesting use case for specialization constants.
     - structured buffers would certainly be easier, if they're performant.
   - How to not use every per-instance matrix for every instance? Most draws will only need 1-2 of the six
     possible matrix varieties (W, WV, WVP, inverses). It's wasteful to compute all matrices for all instances,
@@ -72,8 +72,10 @@
     instance transforms in set 2). How to plumb these into the renderer?
     - Can they just be inserted into the existing dsets at the appropriate frequency? Materials control
       their own dsets, and can stuff whatever they want in them; the renderer has no expectations there.
-    - Who controls global and per-instance dsets? What constraints are on the layout of each? How would a shader
+    * Who controls global and per-instance dsets? What constraints are on the layout of each? How would a shader
       declare/bind its own global or per-instance resources?
+      - Well, by definition, if a shader is defining it, it's a material resource, that can be used however the
+        material would like.
 */
 
 /*
@@ -115,9 +117,12 @@ int Renderer::Create(const Device& device, const CreateInfo& ci) {
 
   // technically, we can work with this by padding out to this boundary, but let's be strict & not waste memory
   ZOMBO_ASSERT_RETURN((sizeof(InstanceTransforms) % device.Properties().limits.minUniformBufferOffsetAlignment) == 0,
-      -1, "sizeof(InstanceTranforms) [%d] is not disibile by device's minUniformBufferOffsetAlignment [%d]",
+      -1, "sizeof(InstanceTranforms) [%d] is not divisible by device's minUniformBufferOffsetAlignment [%d]",
       (int)sizeof(InstanceTransforms), (int)device.Properties().limits.minUniformBufferOffsetAlignment);
 
+  // Create renderer-managed constant buffers.
+  // TODO(cort): These buffers will contain unique values for each view in a frame, and will thus require a
+  // higher than usual depth (VIEW_COUNT * PFRAME_COUNT).
   VkBufferCreateInfo world_const_buffer_ci = {};
   world_const_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   world_const_buffer_ci.size = sizeof(spokk::CameraConstants);
