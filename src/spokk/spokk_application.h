@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+struct VmaAllocator_T;  // from vk_mem_alloc.h
+
 namespace spokk {
 
 // How many frames can be pipelined ("in flight") simultaneously? The higher the count, the more independent copies
@@ -113,7 +115,6 @@ protected:
 
   // TODO(https://github.com/cdwfs/spokk/issues/24): Move layer/extension lists into DeviceContext.
   const VkAllocationCallbacks* host_allocator_ = nullptr;
-  const DeviceAllocationCallbacks* device_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
   std::vector<VkLayerProperties> instance_layers_ = {};
   std::vector<VkExtensionProperties> instance_extensions_ = {};
@@ -158,6 +159,9 @@ private:
   VkDescriptorPool imgui_dpool_ = VK_NULL_HANDLE;
   RenderPass imgui_render_pass_ = {};
   std::vector<VkFramebuffer> imgui_framebuffers_;
+
+  VmaAllocator_T* vma_allocator_ = nullptr;
+  DeviceAllocationCallbacks device_allocator_ = {};
 };
 
 }  // namespace spokk
