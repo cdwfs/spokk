@@ -256,7 +256,7 @@ public:
     uniforms->iMouse = glm::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
     uniforms->iDate = glm::vec4(year, month, mday, dsec);
     uniforms->iSampleRate = 44100.0f;
-    uniform_buffer_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(uniform_buffer_.FlushPframeHostCache(device_, pframe_index_));
 
     // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];

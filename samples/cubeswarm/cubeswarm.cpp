@@ -145,7 +145,7 @@ public:
     glm::mat4 w2v = camera_->getViewMatrix();
     const glm::mat4 proj = camera_->getProjectionMatrix();
     uniforms->viewproj = proj * w2v;
-    scene_uniforms_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(scene_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
     // Update object-to-world matrices.
     const float secs = (float)seconds_elapsed_;
@@ -164,7 +164,7 @@ public:
         3.0f);
       // clang-format on
     }
-    mesh_uniforms_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
     // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];

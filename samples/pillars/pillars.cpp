@@ -293,12 +293,12 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
   glm::mat4 w2v = camera_->getViewMatrix();
   const glm::mat4 proj = camera_->getProjectionMatrix();
   uniforms->viewproj = proj * w2v;
-  scene_uniforms_.FlushPframeHostCache(pframe_index_);
+  scene_uniforms_.FlushPframeHostCache(device_, pframe_index_);
 
   memcpy(visible_cells_buffer_.Mapped(pframe_index_), visible_cells_.data(), visible_cells_.size() * sizeof(int32_t));
-  visible_cells_buffer_.FlushPframeHostCache(pframe_index_);
+  SPOKK_VK_CHECK(visible_cells_buffer_.FlushPframeHostCache(device_, pframe_index_));
   memcpy(heightfield_buffer_.Mapped(pframe_index_), heightfield_.data(), heightfield_.size() * sizeof(float));
-  heightfield_buffer_.FlushPframeHostCache(pframe_index_);
+  SPOKK_VK_CHECK(heightfield_buffer_.FlushPframeHostCache(device_, pframe_index_));
 
   // Write command buffer
   VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];

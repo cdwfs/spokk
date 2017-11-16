@@ -154,19 +154,24 @@ namespace spokk {
 VkResult Image::Create(const Device& device, const VkImageCreateInfo& ci, VkMemoryPropertyFlags memory_properties,
     DeviceAllocationScope allocation_scope) {
   ZOMBO_ASSERT_RETURN(handle == VK_NULL_HANDLE, VK_ERROR_INITIALIZATION_FAILED, "Can't re-create an existing Image");
-  VkResult result = vkCreateImage(device, &ci, device.HostAllocator(), &handle);
-  if (result == VK_SUCCESS) {
-    memory = device.DeviceAllocAndBindToImage(handle, memory_properties, allocation_scope);
-    if (memory.block == nullptr) {
-      vkDestroyImage(device, handle, device.HostAllocator());
-      handle = VK_NULL_HANDLE;
-      result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
-    } else {
-      VkImageViewCreateInfo view_ci = GetImageViewCreateInfo(handle, ci);
-      result = vkCreateImageView(device, &view_ci, device.HostAllocator(), &view);
-    }
-  }
   image_ci = ci;
+  VkResult result = vkCreateImage(device, &ci, device.HostAllocator(), &handle);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+  result = device.DeviceAllocAndBindToImage(handle, memory_properties, allocation_scope, &memory);
+  if (result != VK_SUCCESS) {
+    vkDestroyImage(device, handle, device.HostAllocator());
+    handle = VK_NULL_HANDLE;
+    return result;
+  }
+  VkImageViewCreateInfo view_ci = GetImageViewCreateInfo(handle, ci);
+  result = vkCreateImageView(device, &view_ci, device.HostAllocator(), &view);
+  if (result != VK_SUCCESS) {
+    vkDestroyImage(device, handle, device.HostAllocator());
+    handle = VK_NULL_HANDLE;
+    return result;
+  }
   return result;
 }
 int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const std::string& filename,
@@ -211,8 +216,8 @@ int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const 
   }
   // TODO(cort): caller passes in memory properties and scope?
   SPOKK_VK_CHECK(vkCreateImage(device, &image_ci, device.HostAllocator(), &handle));
-  memory =
-      device.DeviceAllocAndBindToImage(handle, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE);
+  SPOKK_VK_CHECK(device.DeviceAllocAndBindToImage(
+      handle, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE, &memory));
 
   // Gimme a command buffer
   OneShotCommandPool cpool(device, *queue, queue->family, device.HostAllocator());
@@ -319,7 +324,7 @@ int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const 
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
         VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &barrier_dst_to_final);
   }
-  staging_buffer.FlushHostCache();
+  SPOKK_VK_CHECK(staging_buffer.FlushHostCache(device));
   cpool.EndSubmitAndFree(&cb);
   staging_buffer.Destroy(device);
   ImageFileDestroy(&image_file);
@@ -336,7 +341,6 @@ int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const 
 
 void Image::Destroy(const Device& device) {
   device.DeviceFree(memory);
-  memory.block = nullptr;
   if (view != VK_NULL_HANDLE) {
     vkDestroyImageView(device, view, device.HostAllocator());
     view = VK_NULL_HANDLE;
@@ -434,7 +438,7 @@ int Image::LoadSubresourceFromMemory(const Device& device, const DeviceQueue* qu
   vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
       VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &barrier_dst_to_final);
 
-  staging_buffer.FlushHostCache();
+  SPOKK_VK_CHECK(staging_buffer.FlushHostCache(device));
   cpool.EndSubmitAndFree(&cb);
   staging_buffer.Destroy(device);
   return 0;
@@ -442,7 +446,7 @@ int Image::LoadSubresourceFromMemory(const Device& device, const DeviceQueue* qu
 
 int Image::GenerateMipmaps(const Device& device, const DeviceQueue* queue, const VkImageMemoryBarrier& barrier,
     uint32_t layer, uint32_t src_mip_level, uint32_t mips_to_gen) {
-  assert(handle != VK_NULL_HANDLE);  // must create image first!
+  ZOMBO_ASSERT(handle != VK_NULL_HANDLE, "must create image first!");
 
   // Gimme a command buffer
   OneShotCommandPool cpool(device, *queue, queue->family, device.HostAllocator());

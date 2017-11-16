@@ -28,15 +28,15 @@ VkResult PipelinedBuffer::Create(const Device& device, uint32_t depth, const VkB
     bytes_per_pframe_ = (single_reqs.size + (single_reqs.alignment - 1)) & ~(single_reqs.alignment - 1);
     VkMemoryRequirements full_reqs = single_reqs;
     full_reqs.size = bytes_per_pframe_ * depth;
-    memory_ = device.DeviceAlloc(full_reqs, memory_properties, allocation_scope);
-    if (memory_.block) {
+    VkResult result = device.DeviceAlloc(full_reqs, memory_properties, allocation_scope, &memory_);
+    if (result == VK_SUCCESS) {
       for (size_t iBuf = 0; iBuf < handles_.size(); ++iBuf) {
         SPOKK_VK_CHECK(vkBindBufferMemory(
-            device, handles_[iBuf], memory_.block->Handle(), memory_.offset + iBuf * bytes_per_pframe_));
+            device, handles_[iBuf], memory_.device_memory, memory_.offset + iBuf * bytes_per_pframe_));
       }
     } else {
       Destroy(device);
-      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+      return result;
     }
   }
   return VK_SUCCESS;
@@ -50,7 +50,7 @@ VkResult PipelinedBuffer::Load(const Device& device, uint32_t pframe, const void
   if (memory_.Mapped()) {
     VkMappedMemoryRange pframe_range = {};
     pframe_range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-    pframe_range.memory = memory_.block->Handle();
+    pframe_range.memory = memory_.device_memory;
     pframe_range.offset = memory_.offset + pframe * bytes_per_pframe_;
     pframe_range.size = bytes_per_pframe_;
     SPOKK_VK_CHECK(vkInvalidateMappedMemoryRanges(device, 1, &pframe_range));
@@ -116,7 +116,7 @@ VkResult PipelinedBuffer::Load(const Device& device, uint32_t pframe, const void
     vkCmdPipelineBarrier(
         cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
     if (staging_buffer.Handle() != VK_NULL_HANDLE) {
-      staging_buffer.FlushHostCache();
+      staging_buffer.FlushHostCache(device);
     }
     result = one_shot_cpool->EndSubmitAndFree(&cb);
     if (staging_buffer.Handle() != VK_NULL_HANDLE) {
@@ -145,7 +145,7 @@ VkResult PipelinedBuffer::CreateViews(const Device& device, VkFormat format) {
   return VK_SUCCESS;
 }
 void PipelinedBuffer::Destroy(const Device& device) {
-  if (memory_.block) {
+  if (memory_.device_memory != VK_NULL_HANDLE) {
     device.DeviceFree(memory_);
   }
   for (auto view : views_) {
@@ -163,22 +163,12 @@ void PipelinedBuffer::Destroy(const Device& device) {
   depth_ = 0;
 }
 
-void PipelinedBuffer::InvalidatePframeHostCache(uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const {
-  VkMappedMemoryRange range = {};
-  range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-  range.memory = memory_.block->Handle();
-  range.offset = memory_.offset + pframe * bytes_per_pframe_ + offset;
-  range.size = nbytes;
-  return memory_.block->InvalidateHostCache(range);
+VkResult PipelinedBuffer::InvalidatePframeHostCache(const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const {
+  return memory_.InvalidateHostCache(device, memory_.offset + pframe * bytes_per_pframe_ + offset, nbytes);
 }
 
-void PipelinedBuffer::FlushPframeHostCache(uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const {
-  VkMappedMemoryRange range = {};
-  range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-  range.memory = memory_.block->Handle();
-  range.offset = memory_.offset + pframe * bytes_per_pframe_ + offset;
-  range.size = nbytes;
-  return memory_.block->FlushHostCache(range);
+VkResult PipelinedBuffer::FlushPframeHostCache(const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const {
+  return memory_.FlushHostCache(device, memory_.offset + pframe * bytes_per_pframe_ + offset, nbytes);
 }
 
 }  // namespace spokk

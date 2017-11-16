@@ -314,22 +314,22 @@ public:
     scene_uniforms->viewproj_inv = glm::inverse(viewproj);
     scene_uniforms->view_inv = glm::inverse(view);
     scene_uniforms->proj_inv = glm::inverse(proj);
-    scene_uniforms_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(scene_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
     // Update mesh uniforms
     MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
     mesh_uniforms->o2w = ComposeTransform(glm::vec3(0.0f, 0.0f, 0.0f), glm::quat_identity<float, glm::highp>(), 5.0f);
-    mesh_uniforms_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
     // Update material uniforms
     MaterialUniforms* material_uniforms = (MaterialUniforms*)material_uniforms_.Mapped(pframe_index_);
     *material_uniforms = material_;
-    material_uniforms_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(material_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
     // Update light uniforms
     LightUniforms* light_uniforms = (LightUniforms*)light_uniforms_.Mapped(pframe_index_);
     *light_uniforms = lights_;
-    light_uniforms_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(light_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
     // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];

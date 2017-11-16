@@ -5,53 +5,38 @@
 namespace spokk {
 
 class Device;
-class DeviceMemoryBlock {
-public:
-  DeviceMemoryBlock() : handle_(VK_NULL_HANDLE), info_{}, mapped_(nullptr) {}
-  ~DeviceMemoryBlock();
-
-  VkResult Allocate(const Device& device, const VkMemoryAllocateInfo& alloc_info);
-  void Free(const Device& device);
-
-  VkDeviceMemory Handle() const { return handle_; }
-  const VkMemoryAllocateInfo& Info() const { return info_; }
-  void* Mapped() const { return mapped_; }
-
-  // Invalidate a range of this block in the host's caches, to ensure GPU writes to that range are visible by the host.
-  // If this block was not allocated with the HOST_VISIBLE flag, this function has no effect.
-  void InvalidateHostCache(const VkMappedMemoryRange& range) const;
-  // Flush a range of this block from the host's caches, to ensure host writes to that range are visible by the GPU.
-  // If this block was not allocated with the HOST_VISIBLE flag, this function has no effect.
-  void FlushHostCache(const VkMappedMemoryRange& range) const;
-
-private:
-  VkDevice device_;  // Cached, to allow invalidate/flush
-  VkDeviceMemory handle_;
-  VkMemoryAllocateInfo info_;
-  void* mapped_;  // NULL if allocation is not mapped.
-};
 
 struct DeviceMemoryAllocation {
-  DeviceMemoryAllocation() : block(nullptr), offset(0), size(0) {}
+  DeviceMemoryAllocation()
+    : device_memory(VK_NULL_HANDLE), offset(0), size(0), mapped(nullptr), allocator_data(nullptr) {}
 
-  void* Mapped() const {
-    if (block == nullptr || block->Mapped() == nullptr) {
-      return nullptr;
-    }
-    return (void*)(uintptr_t(block->Mapped()) + offset);
-  }
+  void* Mapped() const { return mapped; }
 
   // Invalidate this allocation in the host's caches, to ensure GPU writes to its range are visible by the host.
   // If this allocation is not mapped, this function has no effect.
-  void InvalidateHostCache() const;
+  VkResult InvalidateHostCache(VkDevice device, VkDeviceSize offset, VkDeviceSize size) const;
+  VkResult InvalidateHostCache(VkDevice device) const {
+    return InvalidateHostCache(device, offset, size);
+  }
   // Flush this allocation from the host's caches, to ensure host writes to its range are visible by the GPU.
   // If this allocation is not mapped, this function has no effect.
-  void FlushHostCache() const;
+  VkResult FlushHostCache(VkDevice device, VkDeviceSize offset, VkDeviceSize size) const;
+  VkResult FlushHostCache(VkDevice device) const {
+    FlushHostCache(device, offset, size);
+  }
 
-  DeviceMemoryBlock* block;  // May or may not be exclusively owned; depends on the device allocator.
-  // May be NULL for invalid allocations.
+  // This handle may be shared among multiple allocations, and should not be free'd at this level.
+  // For failed/invalid allocations, this handle will be VK_NULL_HANDLE.
+  VkDeviceMemory device_memory;
   VkDeviceSize offset;
   VkDeviceSize size;
+
+  // If the underlying memory is host-visible, this will be the host-visible address at device_memory+offset.
+  // Otherwise, it will be NULL.
+  void* mapped;
+
+  // Allocator-specific user data.
+  void* allocator_data;
 };
 
 enum DeviceAllocationScope {
@@ -59,12 +44,11 @@ enum DeviceAllocationScope {
   DEVICE_ALLOCATION_SCOPE_DEVICE = 2,
 };
 
-typedef DeviceMemoryAllocation(VKAPI_PTR* PFN_deviceAllocationFunction)(void* pUserData, const Device& device,
+typedef VkResult (*PFN_deviceAllocationFunction)(void* user_data, const Device& device,
     const VkMemoryRequirements& memory_reqs, VkMemoryPropertyFlags memory_property_flags,
-    DeviceAllocationScope allocationScope);
+    DeviceAllocationScope allocation_scope, DeviceMemoryAllocation* out_allocation);
 
-typedef void(VKAPI_PTR* PFN_deviceFreeFunction)(
-    void* pUserData, const Device& device, DeviceMemoryAllocation& allocation);
+typedef void (*PFN_deviceFreeFunction)(void* user_data, const Device& device, DeviceMemoryAllocation& allocation);
 
 typedef struct DeviceAllocationCallbacks {
   void* pUserData;

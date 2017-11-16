@@ -68,14 +68,14 @@ public:
       const VkMemoryRequirements &memory_reqs, VkMemoryPropertyFlags memory_properties_mask) const;
   VkMemoryPropertyFlags MemoryTypeProperties(uint32_t memory_type_index) const;
 
-  DeviceMemoryAllocation DeviceAlloc(const VkMemoryRequirements &mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
-      DeviceAllocationScope scope) const;
-  void DeviceFree(DeviceMemoryAllocation allocation) const;
+  VkResult DeviceAlloc(const VkMemoryRequirements &mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
+      DeviceAllocationScope scope, DeviceMemoryAllocation *out_allocation) const;
+  void DeviceFree(DeviceMemoryAllocation &allocation) const;
   // Additional shortcuts for the most common device memory allocations
-  DeviceMemoryAllocation DeviceAllocAndBindToImage(
-      VkImage image, VkMemoryPropertyFlags memory_properties_mask, DeviceAllocationScope scope) const;
-  DeviceMemoryAllocation DeviceAllocAndBindToBuffer(
-      VkBuffer buffer, VkMemoryPropertyFlags memory_properties_mask, DeviceAllocationScope scope) const;
+  VkResult DeviceAllocAndBindToImage(VkImage image, VkMemoryPropertyFlags memory_properties_mask,
+      DeviceAllocationScope scope, DeviceMemoryAllocation *out_allocation) const;
+  VkResult DeviceAllocAndBindToBuffer(VkBuffer buffer, VkMemoryPropertyFlags memory_properties_mask,
+      DeviceAllocationScope scope, DeviceMemoryAllocation *out_allocation) const;
 
   void *HostAlloc(size_t size, size_t alignment, VkSystemAllocationScope scope) const;
   void HostFree(void *ptr) const;
