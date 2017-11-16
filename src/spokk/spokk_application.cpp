@@ -202,6 +202,8 @@ Application::Application(const CreateInfo &ci) {
   }
 
   // Initialize Vulkan
+  host_allocator_ = ci.host_allocator;
+
   std::vector<const char *> required_instance_layer_names = {};
   std::vector<const char *> optional_instance_layer_names = {
 #if defined(_DEBUG)

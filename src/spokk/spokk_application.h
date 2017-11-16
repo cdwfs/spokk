@@ -62,6 +62,7 @@ public:
     // If NULL, no device features are enabled. To easily enable all supported features,
     // pass EnableAllSupportedDeviceFeatures.
     SetDeviceFeaturesFunc pfn_set_device_features = nullptr;
+    const VkAllocationCallbacks* host_allocator = nullptr;
   };
 
   explicit Application(const CreateInfo& ci);
