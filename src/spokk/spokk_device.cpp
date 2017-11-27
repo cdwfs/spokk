@@ -118,8 +118,9 @@ void Device::DeviceFree(DeviceMemoryAllocation allocation) const {
     if (device_allocator_ != nullptr) {
       return device_allocator_->pfnFree(device_allocator_->pUserData, *this, allocation);
     } else {
-      assert(allocation.offset == 0);
-      assert(allocation.size == allocation.block->Info().allocationSize);
+      ZOMBO_ASSERT(allocation.offset == 0, "with no custom allocator, allocations must have offset=0");
+      ZOMBO_ASSERT(allocation.size == allocation.block->Info().allocationSize,
+          "with no custom allocator, allocation size must match block size");
       allocation.block->Free(*this);
     }
   }

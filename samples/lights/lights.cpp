@@ -4,8 +4,7 @@ using namespace spokk;
 #include <common/camera.h>
 #include <common/cube_mesh.h>
 
-#include <mathfu/glsl_mappings.h>
-#include <mathfu/vector.h>
+#include <imgui.h>
 
 #include <array>
 #include <cstdio>
@@ -13,38 +12,70 @@ using namespace spokk;
 
 namespace {
 struct SceneUniforms {
-  mathfu::vec4_packed time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
-  mathfu::vec4_packed eye_pos_ws;  // xyz: world-space eye position
-  mathfu::vec4_packed eye_dir_wsn;  // xyz: world-space eye direction (normalized)
-  mathfu::mat4 viewproj;
-  mathfu::mat4 view;
-  mathfu::mat4 proj;
-  mathfu::mat4 viewproj_inv;
-  mathfu::mat4 view_inv;
-  mathfu::mat4 proj_inv;
+  glm::vec4 time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
+  glm::vec4 eye_pos_ws;  // xyz: world-space eye position
+  glm::vec4 eye_dir_wsn;  // xyz: world-space eye direction (normalized)
+  glm::mat4 viewproj;
+  glm::mat4 view;
+  glm::mat4 proj;
+  glm::mat4 viewproj_inv;
+  glm::mat4 view_inv;
+  glm::mat4 proj_inv;
 };
 struct MeshUniforms {
-  mathfu::mat4 o2w;
+  glm::mat4 o2w;
+};
+struct MaterialUniforms {
+  glm::vec4 albedo;  // xyz: albedo RGB
+  glm::vec4 emissive_color;  // xyz: emissive color, w: intensity
+  glm::vec4 spec_color;  // xyz: specular color, w: intensity
+  glm::vec4 spec_exp;  // x: specular exponent
+};
+struct LightUniforms {
+  glm::vec4 hemi_down_color;
+  glm::vec4 hemi_up_color;
+
+  glm::vec4 dir_color;  // xyz: color, w: intensity
+  glm::vec4 dir_to_light_wsn;  // xyz: world-space normalized vector towards light
+
+  glm::vec4 point_pos_ws_inverse_range;  // xyz: world-space light pos, w: inverse range of light
+  glm::vec4 point_color;  // xyz: color, w: intensity
+
+  glm::vec4 spot_pos_ws_inverse_range;  // xyz: world-space light pos, w: inverse range of light
+  glm::vec4 spot_color;  // xyz: RGB color, w: intensity
+  glm::vec4 spot_neg_dir_wsn;  // xyz: world-space normalized light direction (negated)
+  glm::vec4 spot_falloff_angles;  // x: 1/(cos(inner)-cos(outer)), y: cos(outer)
 };
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
+
+void EncodeSpotlightFalloffAngles(glm::vec4* out_encoded, float inner_degrees, float outer_degrees) {
+  float cos_inner = cosf(((float)M_PI / 180.0f) * inner_degrees);
+  float cos_outer = cosf(((float)M_PI / 180.0f) * outer_degrees);
+  *out_encoded = glm::vec4(1.0f / (cos_inner - cos_outer), cos_outer, 0.0f, 0.0f);
+}
+void DecodeSpotlightFalloffAngles(float* out_inner_degrees, float* out_outer_degrees, glm::vec4 encoded) {
+  float cos_outer = encoded.y;
+  float cos_inner = (1.0f / encoded.x) + cos_outer;
+  *out_outer_degrees = (180.0f / (float)M_PI) * acosf(cos_outer);
+  *out_inner_degrees = (180.0f / (float)M_PI) * acosf(cos_inner);
+}
+
 }  // namespace
 
 class LightsApp : public spokk::Application {
 public:
   explicit LightsApp(Application::CreateInfo& ci) : Application(ci) {
-    glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
     seconds_elapsed_ = 0;
 
     camera_ =
         my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
-    const mathfu::vec3 initial_camera_pos(-1, 0, 6);
-    const mathfu::vec3 initial_camera_target(0, 0, 0);
-    const mathfu::vec3 initial_camera_up(0, 1, 0);
+    const glm::vec3 initial_camera_pos(-3.63f, 4.27f, 9.17f);
+    const glm::vec3 initial_camera_target(0, 3, 0);
+    const glm::vec3 initial_camera_up(0, 1, 0);
     camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
-    dolly_ = my_make_unique<CameraDolly>(*camera_);
+    drone_ = my_make_unique<CameraDrone>(*camera_);
 
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
@@ -86,14 +117,46 @@ public:
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
 
+    // Create pipelined buffer of light uniforms
+    VkBufferCreateInfo light_uniforms_ci = {};
+    light_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    light_uniforms_ci.size = sizeof(LightUniforms);
+    light_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    light_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(
+        light_uniforms_.Create(device_, PFRAME_COUNT, light_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    // Default light settings
+    lights_.hemi_down_color = glm::vec4(0.471f, 0.412f, 0.282f, 0.75f);
+    lights_.hemi_up_color = glm::vec4(0.290f, 0.390f, 0.545f, 0.0f);
+    lights_.dir_to_light_wsn = glm::vec4(-1.0f, +1.0f, +1.0f, 0.0f);
+    lights_.dir_color = glm::vec4(1.000f, 1.000f, 1.000f, 0.5f);
+    lights_.point_pos_ws_inverse_range = glm::vec4(+0.000f, +0.000f, -5.000f, 1.0f / 10000.0f);
+    lights_.point_color = glm::vec4(0.000f, 0.000f, 1.000f, 0.0f);
+    lights_.spot_pos_ws_inverse_range = glm::vec4(-10.0f, 0.0f, 0.0f, 1.0 / 1000.0f);
+    lights_.spot_color = glm::vec4(0.3f, 1.0f, 0.2f, 0.4f);
+    lights_.spot_neg_dir_wsn = -glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+    EncodeSpotlightFalloffAngles(&lights_.spot_falloff_angles, 10.0f, 20.0f);
+
+    // Create pipelined buffer of light uniforms
+    VkBufferCreateInfo material_uniforms_ci = {};
+    material_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    material_uniforms_ci.size = sizeof(MaterialUniforms);
+    material_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    material_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(
+        material_uniforms_.Create(device_, PFRAME_COUNT, material_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    material_.albedo = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    material_.emissive_color = glm::vec4(0.5f, 0.5f, 0.0f, 0.0f);
+    material_.spec_color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    material_.spec_exp = glm::vec4(1000.0f, 0.0f, 0.0f, 0.0f);
+
     // Create pipelined buffer of mesh uniforms
     VkBufferCreateInfo mesh_uniforms_ci = {};
     mesh_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    mesh_uniforms_ci.size = sizeof(mathfu::mat4);
+    mesh_uniforms_ci.size = sizeof(MeshUniforms);
     mesh_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     mesh_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(
-      mesh_uniforms_.Create(device_, PFRAME_COUNT, mesh_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, mesh_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
     // Create pipelined buffer of shader uniforms
     VkBufferCreateInfo scene_uniforms_ci = {};
@@ -119,6 +182,8 @@ public:
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
       dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
+      dset_writer.BindBuffer(light_uniforms_.Handle(pframe), mesh_fs_.GetDescriptorBindPoint("light_consts").binding);
+      dset_writer.BindBuffer(material_uniforms_.Handle(pframe), mesh_fs_.GetDescriptorBindPoint("mat_consts").binding);
       dset_writer.WriteAll(device_, dsets_[pframe]);
     }
 
@@ -131,6 +196,8 @@ public:
 
       dpool_.Destroy(device_);
 
+      light_uniforms_.Destroy(device_);
+      material_uniforms_.Destroy(device_);
       mesh_uniforms_.Destroy(device_);
       scene_uniforms_.Destroy(device_);
 
@@ -161,89 +228,110 @@ public:
   const LightsApp& operator=(const LightsApp&) = delete;
 
   virtual void Update(double dt) override {
-    Application::Update(dt);
     seconds_elapsed_ += dt;
+    drone_->Update(input_state_, (float)dt);
 
-    // Update camera
-    mathfu::vec3 camera_accel_dir(0, 0, 0);
-    const float CAMERA_ACCEL_MAG = 100.0f, CAMERA_TURN_SPEED = 0.001f;
-    if (input_state_.GetDigital(InputState::DIGITAL_LPAD_UP)) {
-      camera_accel_dir += camera_->getViewDirection();
+    // Tweakable light/material settings
+    const ImGuiColorEditFlags default_color_edit_flags = ImGuiColorEditFlags_Float | ImGuiColorEditFlags_PickerHueWheel;
+    if (ImGui::TreeNode("Material")) {
+      ImGui::ColorEdit3("Albedo", &material_.albedo.x, default_color_edit_flags);
+      ImGui::Separator();
+      ImGui::Text("Emissive:");
+      ImGui::ColorEdit3("Color##Emissive", &material_.emissive_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Emissive", &material_.emissive_color.w, 0.0f, 1.0f);
+      ImGui::Separator();
+      ImGui::Text("Specular:");
+      ImGui::ColorEdit3("Color##Spec", &material_.spec_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Spec", &material_.spec_color.w, 0.0f, 1.0f);
+      ImGui::SliderFloat("Exponent##Spec", &material_.spec_exp.x, 1.0f, 100000.0f, "%.2f", 10.0f);
+      ImGui::TreePop();
     }
-    if (input_state_.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
-      mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
-      camera_accel_dir -= viewRight;
-    }
-    if (input_state_.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
-      camera_accel_dir -= camera_->getViewDirection();
-    }
-    if (input_state_.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
-      mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
-      camera_accel_dir += viewRight;
-    }
-    if (input_state_.GetDigital(InputState::DIGITAL_RPAD_LEFT)) {
-      mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
-      camera_accel_dir -= viewUp;
-    }
-    if (input_state_.GetDigital(InputState::DIGITAL_RPAD_DOWN)) {
-      mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
-      camera_accel_dir += viewUp;
-    }
-    mathfu::vec3 camera_accel = (camera_accel_dir.LengthSquared() > 0)
-      ? camera_accel_dir.Normalized() * CAMERA_ACCEL_MAG
-      : mathfu::vec3(0, 0, 0);
+    if (ImGui::TreeNode("Lights")) {
+      ImGui::Text("Hemi Light");
+      ImGui::ColorEdit3("Up Color##Hemi", &lights_.hemi_up_color.x, default_color_edit_flags);
+      ImGui::ColorEdit3("Down Color##Hemi", &lights_.hemi_down_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Hemi", &lights_.hemi_down_color.w, 0.0f, 1.0f);
 
-    // Update camera based on acceleration vector and mouse delta
-    mathfu::vec3 camera_eulers = camera_->getEulersYPR() +
-      mathfu::vec3(-CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
-        -CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_X), 0);
-    if (camera_eulers[0] >= float(M_PI_2 - 0.01f)) {
-      camera_eulers[0] = float(M_PI_2 - 0.01f);
-    } else if (camera_eulers[0] <= float(-M_PI_2 + 0.01f)) {
-      camera_eulers[0] = float(-M_PI_2 + 0.01f);
+      ImGui::Separator();
+      ImGui::Text("Dir Light:");
+      ImGui::ColorEdit3("Color##Dir", &lights_.dir_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Dir", &lights_.dir_color.w, 0.0f, 1.0f);
+
+      ImGui::Separator();
+      ImGui::Text("Point Light:");
+      float point_range = 1.0f / lights_.point_pos_ws_inverse_range.w;
+      ImGui::InputFloat3("Position##Point", &lights_.point_pos_ws_inverse_range.x);
+      ImGui::SliderFloat("Range##Point", &point_range, 0.001f, 1000000.0f, "%.3f", 10.0f);
+      ImGui::ColorEdit3("Color##Point", &lights_.point_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Point", &lights_.point_color.w, 0.0f, 1.0f);
+      lights_.point_pos_ws_inverse_range.w = 1.0f / point_range;
+
+      ImGui::Separator();
+      ImGui::Text("Spot Light:");
+      float spot_range = 1.0f / lights_.spot_pos_ws_inverse_range.w;
+      glm::vec3 spot_dir_wsn = -lights_.spot_neg_dir_wsn;
+      float spot_falloff_degrees_outer = 0, spot_falloff_degrees_inner = 0;
+      DecodeSpotlightFalloffAngles(
+        &spot_falloff_degrees_inner, &spot_falloff_degrees_outer, lights_.spot_falloff_angles);
+      float spot_falloff_degrees_inner_original = spot_falloff_degrees_inner;
+      float spot_falloff_degrees_outer_original = spot_falloff_degrees_outer;
+      ImGui::InputFloat3("Position##Spot", &lights_.spot_pos_ws_inverse_range.x);
+      ImGui::SliderFloat("Range##Spot", &spot_range, 0.001f, 1000000.0f, "%.3f", 10.0f);
+      ImGui::ColorEdit3("Color##Spot", &lights_.spot_color.x, default_color_edit_flags);
+      ImGui::SliderFloat("Intensity##Spot", &lights_.spot_color.w, 0.0f, 1.0f);
+      ImGui::InputFloat3("Direction##Spot", &spot_dir_wsn.x, 3);
+      ImGui::SliderFloat("Inner Angle##Spot", &spot_falloff_degrees_inner, 0.0f, 90.0f);
+      ImGui::SliderFloat("Outer Angle##Spot", &spot_falloff_degrees_outer, 0.0f, 90.0f);
+      lights_.spot_pos_ws_inverse_range.w = 1.0f / spot_range;
+      lights_.spot_neg_dir_wsn = glm::vec4(-spot_dir_wsn, 0.0f);
+      if (spot_falloff_degrees_inner != spot_falloff_degrees_inner_original &&
+        spot_falloff_degrees_inner > spot_falloff_degrees_outer) {
+        spot_falloff_degrees_outer = spot_falloff_degrees_inner;
+      } else if (spot_falloff_degrees_outer != spot_falloff_degrees_outer_original &&
+        spot_falloff_degrees_outer < spot_falloff_degrees_inner) {
+        spot_falloff_degrees_inner = spot_falloff_degrees_outer;
+      }
+      EncodeSpotlightFalloffAngles(
+        &lights_.spot_falloff_angles, spot_falloff_degrees_inner, spot_falloff_degrees_outer);
+
+      ImGui::TreePop();
     }
-    camera_eulers[2] = 0;  // disallow roll
-    camera_->setOrientation(mathfu::quat::FromEulerAngles(camera_eulers));
-    dolly_->Update(camera_accel, (float)dt);
-
-    // Update uniforms
-    SceneUniforms* scene_uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
-    scene_uniforms->time_and_res =
-        mathfu::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-    scene_uniforms->eye_pos_ws = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-    scene_uniforms->eye_dir_wsn = mathfu::vec4(camera_->getViewDirection().Normalized(), 1.0f);
-    const mathfu::mat4 view = camera_->getViewMatrix();
-    const mathfu::mat4 proj = camera_->getProjectionMatrix();
-    // clang-format off
-    const mathfu::mat4 clip_fixup(
-      +1.0f, +0.0f, +0.0f, +0.0f,
-      +0.0f, -1.0f, +0.0f, +0.0f,
-      +0.0f, +0.0f, +0.5f, +0.5f,
-      +0.0f, +0.0f, +0.0f, +1.0f);
-    // clang-format on
-    const mathfu::mat4 viewproj = (clip_fixup * proj) * view;
-    scene_uniforms->viewproj = viewproj;
-    scene_uniforms->view = view;
-    scene_uniforms->proj = clip_fixup * proj;
-    scene_uniforms->viewproj_inv = viewproj.Inverse();
-    scene_uniforms->view_inv = view.Inverse();
-    scene_uniforms->proj_inv = (clip_fixup * proj).Inverse();
-    scene_uniforms_.FlushPframeHostCache(pframe_index_);
-
-    // Update mesh uniforms
-    // clang-format off
-    mathfu::quat q = mathfu::quat::identity;
-    MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
-    mesh_uniforms->o2w = mathfu::mat4::Identity()
-      * mathfu::mat4::FromTranslationVector(mathfu::vec3(0.0f, 0.0f, 0.0f))
-      * q.ToMatrix4()
-      * mathfu::mat4::FromScaleVector( mathfu::vec3(5.0f, 5.0f, 5.0f) )
-      ;
-    // clang-format on
-    mesh_uniforms_.FlushPframeHostCache(pframe_index_);
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+    // Update uniforms
+    SceneUniforms* scene_uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
+    scene_uniforms->time_and_res =
+      glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+    scene_uniforms->eye_pos_ws = glm::vec4(camera_->getEyePoint(), 1.0f);
+    scene_uniforms->eye_dir_wsn = glm::vec4(glm::normalize(camera_->getViewDirection()), 1.0f);
+    const glm::mat4 view = camera_->getViewMatrix();
+    const glm::mat4 proj = camera_->getProjectionMatrix();
+    const glm::mat4 viewproj = proj * view;
+    scene_uniforms->viewproj = viewproj;
+    scene_uniforms->view = view;
+    scene_uniforms->proj = proj;
+    scene_uniforms->viewproj_inv = glm::inverse(viewproj);
+    scene_uniforms->view_inv = glm::inverse(view);
+    scene_uniforms->proj_inv = glm::inverse(proj);
+    scene_uniforms_.FlushPframeHostCache(pframe_index_);
+
+    // Update mesh uniforms
+    MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
+    mesh_uniforms->o2w = ComposeTransform(glm::vec3(0.0f, 0.0f, 0.0f), glm::quat_identity<float, glm::highp>(), 5.0f);
+    mesh_uniforms_.FlushPframeHostCache(pframe_index_);
+
+    // Update material uniforms
+    MaterialUniforms* material_uniforms = (MaterialUniforms*)material_uniforms_.Mapped(pframe_index_);
+    *material_uniforms = material_;
+    material_uniforms_.FlushPframeHostCache(pframe_index_);
+
+    // Update light uniforms
+    LightUniforms* light_uniforms = (LightUniforms*)light_uniforms_.Mapped(pframe_index_);
+    *light_uniforms = lights_;
+    light_uniforms_.FlushPframeHostCache(pframe_index_);
+
+    // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -257,11 +345,11 @@ public:
         0, 1, &dsets_[pframe_index_], 0, nullptr);
     // Render scene
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
-    mesh_.BindBuffersAndDraw(primary_cb, mesh_.index_count);
+    mesh_.BindBuffers(primary_cb);
+    vkCmdDrawIndexed(primary_cb, mesh_.index_count, 1, 0, 0, 0);
     // Render skybox
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, skybox_pipeline_.handle);
     vkCmdDraw(primary_cb, 36, 1, 0, 0);
-
     vkCmdEndRenderPass(primary_cb);
   }
 
@@ -328,11 +416,16 @@ private:
   ShaderProgram mesh_shader_program_;
   GraphicsPipeline mesh_pipeline_;
   Mesh mesh_;
+  PipelinedBuffer light_uniforms_;
+  PipelinedBuffer material_uniforms_;
   PipelinedBuffer mesh_uniforms_;
   PipelinedBuffer scene_uniforms_;
 
+  LightUniforms lights_;
+  MaterialUniforms material_;
+
   std::unique_ptr<CameraPersp> camera_;
-  std::unique_ptr<CameraDolly> dolly_;
+  std::unique_ptr<CameraDrone> drone_;
 };
 
 int main(int argc, char* argv[]) {

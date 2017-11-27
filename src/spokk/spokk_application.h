@@ -9,6 +9,7 @@
 #include "spokk_buffer.h"
 #include "spokk_device.h"
 #include "spokk_image.h"
+#include "spokk_input.h"
 #include "spokk_memory.h"
 #include "spokk_pipeline.h"
 #include "spokk_utilities.h"
@@ -23,53 +24,6 @@
 
 namespace spokk {
 
-class InputState {
-public:
-  InputState();
-  explicit InputState(const std::shared_ptr<GLFWwindow>& window);
-  ~InputState() = default;
-
-  void SetWindow(const std::shared_ptr<GLFWwindow>& window);
-
-  enum Digital {
-    DIGITAL_LPAD_UP = 0,
-    DIGITAL_LPAD_LEFT = 1,
-    DIGITAL_LPAD_RIGHT = 2,
-    DIGITAL_LPAD_DOWN = 3,
-    DIGITAL_RPAD_UP = 4,
-    DIGITAL_RPAD_LEFT = 5,
-    DIGITAL_RPAD_RIGHT = 6,
-    DIGITAL_RPAD_DOWN = 7,
-
-    DIGITAL_COUNT
-  };
-  enum Analog {
-    ANALOG_L_X = 0,
-    ANALOG_L_Y = 1,
-    ANALOG_R_X = 2,
-    ANALOG_R_Y = 3,
-    ANALOG_MOUSE_X = 4,
-    ANALOG_MOUSE_Y = 5,
-
-    ANALOG_COUNT
-  };
-  void Update();
-  int32_t GetDigital(Digital id) const { return current_.digital[id]; }
-  int32_t GetDigitalDelta(Digital id) const { return current_.digital[id] - prev_.digital[id]; }
-  float GetAnalog(Analog id) const { return current_.analog[id]; }
-  float GetAnalogDelta(Analog id) const { return current_.analog[id] - prev_.analog[id]; }
-
-  bool IsPressed(Digital id) const { return GetDigitalDelta(id) > 0; }
-  bool IsReleased(Digital id) const { return GetDigitalDelta(id) < 0; }
-
-private:
-  struct {
-    std::array<int32_t, DIGITAL_COUNT> digital;
-    std::array<float, ANALOG_COUNT> analog;
-  } current_, prev_;
-  std::weak_ptr<GLFWwindow> window_;
-};
-
 // How many frames can be pipelined ("in flight") simultaneously? The higher the count, the more independent copies
 // of various resources (anything changing per frame) must be created and maintained in memory.
 // 1 = CPU and GPU run synchronously, each idling while the other works. Safe, but slow.
@@ -80,7 +34,7 @@ private:
 //     early, it can queue frame N+1 for presentation and get started on frame N+2; if it finishes *that*
 //     before the GPU finishes frame N, then frame N+1 is discarded and frame N+2 is queued for
 //     presentation instead, and the CPU starts work on frame N+3. And so on.
-const uint32_t PFRAME_COUNT = 2;
+constexpr uint32_t PFRAME_COUNT = 2;
 
 //
 // Application base class
@@ -118,7 +72,14 @@ public:
 
   int Run();
 
-  virtual void Update(double dt);
+  // Update() is intended for non-graphics-related per-frame operations. When this
+  // function is called, the input state has been updated for a new frame, but the
+  // graphics resources this frame will use may stay be in use by a previous frame.
+  virtual void Update(double dt) = 0;
+
+  // When Render() is called, vkAcquireNextImageKHR() has already returned, and the
+  // resources for the current pframe are guaranteed not to be in use by a previous
+  // frame.
   virtual void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) = 0;
 
 protected:
@@ -130,6 +91,24 @@ protected:
   // The first thing it does is call vkDeviceWaitIdle(), so subclasses can safely assume that
   // no resources are in use on the GPU and can be safely destroyed/recreated.
   virtual void HandleWindowResize(VkExtent2D new_window_extent);
+
+  // Initialize imgui. The provided render pass must be the one that will be active when
+  // RenderImgui() will be called.
+  bool InitImgui(VkRenderPass ui_render_pass);
+  // If visible=true, the imgui will be rendered, the cursor will be visible, and any
+  // keyboard/mouse consumed by imgui will be ignored by InputState.
+  // If visible=false, imgui will not be rendered (but UI controls throughout the code will still
+  // be processed, so if they're expensive, maybe make them conditional). The mouse cursor will
+  // be hidden, and InputState will get updated keyboard/mouse input every frame.
+  void ShowImgui(bool visible);
+  // Generate the commands to render the IMGUI elements created earlier in the frame.
+  // This function must only be called when the ui_render_pass passed to InitImgui() is active.
+  void RenderImgui(VkCommandBuffer cb) const;
+  // Cleans up all IMGUI resources. This is automatically called during application shutdown, but
+  // would need to be called manually to reinitialize the GUI subsystem at runtime (e,g. with a
+  // different render pass).
+  // Safe to call, even if IMGUI was not initialized or has already been destroyed.
+  void DestroyImgui(void);
 
   // TODO(https://github.com/cdwfs/spokk/issues/24): Move layer/extension lists into DeviceContext.
   const VkAllocationCallbacks* host_allocator_ = nullptr;
@@ -157,7 +136,7 @@ protected:
   // Queue used by the framework for primary graphics/command buffer submission.
   const DeviceQueue* graphics_and_present_queue_;
 
-  uint32_t frame_index_;  // Frame number since launch
+  uint64_t frame_index_;  // Frame number since launch
   uint32_t pframe_index_;  // current pframe (pipelined frame) index; cycles from 0 to PFRAME_COUNT-1, then back to 0.
 
   bool force_exit_ = false;  // Application can set this to true to exit at the next available chance.
@@ -172,6 +151,12 @@ private:
   VkSemaphore image_acquire_semaphore_;
   VkSemaphore submit_complete_semaphore_;
   std::array<VkFence, PFRAME_COUNT> submit_complete_fences_;
+
+  bool is_imgui_enabled_ = false;  // Used to avoid calling functions that will crash if the app does not enable imgui.
+  bool is_imgui_visible_ = false;  // Tracks whether the UI is visible or not.
+  VkDescriptorPool imgui_dpool_ = VK_NULL_HANDLE;
+  RenderPass imgui_render_pass_ = {};
+  std::vector<VkFramebuffer> imgui_framebuffers_;
 };
 
 }  // namespace spokk

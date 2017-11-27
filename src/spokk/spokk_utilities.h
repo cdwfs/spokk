@@ -15,34 +15,34 @@ std::unique_ptr<T> my_make_unique(Ts&&... params) {
   return std::unique_ptr<T>(new T(std::forward<Ts>(params)...));
 }
 
-template <typename T>
-T my_min(const T& a, const T& b) {
-  if (a < b) {
-    return a;
-  } else {
-    return b;
-  }
-}
-
-template <typename T>
-T my_max(const T& a, const T& b) {
-  if (a > b) {
-    return a;
-  } else {
-    return b;
-  }
-}
-
 VkImageAspectFlags GetImageAspectFlags(VkFormat format);
 
 // Utilities for constructing viewports and scissor rects
-inline VkViewport ExtentToViewport(const VkExtent2D extent, float zMin = 0.0f, float zMax = 1.0f) {
-  return {0, 0, (float)extent.width, (float)extent.height, zMin, zMax};
+// Note: output viewports have negative heights, to flip the Y axis to a left-handed NDC space
+inline VkViewport ExtentToViewport(const VkExtent2D extent, float z_min = 0.0f, float z_max = 1.0f) {
+  return {
+      // clang-format off
+    0, 
+    (float)extent.height,
+    (float)extent.width,
+    -(float)extent.height,
+    z_min,
+    z_max
+      // clang-format on
+  };
 }
-inline VkRect2D ExtentToRect2D(const VkExtent2D extent) { return { {0, 0}, {extent.width, extent.height}}; }
+inline VkRect2D ExtentToRect2D(const VkExtent2D extent) { return {{0, 0}, {extent.width, extent.height}}; }
 inline VkViewport Rect2DToViewport(VkRect2D rect, float z_min = 0.0f, float z_max = 1.0f) {
   return {
-      (float)rect.offset.x, (float)rect.offset.y, (float)rect.extent.width, (float)rect.extent.height, z_min, z_max};
+      // clang-format off
+    (float)rect.offset.x,
+    (float)(rect.offset.y + rect.extent.height),
+    (float)rect.extent.width,
+    -(float)rect.extent.height,
+    z_min,
+    z_max
+      // clang-format on
+  };
 }
 
 // clang-format off

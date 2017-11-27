@@ -3,8 +3,7 @@ using namespace spokk;
 
 #include <common/shader_compiler.h>
 
-#include <mathfu/glsl_mappings.h>
-#include <mathfu/vector.h>
+#include <glm/glm.hpp>
 
 #if defined(__linux__)
 #include <limits.h>
@@ -59,23 +58,23 @@ void main() {
 )glsl";
 
 struct ShaderToyUniforms {
-  mathfu::vec4_packed iResolution;  // xyz: viewport resolution (in pixels), w: unused
-  mathfu::vec4_packed iChannelTime[4];  // x: channel playback time (in seconds), yzw: unused
-  mathfu::vec4_packed iChannelResolution[4];  // xyz: channel resolution (in pixels)
-  mathfu::vec4_packed iMouse;  // mouse pixel coords. xy: current (if MLB down), zw: click
-  mathfu::vec4_packed iDate;  // (year, month, day, time in seconds)
+  glm::vec4 iResolution;  // xyz: viewport resolution (in pixels), w: unused
+  glm::vec4 iChannelTime[4];  // x: channel playback time (in seconds), yzw: unused
+  glm::vec4 iChannelResolution[4];  // xyz: channel resolution (in pixels)
+  glm::vec4 iMouse;  // mouse pixel coords. xy: current (if MLB down), zw: click
+  glm::vec4 iDate;  // (year, month, day, time in seconds)
   float iGlobalTime;  // shader playback time (in seconds)
   float iTimeDelta;  // render time (in seconds)
   int iFrame;  // shader playback frame
   float iSampleRate;  // sound sample rate (i.e., 44100
 };
 
-mathfu::vec2 click_pos(0, 0);
+glm::vec2 click_pos(0, 0);
 void MyGlfwMouseButtonCallback(GLFWwindow* window, int button, int action, int /*mods*/) {
   if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
     double mouse_x, mouse_y;
     glfwGetCursorPos(window, &mouse_x, &mouse_y);
-    click_pos = mathfu::vec2((float)mouse_x, (float)mouse_y);
+    click_pos = glm::vec2((float)mouse_x, (float)mouse_y);
   }
 }
 
@@ -86,7 +85,7 @@ public:
   explicit ShaderToyApp(Application::CreateInfo& ci) : Application(ci) {
     seconds_elapsed_ = 0;
 
-    mouse_pos_ = mathfu::vec2(0, 0);
+    mouse_pos_ = glm::vec2(0, 0);
     glfwSetMouseButtonCallback(window_.get(), MyGlfwMouseButtonCallback);
 
     empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
@@ -202,9 +201,11 @@ public:
   const ShaderToyApp& operator=(const ShaderToyApp&) = delete;
 
   void Update(double dt) override {
-    Application::Update(dt);
     seconds_elapsed_ += dt;
+    current_dt_ = (float)dt;
+  }
 
+  void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
     // Reload shaders, if necessary
     bool reload = false;
     swap_shader_.compare_exchange_strong(reload, false);
@@ -222,42 +223,42 @@ public:
     double mouse_x = 0, mouse_y = 0;
     glfwGetCursorPos(window_.get(), &mouse_x, &mouse_y);
     if (glfwGetMouseButton(window_.get(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
-      mouse_pos_ = mathfu::vec2((float)mouse_x, (float)mouse_y);
+      mouse_pos_ = glm::vec2((float)mouse_x, (float)mouse_y);
     }
-
     std::time_t now = std::time(nullptr);
     const std::tm* cal = std::localtime(&now);
     float year = (float)cal->tm_year;
     float month = (float)cal->tm_mon;
     float mday = (float)cal->tm_mday;
     float dsec = (float)(cal->tm_hour * 3600 + cal->tm_min * 60 + cal->tm_sec);
-
     viewport_ = ExtentToViewport(swapchain_extent_);
+    // Convert viewport back to right-handed (flip Y axis, remove Y offset)
+    viewport_.y = 0.0f;
+    viewport_.height *= -1;
     scissor_rect_ = ExtentToRect2D(swapchain_extent_);
     ShaderToyUniforms *uniforms = (ShaderToyUniforms*)uniform_buffer_.Mapped(pframe_index_);
-    uniforms->iResolution = mathfu::vec4(viewport_.width, viewport_.height, 1.0f, 0.0f);
-    uniforms->iChannelTime[0] = mathfu::vec4(0.0f, 0.0f, 0.0f, 0.0f);  // TODO(cort): audio/video channels are TBI
-    uniforms->iChannelTime[1] = mathfu::vec4(1.0f, 0.0f, 0.0f, 0.0f);
-    uniforms->iChannelTime[2] = mathfu::vec4(2.0f, 0.0f, 0.0f, 0.0f);
-    uniforms->iChannelTime[3] = mathfu::vec4(3.0f, 0.0f, 0.0f, 0.0f);
-    uniforms->iChannelResolution[0] = mathfu::vec4((float)active_images_[0]->image_ci.extent.width,
-        (float)active_images_[0]->image_ci.extent.height, (float)active_images_[0]->image_ci.extent.depth, 0.0f);
-    uniforms->iChannelResolution[1] = mathfu::vec4((float)active_images_[1]->image_ci.extent.width,
-        (float)active_images_[1]->image_ci.extent.height, (float)active_images_[1]->image_ci.extent.depth, 0.0f);
-    uniforms->iChannelResolution[2] = mathfu::vec4((float)active_images_[2]->image_ci.extent.width,
-        (float)active_images_[2]->image_ci.extent.height, (float)active_images_[2]->image_ci.extent.depth, 0.0f);
-    uniforms->iChannelResolution[3] = mathfu::vec4((float)active_images_[3]->image_ci.extent.width,
-        (float)active_images_[3]->image_ci.extent.height, (float)active_images_[3]->image_ci.extent.depth, 0.0f);
+    uniforms->iResolution = glm::vec4(viewport_.width, viewport_.height, 1.0f, 0.0f);
+    uniforms->iChannelTime[0] = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);  // TODO(cort): audio/video channels are TBI
+    uniforms->iChannelTime[1] = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+    uniforms->iChannelTime[2] = glm::vec4(2.0f, 0.0f, 0.0f, 0.0f);
+    uniforms->iChannelTime[3] = glm::vec4(3.0f, 0.0f, 0.0f, 0.0f);
+    uniforms->iChannelResolution[0] = glm::vec4((float)active_images_[0]->image_ci.extent.width,
+      (float)active_images_[0]->image_ci.extent.height, (float)active_images_[0]->image_ci.extent.depth, 0.0f);
+    uniforms->iChannelResolution[1] = glm::vec4((float)active_images_[1]->image_ci.extent.width,
+      (float)active_images_[1]->image_ci.extent.height, (float)active_images_[1]->image_ci.extent.depth, 0.0f);
+    uniforms->iChannelResolution[2] = glm::vec4((float)active_images_[2]->image_ci.extent.width,
+      (float)active_images_[2]->image_ci.extent.height, (float)active_images_[2]->image_ci.extent.depth, 0.0f);
+    uniforms->iChannelResolution[3] = glm::vec4((float)active_images_[3]->image_ci.extent.width,
+      (float)active_images_[3]->image_ci.extent.height, (float)active_images_[3]->image_ci.extent.depth, 0.0f);
     uniforms->iGlobalTime = (float)seconds_elapsed_;
-    uniforms->iTimeDelta = (float)dt;
-    uniforms->iFrame = frame_index_;
-    uniforms->iMouse = mathfu::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
-    uniforms->iDate = mathfu::vec4(year, month, mday, dsec);
+    uniforms->iTimeDelta = current_dt_;
+    uniforms->iFrame = (int)frame_index_;
+    uniforms->iMouse = glm::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
+    uniforms->iDate = glm::vec4(year, month, mday, dsec);
     uniforms->iSampleRate = 44100.0f;
     uniform_buffer_.FlushPframeHostCache(pframe_index_);
-  }
 
-  void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+    // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -407,6 +408,7 @@ private:
   }
 
   double seconds_elapsed_;
+  float current_dt_;
 
   std::atomic_bool swap_shader_;
   std::thread shader_reloader_thread_;
@@ -437,7 +439,7 @@ private:
   DescriptorPool dpool_;
   std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
 
-  mathfu::vec2 mouse_pos_;
+  glm::vec2 mouse_pos_;
   PipelinedBuffer uniform_buffer_;
 };
 

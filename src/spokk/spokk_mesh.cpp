@@ -1,6 +1,8 @@
 #include "spokk_mesh.h"
+#include "spokk_debug.h"
 #include "spokk_device.h"
 #include "spokk_platform.h"
+#include "spokk_shader_interface.h"
 
 #include <array>
 
@@ -100,8 +102,8 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
   index_buffer_ci.size = indices.size();
   index_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
   index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  index_buffer.Create(device, index_buffer_ci);
-  index_buffer.Load(device, indices.data(), indices.size());
+  SPOKK_VK_CHECK(index_buffer.Create(device, index_buffer_ci));
+  SPOKK_VK_CHECK(index_buffer.Load(device, indices.data(), indices.size()));
   vertex_buffers.resize(mesh_header.vertex_buffer_count, {});
   for (uint32_t iVB = 0; iVB < mesh_header.vertex_buffer_count; ++iVB) {
     VkBufferCreateInfo vertex_buffer_ci = {};
@@ -109,8 +111,8 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
     vertex_buffer_ci.size = vertices.size();
     vertex_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    vertex_buffers[iVB].Create(device, vertex_buffer_ci);
-    vertex_buffers[iVB].Load(device, vertices.data(), vertices.size());
+    SPOKK_VK_CHECK(vertex_buffers[iVB].Create(device, vertex_buffer_ci));
+    SPOKK_VK_CHECK(vertex_buffers[iVB].Load(device, vertices.data(), vertices.size()));
   }
 
   // Populate buffer offsets
@@ -132,8 +134,7 @@ void Mesh::Destroy(const Device& device) {
   index_count = 0;
 }
 
-void Mesh::BindBuffersAndDraw(VkCommandBuffer cb, uint32_t index_cnt, uint32_t instance_cnt, uint32_t first_index,
-    uint32_t vertex_offset, uint32_t first_instance) const {
+void Mesh::BindBuffers(VkCommandBuffer cb) const {
   ZOMBO_ASSERT((uint32_t)vertex_buffers.size() == mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount,
       "Mesh's vertex buffer count (%u) does not match count in MeshFormat (%u)", (uint32_t)vertex_buffers.size(),
       mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount);
@@ -143,7 +144,89 @@ void Mesh::BindBuffersAndDraw(VkCommandBuffer cb, uint32_t index_cnt, uint32_t i
         cb, mesh_format.vertex_buffer_bindings[i].binding, 1, &handle, &vertex_buffer_byte_offsets[i]);
   }
   vkCmdBindIndexBuffer(cb, index_buffer.Handle(), index_buffer_byte_offset, index_type);
-  vkCmdDrawIndexed(cb, index_cnt, instance_cnt, first_index, vertex_offset, first_instance);
 }
+
+////////////////////////////
+
+struct DebugMeshVertex {
+  float px, py, pz;
+  float nx, ny, nz;
+  float tu, tv;
+};
+
+void GenerateMeshBox(
+    const Device& device, Mesh* out_mesh, const float min_extent[3], const float max_extent[3]) {
+  out_mesh->mesh_format.vertex_attributes = {
+      // clang-format off
+    {SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION,  0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(DebugMeshVertex, px) },
+    {SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL,    0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(DebugMeshVertex, nx) },
+    {SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD0, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(DebugMeshVertex, tu) },
+      // clang-format on
+  };
+  out_mesh->mesh_format.vertex_buffer_bindings.resize(1);
+  out_mesh->mesh_format.vertex_buffer_bindings[0].binding = 0;
+  out_mesh->mesh_format.vertex_buffer_bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+  out_mesh->mesh_format.vertex_buffer_bindings[0].stride = sizeof(DebugMeshVertex);
+  out_mesh->mesh_format.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+
+  const std::vector<DebugMeshVertex> vertices = {
+      // clang-format off
+    {min_extent[0], min_extent[1], min_extent[2],   -1, 0, 0,   0,0},  // -X
+    {min_extent[0], min_extent[1], max_extent[2],   -1, 0, 0,   1,0},
+    {min_extent[0], max_extent[1], min_extent[2],   -1, 0, 0,   0,1},
+    {min_extent[0], max_extent[1], max_extent[2],   -1, 0, 0,   1,1},
+    {max_extent[0], min_extent[1], max_extent[2],   +1, 0, 0,   0,0},  // +X
+    {max_extent[0], min_extent[1], min_extent[2],   +1, 0, 0,   1,0},
+    {max_extent[0], max_extent[1], max_extent[2],   +1, 0, 0,   0,1},
+    {max_extent[0], max_extent[1], min_extent[2],   +1, 0, 0,   1,1},
+    {min_extent[0], min_extent[1], min_extent[2],    0,-1, 0,   0,0},  // -Y
+    {max_extent[0], min_extent[1], min_extent[2],    0,-1, 0,   1,0},
+    {min_extent[0], min_extent[1], max_extent[2],    0,-1, 0,   0,1},
+    {max_extent[0], min_extent[1], max_extent[2],    0,-1, 0,   1,1},
+    {min_extent[0], max_extent[1], max_extent[2],    0,+1, 0,   0,0},  // +Y
+    {max_extent[0], max_extent[1], max_extent[2],    0,+1, 0,   1,0},
+    {min_extent[0], max_extent[1], min_extent[2],    0,+1, 0,   0,1},
+    {max_extent[0], max_extent[1], min_extent[2],    0,+1, 0,   1,1},
+    {max_extent[0], min_extent[1], min_extent[2],    0, 0,-1,   0,0},  // -Z
+    {min_extent[0], min_extent[1], min_extent[2],    0, 0,-1,   1,0},
+    {max_extent[0], max_extent[1], min_extent[2],    0, 0,-1,   0,1},
+    {min_extent[0], max_extent[1], min_extent[2],    0, 0,-1,   1,1},
+    {min_extent[0], min_extent[1], max_extent[2],    0, 0,+1,   0,0},  // +Z
+    {max_extent[0], min_extent[1], max_extent[2],    0, 0,+1,   1,0},
+    {min_extent[0], max_extent[1], max_extent[2],    0, 0,+1,   0,1},
+    {max_extent[0], max_extent[1], max_extent[2],    0, 0,+1,   1,1},
+      // clang-format on
+  };
+  VkBufferCreateInfo vb_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+  vb_ci.size = vertices.size() * sizeof(vertices[0]);
+  vb_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+  vb_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  out_mesh->vertex_buffers.resize(1);
+  SPOKK_VK_CHECK(out_mesh->vertex_buffers[0].Create(device, vb_ci));
+  SPOKK_VK_CHECK(out_mesh->vertex_buffers[0].Load(device, vertices.data(), vb_ci.size));
+  out_mesh->vertex_buffer_byte_offsets = {0};
+  out_mesh->vertex_count = (uint32_t)vertices.size();
+
+  const std::vector<uint16_t> indices = {
+      // clang-format off
+     0, 1, 2,   2, 1, 3,
+     4, 5, 6,   6, 5, 7,
+     8, 9,10,  10, 9,11,
+    12,13,14,  14,13,15,
+    16,17,18,  18,17,19,
+    20,21,22,  22,21,23,
+    // clang-format off
+  };
+  VkBufferCreateInfo ib_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+  ib_ci.size = indices.size() * sizeof(indices[0]);
+  ib_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+  ib_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  SPOKK_VK_CHECK(out_mesh->index_buffer.Create(device, ib_ci));
+  SPOKK_VK_CHECK(out_mesh->index_buffer.Load(device, indices.data(), ib_ci.size));
+  out_mesh->index_buffer_byte_offset = 0;
+  out_mesh->index_count = (uint32_t)indices.size();
+  out_mesh->index_type = VK_INDEX_TYPE_UINT16;
+}
+
 
 }  // namespace spokk

@@ -648,6 +648,8 @@ public:
     result_data->result.content_length = included_file_nbytes;
     result_data->result.content = result_data->content.c_str();
     result_data->result.user_data = nullptr;
+    // TODO(https://github.com/cdwfs/spokk/issues/27): this would be a great place to
+    // add the header source path to a list of files whose modification times should be checked.
 
     include_results_[abs_header_path] = result_data;
     return &(result_data->result);
@@ -1162,6 +1164,8 @@ int AssetManifest::IsOutputOutOfDate(
     if (output_mtime < manifest_mtime_) {
       output_is_older = true;
     }
+    // TODO(https://github.com/cdwfs/spokk/issues/27): modifying shader #includes doesn't rebuild
+    // the shaders that include them. Keep track of included headers, and check them here as well.
   }
   *out_result = (!output_exists || output_is_older);
   return 0;

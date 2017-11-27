@@ -1,9 +1,6 @@
 #include <spokk.h>
 using namespace spokk;
 
-#include <mathfu/glsl_mappings.h>
-#include <mathfu/vector.h>
-
 #include <array>
 #include <cstdio>
 
@@ -150,6 +147,9 @@ public:
   ComputeApp(const ComputeApp &) = delete;
   const ComputeApp &operator=(const ComputeApp &) = delete;
 
+  void Update(double) override {
+    // nothing to do in a compute sample
+  }
   void Render(VkCommandBuffer, uint32_t) override {
     // nothing to do in a compute sample
   }

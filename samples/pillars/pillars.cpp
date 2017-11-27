@@ -4,9 +4,7 @@ using namespace spokk;
 #include <common/camera.h>
 #include <common/cube_mesh.h>
 
-#include <mathfu/glsl_mappings.h>
-#include <mathfu/vector.h>
-
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstring>
@@ -14,9 +12,9 @@ using namespace spokk;
 
 namespace {
 struct SceneUniforms {
-  mathfu::vec4_packed time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
-  mathfu::vec4_packed eye;  // xyz: eye position
-  mathfu::mat4 viewproj;
+  glm::vec4 time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
+  glm::vec4 eye;  // xyz: eye position
+  glm::mat4 viewproj;
 };
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
@@ -74,22 +72,20 @@ private:
   std::array<float, HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY> heightfield_;
 
   std::unique_ptr<CameraPersp> camera_;
-  std::unique_ptr<CameraDolly> dolly_;
+  std::unique_ptr<CameraDrone> drone_;
 };
 
 PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
-  glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
   seconds_elapsed_ = 0;
 
   camera_ = my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
-  const mathfu::vec3 initial_camera_pos(HEIGHTFIELD_DIMX / 2, 2.0f, HEIGHTFIELD_DIMY / 2);
-  const mathfu::vec3 initial_camera_target(0, 0, 0);
-  const mathfu::vec3 initial_camera_up(0, 1, 0);
+  const glm::vec3 initial_camera_pos(HEIGHTFIELD_DIMX / 2, 2.0f, HEIGHTFIELD_DIMY / 2);
+  const glm::vec3 initial_camera_target(0, 0, 0);
+  const glm::vec3 initial_camera_up(0, 1, 0);
   camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
-  dolly_ = my_make_unique<CameraDolly>(*camera_);
-  dolly_->SetBounds(mathfu::vec3(VISIBLE_RADIUS, 1, VISIBLE_RADIUS),
-      mathfu::vec3(HEIGHTFIELD_DIMX - VISIBLE_RADIUS - 1, 30, HEIGHTFIELD_DIMY - VISIBLE_RADIUS - 1));
+  drone_ = my_make_unique<CameraDrone>(*camera_);
+  drone_->SetBounds(glm::vec3(VISIBLE_RADIUS, 1, VISIBLE_RADIUS),
+      glm::vec3(HEIGHTFIELD_DIMX - VISIBLE_RADIUS - 1, 30, HEIGHTFIELD_DIMY - VISIBLE_RADIUS - 1));
 
   // Create render pass
   render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
@@ -253,67 +249,8 @@ PillarsApp::~PillarsApp() {
 }
 
 void PillarsApp::Update(double dt) {
-  Application::Update(dt);
   seconds_elapsed_ += dt;
-
-  // Update camera
-  mathfu::vec3 camera_accel_dir(0, 0, 0);
-  const float CAMERA_ACCEL_MAG = 100.0f, CAMERA_TURN_SPEED = 0.001f;
-  if (input_state_.GetDigital(InputState::DIGITAL_LPAD_UP)) {
-    camera_accel_dir += camera_->getViewDirection();
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_LPAD_LEFT)) {
-    mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
-    camera_accel_dir -= viewRight;
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_LPAD_DOWN)) {
-    camera_accel_dir -= camera_->getViewDirection();
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_LPAD_RIGHT)) {
-    mathfu::vec3 viewRight = camera_->getOrientation() * mathfu::vec3(1, 0, 0);
-    camera_accel_dir += viewRight;
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_RPAD_LEFT)) {
-    mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
-    camera_accel_dir -= viewUp;
-  }
-  if (input_state_.GetDigital(InputState::DIGITAL_RPAD_DOWN)) {
-    mathfu::vec3 viewUp = camera_->getOrientation() * mathfu::vec3(0, 1, 0);
-    camera_accel_dir += viewUp;
-  }
-  mathfu::vec3 camera_accel = (camera_accel_dir.LengthSquared() > 0)
-    ? camera_accel_dir.Normalized() * CAMERA_ACCEL_MAG
-    : mathfu::vec3(0, 0, 0);
-
-  // Update camera based on acceleration vector and mouse delta
-  mathfu::vec3 camera_eulers = camera_->getEulersYPR() +
-    mathfu::vec3(-CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_Y),
-      -CAMERA_TURN_SPEED * input_state_.GetAnalogDelta(InputState::ANALOG_MOUSE_X), 0);
-  if (camera_eulers[0] >= float(M_PI_2 - 0.01f)) {
-    camera_eulers[0] = float(M_PI_2 - 0.01f);
-  } else if (camera_eulers[0] <= float(-M_PI_2 + 0.01f)) {
-    camera_eulers[0] = float(-M_PI_2 + 0.01f);
-  }
-  camera_eulers[2] = 0;  // disallow roll
-  camera_->setOrientation(mathfu::quat::FromEulerAngles(camera_eulers));
-  dolly_->Update(camera_accel, (float)dt);
-
-  // Update uniforms
-  SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
-  uniforms->time_and_res =
-      mathfu::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-  uniforms->eye = mathfu::vec4(camera_->getEyePoint(), 1.0f);
-  mathfu::mat4 w2v = camera_->getViewMatrix();
-  const mathfu::mat4 proj = camera_->getProjectionMatrix();
-  // clang-format off
-  const mathfu::mat4 clip_fixup(
-      +1.0f, +0.0f, +0.0f, +0.0f,
-      +0.0f, -1.0f, +0.0f, +0.0f,
-      +0.0f, +0.0f, +0.5f, +0.5f,
-      +0.0f, +0.0f, +0.0f, +1.0f);
-  // clang-format on
-  uniforms->viewproj = clip_fixup * proj * w2v;
-  scene_uniforms_.FlushPframeHostCache(pframe_index_);
+  drone_->Update(input_state_, (float)dt);
 
   // Update visible cells
   // - Add a cell as visible the first time it gets within N units of the camera.
@@ -324,10 +261,10 @@ void PillarsApp::Update(double dt) {
   float eye_y = camera_->getEyePoint().z;
   int32_t cell_x = uint32_t(eye_x);
   int32_t cell_y = uint32_t(eye_y);
-  int32_t min_x = my_max(0, cell_x - VISIBLE_RADIUS);
-  int32_t max_x = my_min(HEIGHTFIELD_DIMX - 1, cell_x + VISIBLE_RADIUS);
-  int32_t min_y = my_max(0, cell_y - VISIBLE_RADIUS);
-  int32_t max_y = my_min(HEIGHTFIELD_DIMY - 1, cell_y + VISIBLE_RADIUS);
+  int32_t min_x = std::max(0, cell_x - VISIBLE_RADIUS);
+  int32_t max_x = std::min(HEIGHTFIELD_DIMX - 1, cell_x + VISIBLE_RADIUS);
+  int32_t min_y = std::max(0, cell_y - VISIBLE_RADIUS);
+  int32_t max_y = std::min(HEIGHTFIELD_DIMY - 1, cell_y + VISIBLE_RADIUS);
   for (int32_t iY = min_y; iY <= max_y; ++iY) {
     float fY = float(iY);
     for (int32_t iX = min_x; iX <= max_x; ++iX) {
@@ -339,19 +276,31 @@ void PillarsApp::Update(double dt) {
       }
       if (abs(iX - cell_x) <= EFFECT_RADIUS && abs(iY - cell_y) <= EFFECT_RADIUS) {
         float fX = float(iX);
-        float dx = 1.0f * my_max(fabsf(fX - eye_x) - 3.0f, 0.0f);
-        float dy = 1.0f * my_max(fabsf(fY - eye_y) - 3.0f, 0.0f);
-        heightfield_.at(cell) = my_min(heightfield_.at(cell), 1.6f * sqrtf(dx * dx + dy * dy));
+        float dx = 1.0f * std::max(fabsf(fX - eye_x) - 3.0f, 0.0f);
+        float dy = 1.0f * std::max(fabsf(fY - eye_y) - 3.0f, 0.0f);
+        heightfield_.at(cell) = std::min(heightfield_.at(cell), 1.6f * sqrtf(dx * dx + dy * dy));
       }
     }
   }
+}
+
+void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
+  // Update uniforms
+  SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
+  uniforms->time_and_res =
+    glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+  uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
+  glm::mat4 w2v = camera_->getViewMatrix();
+  const glm::mat4 proj = camera_->getProjectionMatrix();
+  uniforms->viewproj = proj * w2v;
+  scene_uniforms_.FlushPframeHostCache(pframe_index_);
+
   memcpy(visible_cells_buffer_.Mapped(pframe_index_), visible_cells_.data(), visible_cells_.size() * sizeof(int32_t));
   visible_cells_buffer_.FlushPframeHostCache(pframe_index_);
   memcpy(heightfield_buffer_.Mapped(pframe_index_), heightfield_.data(), heightfield_.size() * sizeof(float));
   heightfield_buffer_.FlushPframeHostCache(pframe_index_);
-}
 
-void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
+  // Write command buffer
   VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
   render_pass_.begin_info.framebuffer = framebuffer;
   render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -363,7 +312,8 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
   vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pillar_pipeline_.shader_program->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
-  mesh_.BindBuffersAndDraw(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size());
+  mesh_.BindBuffers(primary_cb);
+  vkCmdDrawIndexed(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size(), 0, 0, 0);
   vkCmdEndRenderPass(primary_cb);
 }
 
