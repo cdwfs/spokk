@@ -46,6 +46,35 @@ struct LightUniforms {
   glm::vec4 spot_neg_dir_wsn;  // xyz: world-space normalized light direction (negated)
   glm::vec4 spot_falloff_angles;  // x: 1/(cos(inner)-cos(outer)), y: cos(outer)
 };
+
+struct HemiLight {
+  glm::vec4 down_color;
+  glm::vec4 up_color;
+};
+struct DirLight {
+  glm::vec4 to_light_wsn;
+  glm::vec4 color;
+};
+struct PointLight {
+  glm::vec3 pos_ws;
+  float inverse_range;
+  glm::vec4 color;
+};
+#if defined(ZOMBO_COMPILER_MSVC)
+#pragma warning(push)
+#pragma warning(disable:4200)  // zero-size array in struct
+#endif
+struct SceneLights {
+  HemiLight hemi_light;
+  DirLight dir_light;
+  uint32_t point_count;
+  uint32_t padding[3];
+  PointLight point_lights[];
+};
+#if defined(ZOMBO_COMPILER_MSVC)
+#pragma warning(pop)
+#endif
+
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
@@ -137,7 +166,7 @@ public:
     lights_.spot_neg_dir_wsn = -glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
     EncodeSpotlightFalloffAngles(&lights_.spot_falloff_angles, 10.0f, 20.0f);
 
-    // Create pipelined buffer of light uniforms
+    // Create pipelined buffer of material uniforms
     VkBufferCreateInfo material_uniforms_ci = {};
     material_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     material_uniforms_ci.size = sizeof(MaterialUniforms);
@@ -167,6 +196,15 @@ public:
     SPOKK_VK_CHECK(
         scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
+    // Create pipelined buffer of scene lights
+    VkBufferCreateInfo scene_lights_buffer_ci = {};
+    scene_lights_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    scene_lights_buffer_ci.size = sizeof(SceneLights) + 4*sizeof(PointLight);
+    scene_lights_buffer_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    scene_lights_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(
+      scene_lights_buffer_.Create(device_, PFRAME_COUNT, scene_lights_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+
     for (const auto& dset_layout_ci : skybox_shader_program_.dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
@@ -184,6 +222,7 @@ public:
       dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
       dset_writer.BindBuffer(light_uniforms_.Handle(pframe), mesh_fs_.GetDescriptorBindPoint("light_consts").binding);
       dset_writer.BindBuffer(material_uniforms_.Handle(pframe), mesh_fs_.GetDescriptorBindPoint("mat_consts").binding);
+      dset_writer.BindBuffer(scene_lights_buffer_.Handle(pframe), mesh_fs_.GetDescriptorBindPoint("lights").binding);
       dset_writer.WriteAll(device_, dsets_[pframe]);
     }
 
@@ -196,6 +235,7 @@ public:
 
       dpool_.Destroy(device_);
 
+      scene_lights_buffer_.Destroy(device_);
       light_uniforms_.Destroy(device_);
       material_uniforms_.Destroy(device_);
       mesh_uniforms_.Destroy(device_);
@@ -331,6 +371,24 @@ public:
     *light_uniforms = lights_;
     light_uniforms_.FlushPframeHostCache(pframe_index_);
 
+    // Update scene lights
+    SceneLights* scene_lights = (SceneLights*)scene_lights_buffer_.Mapped(pframe_index_);
+    scene_lights->hemi_light.down_color = glm::vec4(0.1f, 0.2f, 0.3f, 0.4f);
+    scene_lights->hemi_light.up_color = glm::vec4(0.5f, 0.6f, 0.7f, 0.8f);
+    scene_lights->dir_light.to_light_wsn = glm::vec4(1.1f, 1.2f, 1.3f, 1.4f);
+    scene_lights->dir_light.color = glm::vec4(1.5f, 1.6f, 1.7f, 1.8f);
+    scene_lights->point_count = 3;
+    scene_lights->point_lights[0].pos_ws = glm::vec3(2.1f, 2.2f, 2.3f);
+    scene_lights->point_lights[0].inverse_range = 2.4f;
+    scene_lights->point_lights[0].color = glm::vec4(2.5f, 2.6f, 2.7f, 2.8f);
+    scene_lights->point_lights[1].pos_ws = glm::vec3(3.1f, 3.2f, 3.3f);
+    scene_lights->point_lights[1].inverse_range = 3.4f;
+    scene_lights->point_lights[1].color = glm::vec4(3.5f, 3.6f, 3.7f, 3.8f);
+    scene_lights->point_lights[2].pos_ws = glm::vec3(4.1f, 4.2f, 4.3f);
+    scene_lights->point_lights[2].inverse_range = 4.4f;
+    scene_lights->point_lights[2].color = glm::vec4(4.5f, 4.6f, 4.7f, 4.8f);
+    scene_lights_buffer_.FlushPframeHostCache(pframe_index_);
+
     // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
@@ -420,6 +478,7 @@ private:
   PipelinedBuffer material_uniforms_;
   PipelinedBuffer mesh_uniforms_;
   PipelinedBuffer scene_uniforms_;
+  PipelinedBuffer scene_lights_buffer_;
 
   LightUniforms lights_;
   MaterialUniforms material_;

@@ -76,10 +76,10 @@ vec3 ApplyPointLight(vec3 pos_ws, vec3 eye_pos_ws, Material mat, PointLight ligh
 struct SpotLight {
   vec3 pos_ws;
   float inverse_range;
+  vec3 color;
+  float cosine_outer;
   vec3 neg_light_dir_wsn;
   float inv_inner_outer;  // 1.0 / (cos(inner) - cos(outer))
-  float cosine_outer;
-  vec3 color;
 };
 
 vec3 ApplySpotLight(vec3 pos_ws, vec3 eye_pos_ws, Material mat, SpotLight light) {

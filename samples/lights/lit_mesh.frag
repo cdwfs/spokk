@@ -11,6 +11,7 @@ layout (set = 0, binding = 0) uniform SceneUniforms {
   vec4 eye_dir_wsn;   // xyz: world-space eye direction (normalized)
   // truncated; this should really be in a header file
 } scene_consts;
+
 layout (set = 0, binding = 2) uniform LightUniforms {
   vec4 hemi_down_color;  // xyz: RGB color, w: intensity
   vec4 hemi_up_color;  // xyz: RGB color
@@ -34,8 +35,14 @@ layout (set = 0, binding = 3) uniform MaterialUniforms {
   vec4 spec_exp;  // x: specular exponent
 } mat_consts;
 
-
 #include <common/cookbook.glsl>
+layout (set = 0, binding = 6) buffer Lights {
+  HemiLight hemi_light;
+  DirLight dir_light;
+  uint point_count;
+  PointLight point_lights[];
+} lights;
+
 
 void main() {
   Material mat;
@@ -73,5 +80,5 @@ void main() {
   vec3 emissive_color = mat_consts.emissive_color.xyz * mat_consts.emissive_color.w;
 
   out_fragColor.xyz = hemi_color + dir_color + point_color + spot_color + emissive_color;
-  out_fragColor.w = 1;
+  out_fragColor.w = 1 + lights.hemi_light.up_color.x;
 }
