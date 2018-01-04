@@ -1,5 +1,6 @@
 #include "spokk_device.h"
 #include "spokk_platform.h"
+#include "spokk_utilities.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -26,6 +27,15 @@ void Device::Create(VkDevice logical_device, VkPhysicalDevice physical_device, V
   vkGetPhysicalDeviceProperties(physical_device_, &device_properties_);
   vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
   queues_.insert(queues_.begin(), queues + 0, queues + queue_count);
+
+#if defined(VK_EXT_debug_marker)
+  // These calls will return NULL if VK_EXT_debug_marker is not enabled, and the Device wrappers below will be no-ops.
+  pfnVkCmdDebugMarkerBeginEXT_ = SPOKK_VK_GET_DEVICE_PROC_ADDR(logical_device_, vkCmdDebugMarkerBeginEXT);
+  pfnVkCmdDebugMarkerEndEXT_ = SPOKK_VK_GET_DEVICE_PROC_ADDR(logical_device_, vkCmdDebugMarkerEndEXT);
+  pfnVkCmdDebugMarkerBeginEXT_ = SPOKK_VK_GET_DEVICE_PROC_ADDR(logical_device_, vkCmdDebugMarkerInsertEXT);
+  pfnVkDebugMarkerSetObjectNameEXT_ = SPOKK_VK_GET_DEVICE_PROC_ADDR(logical_device_, vkDebugMarkerSetObjectNameEXT);
+  pfnVkDebugMarkerSetObjectTagEXT_ = SPOKK_VK_GET_DEVICE_PROC_ADDR(logical_device_, vkDebugMarkerSetObjectTagEXT);
+#endif
 }
 
 void Device::Destroy() {
@@ -178,5 +188,136 @@ void Device::HostFree(void *ptr) const {
 #endif
   }
 }
+
+#if !defined(VK_EXT_debug_marker)
+// stub no-op implementations if the extension isn't even defined in vulkan.h
+void Device::DebugMarkerBegin(VkCommandBuffer cb, const char *marker_name, const float marker_color[4]) const {}
+void Device::DebugMarkerEnd(VkCommandBuffer cb) const {}
+void Device::DebugMarkerInsert(VkCommandBuffer cb, const char *marker_name, const float marker_color[4]) const {}
+template <typename VK_HANDLE_T>
+VkResult Device::SetObjectTag(VK_HANDLE_T handle, uint64_t tag_name, size_t tag_size, const void *tag) const {
+  return VK_SUCCESS;
+}
+template <typename VK_HANDLE_T>
+VkResult Device::SetObjectName(VK_HANDLE_T handle, const char *object_name) const {
+  return VK_SUCCESS;
+}
+#else
+void Device::DebugMarkerBegin(VkCommandBuffer cb, const char *marker_name, const float marker_color[4]) const {
+  if (pfnVkCmdDebugMarkerBeginEXT_ != nullptr) {
+    VkDebugMarkerMarkerInfoEXT marker_info = {VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT};
+    marker_info.pMarkerName = marker_name;
+    if (marker_color != nullptr) {
+      marker_info.color[0] = marker_color[0];
+      marker_info.color[1] = marker_color[1];
+      marker_info.color[2] = marker_color[2];
+      marker_info.color[3] = marker_color[3];
+    }
+    // pfnVkCmdDebugMarkerBeginEXT_(cb, &marker_info);
+    static bool first_call = true;
+    if (first_call) {
+      (void)cb;
+      fprintf(stderr,
+          "WARNING: vkCmdDebugMarkerBeginEXT is disabled until "
+          "https://github.com/KhronosGroup/Vulkan-LoaderAndValidationLayers/issues/2314 is fixed\n");
+      first_call = false;
+    }
+  }
+}
+void Device::DebugMarkerEnd(VkCommandBuffer cb) const {
+  if (pfnVkCmdDebugMarkerEndEXT_ != nullptr) {
+    // pfnVkCmdDebugMarkerEndEXT_(cb);
+    static bool first_call = true;
+    if (first_call) {
+      (void)cb;
+      fprintf(stderr,
+          "WARNING: vkCmdDebugMarkerEndEXT is disabled until "
+          "https://github.com/KhronosGroup/Vulkan-LoaderAndValidationLayers/issues/2314 is fixed\n");
+      first_call = false;
+    }
+  }
+}
+void Device::DebugMarkerInsert(VkCommandBuffer cb, const char *marker_name, const float marker_color[4]) const {
+  if (pfnVkCmdDebugMarkerInsertEXT_ != nullptr) {
+    VkDebugMarkerMarkerInfoEXT marker_info = {VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT};
+    marker_info.pMarkerName = marker_name;
+    if (marker_color != nullptr) {
+      marker_info.color[0] = marker_color[0];
+      marker_info.color[1] = marker_color[1];
+      marker_info.color[2] = marker_color[2];
+      marker_info.color[3] = marker_color[3];
+    }
+    // pfnVkCmdDebugMarkerInsertEXT_(cb, &marker_info);
+    static bool first_call = true;
+    if (first_call) {
+      (void)cb;
+      fprintf(stderr,
+          "WARNING: vkCmdDebugMarkerInsertEXT is disabled until "
+          "https://github.com/KhronosGroup/Vulkan-LoaderAndValidationLayers/issues/2314 is fixed\n");
+      first_call = false;
+    }
+  }
+}
+
+// Generate explicit template specializations for SetObjectName and SetObjectTag for all recognized
+// handle types. No default implementation is provided; attempting either function with an unsupported handle
+// type will cause a compilation error.
+#define SPECIALIZE_SET_OBJECT_NAME_AND_TAG(HANDLE_TYPE, OBJECT_TYPE_SUFFIX)                                           \
+  template <>                                                                                                         \
+  VkResult Device::SetObjectName<HANDLE_TYPE>(HANDLE_TYPE handle, const char *object_name) const {                    \
+    if (pfnVkDebugMarkerSetObjectNameEXT_ == nullptr) {                                                               \
+      return VK_SUCCESS;                                                                                              \
+    }                                                                                                                 \
+    VkDebugMarkerObjectNameInfoEXT name_info = {VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT};                 \
+    name_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_##OBJECT_TYPE_SUFFIX##_EXT;                                    \
+    name_info.object = reinterpret_cast<uint64_t>(handle);                                                            \
+    name_info.pObjectName = object_name;                                                                              \
+    printf("Assigning name %s to %s (%p)\n", object_name, #HANDLE_TYPE, (void *)handle);                              \
+    return pfnVkDebugMarkerSetObjectNameEXT_(logical_device_, &name_info);                                            \
+  }                                                                                                                   \
+  template <>                                                                                                         \
+  VkResult Device::SetObjectTag<HANDLE_TYPE>(HANDLE_TYPE handle, uint64_t tag_name, size_t tag_size, const void *tag) \
+      const {                                                                                                         \
+    if (pfnVkDebugMarkerSetObjectTagEXT_ == nullptr) {                                                                \
+      return VK_SUCCESS;                                                                                              \
+    }                                                                                                                 \
+    VkDebugMarkerObjectTagInfoEXT tag_info = {VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_TAG_INFO_EXT};                    \
+    tag_info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_##OBJECT_TYPE_SUFFIX##_EXT;                                     \
+    tag_info.object = reinterpret_cast<uint64_t>(handle);                                                             \
+    tag_info.tagName = tag_name;                                                                                      \
+    tag_info.tagSize = tag_size;                                                                                      \
+    tag_info.pTag = tag;                                                                                              \
+    return pfnVkDebugMarkerSetObjectTagEXT_(logical_device_, &tag_info);                                              \
+  }
+
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkInstance, INSTANCE)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkPhysicalDevice, PHYSICAL_DEVICE)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkDevice, DEVICE)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkQueue, QUEUE)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkSemaphore, SEMAPHORE)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkCommandBuffer, COMMAND_BUFFER)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkFence, FENCE)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkDeviceMemory, DEVICE_MEMORY)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkBuffer, BUFFER)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkImage, IMAGE)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkEvent, EVENT)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkQueryPool, QUERY_POOL)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkBufferView, BUFFER_VIEW)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkImageView, IMAGE_VIEW)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkShaderModule, SHADER_MODULE)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkPipelineCache, PIPELINE_CACHE)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkPipelineLayout, PIPELINE_LAYOUT)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkRenderPass, RENDER_PASS)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkPipeline, PIPELINE)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkDescriptorSetLayout, DESCRIPTOR_SET_LAYOUT)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkSampler, SAMPLER)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkDescriptorPool, DESCRIPTOR_POOL)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkFramebuffer, FRAMEBUFFER)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkCommandPool, COMMAND_POOL)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkSurfaceKHR, SURFACE_KHR)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkSwapchainKHR, SWAPCHAIN_KHR)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkDebugReportCallbackEXT, DEBUG_REPORT_CALLBACK_EXT)
+#undef SPECIALIZE_SET_OBJECT_NAME_AND_TAG
+#endif
 
 }  // namespace spokk

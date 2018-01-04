@@ -80,6 +80,18 @@ public:
   void *HostAlloc(size_t size, size_t alignment, VkSystemAllocationScope scope) const;
   void HostFree(void *ptr) const;
 
+  // VK_EXT_debug_marker wrappers
+  // If the extension is unavailable, these calls will be no-ops.
+  void DebugMarkerBegin(VkCommandBuffer cb, const char *marker_name, const float marker_color[4] = nullptr) const;
+  void DebugMarkerEnd(VkCommandBuffer cb) const;
+  void DebugMarkerInsert(VkCommandBuffer cb, const char *marker_name, const float marker_color[4] = nullptr) const;
+  // Specializations provided for all relevant Vulkan handle types.
+  template <typename VK_HANDLE_T>
+  VkResult SetObjectTag(VK_HANDLE_T handle, uint64_t tag_name, size_t tag_size, const void *tag) const;
+  template <typename VK_HANDLE_T>
+  VkResult SetObjectName(VK_HANDLE_T handle, const char *object_name) const;
+
+
 private:
   VkPhysicalDevice physical_device_;
   VkDevice logical_device_;
@@ -91,6 +103,14 @@ private:
   VkPhysicalDeviceProperties device_properties_;
   VkPhysicalDeviceMemoryProperties memory_properties_;
   std::vector<DeviceQueue> queues_;
+
+#if defined(VK_EXT_debug_marker)
+  PFN_vkCmdDebugMarkerBeginEXT pfnVkCmdDebugMarkerBeginEXT_ = nullptr;
+  PFN_vkCmdDebugMarkerEndEXT pfnVkCmdDebugMarkerEndEXT_ = nullptr;
+  PFN_vkCmdDebugMarkerInsertEXT pfnVkCmdDebugMarkerInsertEXT_ = nullptr;
+  PFN_vkDebugMarkerSetObjectNameEXT pfnVkDebugMarkerSetObjectNameEXT_ = nullptr;
+  PFN_vkDebugMarkerSetObjectTagEXT pfnVkDebugMarkerSetObjectTagEXT_ = nullptr;
+#endif
 };
 
 }  // namespace spokk

@@ -286,7 +286,10 @@ Application::Application(const CreateInfo &ci) {
     required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
   }
-  const std::vector<const char *> optional_device_extension_names = {};
+  std::vector<const char *> optional_device_extension_names = {
+      VK_EXT_DEBUG_MARKER_EXTENSION_NAME,  // TODO(cort): may want to hide this behind a flag, enabled in debug &
+                                           // profiling builds.
+  };
   std::vector<const char *> enabled_device_extension_names;
   SPOKK_VK_CHECK(GetSupportedDeviceExtensions(physical_device, instance_layers_, required_device_extension_names,
       optional_device_extension_names, &device_extensions_, &enabled_device_extension_names));
