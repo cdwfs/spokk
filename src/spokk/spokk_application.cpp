@@ -252,8 +252,7 @@ Application::Application(const CreateInfo &ci) {
     debug_report_callback_ci.flags = ci.debug_report_flags;
     debug_report_callback_ci.pfnCallback = MyDebugReportCallback;
     debug_report_callback_ci.pUserData = nullptr;
-    auto create_debug_report_func =
-        (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_, "vkCreateDebugReportCallbackEXT");
+    auto create_debug_report_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkCreateDebugReportCallbackEXT);
     SPOKK_VK_CHECK(
         create_debug_report_func(instance_, &debug_report_callback_ci, host_allocator_, &debug_report_callback_));
   }
@@ -461,8 +460,7 @@ Application::~Application() {
   }
   device_.Destroy();
   if (debug_report_callback_ != VK_NULL_HANDLE) {
-    auto destroy_debug_report_func =
-        (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_, "vkDestroyDebugReportCallbackEXT");
+    auto destroy_debug_report_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkDestroyDebugReportCallbackEXT);
     destroy_debug_report_func(instance_, debug_report_callback_, host_allocator_);
   }
   if (surface_ != VK_NULL_HANDLE) {
