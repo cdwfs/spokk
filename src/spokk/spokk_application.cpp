@@ -209,7 +209,7 @@ Application::Application(const CreateInfo &ci) {
 #endif
   };
   if (ci.debug_report_flags != 0) {
-#if defined(_DEBUG)
+#if defined(_DEBUG)  // validation layers should only be enabled in debug builds
     optional_instance_layer_names.push_back("VK_LAYER_LUNARG_standard_validation");
 #endif
   }
@@ -246,7 +246,7 @@ Application::Application(const CreateInfo &ci) {
   instance_ci.ppEnabledExtensionNames = enabled_instance_extension_names.data();
   SPOKK_VK_CHECK(vkCreateInstance(&instance_ci, host_allocator_, &instance_));
 
-  if (IsInstanceExtensionEnabled(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
+  if (IsInstanceExtensionEnabled(VK_EXT_DEBUG_REPORT_EXTENSION_NAME) && ci.debug_report_flags != 0) {
     VkDebugReportCallbackCreateInfoEXT debug_report_callback_ci = {};
     debug_report_callback_ci.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
     debug_report_callback_ci.flags = ci.debug_report_flags;
