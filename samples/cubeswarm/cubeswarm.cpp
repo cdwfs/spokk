@@ -42,10 +42,6 @@ public:
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
-    // Initialize IMGUI
-    InitImgui(render_pass_);
-    ShowImgui(false);
-
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
         GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
@@ -137,11 +133,11 @@ public:
 
   virtual void Update(double dt) override {
     seconds_elapsed_ += dt;
-
     drone_->Update(input_state_, (float)dt);
+  }
 
+  void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
     // Update uniforms
-    // TODO(https://github.com/cdwfs/spokk/issues/28): uniform buffer updates must be moved to Render()
     SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
     uniforms->time_and_res =
         glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
@@ -169,9 +165,8 @@ public:
       // clang-format on
     }
     mesh_uniforms_.FlushPframeHostCache(pframe_index_);
-  }
 
-  void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+    // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -185,7 +180,6 @@ public:
         0, 1, &dsets_[pframe_index_], 0, nullptr);
     mesh_.BindBuffers(primary_cb);
     vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0, 0, 0);
-    RenderImgui(primary_cb);
     vkCmdEndRenderPass(primary_cb);
   }
 
