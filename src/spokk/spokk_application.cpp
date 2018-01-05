@@ -214,8 +214,9 @@ Application::Application(const CreateInfo &ci) {
 #endif
   }
   std::vector<const char *> enabled_instance_layer_names = {};
-  SPOKK_VK_CHECK(GetSupportedInstanceLayers(
-      required_instance_layer_names, optional_instance_layer_names, &instance_layers_, &enabled_instance_layer_names));
+  std::vector<VkLayerProperties> enabled_instance_layer_properties = {};
+  SPOKK_VK_CHECK(GetSupportedInstanceLayers(required_instance_layer_names, optional_instance_layer_names,
+      &enabled_instance_layer_properties, &enabled_instance_layer_names));
 
   std::vector<const char *> required_instance_extension_names = {};
   if (ci.enable_graphics) {
@@ -227,8 +228,9 @@ Application::Application(const CreateInfo &ci) {
     optional_instance_extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
   }
   std::vector<const char *> enabled_instance_extension_names;
-  SPOKK_VK_CHECK(GetSupportedInstanceExtensions(instance_layers_, required_instance_extension_names,
-      optional_instance_extension_names, &instance_extensions_, &enabled_instance_extension_names));
+  std::vector<VkExtensionProperties> enabled_instance_extension_properties = {};
+  SPOKK_VK_CHECK(GetSupportedInstanceExtensions(enabled_instance_layer_properties, required_instance_extension_names,
+      optional_instance_extension_names, &enabled_instance_extension_properties, &enabled_instance_extension_names));
 
   VkApplicationInfo application_info = {};
   application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -246,7 +248,14 @@ Application::Application(const CreateInfo &ci) {
   instance_ci.ppEnabledExtensionNames = enabled_instance_extension_names.data();
   SPOKK_VK_CHECK(vkCreateInstance(&instance_ci, host_allocator_, &instance_));
 
-  if (IsInstanceExtensionEnabled(VK_EXT_DEBUG_REPORT_EXTENSION_NAME) && ci.debug_report_flags != 0) {
+  bool is_debug_report_ext_enabled = false;
+  for (const char *ext_name : enabled_instance_extension_names) {
+    if (strcmp(ext_name, VK_EXT_DEBUG_REPORT_EXTENSION_NAME) == 0) {
+      is_debug_report_ext_enabled = true;
+      break;
+    }
+  }
+  if (is_debug_report_ext_enabled && ci.debug_report_flags != 0) {
     VkDebugReportCallbackCreateInfoEXT debug_report_callback_ci = {};
     debug_report_callback_ci.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
     debug_report_callback_ci.flags = ci.debug_report_flags;
@@ -290,9 +299,11 @@ Application::Application(const CreateInfo &ci) {
       VK_EXT_DEBUG_MARKER_EXTENSION_NAME,  // TODO(cort): may want to hide this behind a flag, enabled in debug &
                                            // profiling builds.
   };
-  std::vector<const char *> enabled_device_extension_names;
-  SPOKK_VK_CHECK(GetSupportedDeviceExtensions(physical_device, instance_layers_, required_device_extension_names,
-      optional_device_extension_names, &device_extensions_, &enabled_device_extension_names));
+  std::vector<const char *> enabled_device_extension_names = {};
+  std::vector<VkExtensionProperties> enabled_device_extension_properties = {};
+  SPOKK_VK_CHECK(
+      GetSupportedDeviceExtensions(physical_device, enabled_instance_layer_properties, required_device_extension_names,
+          optional_device_extension_names, &enabled_device_extension_properties, &enabled_device_extension_names));
 
   VkPhysicalDeviceFeatures supported_device_features = {};
   vkGetPhysicalDeviceFeatures(physical_device, &supported_device_features);
@@ -352,7 +363,8 @@ Application::Application(const CreateInfo &ci) {
 
   // Populate the Device object, which from now on "owns" all of these Vulkan handles.
   device_.Create(logical_device, physical_device, pipeline_cache, queues.data(), (uint32_t)queues.size(),
-      enabled_device_features, host_allocator_, device_allocator_);
+      enabled_device_features, enabled_instance_layer_properties, enabled_instance_extension_properties,
+      enabled_device_extension_properties, host_allocator_, device_allocator_);
 
   graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
 
@@ -603,31 +615,6 @@ int Application::Run() {
     pframe_index_ = (pframe_index_ + 1) % PFRAME_COUNT;
   }
   return 0;
-}
-
-bool Application::IsInstanceLayerEnabled(const std::string &layer_name) const {
-  for (const auto &layer : instance_layers_) {
-    if (layer_name == layer.layerName) {
-      return true;
-    }
-  }
-  return false;
-}
-bool Application::IsInstanceExtensionEnabled(const std::string &extension_name) const {
-  for (const auto &extension : instance_extensions_) {
-    if (extension_name == extension.extensionName) {
-      return true;
-    }
-  }
-  return false;
-}
-bool Application::IsDeviceExtensionEnabled(const std::string &extension_name) const {
-  for (const auto &extension : device_extensions_) {
-    if (extension_name == extension.extensionName) {
-      return true;
-    }
-  }
-  return false;
 }
 
 void Application::HandleWindowResize(VkExtent2D new_window_extent) {

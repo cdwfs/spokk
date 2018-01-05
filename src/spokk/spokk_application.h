@@ -83,10 +83,6 @@ public:
   virtual void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) = 0;
 
 protected:
-  bool IsInstanceLayerEnabled(const std::string& layer_name) const;
-  bool IsInstanceExtensionEnabled(const std::string& layer_name) const;
-  bool IsDeviceExtensionEnabled(const std::string& layer_name) const;
-
   // Overloads must call the base class resize method before performing their own work.
   // The first thing it does is call vkDeviceWaitIdle(), so subclasses can safely assume that
   // no resources are in use on the GPU and can be safely destroyed/recreated.
@@ -110,15 +106,11 @@ protected:
   // Safe to call, even if IMGUI was not initialized or has already been destroyed.
   void DestroyImgui(void);
 
-  // TODO(https://github.com/cdwfs/spokk/issues/24): Move layer/extension lists into DeviceContext.
   const VkAllocationCallbacks* host_allocator_ = nullptr;
   const DeviceAllocationCallbacks* device_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
-  std::vector<VkLayerProperties> instance_layers_ = {};
-  std::vector<VkExtensionProperties> instance_extensions_ = {};
   VkDebugReportCallbackEXT debug_report_callback_ = VK_NULL_HANDLE;
   VkSurfaceKHR surface_ = VK_NULL_HANDLE;
-  std::vector<VkExtensionProperties> device_extensions_ = {};
 
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
   VkSurfaceFormatKHR swapchain_surface_format_ = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};

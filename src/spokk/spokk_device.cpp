@@ -17,7 +17,10 @@ Device::~Device() {
 
 void Device::Create(VkDevice logical_device, VkPhysicalDevice physical_device, VkPipelineCache pipeline_cache,
     const DeviceQueue *queues, uint32_t queue_count, const VkPhysicalDeviceFeatures &enabled_device_features,
-    const VkAllocationCallbacks *host_allocator, const DeviceAllocationCallbacks *device_allocator) {
+    const std::vector<VkLayerProperties> &enabled_instance_layers,
+    const std::vector<VkExtensionProperties> &enabled_instance_extensions,
+    const std::vector<VkExtensionProperties> &enabled_device_extensions, const VkAllocationCallbacks *host_allocator,
+    const DeviceAllocationCallbacks *device_allocator) {
   physical_device_ = physical_device;
   logical_device_ = logical_device;
   pipeline_cache_ = pipeline_cache;
@@ -26,6 +29,9 @@ void Device::Create(VkDevice logical_device, VkPhysicalDevice physical_device, V
   device_features_ = enabled_device_features;
   vkGetPhysicalDeviceProperties(physical_device_, &device_properties_);
   vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
+  instance_layers_ = enabled_instance_layers;
+  instance_extensions_ = enabled_instance_extensions;
+  device_extensions_ = enabled_device_extensions;
   queues_.insert(queues_.begin(), queues + 0, queues + queue_count);
 
 #if defined(VK_EXT_debug_marker)
@@ -187,6 +193,31 @@ void Device::HostFree(void *ptr) const {
     return free(ptr);
 #endif
   }
+}
+
+bool Device::IsInstanceLayerEnabled(const std::string &layer_name) const {
+  for (const auto &layer : instance_layers_) {
+    if (layer_name == layer.layerName) {
+      return true;
+    }
+  }
+  return false;
+}
+bool Device::IsInstanceExtensionEnabled(const std::string &extension_name) const {
+  for (const auto &extension : instance_extensions_) {
+    if (extension_name == extension.extensionName) {
+      return true;
+    }
+  }
+  return false;
+}
+bool Device::IsDeviceExtensionEnabled(const std::string &extension_name) const {
+  for (const auto &extension : device_extensions_) {
+    if (extension_name == extension.extensionName) {
+      return true;
+    }
+  }
+  return false;
 }
 
 #if !defined(VK_EXT_debug_marker)
