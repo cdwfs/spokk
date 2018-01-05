@@ -469,10 +469,6 @@ Application::~Application() {
       swapchain_ = VK_NULL_HANDLE;
     }
   }
-  if (surface_ != VK_NULL_HANDLE) {
-    window_.reset();
-    glfwTerminate();
-  }
   device_.Destroy();
   if (debug_report_callback_ != VK_NULL_HANDLE) {
     auto destroy_debug_report_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkDestroyDebugReportCallbackEXT);
@@ -485,6 +481,10 @@ Application::~Application() {
   if (instance_ != VK_NULL_HANDLE) {
     vkDestroyInstance(instance_, host_allocator_);
     instance_ = VK_NULL_HANDLE;
+  }
+  if (surface_ != VK_NULL_HANDLE) {
+    window_.reset();
+    glfwTerminate();
   }
 }
 
