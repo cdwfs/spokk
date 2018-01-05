@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef _MSC_VER
 #include <malloc.h>
@@ -195,25 +196,25 @@ void Device::HostFree(void *ptr) const {
   }
 }
 
-bool Device::IsInstanceLayerEnabled(const std::string &layer_name) const {
+bool Device::IsInstanceLayerEnabled(const char* layer_name) const {
   for (const auto &layer : instance_layers_) {
-    if (layer_name == layer.layerName) {
+    if (strcmp(layer_name, layer.layerName) == 0) {
       return true;
     }
   }
   return false;
 }
-bool Device::IsInstanceExtensionEnabled(const std::string &extension_name) const {
+bool Device::IsInstanceExtensionEnabled(const char* extension_name) const {
   for (const auto &extension : instance_extensions_) {
-    if (extension_name == extension.extensionName) {
+    if (strcmp(extension_name, extension.extensionName) == 0) {
       return true;
     }
   }
   return false;
 }
-bool Device::IsDeviceExtensionEnabled(const std::string &extension_name) const {
+bool Device::IsDeviceExtensionEnabled(const char* extension_name) const {
   for (const auto &extension : device_extensions_) {
-    if (extension_name == extension.extensionName) {
+    if (strcmp(extension_name, extension.extensionName) == 0) {
       return true;
     }
   }
@@ -245,6 +246,7 @@ void Device::DebugMarkerBegin(VkCommandBuffer cb, const char *marker_name, const
       marker_info.color[3] = marker_color[3];
     }
     // pfnVkCmdDebugMarkerBeginEXT_(cb, &marker_info);
+    (void)marker_info;
     static bool first_call = true;
     if (first_call) {
       (void)cb;
@@ -279,6 +281,7 @@ void Device::DebugMarkerInsert(VkCommandBuffer cb, const char *marker_name, cons
       marker_info.color[3] = marker_color[3];
     }
     // pfnVkCmdDebugMarkerInsertEXT_(cb, &marker_info);
+    (void)marker_info;
     static bool first_call = true;
     if (first_call) {
       (void)cb;
