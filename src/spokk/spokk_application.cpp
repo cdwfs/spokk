@@ -585,9 +585,6 @@ int Application::Run() {
     }
 
     input_state_.Update();
-    if (input_state_.IsPressed(InputState::DIGITAL_MENU)) {
-      ShowImgui(!is_imgui_visible_);
-    }
     Update(dt);
     if (force_exit_) {
       break;
@@ -645,7 +642,14 @@ int Application::Run() {
       vkCmdBeginRenderPass(cb, &imgui_render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
       RenderImgui(cb);
       vkCmdEndRenderPass(cb);
+    } else if (is_imgui_enabled_ && !is_imgui_visible_) {
+      RenderImgui(cb); // still needs to be called if the UI system is active, even if nothing is drawn.
     }
+    // This must happen outside the IMGUI NewFrame/Render pair, so may lag by a frame, but enh.
+    if (input_state_.IsPressed(InputState::DIGITAL_MENU)) {
+      ShowImgui(!is_imgui_visible_);
+    }
+
 
     SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
     const VkPipelineStageFlags submit_wait_stages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
