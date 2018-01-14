@@ -62,6 +62,7 @@ public:
   uint32_t FindMemoryTypeIndex(
       const VkMemoryRequirements &memory_reqs, VkMemoryPropertyFlags memory_properties_mask) const;
   VkMemoryPropertyFlags MemoryTypeProperties(uint32_t memory_type_index) const;
+  VkMemoryPropertyFlags MemoryFlagsForAccessPattern(DeviceMemoryAccessPattern access_pattern) const;
 
   VkResult DeviceAlloc(const VkMemoryRequirements &mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
       DeviceAllocationScope scope, DeviceMemoryAllocation *out_allocation) const;

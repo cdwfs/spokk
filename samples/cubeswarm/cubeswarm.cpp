@@ -59,13 +59,17 @@ public:
     int mesh_load_error = mesh_.CreateFromFile(device_, "data/teapot.mesh");
     ZOMBO_ASSERT(!mesh_load_error, "load error: %d", mesh_load_error);
 
+    // Look up the appropriate memory flags for uniform buffers on this platform
+    VkMemoryPropertyFlags uniform_buffer_memory_flags =
+        device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
+
     // Create pipelined buffer of per-mesh object-to-world matrices.
     VkBufferCreateInfo o2w_buffer_ci = {};
     o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(glm::mat4);
     o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, uniform_buffer_memory_flags));
 
     // Create pipelined buffer of shader uniforms
     VkBufferCreateInfo scene_uniforms_ci = {};
@@ -73,8 +77,7 @@ public:
     scene_uniforms_ci.size = sizeof(SceneUniforms);
     scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(
-        scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, uniform_buffer_memory_flags));
 
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));

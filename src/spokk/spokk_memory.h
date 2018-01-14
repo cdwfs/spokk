@@ -6,6 +6,15 @@ namespace spokk {
 
 class Device;
 
+enum DeviceMemoryAccessPattern {
+  DEVICE_MEMORY_ACCESS_PATTERN_GPU_ONLY = 1,
+  DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_IMMUTABLE = 2,
+  DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_STREAMING = 3,
+  DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC = 4,
+  DEVICE_MEMORY_ACCESS_PATTERN_GPU_TO_CPU_STREAMING = 5,
+  DEVICE_MEMORY_ACCESS_PATTERN_GPU_TO_CPU_DYNAMIC = 6,
+};
+
 struct DeviceMemoryAllocation {
   DeviceMemoryAllocation()
     : device_memory(VK_NULL_HANDLE), offset(0), size(0), mapped(nullptr), allocator_data(nullptr) {}
@@ -15,15 +24,11 @@ struct DeviceMemoryAllocation {
   // Invalidate this allocation in the host's caches, to ensure GPU writes to its range are visible by the host.
   // If this allocation is not mapped, this function has no effect.
   VkResult InvalidateHostCache(VkDevice device, VkDeviceSize offset, VkDeviceSize size) const;
-  VkResult InvalidateHostCache(VkDevice device) const {
-    return InvalidateHostCache(device, offset, size);
-  }
+  VkResult InvalidateHostCache(VkDevice device) const { return InvalidateHostCache(device, offset, size); }
   // Flush this allocation from the host's caches, to ensure host writes to its range are visible by the GPU.
   // If this allocation is not mapped, this function has no effect.
   VkResult FlushHostCache(VkDevice device, VkDeviceSize offset, VkDeviceSize size) const;
-  VkResult FlushHostCache(VkDevice device) const {
-    FlushHostCache(device, offset, size);
-  }
+  VkResult FlushHostCache(VkDevice device) const { FlushHostCache(device, offset, size); }
 
   // This handle may be shared among multiple allocations, and should not be free'd at this level.
   // For failed/invalid allocations, this handle will be VK_NULL_HANDLE.

@@ -157,6 +157,54 @@ VkMemoryPropertyFlags Device::MemoryTypeProperties(uint32_t memory_type_index) c
   return memory_properties_.memoryTypes[memory_type_index].propertyFlags;
 }
 
+VkMemoryPropertyFlags Device::MemoryFlagsForAccessPattern(DeviceMemoryAccessPattern access_pattern) const {
+  std::vector<VkMemoryPropertyFlags> valid_flags;
+  switch (access_pattern) {
+  case DEVICE_MEMORY_ACCESS_PATTERN_GPU_ONLY:
+    valid_flags.push_back(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    break;
+  case DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_IMMUTABLE:
+    valid_flags.push_back(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    valid_flags.push_back(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    valid_flags.push_back(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    break;
+  case DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_STREAMING:
+    valid_flags.push_back(VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    valid_flags.push_back(VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+    break;
+  case DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC:
+    valid_flags.push_back(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    valid_flags.push_back(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    break;
+  case DEVICE_MEMORY_ACCESS_PATTERN_GPU_TO_CPU_STREAMING:
+    valid_flags.push_back(VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+    valid_flags.push_back(VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    break;
+  case DEVICE_MEMORY_ACCESS_PATTERN_GPU_TO_CPU_DYNAMIC:
+    valid_flags.push_back(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    valid_flags.push_back(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    break;
+  default:
+    ZOMBO_ERROR_RETURN(0, "Unhandled usage: %d\n", access_pattern);
+  }
+
+  VkMemoryRequirements fake_mem_reqs = {};
+  fake_mem_reqs.memoryTypeBits = UINT32_MAX;
+  for (auto flags : valid_flags) {
+    uint32_t memory_type_index = FindMemoryTypeIndex(fake_mem_reqs, flags);
+    if (memory_type_index < VK_MAX_MEMORY_TYPES) {
+      // The device contains a memory type suitable for this access pattern. Return the flags
+      // necessary to find it again.
+      // TODO(cort): there is a potential problem here. It's conceivable that while a memory type may exist
+      // for a given set of flags, a particular resource may not list that memory type as valid in its
+      // VkMemoryRequirements. Thus, this function could "succeed" while causing a false negative at allocation
+      // time, but only on certain devices/drivers.
+      return flags;
+    }
+  }
+  return 0;
+}
+
 VkResult Device::DeviceAlloc(const VkMemoryRequirements& mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
     DeviceAllocationScope scope, DeviceMemoryAllocation* out_allocation) const {
   if (device_allocator_ != nullptr) {

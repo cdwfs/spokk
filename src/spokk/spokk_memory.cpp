@@ -1,14 +1,15 @@
 #include "spokk_memory.h"
-#include "spokk_device.h"
 
-#include <cassert>
+#include "spokk_device.h"
+#include "spokk_platform.h"
 
 namespace spokk {
 
 //
 // DeviceMemoryAllocation
 //
-VkResult DeviceMemoryAllocation::InvalidateHostCache(VkDevice device, VkDeviceSize range_offset, VkDeviceSize range_size) const {
+VkResult DeviceMemoryAllocation::InvalidateHostCache(
+    VkDevice device, VkDeviceSize range_offset, VkDeviceSize range_size) const {
   if (!mapped) {
     return VK_SUCCESS;
   }
@@ -19,7 +20,8 @@ VkResult DeviceMemoryAllocation::InvalidateHostCache(VkDevice device, VkDeviceSi
   range.size = range_size;
   return vkInvalidateMappedMemoryRanges(device, 1, &range);
 }
-VkResult DeviceMemoryAllocation::FlushHostCache(VkDevice device, VkDeviceSize range_offset, VkDeviceSize range_size) const {
+VkResult DeviceMemoryAllocation::FlushHostCache(
+    VkDevice device, VkDeviceSize range_offset, VkDeviceSize range_size) const {
   if (!mapped) {
     return VK_SUCCESS;
   }

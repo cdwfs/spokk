@@ -117,6 +117,10 @@ public:
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
 
+    // Look up the appropriate memory flags for uniform buffers on this platform
+    VkMemoryPropertyFlags uniform_buffer_memory_flags =
+      device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
+
     // Create pipelined buffer of light uniforms
     VkBufferCreateInfo light_uniforms_ci = {};
     light_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -124,7 +128,7 @@ public:
     light_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     light_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(
-        light_uniforms_.Create(device_, PFRAME_COUNT, light_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+        light_uniforms_.Create(device_, PFRAME_COUNT, light_uniforms_ci, uniform_buffer_memory_flags));
     // Default light settings
     lights_.hemi_down_color = glm::vec4(0.471f, 0.412f, 0.282f, 0.75f);
     lights_.hemi_up_color = glm::vec4(0.290f, 0.390f, 0.545f, 0.0f);
@@ -144,7 +148,7 @@ public:
     material_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     material_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(
-        material_uniforms_.Create(device_, PFRAME_COUNT, material_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+        material_uniforms_.Create(device_, PFRAME_COUNT, material_uniforms_ci, uniform_buffer_memory_flags));
     material_.albedo = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
     material_.emissive_color = glm::vec4(0.5f, 0.5f, 0.0f, 0.0f);
     material_.spec_color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
@@ -156,7 +160,7 @@ public:
     mesh_uniforms_ci.size = sizeof(MeshUniforms);
     mesh_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     mesh_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, mesh_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, mesh_uniforms_ci, uniform_buffer_memory_flags));
 
     // Create pipelined buffer of shader uniforms
     VkBufferCreateInfo scene_uniforms_ci = {};
@@ -165,7 +169,7 @@ public:
     scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(
-        scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+        scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, uniform_buffer_memory_flags));
 
     for (const auto& dset_layout_ci : skybox_shader_program_.dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);

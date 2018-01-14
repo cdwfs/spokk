@@ -161,13 +161,17 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   pillar_pipeline_.Init(&(mesh_.mesh_format), &pillar_shader_program_, &render_pass_, 0);
   SPOKK_VK_CHECK(pillar_pipeline_.Finalize(device_));
 
+  // Look up the appropriate memory flags for uniform buffers on this platform
+  VkMemoryPropertyFlags uniform_buffer_memory_flags =
+    device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
+
   // Create pipelined buffer of shader uniforms
   VkBufferCreateInfo uniform_buffer_ci = {};
   uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   uniform_buffer_ci.size = sizeof(SceneUniforms);
   uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
   uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(scene_uniforms_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+  SPOKK_VK_CHECK(scene_uniforms_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, uniform_buffer_memory_flags));
 
   // Create buffer of per-cell "height" values
   VkBufferCreateInfo heightfield_buffer_ci = {};
@@ -176,7 +180,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   heightfield_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
   heightfield_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(
-      heightfield_buffer_.Create(device_, PFRAME_COUNT, heightfield_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+      heightfield_buffer_.Create(device_, PFRAME_COUNT, heightfield_buffer_ci, uniform_buffer_memory_flags));
   SPOKK_VK_CHECK(heightfield_buffer_.CreateViews(device_, VK_FORMAT_R32_SFLOAT));
   for (int32_t iY = 0; iY < HEIGHTFIELD_DIMY; ++iY) {
     for (int32_t iX = 0; iX < HEIGHTFIELD_DIMX; ++iX) {
@@ -192,7 +196,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   visible_cells_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   visible_cells_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(visible_cells_buffer_.Create(
-      device_, PFRAME_COUNT, visible_cells_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+      device_, PFRAME_COUNT, visible_cells_buffer_ci, uniform_buffer_memory_flags));
   SPOKK_VK_CHECK(visible_cells_buffer_.CreateViews(device_, VK_FORMAT_R32_SINT));
 
   for (const auto& dset_layout_ci : pillar_shader_program_.dset_layout_cis) {
