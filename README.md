@@ -33,3 +33,5 @@ spokk builds upon the following projects, which will be automatically included a
 - [nothings/stb](https://github.com/nothings/stb) for loading common image formats (`stb_image`), writing
   images (`stb_image_write`), mipmap generation (`stb_image_resize`), and TrueType font loading
   (`stb_truetype`).
+- [GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
+  for Vulkan device memory allocation.

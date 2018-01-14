@@ -48,6 +48,17 @@ using namespace spokk;
 #include "spokk_imgui_impl_glfw_vulkan.h"
 // clang-format on
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4127)  // constant conditional expression
+#pragma warning(disable : 4100)  // unreferenced formal parameter
+#endif
+#define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -174,6 +185,44 @@ VkResult FindPhysicalDevice(const std::vector<Application::QueueFamilyRequest> &
   return VK_ERROR_INITIALIZATION_FAILED;
 }
 
+VkResult SpokkVmaAlloc(void *pUserData, const spokk::Device& /*device*/, const VkMemoryRequirements &memory_reqs,
+    VkMemoryPropertyFlags memory_property_flags, spokk::DeviceAllocationScope /*allocation_scope*/,
+    spokk::DeviceMemoryAllocation *out_allocation) {
+  VmaAllocator vma_allocator = reinterpret_cast<VmaAllocator>(pUserData);
+  VkResult result = VK_SUCCESS;
+  *out_allocation = {};
+
+  VmaAllocationCreateInfo vma_allocation_ci = {};
+  vma_allocation_ci.usage = VMA_MEMORY_USAGE_UNKNOWN;
+  vma_allocation_ci.requiredFlags = memory_property_flags;
+  vma_allocation_ci.memoryTypeBits = UINT32_MAX;
+  if (memory_property_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+    vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
+  }
+  vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_USER_DATA_COPY_STRING_BIT;
+  vma_allocation_ci.pUserData = "beans and/or franks";
+  VmaAllocation vma_allocation = {};
+  VmaAllocationInfo vma_allocation_info = {};
+  result = vmaAllocateMemory(vma_allocator, &memory_reqs, &vma_allocation_ci, &vma_allocation, &vma_allocation_info);
+  if (result == VK_SUCCESS) {
+    out_allocation->device_memory = vma_allocation_info.deviceMemory;
+    out_allocation->offset = vma_allocation_info.offset;
+    out_allocation->size = vma_allocation_info.size;
+    out_allocation->mapped = vma_allocation_info.pMappedData;
+    out_allocation->allocator_data = (void *)vma_allocation;
+  }
+
+  return result;
+}
+
+void SpokkVmaFree(void *pUserData, const spokk::Device & /*device*/, spokk::DeviceMemoryAllocation &allocation) {
+  VmaAllocator vma_allocator = reinterpret_cast<VmaAllocator>(pUserData);
+  ZOMBO_ASSERT(vma_allocator, "Free called before Alloc");
+  VmaAllocation vma_allocation = (VmaAllocation)allocation.allocator_data;
+  vmaFreeMemory(vma_allocator, vma_allocation);
+  allocation = {};
+}
+
 }  // namespace
 
 //
@@ -202,6 +251,8 @@ Application::Application(const CreateInfo &ci) {
   }
 
   // Initialize Vulkan
+  host_allocator_ = ci.host_allocator;
+
   std::vector<const char *> required_instance_layer_names = {};
   std::vector<const char *> optional_instance_layer_names = {
 #if defined(_DEBUG)
@@ -355,6 +406,13 @@ Application::Application(const CreateInfo &ci) {
   }
   ZOMBO_ASSERT(queues.size() == total_queue_count, "queue count mismatch");
 
+  // Initialize the device memory allocator
+  VmaAllocatorCreateInfo allocator_ci = {};
+  allocator_ci.physicalDevice = physical_device;
+  allocator_ci.device = logical_device;
+  SPOKK_VK_CHECK(vmaCreateAllocator(&allocator_ci, &vma_allocator_));
+  device_allocator_ = {vma_allocator_, SpokkVmaAlloc, SpokkVmaFree};
+
   // TODO(cort): hmmm, maybe persist this across runs some day...
   VkPipelineCacheCreateInfo pipeline_cache_ci = {};
   pipeline_cache_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
@@ -364,7 +422,7 @@ Application::Application(const CreateInfo &ci) {
   // Populate the Device object, which from now on "owns" all of these Vulkan handles.
   device_.Create(logical_device, physical_device, pipeline_cache, queues.data(), (uint32_t)queues.size(),
       enabled_device_features, enabled_instance_layer_properties, enabled_instance_extension_properties,
-      enabled_device_extension_properties, host_allocator_, device_allocator_);
+      enabled_device_extension_properties, host_allocator_, &device_allocator_);
 
   graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
 
@@ -469,6 +527,10 @@ Application::~Application() {
       swapchain_ = VK_NULL_HANDLE;
     }
   }
+  if (vma_allocator_) {
+    vmaDestroyAllocator(vma_allocator_);
+    vma_allocator_ = VK_NULL_HANDLE;
+  }
   device_.Destroy();
   if (debug_report_callback_ != VK_NULL_HANDLE) {
     auto destroy_debug_report_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkDestroyDebugReportCallbackEXT);
@@ -564,6 +626,15 @@ int Application::Run() {
     if (force_exit_) {
       break;
     }
+
+#if 0
+    VmaStats vma_stats = {};
+    vmaCalculateStats(vma_allocator_, &vma_stats);
+    char *vma_stats_string = NULL;
+    vmaBuildStatsString(vma_allocator_, &vma_stats_string, VK_TRUE);
+    printf(vma_stats_string);
+    vmaFreeStatsString(vma_allocator_, vma_stats_string);
+#endif
 
     // optional UI render pass
     if (is_imgui_visible_) {

@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+struct VmaAllocator_T;  // from vk_mem_alloc.h
+
 namespace spokk {
 
 // How many frames can be pipelined ("in flight") simultaneously? The higher the count, the more independent copies
@@ -62,6 +64,7 @@ public:
     // If NULL, no device features are enabled. To easily enable all supported features,
     // pass EnableAllSupportedDeviceFeatures.
     SetDeviceFeaturesFunc pfn_set_device_features = nullptr;
+    const VkAllocationCallbacks* host_allocator = nullptr;
   };
 
   explicit Application(const CreateInfo& ci);
@@ -107,7 +110,6 @@ protected:
   void DestroyImgui(void);
 
   const VkAllocationCallbacks* host_allocator_ = nullptr;
-  const DeviceAllocationCallbacks* device_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
   VkDebugReportCallbackEXT debug_report_callback_ = VK_NULL_HANDLE;
   VkSurfaceKHR surface_ = VK_NULL_HANDLE;
@@ -149,6 +151,9 @@ private:
   VkDescriptorPool imgui_dpool_ = VK_NULL_HANDLE;
   RenderPass imgui_render_pass_ = {};
   std::vector<VkFramebuffer> imgui_framebuffers_;
+
+  VmaAllocator_T* vma_allocator_ = nullptr;
+  DeviceAllocationCallbacks device_allocator_ = {};
 };
 
 }  // namespace spokk
