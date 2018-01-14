@@ -52,6 +52,7 @@ using namespace spokk;
 #pragma warning(push)
 #pragma warning(disable : 4127)  // constant conditional expression
 #pragma warning(disable : 4100)  // unreferenced formal parameter
+#pragma warning(disable : 4189)  // initialized-but-unused local variable
 #endif
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
