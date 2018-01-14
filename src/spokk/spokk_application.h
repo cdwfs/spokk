@@ -91,24 +91,6 @@ protected:
   // no resources are in use on the GPU and can be safely destroyed/recreated.
   virtual void HandleWindowResize(VkExtent2D new_window_extent);
 
-  // Initialize imgui. The provided render pass must be the one that will be active when
-  // RenderImgui() will be called.
-  bool InitImgui(VkRenderPass ui_render_pass);
-  // If visible=true, the imgui will be rendered, the cursor will be visible, and any
-  // keyboard/mouse consumed by imgui will be ignored by InputState.
-  // If visible=false, imgui will not be rendered (but UI controls throughout the code will still
-  // be processed, so if they're expensive, maybe make them conditional). The mouse cursor will
-  // be hidden, and InputState will get updated keyboard/mouse input every frame.
-  void ShowImgui(bool visible);
-  // Generate the commands to render the IMGUI elements created earlier in the frame.
-  // This function must only be called when the ui_render_pass passed to InitImgui() is active.
-  void RenderImgui(VkCommandBuffer cb) const;
-  // Cleans up all IMGUI resources. This is automatically called during application shutdown, but
-  // would need to be called manually to reinitialize the GUI subsystem at runtime (e,g. with a
-  // different render pass).
-  // Safe to call, even if IMGUI was not initialized or has already been destroyed.
-  void DestroyImgui(void);
-
   const VkAllocationCallbacks* host_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
   VkDebugReportCallbackEXT debug_report_callback_ = VK_NULL_HANDLE;
@@ -136,6 +118,24 @@ protected:
   bool force_exit_ = false;  // Application can set this to true to exit at the next available chance.
 
 private:
+  // Initialize imgui. The provided render pass must be the one that will be active when
+  // RenderImgui() will be called.
+  bool InitImgui(VkRenderPass ui_render_pass);
+  // If visible=true, the imgui will be rendered, the cursor will be visible, and any
+  // keyboard/mouse consumed by imgui will be ignored by InputState.
+  // If visible=false, imgui will not be rendered (but UI controls throughout the code will still
+  // be processed, so if they're expensive, maybe make them conditional). The mouse cursor will
+  // be hidden, and InputState will get updated keyboard/mouse input every frame.
+  void ShowImgui(bool visible);
+  // Generate the commands to render the IMGUI elements created earlier in the frame.
+  // This function must only be called when the ui_render_pass passed to InitImgui() is active.
+  void RenderImgui(VkCommandBuffer cb) const;
+  // Cleans up all IMGUI resources. This is automatically called during application shutdown, but
+  // would need to be called manually to reinitialize the GUI subsystem at runtime (e,g. with a
+  // different render pass).
+  // Safe to call, even if IMGUI was not initialized or has already been destroyed.
+  void DestroyImgui(void);
+
   VkResult CreateSwapchain(VkExtent2D extent);
 
   bool init_successful_ = false;
