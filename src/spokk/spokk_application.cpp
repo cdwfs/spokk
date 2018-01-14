@@ -195,6 +195,7 @@ VkResult SpokkVmaAlloc(void *pUserData, const spokk::Device& /*device*/, const V
   VmaAllocationCreateInfo vma_allocation_ci = {};
   vma_allocation_ci.usage = VMA_MEMORY_USAGE_UNKNOWN;
   vma_allocation_ci.requiredFlags = memory_property_flags;
+  vma_allocation_ci.memoryTypeBits = UINT32_MAX;
   if (memory_property_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
     vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
   }
