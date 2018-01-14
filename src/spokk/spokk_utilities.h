@@ -7,6 +7,11 @@
 #include <string>
 #include <vector>
 
+// No magic here, it just eliminates a typecast & some redundant typing.
+#define SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance, func) \
+  reinterpret_cast<PFN_##func>(vkGetInstanceProcAddr((instance), #func))
+#define SPOKK_VK_GET_DEVICE_PROC_ADDR(device, func) reinterpret_cast<PFN_##func>(vkGetDeviceProcAddr((device), #func))
+
 namespace spokk {
 
 // Effective Modern C++, Item 21: make_unique() is C++14 only, but easy to implement in C++11.

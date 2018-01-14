@@ -122,14 +122,17 @@ public:
     emissive_pipeline_.Init(&emissive_mesh_.mesh_format, &emissive_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(emissive_pipeline_.Finalize(device_));
 
+    // Look up the appropriate memory flags for uniform buffers on this platform
+    VkMemoryPropertyFlags uniform_buffer_memory_flags =
+        device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
+
     // Create pipelined buffer of light uniforms
     VkBufferCreateInfo light_uniforms_ci = {};
     light_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     light_uniforms_ci.size = sizeof(LightUniforms);
     light_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     light_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(
-        light_uniforms_.Create(device_, PFRAME_COUNT, light_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(light_uniforms_.Create(device_, PFRAME_COUNT, light_uniforms_ci, uniform_buffer_memory_flags));
     // Default light settings
     lights_.hemi_down_color = glm::vec4(0.471f, 0.412f, 0.282f, 0.75f);
     lights_.hemi_up_color = glm::vec4(0.290f, 0.390f, 0.545f, 0.0f);
@@ -148,8 +151,7 @@ public:
     material_uniforms_ci.size = sizeof(MaterialUniforms);
     material_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     material_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(
-        material_uniforms_.Create(device_, PFRAME_COUNT, material_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(material_uniforms_.Create(device_, PFRAME_COUNT, material_uniforms_ci, uniform_buffer_memory_flags));
     material_.albedo = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
     material_.emissive_color = glm::vec4(0.5f, 0.5f, 0.0f, 0.0f);
     material_.spec_color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
@@ -161,7 +163,7 @@ public:
     mesh_uniforms_ci.size = sizeof(MeshUniforms);
     mesh_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     mesh_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, mesh_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, mesh_uniforms_ci, uniform_buffer_memory_flags));
 
     // Create pipelined buffer of shader uniforms
     VkBufferCreateInfo camera_constants_ci = {};
@@ -169,8 +171,7 @@ public:
     camera_constants_ci.size = sizeof(CameraConstants);
     camera_constants_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     camera_constants_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(
-        camera_constants_.Create(device_, PFRAME_COUNT, camera_constants_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(camera_constants_.Create(device_, PFRAME_COUNT, camera_constants_ci, uniform_buffer_memory_flags));
 
     for (const auto& dset_layout_ci : skybox_shader_program_.dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
@@ -277,7 +278,7 @@ public:
       glm::vec3 spot_dir_wsn = -lights_.spot_neg_dir_wsn;
       float spot_falloff_degrees_outer = 0, spot_falloff_degrees_inner = 0;
       DecodeSpotlightFalloffAngles(
-        &spot_falloff_degrees_inner, &spot_falloff_degrees_outer, lights_.spot_falloff_angles);
+          &spot_falloff_degrees_inner, &spot_falloff_degrees_outer, lights_.spot_falloff_angles);
       float spot_falloff_degrees_inner_original = spot_falloff_degrees_inner;
       float spot_falloff_degrees_outer_original = spot_falloff_degrees_outer;
       ImGui::InputFloat3("Position##Spot", &lights_.spot_pos_ws_inverse_range.x);
@@ -290,14 +291,14 @@ public:
       lights_.spot_pos_ws_inverse_range.w = 1.0f / spot_range;
       lights_.spot_neg_dir_wsn = glm::vec4(-spot_dir_wsn, 0.0f);
       if (spot_falloff_degrees_inner != spot_falloff_degrees_inner_original &&
-        spot_falloff_degrees_inner > spot_falloff_degrees_outer) {
+          spot_falloff_degrees_inner > spot_falloff_degrees_outer) {
         spot_falloff_degrees_outer = spot_falloff_degrees_inner;
       } else if (spot_falloff_degrees_outer != spot_falloff_degrees_outer_original &&
-        spot_falloff_degrees_outer < spot_falloff_degrees_inner) {
+          spot_falloff_degrees_outer < spot_falloff_degrees_inner) {
         spot_falloff_degrees_inner = spot_falloff_degrees_outer;
       }
       EncodeSpotlightFalloffAngles(
-        &lights_.spot_falloff_angles, spot_falloff_degrees_inner, spot_falloff_degrees_outer);
+          &lights_.spot_falloff_angles, spot_falloff_degrees_inner, spot_falloff_degrees_outer);
 
       ImGui::TreePop();
     }
@@ -319,22 +320,22 @@ public:
     camera_consts->view_proj_inv = glm::inverse(view_proj);
     camera_consts->view_inv = glm::inverse(view);
     camera_consts->proj_inv = glm::inverse(proj);
-    camera_constants_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(camera_constants_.FlushPframeHostCache(device_, pframe_index_));
 
     // Update mesh uniforms
     MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
     mesh_uniforms->o2w = ComposeTransform(glm::vec3(0.0f, 0.0f, 0.0f), glm::quat_identity<float, glm::highp>(), 5.0f);
-    mesh_uniforms_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
     // Update material uniforms
     MaterialUniforms* material_uniforms = (MaterialUniforms*)material_uniforms_.Mapped(pframe_index_);
     *material_uniforms = material_;
-    material_uniforms_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(material_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
     // Update light uniforms
     LightUniforms* light_uniforms = (LightUniforms*)light_uniforms_.Mapped(pframe_index_);
     *light_uniforms = lights_;
-    light_uniforms_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(light_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
     // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];

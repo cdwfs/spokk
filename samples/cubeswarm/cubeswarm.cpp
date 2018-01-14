@@ -34,10 +34,6 @@ public:
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
-    // Initialize IMGUI
-    InitImgui(render_pass_);
-    ShowImgui(false);
-
     // Renderer
     Renderer::CreateInfo renderer_ci = {};
     renderer_ci.pframe_count = PFRAME_COUNT;
@@ -129,7 +125,7 @@ public:
     VkViewport viewport = Rect2DToViewport(scissor_rect);
     vkCmdSetViewport(primary_cb, 0, 1, &viewport);
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
-    renderer_.RenderView(primary_cb, camera_->getViewMatrix(), camera_->getProjectionMatrix(),
+    renderer_.RenderView(device_, primary_cb, camera_->getViewMatrix(), camera_->getProjectionMatrix(),
         glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0));
     vkCmdEndRenderPass(primary_cb);
   }

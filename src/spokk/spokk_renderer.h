@@ -41,7 +41,8 @@ public:
   MeshInstance* CreateInstance(const Mesh* mesh, const Material* material);
   // ignore DeleteInstance for now
 
-  void RenderView(VkCommandBuffer cb, const glm::mat4& view, const glm::mat4& proj, const glm::vec4& time_and_res);
+  void RenderView(const Device& device, VkCommandBuffer cb, const glm::mat4& view, const glm::mat4& proj,
+      const glm::vec4& time_and_res);
 
   const std::vector<DescriptorSetLayoutInfo> GetCommonDescriptorSetLayoutInfos(void) const {
     DescriptorSetLayoutInfo empty_material_layout = {};

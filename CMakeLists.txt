@@ -123,6 +123,7 @@ TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} spirv-cross-cpp $
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
     "third_party/glm"
     "third_party/imgui"
+    ${VULKAN_MEMORY_ALLOCATOR_DIR}
     "third_party"
     ${VULKAN_INCLUDE_DIR}
     "src/spokk"

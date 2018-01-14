@@ -120,6 +120,7 @@ SET(SHADERC_TARGETS
     build-version
     check-copyright
     glslc
+    glslc_doc_README
     glslc_exe
     shaderc
     shaderc_combined_genfile
@@ -145,3 +146,6 @@ FOREACH(SHADERC_TARGET IN LISTS
         SET_TARGET_PROPERTIES(${SHADERC_TARGET} PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD TRUE)
     ENDIF()
 ENDFOREACH()
+
+# VulkanMemoryAllocator
+set(VULKAN_MEMORY_ALLOCATOR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/VulkanMemoryAllocator/src PARENT_SCOPE)

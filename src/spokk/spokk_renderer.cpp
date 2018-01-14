@@ -221,7 +221,7 @@ MeshInstance* Renderer::CreateInstance(const Mesh* mesh, const Material* materia
   return &instances_[index];
 }
 
-void Renderer::RenderView(
+void Renderer::RenderView(const Device& device,
     VkCommandBuffer cb, const glm::mat4& view, const glm::mat4& proj, const glm::vec4& time_and_res) {
   // advance pframe
   pframe_index_ = (pframe_index_ + 1) % pframe_count_;
@@ -244,7 +244,7 @@ void Renderer::RenderView(
       instance_xforms[i].world_inv = world_inv;
     }
   }
-  instance_const_buffers_.FlushPframeHostCache(pframe_index_);
+  SPOKK_VK_CHECK(instance_const_buffers_.FlushPframeHostCache(device, pframe_index_));
 
   // Fill in world constant buffer
   CameraConstants* camera_constants = (CameraConstants*)world_const_buffers_.Mapped(pframe_index_);
@@ -258,7 +258,7 @@ void Renderer::RenderView(
   camera_constants->view_proj_inv = glm::inverse(view_proj);
   camera_constants->view_inv = glm::inverse(view);
   camera_constants->proj_inv = glm::inverse(proj);
-  world_const_buffers_.FlushPframeHostCache(pframe_index_);
+  SPOKK_VK_CHECK(world_const_buffers_.FlushPframeHostCache(device, pframe_index_));
 
   VkDescriptorSet active_global_dset = VK_NULL_HANDLE;
   VkDescriptorSet active_material_dset = VK_NULL_HANDLE;
