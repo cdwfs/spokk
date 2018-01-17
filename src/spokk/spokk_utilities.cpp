@@ -348,6 +348,7 @@ VkResult GetSupportedDeviceExtensions(VkPhysicalDevice physical_device,
       }
     }
     if (!found) {
+      fprintf(stderr, "Extension %s not supported\n", extension_name);
       out_supported_extensions->clear();
       return VK_ERROR_EXTENSION_NOT_PRESENT;
     }

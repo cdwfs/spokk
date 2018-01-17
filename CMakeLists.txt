@@ -53,6 +53,22 @@ IF(${MSVC})
     TARGET_LINK_LIBRARIES(spokkle shlwapi)
 ENDIF(${MSVC})
 
+# Certain source files from third_party are included directly
+# in spokk targets, but must still be exempt from the -Wall -Werror
+# policy.
+IF(${MSVC})
+    SET_PROPERTY(
+      SOURCE ${IMGUI_SOURCE_FILES}
+      APPEND PROPERTY COMPILE_FLAGS /W0
+    )
+ELSEIF(${UNIX})
+    SET_PROPERTY(
+      SOURCE ${IMGUI_SOURCE_FILES}
+      APPEND PROPERTY COMPILE_FLAGS -w
+    )
+ENDIF()
+
+
 # libspokk
 SET(SPOKK_HEADERS
     src/spokk/image_file.h
@@ -106,6 +122,7 @@ TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME} glfw ${GLFW_LIBRARIES} spirv-cross-cpp $
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
     "third_party/glm"
     "third_party/imgui"
+    ${VULKAN_MEMORY_ALLOCATOR_DIR}
     "third_party"
     ${VULKAN_INCLUDE_DIR}
     "src/spokk"

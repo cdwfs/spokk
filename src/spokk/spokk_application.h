@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+struct VmaAllocator_T;  // from vk_mem_alloc.h
+
 namespace spokk {
 
 // How many frames can be pipelined ("in flight") simultaneously? The higher the count, the more independent copies
@@ -63,6 +65,7 @@ public:
     // If NULL, no device features are enabled. To easily enable all supported features,
     // pass EnableAllSupportedDeviceFeatures.
     SetDeviceFeaturesFunc pfn_set_device_features = nullptr;
+    const VkAllocationCallbacks* host_allocator = nullptr;
   };
 
   explicit Application(const CreateInfo& ci);
@@ -84,42 +87,15 @@ public:
   virtual void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) = 0;
 
 protected:
-  bool IsInstanceLayerEnabled(const std::string& layer_name) const;
-  bool IsInstanceExtensionEnabled(const std::string& layer_name) const;
-  bool IsDeviceExtensionEnabled(const std::string& layer_name) const;
-
   // Overloads must call the base class resize method before performing their own work.
   // The first thing it does is call vkDeviceWaitIdle(), so subclasses can safely assume that
   // no resources are in use on the GPU and can be safely destroyed/recreated.
   virtual void HandleWindowResize(VkExtent2D new_window_extent);
 
-  // Initialize imgui. The provided render pass must be the one that will be active when
-  // RenderImgui() will be called.
-  bool InitImgui(VkRenderPass ui_render_pass);
-  // If visible=true, the imgui will be rendered, the cursor will be visible, and any
-  // keyboard/mouse consumed by imgui will be ignored by InputState.
-  // If visible=false, imgui will not be rendered (but UI controls throughout the code will still
-  // be processed, so if they're expensive, maybe make them conditional). The mouse cursor will
-  // be hidden, and InputState will get updated keyboard/mouse input every frame.
-  void ShowImgui(bool visible);
-  // Generate the commands to render the IMGUI elements created earlier in the frame.
-  // This function must only be called when the ui_render_pass passed to InitImgui() is active.
-  void RenderImgui(VkCommandBuffer cb) const;
-  // Cleans up all IMGUI resources. This is automatically called during application shutdown, but
-  // would need to be called manually to reinitialize the GUI subsystem at runtime (e,g. with a
-  // different render pass).
-  // Safe to call, even if IMGUI was not initialized or has already been destroyed.
-  void DestroyImgui(void);
-
-  // TODO(https://github.com/cdwfs/spokk/issues/24): Move layer/extension lists into DeviceContext.
   const VkAllocationCallbacks* host_allocator_ = nullptr;
-  const DeviceAllocationCallbacks* device_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
-  std::vector<VkLayerProperties> instance_layers_ = {};
-  std::vector<VkExtensionProperties> instance_extensions_ = {};
   VkDebugReportCallbackEXT debug_report_callback_ = VK_NULL_HANDLE;
   VkSurfaceKHR surface_ = VK_NULL_HANDLE;
-  std::vector<VkExtensionProperties> device_extensions_ = {};
 
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
   VkSurfaceFormatKHR swapchain_surface_format_ = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
@@ -143,6 +119,24 @@ protected:
   bool force_exit_ = false;  // Application can set this to true to exit at the next available chance.
 
 private:
+  // Initialize imgui. The provided render pass must be the one that will be active when
+  // RenderImgui() will be called.
+  bool InitImgui(VkRenderPass ui_render_pass);
+  // If visible=true, the imgui will be rendered, the cursor will be visible, and any
+  // keyboard/mouse consumed by imgui will be ignored by InputState.
+  // If visible=false, imgui will not be rendered (but UI controls throughout the code will still
+  // be processed, so if they're expensive, maybe make them conditional). The mouse cursor will
+  // be hidden, and InputState will get updated keyboard/mouse input every frame.
+  void ShowImgui(bool visible);
+  // Generate the commands to render the IMGUI elements created earlier in the frame.
+  // This function must only be called when the ui_render_pass passed to InitImgui() is active.
+  void RenderImgui(VkCommandBuffer cb) const;
+  // Cleans up all IMGUI resources. This is automatically called during application shutdown, but
+  // would need to be called manually to reinitialize the GUI subsystem at runtime (e,g. with a
+  // different render pass).
+  // Safe to call, even if IMGUI was not initialized or has already been destroyed.
+  void DestroyImgui(void);
+
   VkResult CreateSwapchain(VkExtent2D extent);
 
   bool init_successful_ = false;
@@ -175,6 +169,9 @@ private:
 
   float average_total_frame_time_ms_ = 0;
   float average_total_gpu_primary_time_ms_ = 0;
+
+  VmaAllocator_T* vma_allocator_ = nullptr;
+  DeviceAllocationCallbacks device_allocator_ = {};
 };
 
 }  // namespace spokk

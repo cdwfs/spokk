@@ -136,8 +136,6 @@ public:
     tspool_ci.queue_family_index = graphics_and_present_queue_->family;
     SPOKK_VK_CHECK(timestamp_pool_.Create(device_, tspool_ci));
 
-    ShowImgui(true);
-
     // Create swapchain-sized buffers
     CreateRenderBuffers(swapchain_extent_);
   }
@@ -186,7 +184,7 @@ public:
     glm::mat4 w2v = camera_->getViewMatrix();
     const glm::mat4 proj = camera_->getProjectionMatrix();
     uniforms->viewproj = proj * w2v;
-    scene_uniforms_.FlushPframeHostCache(pframe_index_);
+    scene_uniforms_.FlushPframeHostCache(device_, pframe_index_);
 
     // Update object-to-world matrices.
     const float secs = 0;//(float)seconds_elapsed_;
@@ -205,7 +203,7 @@ public:
         instance_scale_);
       // clang-format on
     }
-    mesh_uniforms_.FlushPframeHostCache(pframe_index_);
+    mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_);
 
     // Write indirect draw commands
     VkDrawIndexedIndirectCommand* indirect_draws =
@@ -218,7 +216,7 @@ public:
       indirect_draws[i].vertexOffset = 0;
       indirect_draws[i].firstInstance = i;
     }
-    indirect_draw_buffers_.FlushPframeHostCache(pframe_index_);
+    indirect_draw_buffers_.FlushPframeHostCache(device_, pframe_index_);
 
     // Retrieve earlier timestamps
     std::array<double, TIMESTAMP_COUNT> timestamps_seconds;

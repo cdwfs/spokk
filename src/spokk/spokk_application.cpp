@@ -48,6 +48,18 @@ using namespace spokk;
 #include "spokk_imgui_impl_glfw_vulkan.h"
 // clang-format on
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4127)  // constant conditional expression
+#pragma warning(disable : 4100)  // unreferenced formal parameter
+#pragma warning(disable : 4189)  // initialized-but-unused local variable
+#endif
+#define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -181,6 +193,44 @@ VkResult FindPhysicalDevice(const std::vector<Application::QueueFamilyRequest> &
   return VK_ERROR_INITIALIZATION_FAILED;
 }
 
+VkResult SpokkVmaAlloc(void *pUserData, const spokk::Device& /*device*/, const VkMemoryRequirements &memory_reqs,
+    VkMemoryPropertyFlags memory_property_flags, spokk::DeviceAllocationScope /*allocation_scope*/,
+    spokk::DeviceMemoryAllocation *out_allocation) {
+  VmaAllocator vma_allocator = reinterpret_cast<VmaAllocator>(pUserData);
+  VkResult result = VK_SUCCESS;
+  *out_allocation = {};
+
+  VmaAllocationCreateInfo vma_allocation_ci = {};
+  vma_allocation_ci.usage = VMA_MEMORY_USAGE_UNKNOWN;
+  vma_allocation_ci.requiredFlags = memory_property_flags;
+  vma_allocation_ci.memoryTypeBits = UINT32_MAX;
+  if (memory_property_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+    vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
+  }
+  vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_USER_DATA_COPY_STRING_BIT;
+  vma_allocation_ci.pUserData = "beans and/or franks";
+  VmaAllocation vma_allocation = {};
+  VmaAllocationInfo vma_allocation_info = {};
+  result = vmaAllocateMemory(vma_allocator, &memory_reqs, &vma_allocation_ci, &vma_allocation, &vma_allocation_info);
+  if (result == VK_SUCCESS) {
+    out_allocation->device_memory = vma_allocation_info.deviceMemory;
+    out_allocation->offset = vma_allocation_info.offset;
+    out_allocation->size = vma_allocation_info.size;
+    out_allocation->mapped = vma_allocation_info.pMappedData;
+    out_allocation->allocator_data = (void *)vma_allocation;
+  }
+
+  return result;
+}
+
+void SpokkVmaFree(void *pUserData, const spokk::Device & /*device*/, spokk::DeviceMemoryAllocation &allocation) {
+  VmaAllocator vma_allocator = reinterpret_cast<VmaAllocator>(pUserData);
+  ZOMBO_ASSERT(vma_allocator, "Free called before Alloc");
+  VmaAllocation vma_allocation = (VmaAllocation)allocation.allocator_data;
+  vmaFreeMemory(vma_allocator, vma_allocation);
+  allocation = {};
+}
+
 }  // namespace
 
 //
@@ -209,6 +259,8 @@ Application::Application(const CreateInfo &ci) {
   }
 
   // Initialize Vulkan
+  host_allocator_ = ci.host_allocator;
+
   std::vector<const char *> required_instance_layer_names = {};
   std::vector<const char *> optional_instance_layer_names = {
 #if defined(_DEBUG)
@@ -216,13 +268,14 @@ Application::Application(const CreateInfo &ci) {
 #endif
   };
   if (ci.debug_report_flags != 0) {
-#if defined(_DEBUG)
+#if defined(_DEBUG)  // validation layers should only be enabled in debug builds
     optional_instance_layer_names.push_back("VK_LAYER_LUNARG_standard_validation");
 #endif
   }
   std::vector<const char *> enabled_instance_layer_names = {};
-  SPOKK_VK_CHECK(GetSupportedInstanceLayers(
-      required_instance_layer_names, optional_instance_layer_names, &instance_layers_, &enabled_instance_layer_names));
+  std::vector<VkLayerProperties> enabled_instance_layer_properties = {};
+  SPOKK_VK_CHECK(GetSupportedInstanceLayers(required_instance_layer_names, optional_instance_layer_names,
+      &enabled_instance_layer_properties, &enabled_instance_layer_names));
 
   std::vector<const char *> required_instance_extension_names = {};
   if (ci.enable_graphics) {
@@ -234,8 +287,9 @@ Application::Application(const CreateInfo &ci) {
     optional_instance_extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
   }
   std::vector<const char *> enabled_instance_extension_names;
-  SPOKK_VK_CHECK(GetSupportedInstanceExtensions(instance_layers_, required_instance_extension_names,
-      optional_instance_extension_names, &instance_extensions_, &enabled_instance_extension_names));
+  std::vector<VkExtensionProperties> enabled_instance_extension_properties = {};
+  SPOKK_VK_CHECK(GetSupportedInstanceExtensions(enabled_instance_layer_properties, required_instance_extension_names,
+      optional_instance_extension_names, &enabled_instance_extension_properties, &enabled_instance_extension_names));
 
   VkApplicationInfo application_info = {};
   application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -253,14 +307,20 @@ Application::Application(const CreateInfo &ci) {
   instance_ci.ppEnabledExtensionNames = enabled_instance_extension_names.data();
   SPOKK_VK_CHECK(vkCreateInstance(&instance_ci, host_allocator_, &instance_));
 
-  if (IsInstanceExtensionEnabled(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
+  bool is_debug_report_ext_enabled = false;
+  for (const char *ext_name : enabled_instance_extension_names) {
+    if (strcmp(ext_name, VK_EXT_DEBUG_REPORT_EXTENSION_NAME) == 0) {
+      is_debug_report_ext_enabled = true;
+      break;
+    }
+  }
+  if (is_debug_report_ext_enabled && ci.debug_report_flags != 0) {
     VkDebugReportCallbackCreateInfoEXT debug_report_callback_ci = {};
     debug_report_callback_ci.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
     debug_report_callback_ci.flags = ci.debug_report_flags;
     debug_report_callback_ci.pfnCallback = MyDebugReportCallback;
     debug_report_callback_ci.pUserData = nullptr;
-    auto create_debug_report_func =
-        (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_, "vkCreateDebugReportCallbackEXT");
+    auto create_debug_report_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkCreateDebugReportCallbackEXT);
     SPOKK_VK_CHECK(
         create_debug_report_func(instance_, &debug_report_callback_ci, host_allocator_, &debug_report_callback_));
   }
@@ -294,10 +354,15 @@ Application::Application(const CreateInfo &ci) {
     required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
   }
-  const std::vector<const char *> optional_device_extension_names = {};
-  std::vector<const char *> enabled_device_extension_names;
-  SPOKK_VK_CHECK(GetSupportedDeviceExtensions(physical_device, instance_layers_, required_device_extension_names,
-      optional_device_extension_names, &device_extensions_, &enabled_device_extension_names));
+  std::vector<const char *> optional_device_extension_names = {
+      VK_EXT_DEBUG_MARKER_EXTENSION_NAME,  // TODO(cort): may want to hide this behind a flag, enabled in debug &
+                                           // profiling builds.
+  };
+  std::vector<const char *> enabled_device_extension_names = {};
+  std::vector<VkExtensionProperties> enabled_device_extension_properties = {};
+  SPOKK_VK_CHECK(
+      GetSupportedDeviceExtensions(physical_device, enabled_instance_layer_properties, required_device_extension_names,
+          optional_device_extension_names, &enabled_device_extension_properties, &enabled_device_extension_names));
 
   VkPhysicalDeviceFeatures supported_device_features = {};
   vkGetPhysicalDeviceFeatures(physical_device, &supported_device_features);
@@ -349,6 +414,13 @@ Application::Application(const CreateInfo &ci) {
   }
   ZOMBO_ASSERT(queues.size() == total_queue_count, "queue count mismatch");
 
+  // Initialize the device memory allocator
+  VmaAllocatorCreateInfo allocator_ci = {};
+  allocator_ci.physicalDevice = physical_device;
+  allocator_ci.device = logical_device;
+  SPOKK_VK_CHECK(vmaCreateAllocator(&allocator_ci, &vma_allocator_));
+  device_allocator_ = {vma_allocator_, SpokkVmaAlloc, SpokkVmaFree};
+
   // TODO(cort): hmmm, maybe persist this across runs some day...
   VkPipelineCacheCreateInfo pipeline_cache_ci = {};
   pipeline_cache_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
@@ -357,7 +429,8 @@ Application::Application(const CreateInfo &ci) {
 
   // Populate the Device object, which from now on "owns" all of these Vulkan handles.
   device_.Create(logical_device, physical_device, pipeline_cache, queues.data(), (uint32_t)queues.size(),
-      enabled_device_features, host_allocator_, device_allocator_);
+      enabled_device_features, enabled_instance_layer_properties, enabled_instance_extension_properties,
+      enabled_device_extension_properties, host_allocator_, &device_allocator_);
 
   graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
 
@@ -473,14 +546,13 @@ Application::~Application() {
       swapchain_ = VK_NULL_HANDLE;
     }
   }
-  if (surface_ != VK_NULL_HANDLE) {
-    window_.reset();
-    glfwTerminate();
+  if (vma_allocator_) {
+    vmaDestroyAllocator(vma_allocator_);
+    vma_allocator_ = VK_NULL_HANDLE;
   }
   device_.Destroy();
   if (debug_report_callback_ != VK_NULL_HANDLE) {
-    auto destroy_debug_report_func =
-        (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance_, "vkDestroyDebugReportCallbackEXT");
+    auto destroy_debug_report_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkDestroyDebugReportCallbackEXT);
     destroy_debug_report_func(instance_, debug_report_callback_, host_allocator_);
   }
   if (surface_ != VK_NULL_HANDLE) {
@@ -490,6 +562,10 @@ Application::~Application() {
   if (instance_ != VK_NULL_HANDLE) {
     vkDestroyInstance(instance_, host_allocator_);
     instance_ = VK_NULL_HANDLE;
+  }
+  if (surface_ != VK_NULL_HANDLE) {
+    window_.reset();
+    glfwTerminate();
   }
 }
 
@@ -548,9 +624,6 @@ int Application::Run() {
     ImGui::End();
 
     input_state_.Update();
-    if (input_state_.IsPressed(InputState::DIGITAL_MENU)) {
-      ShowImgui(!is_imgui_visible_);
-    }
     Update(dt);
     if (force_exit_) {
       break;
@@ -649,6 +722,15 @@ int Application::Run() {
     }
     timestamp_query_pool_.WriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, TIMESTAMP_ID_END_PRIMARY);
 
+#if 0
+    VmaStats vma_stats = {};
+    vmaCalculateStats(vma_allocator_, &vma_stats);
+    char *vma_stats_string = NULL;
+    vmaBuildStatsString(vma_allocator_, &vma_stats_string, VK_TRUE);
+    printf(vma_stats_string);
+    vmaFreeStatsString(vma_allocator_, vma_stats_string);
+#endif
+
     // optional UI render pass
     if (is_imgui_visible_) {
       imgui_render_pass_.begin_info.framebuffer = imgui_framebuffers_[swapchain_image_index];
@@ -656,7 +738,14 @@ int Application::Run() {
       vkCmdBeginRenderPass(cb, &imgui_render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
       RenderImgui(cb);
       vkCmdEndRenderPass(cb);
+    } else if (is_imgui_enabled_ && !is_imgui_visible_) {
+      RenderImgui(cb); // still needs to be called if the UI system is active, even if nothing is drawn.
     }
+    // This must happen outside the IMGUI NewFrame/Render pair, so may lag by a frame, but enh.
+    if (input_state_.IsPressed(InputState::DIGITAL_MENU)) {
+      ShowImgui(!is_imgui_visible_);
+    }
+
 
     SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
     const VkPipelineStageFlags submit_wait_stages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -702,31 +791,6 @@ int Application::Run() {
     pframe_index_ = (pframe_index_ + 1) % PFRAME_COUNT;
   }
   return 0;
-}
-
-bool Application::IsInstanceLayerEnabled(const std::string &layer_name) const {
-  for (const auto &layer : instance_layers_) {
-    if (layer_name == layer.layerName) {
-      return true;
-    }
-  }
-  return false;
-}
-bool Application::IsInstanceExtensionEnabled(const std::string &extension_name) const {
-  for (const auto &extension : instance_extensions_) {
-    if (extension_name == extension.extensionName) {
-      return true;
-    }
-  }
-  return false;
-}
-bool Application::IsDeviceExtensionEnabled(const std::string &extension_name) const {
-  for (const auto &extension : device_extensions_) {
-    if (extension_name == extension.extensionName) {
-      return true;
-    }
-  }
-  return false;
 }
 
 void Application::HandleWindowResize(VkExtent2D new_window_extent) {

@@ -115,7 +115,7 @@ public:
     SPOKK_VK_CHECK(vkQueueSubmit(compute_queue->handle, 1, &submit_info, compute_done_fence));
 
     SPOKK_VK_CHECK(vkWaitForFences(device_, 1, &compute_done_fence, VK_TRUE, UINT64_MAX));
-    out_buffer.InvalidateHostCache();
+    SPOKK_VK_CHECK(out_buffer.InvalidateHostCache(device_));
 
     const int32_t *out_data = (const int32_t *)out_buffer.Mapped();
     bool valid = true;

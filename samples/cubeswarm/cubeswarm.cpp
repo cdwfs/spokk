@@ -29,7 +29,7 @@ public:
     seconds_elapsed_ = 0;
 
     camera_ =
-      my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
+        my_make_unique<CameraPersp>(swapchain_extent_.width, swapchain_extent_.height, FOV_DEGREES, Z_NEAR, Z_FAR);
     const glm::vec3 initial_camera_pos(-1, 0, 6);
     const glm::vec3 initial_camera_target(0, 0, 0);
     const glm::vec3 initial_camera_up(0, 1, 0);
@@ -44,7 +44,7 @@ public:
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
-      GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+        GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
     albedo_tex_.CreateFromFile(device_, graphics_and_present_queue_, "data/redf.ktx");
 
@@ -59,13 +59,17 @@ public:
     int mesh_load_error = mesh_.CreateFromFile(device_, "data/teapot.mesh");
     ZOMBO_ASSERT(!mesh_load_error, "load error: %d", mesh_load_error);
 
+    // Look up the appropriate memory flags for uniform buffers on this platform
+    VkMemoryPropertyFlags uniform_buffer_memory_flags =
+        device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
+
     // Create pipelined buffer of per-mesh object-to-world matrices.
     VkBufferCreateInfo o2w_buffer_ci = {};
     o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(glm::mat4);
     o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, uniform_buffer_memory_flags));
 
     // Create pipelined buffer of shader uniforms
     VkBufferCreateInfo scene_uniforms_ci = {};
@@ -73,8 +77,7 @@ public:
     scene_uniforms_ci.size = sizeof(SceneUniforms);
     scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(
-      scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, uniform_buffer_memory_flags));
 
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
@@ -89,7 +92,7 @@ public:
     }
     DescriptorSetWriter dset_writer(mesh_shader_program_.dset_layout_cis[0]);
     dset_writer.BindImage(
-      albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mesh_fs_.GetDescriptorBindPoint("tex").binding);
+        albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mesh_fs_.GetDescriptorBindPoint("tex").binding);
     dset_writer.BindSampler(sampler_, mesh_fs_.GetDescriptorBindPoint("samp").binding);
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
@@ -140,12 +143,12 @@ public:
     // Update uniforms
     SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
     uniforms->time_and_res =
-      glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+        glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
     uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
     glm::mat4 w2v = camera_->getViewMatrix();
     const glm::mat4 proj = camera_->getProjectionMatrix();
     uniforms->viewproj = proj * w2v;
-    scene_uniforms_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(scene_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
     // Update object-to-world matrices.
     const float secs = (float)seconds_elapsed_;
@@ -164,7 +167,7 @@ public:
         3.0f);
       // clang-format on
     }
-    mesh_uniforms_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
     // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
@@ -177,7 +180,7 @@ public:
     vkCmdSetViewport(primary_cb, 0, 1, &viewport);
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
-      0, 1, &dsets_[pframe_index_], 0, nullptr);
+        0, 1, &dsets_[pframe_index_], 0, nullptr);
     mesh_.BindBuffers(primary_cb);
     vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0, 0, 0);
     vkCmdEndRenderPass(primary_cb);
@@ -208,12 +211,12 @@ private:
     VkImageCreateInfo depth_image_ci = render_pass_.GetAttachmentImageCreateInfo(1, extent);
     depth_image_ = {};
     SPOKK_VK_CHECK(depth_image_.Create(
-      device_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
+        device_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
 
     // Create VkFramebuffers
     std::vector<VkImageView> attachment_views = {
-      VK_NULL_HANDLE,  // filled in below
-      depth_image_.view,
+        VK_NULL_HANDLE,  // filled in below
+        depth_image_.view,
     };
     VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(extent);
     framebuffer_ci.pAttachments = attachment_views.data();
@@ -254,7 +257,7 @@ int main(int argc, char* argv[]) {
   (void)argv;
 
   std::vector<Application::QueueFamilyRequest> queue_requests = {
-    {(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT), true, 1, 0.0f}};
+      {(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT), true, 1, 0.0f}};
   Application::CreateInfo app_ci = {};
   app_ci.queue_family_requests = queue_requests;
   app_ci.pfn_set_device_features = EnableMinimumDeviceFeatures;
