@@ -93,21 +93,6 @@ TODO:
   - Materials are still totally placeholder
 */
 
-namespace {
-#if defined(ZOMBO_COMPILER_MSVC)
-#pragma float_control(precise, on, push)
-#endif
-glm::vec3 ExtractViewPos(const glm::mat4& view) {
-  glm::mat3 view_rot(
-      view[0][0], view[0][1], view[0][2], view[1][0], view[1][1], view[1][2], view[2][0], view[2][1], view[2][2]);
-  glm::vec3 d(view[3][0], view[3][1], view[3][2]);
-  return -d * view_rot;
-}
-#if defined(ZOMBO_COMPILER_MSVC)
-#pragma float_control(pop)
-#endif
-}  // namespace
-
 namespace spokk {
 
 Renderer::Renderer() { instances_.reserve(MAX_INSTANCE_COUNT); }
@@ -222,8 +207,8 @@ MeshInstance* Renderer::CreateInstance(const Mesh* mesh, const Material* materia
   return &instances_[index];
 }
 
-void Renderer::RenderView(const Device& device,
-    VkCommandBuffer cb, const glm::mat4& view, const glm::mat4& proj, const glm::vec4& time_and_res) {
+void Renderer::RenderView(const Device& device, VkCommandBuffer cb, const glm::mat4& view, const glm::mat4& proj,
+    const glm::vec4& time_and_res) {
   // advance pframe
   pframe_index_ = (pframe_index_ + 1) % pframe_count_;
 
@@ -246,7 +231,7 @@ void Renderer::RenderView(const Device& device,
   glm::mat4 view_proj = proj * view;
   camera_constants->time_and_res = time_and_res;  // TODO(cort): this belongs in a separate buffer
   camera_constants->eye_pos_ws = glm::vec4(ExtractViewPos(view), 1.0f);
-  camera_constants->eye_dir_wsn = glm::normalize(glm::vec4(-view[0][2], -view[1][2], -view[2][2], 0));
+  camera_constants->eye_dir_wsn = glm::vec4(glm::normalize(ExtractViewDir(view)), 0);
   camera_constants->view_proj = view_proj;
   camera_constants->view = view;
   camera_constants->proj = proj;

@@ -60,4 +60,11 @@ namespace spokk {
 // Construct a transformation matrix from the supplied operations, suitable for M*v.
 glm::mat4 ComposeTransform(const glm::vec3 translation, const glm::quat rotation, const float uniform_scale);
 
+// Given a world->view transformation matrix, extract the view position.
+glm::vec3 ExtractViewPos(const glm::mat4& view);
+
+// Given a world->view transformation matrix, extract the view direction.
+// This vector is not guaranteed to be unit length.
+glm::vec3 ExtractViewDir(const glm::mat4& view);
+
 }  // namespace spokk
