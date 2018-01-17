@@ -581,7 +581,7 @@ int Application::Run() {
 
 #if 0  // IMGUI demo window
       if (is_imgui_visible_) {
-        ImGui::ShowTestWindow();
+        ImGui::ShowDemoWindow();
       }
 #endif
     }
