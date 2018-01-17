@@ -6,7 +6,8 @@
 
 /*
 - The world is full of instances.
-- An instance has a unique transform. The transform may be updated every simulation tick.
+- An instance has a unique transform (pos, quat, uniform scale). The transform may be updated every
+  simulation tick.
 - An instance references a (potentially shared) mesh and material.
 - An instance may be active or inactive. If inactive, it does not participate in any rendering.
 - instances are sorted by Material, then by ShaderProgram, then by Mesh. This sorting is stable across

@@ -68,6 +68,8 @@ private:
   uint32_t pframe_index_ = 0, pframe_count_ = 0;
 
   // TODO(cort): this makes me deeply uncomfortable, but can't think of an alternative right now.
+  // They should be extracted from a representative shader, not hard-coded to match the expected
+  // contents.
   VkDescriptorSetLayout world_dset_layout_ = VK_NULL_HANDLE;
   VkDescriptorSetLayout instance_dset_layout_ = VK_NULL_HANDLE;
   DescriptorPool dpool_ = {};
