@@ -40,9 +40,6 @@ layout (set = 0, binding = 0) uniform
   SPOKK_MAT4(view_proj);
   SPOKK_MAT4(view);
   SPOKK_MAT4(proj);
-  SPOKK_MAT4(view_proj_inv);
-  SPOKK_MAT4(view_inv);
-  SPOKK_MAT4(proj_inv);
 #ifdef __cplusplus
 };
 }
@@ -58,9 +55,9 @@ layout (set = 2, binding = 0) uniform
 #endif
 InstanceTransforms {
   SPOKK_MAT4(world);
-  SPOKK_MAT4(world_view);
-  SPOKK_MAT4(world_view_proj);
-  SPOKK_MAT4(world_inv);
+  SPOKK_MAT4(world1);
+  SPOKK_MAT4(world2);
+  SPOKK_MAT4(world3);
 #ifdef __cplusplus
 };
 }

@@ -235,14 +235,8 @@ void Renderer::RenderView(const Device& device,
     if (instances_[i].is_active_) {
       const Transform& t = instances_[i].transform_;
       glm::mat4 world = ComposeTransform(t.pos, t.orientation, t.scale);
-      glm::mat4 world_view = view * world;
-      glm::mat4 world_view_proj = proj * world_view;
-      glm::mat4 world_inv = glm::inverse(world);
       // TODO(cort): ensure the compiler doesn't try to read from write-combining memory here
       instance_xforms[i].world = world;
-      instance_xforms[i].world_view = world_view;
-      instance_xforms[i].world_view_proj = world_view_proj;
-      instance_xforms[i].world_inv = world_inv;
     }
   }
   SPOKK_VK_CHECK(instance_const_buffers_.FlushPframeHostCache(device, pframe_index_));
@@ -256,9 +250,6 @@ void Renderer::RenderView(const Device& device,
   camera_constants->view_proj = view_proj;
   camera_constants->view = view;
   camera_constants->proj = proj;
-  camera_constants->view_proj_inv = glm::inverse(view_proj);
-  camera_constants->view_inv = glm::inverse(view);
-  camera_constants->proj_inv = glm::inverse(proj);
   SPOKK_VK_CHECK(world_const_buffers_.FlushPframeHostCache(device, pframe_index_));
 
   VkDescriptorSet active_global_dset = VK_NULL_HANDLE;
