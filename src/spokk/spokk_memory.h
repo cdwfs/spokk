@@ -28,7 +28,7 @@ struct DeviceMemoryAllocation {
   // Flush this allocation from the host's caches, to ensure host writes to its range are visible by the GPU.
   // If this allocation is not mapped, this function has no effect.
   VkResult FlushHostCache(VkDevice device, VkDeviceSize offset, VkDeviceSize size) const;
-  VkResult FlushHostCache(VkDevice device) const { FlushHostCache(device, offset, size); }
+  VkResult FlushHostCache(VkDevice device) const { return FlushHostCache(device, offset, size); }
 
   // This handle may be shared among multiple allocations, and should not be free'd at this level.
   // For failed/invalid allocations, this handle will be VK_NULL_HANDLE.

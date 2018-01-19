@@ -201,7 +201,7 @@ VkResult SpokkVmaAlloc(void *pUserData, const spokk::Device& /*device*/, const V
     vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
   }
   vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_USER_DATA_COPY_STRING_BIT;
-  vma_allocation_ci.pUserData = "beans and/or franks";
+  vma_allocation_ci.pUserData = const_cast<char*>("beans and/or franks");
   VmaAllocation vma_allocation = {};
   VmaAllocationInfo vma_allocation_info = {};
   result = vmaAllocateMemory(vma_allocator, &memory_reqs, &vma_allocation_ci, &vma_allocation, &vma_allocation_info);
