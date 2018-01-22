@@ -128,7 +128,7 @@ int Renderer::Create(const Device& device, const CreateInfo& ci) {
   // define descriptor set layouts. TODO(cort): pull these from a representative shader instead of hard-coding.
   global_dset_layout_info_.bindings = {
       // clang-format off
-      {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_ALL_GRAPHICS, nullptr},
+      {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
       // clang-format on
   };
   VkDescriptorSetLayoutCreateInfo world_dset_layout_ci = {};
@@ -140,7 +140,7 @@ int Renderer::Create(const Device& device, const CreateInfo& ci) {
 
   instance_dset_layout_info_.bindings = {
       // clang-format off
-      {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_ALL_GRAPHICS, nullptr},
+      {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
       // clang-format on
   };
   VkDescriptorSetLayoutCreateInfo instance_dset_layout_ci = {};

@@ -282,15 +282,6 @@ VkResult ShaderProgram::AddShader(const Shader* shader, const char* entry_point)
   return VK_SUCCESS;
 }
 
-VkResult ShaderProgram::AddRendererDsets(const Renderer& renderer) {
-  auto layouts = renderer.GetCommonDescriptorSetLayoutInfos();
-  int merge_error = MergeLayouts(layouts, {});
-  if (merge_error) {
-    return VK_ERROR_INITIALIZATION_FAILED;
-  }
-  return VK_SUCCESS;
-}
-
 VkResult ShaderProgram::ForceCompatibleLayoutsAndFinalize(
     const Device& device, const std::vector<ShaderProgram*> programs) {
   if (programs.empty()) {

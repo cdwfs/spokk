@@ -65,7 +65,6 @@ struct ShaderProgram {
   ShaderProgram& operator=(const ShaderProgram& rhs) = delete;
 
   VkResult AddShader(const Shader* shader, const char* entry_point = "main");
-  VkResult AddRendererDsets(const Renderer& renderer);
   static VkResult ForceCompatibleLayoutsAndFinalize(const Device& device, const std::vector<ShaderProgram*> programs);
   VkResult Finalize(const Device& device);
   void Destroy(const Device& device);

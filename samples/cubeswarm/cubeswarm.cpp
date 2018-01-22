@@ -45,7 +45,6 @@ public:
     SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_, "data/rigid_mesh.frag.spv"));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_vs_));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_fs_));
-    SPOKK_VK_CHECK(mesh_shader_program_.AddRendererDsets(renderer_));
     SPOKK_VK_CHECK(mesh_shader_program_.Finalize(device_));
 
     // Populate Mesh object

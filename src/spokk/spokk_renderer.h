@@ -44,11 +44,6 @@ public:
   void RenderView(const Device& device, VkCommandBuffer cb, const glm::mat4& view, const glm::mat4& proj,
       const glm::vec4& time_and_res);
 
-  const std::vector<DescriptorSetLayoutInfo> GetCommonDescriptorSetLayoutInfos(void) const {
-    DescriptorSetLayoutInfo empty_material_layout = {};
-    return {global_dset_layout_info_, empty_material_layout, instance_dset_layout_info_};
-  }
-
 private:
   Renderer& operator=(const Renderer& rhs) = delete;
   Renderer& operator=(const Renderer&& rhs) = delete;
