@@ -2,7 +2,6 @@
 using namespace spokk;
 
 #include <common/camera.h>
-#include <common/cube_mesh.h>
 
 #include <array>
 #include <cstdio>
