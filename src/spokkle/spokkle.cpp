@@ -675,6 +675,7 @@ public:
 
   int Load(const std::string& json5_filename);
   int OverrideOutputRoot(const std::string& output_root_dir);
+  void SetForceRebuild(bool force_rebuild_all);
   int Build();
 
 private:
@@ -720,6 +721,7 @@ private:
   std::string manifest_dir_;
   std::string manifest_filename_;
   std::string output_root_;
+  bool force_rebuild_;
 
   time_t manifest_mtime_;
 
@@ -730,7 +732,7 @@ private:
   std::vector<ShaderAsset> shader_assets_;
 };
 
-AssetManifest::AssetManifest() : launch_dir_("."), manifest_dir_("."), manifest_filename_(""), output_root_(".") {}
+AssetManifest::AssetManifest() : launch_dir_("."), manifest_dir_("."), manifest_filename_(""), output_root_("."), force_rebuild_(false) {}
 AssetManifest::~AssetManifest() {}
 
 int AssetManifest::Load(const std::string& json5_filename) {
@@ -781,6 +783,10 @@ int AssetManifest::Load(const std::string& json5_filename) {
 
 int AssetManifest::OverrideOutputRoot(const std::string& output_root_dir) {
   return CombineAbsDirAndPath(launch_dir_.c_str(), output_root_dir.c_str(), &output_root_);
+}
+
+void AssetManifest::SetForceRebuild(bool force_rebuild_all) {
+  force_rebuild_ = force_rebuild_all;
 }
 
 int AssetManifest::Build() {
@@ -1123,6 +1129,12 @@ int AssetManifest::IsOutputOutOfDate(
   }
   bool output_exists = FileExists(output_path.c_str());
 
+  // Force rebuild = automatically out of date
+  if (force_rebuild_) {
+    *out_result = true;
+    return 0;
+  }
+
   // If both files exists, we compare last-write time.
   bool output_is_older = false;
   if (input_exists && output_exists) {
@@ -1335,17 +1347,19 @@ Options:
 
 int main(int argc, char* argv[]) {
   // TODO(cort): Command line options
-  // -f, --force-rebuild: Assume all outputs are dirty
   // -v, --verbose: Extra logging?
   // -t, --test-only: Print what would be done but don't actually do it
   const char* new_output_root = nullptr;
   const char* manifest_filename = nullptr;
+  bool force_rebuild = false;
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
       PrintUsage(argv[0]);
       return 0;
     } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
       new_output_root = argv[++i];
+    } else if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "--force-rebuild") == 0) {
+      force_rebuild = true;
     } else if (i == argc - 1) {
       manifest_filename = argv[i];
     } else {
@@ -1370,6 +1384,8 @@ int main(int argc, char* argv[]) {
       return override_error;
     }
   }
+
+  manifest.SetForceRebuild(force_rebuild);
 
   int build_error = manifest.Build();
   if (build_error) {
