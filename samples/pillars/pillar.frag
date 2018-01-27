@@ -11,8 +11,7 @@ layout (set = 0, binding = 4) uniform sampler samp;
 
 
 void main() {
-    //out_fragColor = texture(tex, reflect(normalize(fromEye), normalize(norm)));
-    vec4 head_light = dot(normalize(-fromEye), normalize(norm)) * vec4(1,1,1,1);
+    vec4 head_light_color = vec4(1,1,1,1);
+    vec4 head_light = dot(normalize(-fromEye), normalize(norm)) * head_light_color;
     out_fragColor = head_light * texture(sampler2D(tex, samp), texcoord);
-    //out_fragColor = vec4(1,1,0,1);
 }
