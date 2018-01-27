@@ -55,9 +55,9 @@ layout (set = 2, binding = 0) uniform
 #endif
 InstanceTransforms {
   SPOKK_MAT4(world);
-  SPOKK_MAT4(world1);
-  SPOKK_MAT4(world2);
-  SPOKK_MAT4(world3);
+  SPOKK_MAT4(padding1);
+  SPOKK_MAT4(padding2);
+  SPOKK_MAT4(padding3);
 #ifdef __cplusplus
 };
 }

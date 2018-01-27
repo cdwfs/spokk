@@ -8,6 +8,7 @@
 - The world is full of instances.
 - An instance has a unique transform (pos, quat, uniform scale). The transform may be updated every
   simulation tick.
+- An instance has an optional parent. If non-NULL, the parent's transform is prepended to the child's.
 - An instance references a (potentially shared) mesh and material.
 - An instance may be active or inactive. If inactive, it does not participate in any rendering.
 - instances are sorted by Material, then by ShaderProgram, then by Mesh. This sorting is stable across
@@ -29,8 +30,9 @@
 - The world's instances may be rendered from several different views over the course of a frame. Examples:
   - stereo rendering for VR (render two views from different eye positions)
   - dynamic cubemap generation (render six views from the same origin, pointing along each axis)
-  - shadow map generation (render one view from a light's point of view)
-  - deferred rendering (render the scene 1+ times from the same same, depending on the algorithm.
+  - shadow map generation (render one view from a light's point of view, overriding the material for all
+    instances).
+  - deferred rendering (render the scene 1+ times from the same angle, depending on the algorithm.
     Depth pass, gbuffer pass, etc.
 - When rendering from a view:
   - camera matrices are extracted, composed, and baked (view, proj, view_proj, inverses)
@@ -42,6 +44,8 @@
   - The active visible instances are now assigned indices in a compact array, maintaining sort order.
   - Each instance's final transformation matrices are composed (world_view, world_view_proj, inverses).
     in a compact array.
+    - A unique WVP matrix would be needed per instance, per view, per pframe. That could add up quickly.
+      May be better to just compute world * view_proj in the vertex shader?
     - This should be a compute shader.
   - Descriptor sets for the instance-specific transform data need to be populated. Hrm.
     - Rewrite instance dsets every frame with the correct offset into the transform buffer.
@@ -77,6 +81,8 @@
       declare/bind its own global or per-instance resources?
       - Well, by definition, if a shader is defining it, it's a material resource, that can be used however the
         material would like.
+      - But if a resource is declared by a material, its value/contents can still vary per-instance. Anything that
+        varies per-instance should be in the per-instance dset, whether it's renderer data or material data.
 */
 
 /*
@@ -101,7 +107,8 @@ Renderer::~Renderer() {}
 int Renderer::Create(const Device& device, const CreateInfo& ci) {
   pframe_count_ = ci.pframe_count;
 
-  // technically, we can work with this by padding out to this boundary, but let's be strict & not waste memory
+  // technically, we can work with this by padding out to this boundary, but let's be strict & not waste memory.
+  // minUniformBufferOffsetAlignment is requried by the VK spec to be no higher than 256 bytes.
   ZOMBO_ASSERT_RETURN((sizeof(InstanceTransforms) % device.Properties().limits.minUniformBufferOffsetAlignment) == 0,
       -1, "sizeof(InstanceTranforms) [%d] is not divisible by device's minUniformBufferOffsetAlignment [%d]",
       (int)sizeof(InstanceTransforms), (int)device.Properties().limits.minUniformBufferOffsetAlignment);
@@ -126,6 +133,10 @@ int Renderer::Create(const Device& device, const CreateInfo& ci) {
       device, ci.pframe_count, instance_const_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
 
   // define descriptor set layouts. TODO(cort): pull these from a representative shader instead of hard-coding.
+  // TODO(cort): The reason it's necessary to hard-code these layouts here is to populate the descriptor pool
+  // with enough descriptors for all possible instances. But if Materials can define arbitrary per-instance
+  // descriptors, those need to be taken into account somewhere. Maybe it should be the caller's responsibility
+  // to allocate instance dsets, and the Renderer just provides info on pool sizes for the descriptors *it* needs.
   global_dset_layout_info_.bindings = {
       // clang-format off
       {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
