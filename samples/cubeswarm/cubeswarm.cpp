@@ -40,16 +40,16 @@ public:
     int renderer_create_error = renderer_.Create(device_, renderer_ci);
     ZOMBO_ASSERT(!renderer_create_error, "Renderer create returned %d", renderer_create_error);
 
+    // Populate Mesh object
+    int mesh_load_error = mesh_.CreateFromFile(device_, "data/teapot.mesh");
+    ZOMBO_ASSERT(!mesh_load_error, "load error: %d", mesh_load_error);
+
     // Load shader pipelines
     SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_, "data/rigid_mesh.vert.spv"));
     SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_, "data/rigid_mesh.frag.spv"));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_vs_));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_fs_));
     SPOKK_VK_CHECK(mesh_shader_program_.Finalize(device_));
-
-    // Populate Mesh object
-    int mesh_load_error = mesh_.CreateFromFile(device_, "data/teapot.mesh");
-    ZOMBO_ASSERT(!mesh_load_error, "load error: %d", mesh_load_error);
 
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
