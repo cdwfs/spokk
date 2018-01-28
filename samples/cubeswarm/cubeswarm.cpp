@@ -41,12 +41,6 @@ public:
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
-    // Load textures and samplers
-    VkSamplerCreateInfo sampler_ci =
-        GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
-    SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-    albedo_tex_.CreateFromFile(device_, graphics_and_present_queue_, "data/redf.ktx");
-
     // Load shader pipelines
     SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_, "data/rigid_mesh.vert.spv"));
     SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_, "data/rigid_mesh.frag.spv"));
@@ -90,9 +84,6 @@ public:
       dsets_[pframe] = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
     }
     DescriptorSetWriter dset_writer(mesh_shader_program_.dset_layout_cis[0]);
-    dset_writer.BindImage(
-        albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mesh_fs_.GetDescriptorBindPoint("tex").binding);
-    dset_writer.BindSampler(sampler_, mesh_fs_.GetDescriptorBindPoint("samp").binding);
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
       dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
@@ -117,9 +108,6 @@ public:
       mesh_fs_.Destroy(device_);
       mesh_shader_program_.Destroy(device_);
       mesh_pipeline_.Destroy(device_);
-
-      vkDestroySampler(device_, sampler_, host_allocator_);
-      albedo_tex_.Destroy(device_);
 
       for (const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
@@ -232,9 +220,6 @@ private:
 
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
-
-  Image albedo_tex_;
-  VkSampler sampler_;
 
   Shader mesh_vs_, mesh_fs_;
   ShaderProgram mesh_shader_program_;
