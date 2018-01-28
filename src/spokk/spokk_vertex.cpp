@@ -710,7 +710,7 @@ void ConvertAttribute(const void *in, VkFormat in_format, void *out, VkFormat ou
 
 namespace spokk {
 
-VertexLayout::VertexLayout(std::initializer_list<AttributeInfo> attr_infos) : stride(0), attributes(attr_infos) {
+VertexLayout::VertexLayout(std::vector<AttributeInfo> attr_infos) : stride(0), attributes(attr_infos) {
   if (attributes.size() > 0) {
     AttributeInfo last_attr = attributes[0];
     for (const auto &attr : attributes) {

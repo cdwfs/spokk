@@ -27,8 +27,8 @@ Mesh::Mesh()
   : vertex_buffers{},
     mesh_format{},
     index_buffer{},
-    vertex_count(0),
-    index_count(0),
+    total_vertex_count(0),
+    total_index_count(0),
     index_type(VK_INDEX_TYPE_MAX_ENUM) {}
 
 int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
@@ -67,6 +67,9 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
   std::vector<uint8_t> indices(mesh_header.index_count * mesh_header.bytes_per_index);
   read_count = fread(indices.data(), mesh_header.bytes_per_index, mesh_header.index_count, mesh_file);
   ZOMBO_ASSERT(read_count == mesh_header.index_count, "I/O error while reading %s", mesh_filename);
+  segments.resize(mesh_header.segment_count);
+  read_count = fread(segments.data(), sizeof(segments[0]), mesh_header.segment_count, mesh_file);
+  ZOMBO_ASSERT(read_count == mesh_header.segment_count, "I/O error while reading %s", mesh_filename);
   fclose(mesh_file);
 
   topology = mesh_header.topology;
@@ -77,8 +80,8 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
   } else {
     ZOMBO_ERROR_RETURN(-1, "Invalid index size %u in mesh %s", mesh_header.bytes_per_index, mesh_filename);
   }
-  vertex_count = mesh_header.vertex_count;
-  index_count = mesh_header.index_count;
+  total_vertex_count = mesh_header.vertex_count;
+  total_index_count = mesh_header.index_count;
   // create and populate Buffer objects.
   VkBufferCreateInfo index_buffer_ci = {};
   index_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -119,7 +122,7 @@ void Mesh::Destroy(const Device& device) {
   }
   vertex_buffers.clear();
   index_buffer.Destroy(device);
-  index_count = 0;
+  total_index_count = 0;
 }
 
 void Mesh::BindBuffers(VkCommandBuffer cb) const {
@@ -190,7 +193,7 @@ void GenerateMeshBox(const Device& device, Mesh* out_mesh, const float min_exten
   SPOKK_VK_CHECK(out_mesh->vertex_buffers[0].Load(
       device, THSVS_ACCESS_NONE, THSVS_ACCESS_VERTEX_BUFFER, vertices.data(), vb_ci.size));
   out_mesh->vertex_buffer_byte_offsets = {0};
-  out_mesh->vertex_count = (uint32_t)vertices.size();
+  out_mesh->total_vertex_count = (uint32_t)vertices.size();
 
   const std::vector<uint16_t> indices = {
       // clang-format off
@@ -209,7 +212,7 @@ void GenerateMeshBox(const Device& device, Mesh* out_mesh, const float min_exten
   SPOKK_VK_CHECK(out_mesh->index_buffer.Create(device, ib_ci));
   SPOKK_VK_CHECK(out_mesh->index_buffer.Load(device, THSVS_ACCESS_NONE, THSVS_ACCESS_INDEX_BUFFER, indices.data(), ib_ci.size));
   out_mesh->index_buffer_byte_offset = 0;
-  out_mesh->index_count = (uint32_t)indices.size();
+  out_mesh->total_index_count = (uint32_t)indices.size();
   out_mesh->index_type = VK_INDEX_TYPE_UINT16;
 }
 

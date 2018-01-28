@@ -216,7 +216,10 @@ void CubeSwarmApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_i
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
       0, 1, &(frame_data.dset), 0, nullptr);
   mesh_.BindBuffers(primary_cb);
-  vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0, 0, 0);
+  for (const auto& segment : mesh_.segments) {
+    vkCmdDrawIndexed(primary_cb, segment.draw_data.indexCount, MESH_INSTANCE_COUNT, segment.draw_data.firstIndex,
+      segment.draw_data.vertexOffset, 0);
+  }
   vkCmdEndRenderPass(primary_cb);
 }
 

@@ -112,7 +112,7 @@ public:
     SPOKK_VK_CHECK(device_.SetObjectName(skybox_pipeline_.handle, "skybox pipeline"));
 
     // Populate Mesh object
-    int mesh_load_error = mesh_.CreateFromFile(device_, "data/teapot.mesh");
+    int mesh_load_error = mesh_.CreateFromFile(device_, "data/spider.mesh");
     ZOMBO_ASSERT(!mesh_load_error, "Error loading mesh");
 
     // Create mesh pipeline
@@ -336,7 +336,7 @@ public:
 
     // Update mesh uniforms
     MeshUniforms* mesh_uniforms = (MeshUniforms*)frame_data.mesh_ubo.Mapped();
-    mesh_uniforms->o2w = ComposeTransform(glm::vec3(0.0f, 0.0f, 0.0f), glm::quat_identity<float, glm::highp>(), 5.0f);
+    mesh_uniforms->o2w = ComposeTransform(glm::vec3(0.0f, 0.0f, 0.0f), glm::quat_identity<float, glm::highp>(), 0.25f);
     SPOKK_VK_CHECK(frame_data.mesh_ubo.FlushHostCache(device_));
 
     // Update material uniforms
@@ -365,7 +365,10 @@ public:
     device_.DebugLabelInsert(primary_cb, "render mesh");
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
     mesh_.BindBuffers(primary_cb);
-    vkCmdDrawIndexed(primary_cb, mesh_.index_count, 1, 0, 0, 0);
+    for (const auto& segment : mesh_.segments) {
+      vkCmdDrawIndexed(
+          primary_cb, segment.draw_data.indexCount, 1, segment.draw_data.firstIndex, segment.draw_data.vertexOffset, 0);
+    }
     // Render skybox
     device_.DebugLabelInsert(primary_cb, "render skybox");
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, skybox_pipeline_.handle);

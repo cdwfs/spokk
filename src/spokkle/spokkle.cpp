@@ -5,9 +5,11 @@
 
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
-#include <json.h>
 #include <assimp/DefaultLogger.hpp>
 #include <assimp/Importer.hpp>
+#define SPOKK_ASSIMP_CHECK(expr) ZOMBO_RETVAL_CHECK(aiReturn_SUCCESS, expr)
+
+#include <json.h>
 #include <shaderc/shaderc.hpp>
 
 #if defined(ZOMBO_PLATFORM_WINDOWS)
@@ -20,6 +22,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <array>
 #include <map>
 #include <memory>
@@ -271,8 +274,10 @@ int CreateDirectoryAndParents(const char* abs_dir) {
 
 }  // namespace
 
+constexpr int SPOKK_MAX_VERTEX_ATTRIBUTES = 16;
 constexpr int SPOKK_MAX_VERTEX_COLORS = 4;
 constexpr int SPOKK_MAX_VERTEX_TEXCOORDS = 4;
+constexpr int SPOKK_MAX_BONE_WEIGHTS = 4;
 
 struct SourceAttribute {
   spokk::VertexLayout layout;
@@ -295,6 +300,9 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
   // remove all points/lines from the scene
   importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_LINE | aiPrimitiveType_POINT);
 
+  // Set maximum bone weights per vertex
+  importer.SetPropertyInteger(AI_CONFIG_PP_LBW_MAX_WEIGHTS, 4);
+
   // uncomment to log timings of various import stages
   // importer.SetPropertyBool(AI_CONFIG_GLOB_MEASURE_TIME, true);
 
@@ -308,13 +316,17 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
 
   // clang-format off
   const aiScene* scene = importer.ReadFile(input_scene_filename.c_str(), 0
-    | aiProcess_GenSmoothNormals       // Generate per-vertex normals, if none exist
-    | aiProcess_CalcTangentSpace       // Compute per-vertex tangent and bitangent vectors (if the mesh already has normals and UVs)
-    | aiProcess_Triangulate            // Convert faces with >3 vertices to 2 or more triangles
-    | aiProcess_JoinIdenticalVertices  // If this flag is not specified, each vertex is used by exactly one face; no index buffer is required.
-    | aiProcess_SortByPType            // Sort faces by primitive type -- one sub-mesh per primitive type.
-    | aiProcess_ImproveCacheLocality   // Reorder vertex and index buffers to improve post-transform cache locality.
-  //| aiProcess_FlipUVs                // HACK -- the scene we're currently loading has its UVs flipped.
+    | aiProcess_GenSmoothNormals          // Generate per-vertex normals, if none exist
+  //| aiProcess_CalcTangentSpace          // Compute per-vertex tangent and bitangent vectors (if the mesh already has normals and UVs)
+    | aiProcess_Triangulate               // Convert faces with >3 vertices to 2 or more triangles
+    | aiProcess_JoinIdenticalVertices     // If this flag is not specified, each vertex is used by exactly one face; no index buffer is required.
+    | aiProcess_FindDegenerates           // Convert degenerate triangles/lines to lines/points (which will subsequently be removed)
+    | aiProcess_SortByPType               // Sort faces by primitive type -- one sub-mesh per primitive type.
+    | aiProcess_FindInvalidData           // Strips invalid data -- zeroed normals, infinitely small meshes, etc.
+    | aiProcess_ImproveCacheLocality      // Reorder vertex and index buffers to improve post-transform cache locality.
+    | aiProcess_LimitBoneWeights          // Limit the number of boner weights per vertex
+    | aiProcess_RemoveRedundantMaterials  // Merge identical materials
+  //| aiProcess_FlipUVs                   // HACK -- the scene we're currently loading has its UVs flipped.
   );
   // clang-format on
   // If the import failed, report it
@@ -327,132 +339,257 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
   static_assert(sizeof(aiVector3D) == 3 * sizeof(float), "aiVector3D sizes do not match!");
   static_assert(sizeof(aiColor4D) == 4 * sizeof(float), "aiColor4D sizes do not match!");
 
-  ZOMBO_ASSERT_RETURN(scene->mNumMeshes == 1, -1, "Currently, only one mesh per scene is supported.");
+  // We currently output a single vertex buffer (and thus a single vertex layout) for all meshes
+  // in the scene. First determine the superset of attributes present in all meshes, and the total
+  // vertex/index counts.
+  std::array<bool, SPOKK_MAX_VERTEX_ATTRIBUTES> scene_has_attribute = {};
+  std::array<uint32_t, SPOKK_MAX_VERTEX_TEXCOORDS> scene_texcoord_components = {};
+  uint32_t scene_vertex_count = 0;
+  uint32_t scene_max_index_count = 0;
+  for (uint32_t i_mesh = 0; i_mesh < scene->mNumMeshes; ++i_mesh) {
+    const aiMesh* mesh = scene->mMeshes[i_mesh];
 
-  std::vector<SourceAttribute> src_attributes = {{}};
-  uint32_t iMesh = 0;
-  const aiMesh* mesh = scene->mMeshes[iMesh];
+    scene_vertex_count += mesh->mNumVertices;
 
-  // Query available vertex attributes, and determine the mesh format
-  ZOMBO_ASSERT(mesh->HasPositions(), "wtf sort of mesh doesn't include vertex positions?!?");
-  if (mesh->HasPositions()) {
-    static_assert(sizeof(mesh->mVertices[0]) == sizeof(aiVector3D), "positions aren't vec3s!");
-    spokk::VertexLayout::AttributeInfo pos_attr = {};
-    pos_attr.location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION;
-    pos_attr.format = VK_FORMAT_R32G32B32_SFLOAT;
-    pos_attr.offset = 0;
-    src_attributes.push_back({{pos_attr}, mesh->mVertices});
+    // index count is an upper bound for now, until we iterate and reject invalid faces.
+    ZOMBO_ASSERT(mesh->HasFaces(), "mesh has no faces! This is (currently) required.");
+    scene_max_index_count += mesh->mNumFaces * 3;
+
+    ZOMBO_ASSERT(mesh->HasPositions(), "wtf sort of mesh doesn't include vertex positions?!?");
+    if (mesh->HasPositions()) {
+      static_assert(sizeof(mesh->mVertices[0]) == sizeof(aiVector3D), "positions aren't vec3s!");
+      scene_has_attribute[SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION] = true;
+    }
+    if (mesh->HasNormals()) {
+      static_assert(sizeof(mesh->mNormals[0]) == sizeof(aiVector3D), "normals aren't vec3s!");
+      scene_has_attribute[SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL] = true;
+    }
+    if (mesh->HasTangentsAndBitangents()) {
+      static_assert(sizeof(mesh->mTangents[0]) == sizeof(aiVector3D), "tangents aren't vec3s!");
+      static_assert(sizeof(mesh->mBitangents[0]) == sizeof(aiVector3D), "bitangents aren't vec3s!");
+      scene_has_attribute[SPOKK_VERTEX_ATTRIBUTE_LOCATION_TANGENT] = true;
+      scene_has_attribute[SPOKK_VERTEX_ATTRIBUTE_LOCATION_BITANGENT] = true;
+    }
+    if (mesh->HasBones()) {
+      // TODO(cort): I am not remotely equipped to handle skinning yet.
+    }
+    for (int i_color_set = 0; i_color_set < AI_MAX_NUMBER_OF_COLOR_SETS; ++i_color_set) {
+      static_assert(sizeof(mesh->mColors[i_color_set][0]) == sizeof(aiColor4D), "colors aren't vec4s!");
+      if (mesh->HasVertexColors(i_color_set)) {
+        if (i_color_set > SPOKK_MAX_VERTEX_COLORS) {
+          fprintf(stderr, "WARNING: ignoring vertex color set %u in mesh %u\n", i_color_set, i_mesh);
+          continue;
+        }
+        scene_has_attribute[SPOKK_VERTEX_ATTRIBUTE_LOCATION_COLOR0 + i_color_set] = true;
+      }
+    }
+    for (int i_uv_set = 0; i_uv_set < AI_MAX_NUMBER_OF_TEXTURECOORDS; ++i_uv_set) {
+      static_assert(sizeof(mesh->mTextureCoords[i_uv_set][0]) == sizeof(aiVector3D), "texcoords aren't vec3s!");
+      if (mesh->HasTextureCoords(i_uv_set)) {
+        if (i_uv_set > SPOKK_MAX_VERTEX_TEXCOORDS) {
+          fprintf(stderr, "WARNING: ignoring vertex texcoord set %u in mesh %u (too many UV sets)\n", i_uv_set, i_mesh);
+          continue;
+        }
+        uint32_t components = mesh->mNumUVComponents[i_uv_set];
+        if (components < 1 || components > 3) {
+          fprintf(stderr, "WARNING: ignoring vertex texcoord set %u in mesh %u (invalid component count)\n", i_uv_set,
+              i_mesh);
+          continue;
+        }
+        scene_has_attribute[SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD0 + i_uv_set] = true;
+        if (components > scene_texcoord_components[i_uv_set]) {
+          scene_texcoord_components[i_uv_set] = components;
+        }
+      }
+    }
   }
-  if (mesh->HasNormals()) {
+
+  // Construct the output vertex layout, now that we know which attributes will be present.
+  // Sanity-checking of attribute counts/sizes has already happened.
+  // TODO(cort): attribute formats should perhaps depend on the values ranges present in the scene,
+  // but that's more preprocessing than I care to do right now.
+  std::vector<spokk::VertexLayout::AttributeInfo> scene_attributes = {};
+  uint32_t scene_vertex_stride = 0;
+  if (scene_has_attribute[SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION]) {
+    scene_attributes.push_back(
+        {SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION, VK_FORMAT_R32G32B32_SFLOAT, scene_vertex_stride});
+    scene_vertex_stride += 3 * sizeof(float);
+  }
+  if (scene_has_attribute[SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL]) {
     // TODO(cort): octohedral normals (https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/)
-    static_assert(sizeof(mesh->mNormals[0]) == sizeof(aiVector3D), "normals aren't vec3s!");
-    spokk::VertexLayout::AttributeInfo norm_attr = {};
-    norm_attr.location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL;
-    norm_attr.format = VK_FORMAT_R32G32B32_SFLOAT;
-    norm_attr.offset = 0;
-    src_attributes.push_back({{norm_attr}, mesh->mNormals});
+    scene_attributes.push_back(
+        {SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL, VK_FORMAT_R32G32B32_SFLOAT, scene_vertex_stride});
+    scene_vertex_stride += 3 * sizeof(float);
   }
-  if (mesh->HasTangentsAndBitangents())  // Assimp always gives you both, or neither.
-  {
-    static_assert(sizeof(mesh->mTangents[0]) == sizeof(aiVector3D), "tangents aren't vec3s!");
-    spokk::VertexLayout::AttributeInfo tan_attr = {};
-    tan_attr.location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_TANGENT;
-    tan_attr.format = VK_FORMAT_R32G32B32_SFLOAT;
-    tan_attr.offset = 0;
-    src_attributes.push_back({{tan_attr}, mesh->mTangents});
+  if (scene_has_attribute[SPOKK_VERTEX_ATTRIBUTE_LOCATION_TANGENT]) {
+    // TODO(cort): these could be octohedral too.
+    scene_attributes.push_back(
+        {SPOKK_VERTEX_ATTRIBUTE_LOCATION_TANGENT, VK_FORMAT_R32G32B32_SFLOAT, scene_vertex_stride});
+    scene_vertex_stride += 3 * sizeof(float);
+  }
+  if (scene_has_attribute[SPOKK_VERTEX_ATTRIBUTE_LOCATION_BITANGENT]) {
+    // TODO(cort): these could be octohedral too.
+    scene_attributes.push_back(
+        {SPOKK_VERTEX_ATTRIBUTE_LOCATION_BITANGENT, VK_FORMAT_R32G32B32_SFLOAT, scene_vertex_stride});
+    scene_vertex_stride += 3 * sizeof(float);
+  }
+  for (uint32_t i_color_set = 0; i_color_set < SPOKK_MAX_VERTEX_COLORS; ++i_color_set) {
+    if (scene_has_attribute[SPOKK_VERTEX_ATTRIBUTE_LOCATION_COLOR0 + i_color_set]) {
+      scene_attributes.push_back(
+          {SPOKK_VERTEX_ATTRIBUTE_LOCATION_COLOR0 + i_color_set, VK_FORMAT_R8G8B8A8_UNORM, scene_vertex_stride});
+      scene_vertex_stride += 4 * sizeof(uint8_t);
+    }
+  }
+  for (uint32_t i_uv_set = 0; i_uv_set < SPOKK_MAX_VERTEX_TEXCOORDS; ++i_uv_set) {
+    if (scene_has_attribute[SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD0 + i_uv_set]) {
+      VkFormat texcoord_vk_format = VK_FORMAT_R32G32_SFLOAT;
+      if (scene_texcoord_components[i_uv_set] == 1) {
+        texcoord_vk_format = VK_FORMAT_R32_SFLOAT;
+      } else if (scene_texcoord_components[i_uv_set] == 3) {
+        texcoord_vk_format = VK_FORMAT_R32G32B32_SFLOAT;
+      }
+      scene_attributes.push_back(
+          {SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD0 + i_uv_set, texcoord_vk_format, scene_vertex_stride});
+      scene_vertex_stride += scene_texcoord_components[i_uv_set] * sizeof(float);
+    }
+  }
+  spokk::VertexLayout dst_layout(scene_attributes);
 
-    static_assert(sizeof(mesh->mBitangents[0]) == sizeof(aiVector3D), "bitangents aren't vec3s!");
-    spokk::VertexLayout::AttributeInfo bitan_attr = {};
-    bitan_attr.location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_BITANGENT;
-    bitan_attr.format = VK_FORMAT_R32G32B32_SFLOAT;
-    bitan_attr.offset = 0;
-    src_attributes.push_back({{bitan_attr}, mesh->mBitangents});
-  }
-  for (int iColorSet = 0; iColorSet < AI_MAX_NUMBER_OF_COLOR_SETS; ++iColorSet) {
-    static_assert(sizeof(mesh->mColors[iColorSet][0]) == sizeof(aiColor4D), "colors aren't vec4s!");
-    if (mesh->HasVertexColors(iColorSet)) {
-      if (iColorSet > SPOKK_MAX_VERTEX_COLORS) {
-        fprintf(stderr, "WARNING: ignoring vertex color set %u in mesh %u\n", iColorSet, iMesh);
+  // Populate the output vertex and index buffers.
+  std::vector<uint8_t> vertices(dst_layout.stride * scene_vertex_count, 0);
+  // TODO(cort): Index size choice here is too conservative.
+  // - Better: choose size based on maximum per-mesh vertex count.
+  const uint32_t bytes_per_index = (scene_vertex_count <= 0x10000) ? sizeof(uint16_t) : sizeof(uint32_t);
+  std::vector<uint8_t> indices(scene_max_index_count * bytes_per_index, 0);
+  size_t next_vertex_offset = 0, next_index_offset = 0;
+  std::vector<VkDrawIndexedIndirectCommand> draw_commands(scene->mNumMeshes, VkDrawIndexedIndirectCommand{});
+  for (uint32_t i_mesh = 0; i_mesh < scene->mNumMeshes; ++i_mesh) {
+    const aiMesh* mesh = scene->mMeshes[i_mesh];
+    // Build a list of attributes in THIS mesh. Unused attributes in the dst_layout will be skipped.
+    std::vector<SourceAttribute> src_attributes = {};
+    if (mesh->HasPositions()) {
+      spokk::VertexLayout::AttributeInfo pos_attr = {};
+      pos_attr.location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION;
+      pos_attr.format = VK_FORMAT_R32G32B32_SFLOAT;
+      pos_attr.offset = 0;
+      src_attributes.push_back({{pos_attr}, mesh->mVertices});
+    }
+    if (mesh->HasNormals()) {
+      spokk::VertexLayout::AttributeInfo norm_attr = {};
+      norm_attr.location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL;
+      norm_attr.format = VK_FORMAT_R32G32B32_SFLOAT;
+      norm_attr.offset = 0;
+      src_attributes.push_back({{norm_attr}, mesh->mNormals});
+    }
+    if (mesh->HasTangentsAndBitangents()) {
+      spokk::VertexLayout::AttributeInfo tan_attr = {};
+      tan_attr.location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_TANGENT;
+      tan_attr.format = VK_FORMAT_R32G32B32_SFLOAT;
+      tan_attr.offset = 0;
+      src_attributes.push_back({{tan_attr}, mesh->mTangents});
+
+      spokk::VertexLayout::AttributeInfo bitan_attr = {};
+      bitan_attr.location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_BITANGENT;
+      bitan_attr.format = VK_FORMAT_R32G32B32_SFLOAT;
+      bitan_attr.offset = 0;
+      src_attributes.push_back({{bitan_attr}, mesh->mBitangents});
+    }
+    for (int i_color_set = 0; i_color_set < AI_MAX_NUMBER_OF_COLOR_SETS; ++i_color_set) {
+      if (mesh->HasVertexColors(i_color_set)) {
+        if (i_color_set > SPOKK_MAX_VERTEX_COLORS) {
+          fprintf(stderr, "WARNING: ignoring vertex color set %u in mesh %u\n", i_color_set, i_mesh);
+          continue;
+        }
+        spokk::VertexLayout::AttributeInfo color_attr = {};
+        color_attr.location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_COLOR0 + i_color_set;
+        color_attr.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        color_attr.offset = 0;
+        src_attributes.push_back({{color_attr}, mesh->mColors[i_color_set]});
+      }
+    }
+    for (int i_uv_set = 0; i_uv_set < AI_MAX_NUMBER_OF_TEXTURECOORDS; ++i_uv_set) {
+      static_assert(sizeof(mesh->mTextureCoords[i_uv_set][0]) == sizeof(aiVector3D), "texcoords aren't vec3s!");
+      if (mesh->HasTextureCoords(i_uv_set)) {
+        if (i_uv_set > SPOKK_MAX_VERTEX_TEXCOORDS) {
+          fprintf(stderr, "WARNING: ignoring vertex texcoord set %u in mesh %u (too many UV sets)\n", i_uv_set, i_mesh);
+          continue;
+        }
+        uint32_t components = mesh->mNumUVComponents[i_uv_set];
+        if (components < 1 || components > 3) {
+          fprintf(stderr, "WARNING: ignoring vertex texcoord set %u in mesh %u (invalid component count)\n", i_uv_set,
+              i_mesh);
+          continue;
+        }
+        spokk::VertexLayout::AttributeInfo tc_attr = {};
+        tc_attr.location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD0 + i_uv_set;
+        tc_attr.format = VK_FORMAT_R32G32B32_SFLOAT;
+        tc_attr.offset = 0;
+        src_attributes.push_back({{tc_attr}, mesh->mTextureCoords[i_uv_set]});
+      }
+    }
+
+    // Compute bounding volume. Currently unused.
+    aiVector3D aabb_min = {+FLT_MAX, +FLT_MAX, +FLT_MAX};
+    aiVector3D aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+    for (uint32_t i = 0; i < mesh->mNumVertices; ++i) {
+      aiVector3D v = mesh->mVertices[i];
+      aabb_min.x = std::min(aabb_min.x, v.x);
+      aabb_min.y = std::min(aabb_min.y, v.y);
+      aabb_min.z = std::min(aabb_min.z, v.z);
+      aabb_max.x = std::max(aabb_max.x, v.x);
+      aabb_max.y = std::max(aabb_max.y, v.y);
+      aabb_max.z = std::max(aabb_max.z, v.z);
+    }
+
+    // Record vertex/index offsets for this mesh's draw call
+    uint32_t first_index = static_cast<uint32_t>(next_index_offset / bytes_per_index);
+    uint32_t first_vertex = static_cast<uint32_t>(next_vertex_offset / dst_layout.stride);
+
+    // Build vertex buffer for mesh
+    for (const auto& attrib : src_attributes) {
+      int convert_error = spokk::ConvertVertexBuffer(
+          attrib.values, attrib.layout, vertices.data() + next_vertex_offset, dst_layout, mesh->mNumVertices);
+      ZOMBO_ASSERT_RETURN(
+          convert_error == 0, -2, "error converting attribute at location %u", attrib.layout.attributes[0].location);
+    }
+    next_vertex_offset += mesh->mNumVertices * dst_layout.stride;
+    ZOMBO_ASSERT(next_vertex_offset <= vertices.size(), "Output vertex buffer size (%u) is larger than expected (%u)",
+        (uint32_t)next_vertex_offset, (uint32_t)vertices.size());
+
+    // Build index buffer for mesh
+    uint32_t mesh_index_count = 0;
+    for (uint32_t i_face = 0; i_face < mesh->mNumFaces; ++i_face) {
+      const aiFace& face = mesh->mFaces[i_face];
+      if (face.mNumIndices != 3) {
+        // skip non-triangles. We triangulated at import time, so these should be lines & points.
+        ZOMBO_ASSERT(face.mNumIndices < 3, "face %u has %u indices -- didn't we triangulate & discard degenerates?",
+            i_face, face.mNumIndices);
         continue;
       }
-      spokk::VertexLayout::AttributeInfo color_attr = {};
-      color_attr.location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_COLOR0 + iColorSet;
-      color_attr.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-      color_attr.offset = 0;
-      src_attributes.push_back({{color_attr}, mesh->mColors[iColorSet]});
-    }
-  }
-  for (int iUvSet = 0; iUvSet < AI_MAX_NUMBER_OF_TEXTURECOORDS; ++iUvSet) {
-    static_assert(sizeof(mesh->mTextureCoords[iUvSet][0]) == sizeof(aiVector3D), "texcoords aren't vec3s!");
-    if (mesh->HasTextureCoords(iUvSet)) {
-      if (iUvSet > SPOKK_MAX_VERTEX_TEXCOORDS) {
-        fprintf(stderr, "WARNING: ignoring vertex texcoord set %u in mesh %u\n", iUvSet, iMesh);
-        continue;
+      if (bytes_per_index == 4) {
+        uint32_t* next_tri = reinterpret_cast<uint32_t*>(indices.data() + next_index_offset);
+        next_tri[0] = face.mIndices[0];
+        next_tri[1] = face.mIndices[1];
+        next_tri[2] = face.mIndices[2];
+        next_index_offset += 3 * sizeof(uint32_t);
+      } else if (bytes_per_index == 2) {
+        uint16_t* next_tri = reinterpret_cast<uint16_t*>(indices.data() + next_index_offset);
+        next_tri[0] = (uint16_t)face.mIndices[0];
+        next_tri[1] = (uint16_t)face.mIndices[1];
+        next_tri[2] = (uint16_t)face.mIndices[2];
+        next_index_offset += 3 * sizeof(uint16_t);
       }
-      uint32_t components = mesh->mNumUVComponents[iUvSet];
-      ZOMBO_ASSERT(components >= 1 && components <= 3, "invalid texcoord component count (%u)", components);
-      spokk::VertexLayout::AttributeInfo tc_attr = {};
-      tc_attr.location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD0 + iUvSet;
-      tc_attr.format = VK_FORMAT_R32G32B32_SFLOAT;
-      tc_attr.offset = 0;
-      src_attributes.push_back({{tc_attr}, mesh->mTextureCoords[iUvSet]});
+      mesh_index_count += 3;
     }
-  }
+    ZOMBO_ASSERT(next_index_offset <= indices.size(), "Output index buffer size (%u) is larger than expected (%u)",
+        (uint32_t)next_index_offset, (uint32_t)indices.size());
 
-  // Compute bounding volume
-  aiVector3D aabb_min = {+FLT_MAX, +FLT_MAX, +FLT_MAX};
-  aiVector3D aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-  const uint32_t vertex_count = mesh->mNumVertices;
-  for (uint32_t i = 0; i < vertex_count; ++i) {
-    aiVector3D v = mesh->mVertices[i];
-    aabb_min.x = std::min(aabb_min.x, v.x);
-    aabb_min.y = std::min(aabb_min.y, v.y);
-    aabb_min.z = std::min(aabb_min.z, v.z);
-    aabb_max.x = std::max(aabb_max.x, v.x);
-    aabb_max.y = std::max(aabb_max.y, v.y);
-    aabb_max.z = std::max(aabb_max.z, v.z);
-  }
-
-  // Build vertex buffer
-  const spokk::VertexLayout dst_layout = {
-      {SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION, VK_FORMAT_R32G32B32_SFLOAT, 0},
-      {SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL, VK_FORMAT_R32G32B32_SFLOAT, 12},
-      {SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD0, VK_FORMAT_R32G32_SFLOAT, 24},
-  };
-  std::vector<uint8_t> vertices(dst_layout.stride * vertex_count, 0);
-  for (const auto& attrib : src_attributes) {
-    int convert_error =
-        spokk::ConvertVertexBuffer(attrib.values, attrib.layout, vertices.data(), dst_layout, vertex_count);
-    ZOMBO_ASSERT_RETURN(
-        convert_error == 0, -2, "error converting attribute at location %u", attrib.layout.attributes[0].location);
-  }
-
-  // Load index buffer
-  ZOMBO_ASSERT_RETURN(mesh->HasFaces(), -1, "mesh has no faces! This is (currently) required.");
-  uint32_t max_index_count = mesh->mNumFaces * 3;
-  uint32_t bytes_per_index = (vertex_count <= 0x10000) ? sizeof(uint16_t) : sizeof(uint32_t);
-  std::vector<uint8_t> indices(max_index_count * bytes_per_index, 0);
-  uint32_t index_count = 0;
-  for (uint32_t iFace = 0; iFace < mesh->mNumFaces; ++iFace) {
-    const aiFace& face = mesh->mFaces[iFace];
-    if (face.mNumIndices != 3) {
-      // skip non-triangles. We triangulated at import time, so these should be lines & points.
-      ZOMBO_ASSERT(face.mNumIndices < 3, "face %u has %u indices -- didn't we triangulate & discard degenerates?",
-          iFace, face.mNumIndices);
-      continue;
-    }
-    if (bytes_per_index == 4) {
-      uint32_t* next_tri = reinterpret_cast<uint32_t*>(indices.data()) + index_count;
-      next_tri[0] = face.mIndices[0];
-      next_tri[1] = face.mIndices[1];
-      next_tri[2] = face.mIndices[2];
-    } else if (bytes_per_index == 2) {
-      uint16_t* next_tri = reinterpret_cast<uint16_t*>(indices.data()) + index_count;
-      next_tri[0] = (uint16_t)face.mIndices[0];
-      next_tri[1] = (uint16_t)face.mIndices[1];
-      next_tri[2] = (uint16_t)face.mIndices[2];
-    }
-    index_count += 3;
+    // Record draw command info for this mesh
+    draw_commands[i_mesh].indexCount = mesh_index_count;
+    draw_commands[i_mesh].instanceCount = 1;  // placeholder
+    draw_commands[i_mesh].firstIndex = first_index;
+    draw_commands[i_mesh].vertexOffset = first_vertex;
+    draw_commands[i_mesh].firstInstance = 0;  // placeholder
   }
 
   // Write mesh to disk
@@ -462,15 +599,11 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
     mesh_header.vertex_buffer_count = 1;
     mesh_header.attribute_count = (uint32_t)dst_layout.attributes.size();
     mesh_header.bytes_per_index = bytes_per_index;
-    mesh_header.vertex_count = vertex_count;
-    mesh_header.index_count = index_count;
+    mesh_header.vertex_count = scene_vertex_count;
+    mesh_header.index_count = static_cast<uint32_t>(next_index_offset / bytes_per_index);
+    mesh_header.segment_count = scene->mNumMeshes;
     mesh_header.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    mesh_header.aabb_min[0] = aabb_min.x;
-    mesh_header.aabb_min[1] = aabb_min.y;
-    mesh_header.aabb_min[2] = aabb_min.z;
-    mesh_header.aabb_max[0] = aabb_max.x;
-    mesh_header.aabb_max[1] = aabb_max.y;
-    mesh_header.aabb_max[2] = aabb_max.z;
+
     std::vector<VkVertexInputBindingDescription> vb_descs(
         mesh_header.vertex_buffer_count, VkVertexInputBindingDescription{});
     {
@@ -495,8 +628,9 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
     fwrite(&mesh_header, sizeof(mesh_header), 1, out_file);
     fwrite(vb_descs.data(), sizeof(vb_descs[0]), vb_descs.size(), out_file);
     fwrite(attr_descs.data(), sizeof(attr_descs[0]), attr_descs.size(), out_file);
-    fwrite(vertices.data(), dst_layout.stride, vertex_count, out_file);
-    fwrite(indices.data(), bytes_per_index, index_count, out_file);
+    fwrite(vertices.data(), dst_layout.stride, mesh_header.vertex_count, out_file);
+    fwrite(indices.data(), bytes_per_index, mesh_header.index_count, out_file);
+    fwrite(draw_commands.data(), sizeof(draw_commands[0]), draw_commands.size(), out_file);
     fclose(out_file);
   }
 

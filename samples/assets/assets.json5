@@ -42,6 +42,7 @@
         // Meshes
         { class: "mesh", input: "cube.obj", output: "cube.mesh", },
         { class: "mesh", input: "teapot.obj", output: "teapot.mesh", },
+        { class: "mesh", input: "spider.obj", output: "spider.mesh", },
 
         // Shaders
         { class: "shader", input: "../benchmark/rigid_mesh.vert", output: "benchmark/rigid_mesh.vert.spv", stage: "vert", entry: "main", },

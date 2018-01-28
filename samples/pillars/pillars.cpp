@@ -126,7 +126,10 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
 
   // Populate Mesh object
   mesh_.index_type = (sizeof(cube_indices[0]) == sizeof(uint32_t)) ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
-  mesh_.index_count = cube_index_count;
+  mesh_.total_vertex_count = cube_vertex_count;
+  mesh_.total_index_count = cube_index_count;
+  mesh_.segments.resize(1, {});
+  mesh_.segments[0].draw_data.indexCount = cube_index_count;
   mesh_.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
   // index buffer
   VkBufferCreateInfo index_buffer_ci = {};
@@ -346,7 +349,10 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pillar_pipeline_.shader_program->pipeline_layout,
       0, 1, &frame_data.dset, 0, nullptr);
   mesh_.BindBuffers(primary_cb);
-  vkCmdDrawIndexed(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size(), 0, 0, 0);
+  for (const auto& segment : mesh_.segments) {
+    vkCmdDrawIndexed(primary_cb, segment.draw_data.indexCount, (uint32_t)visible_cells_.size(),
+        segment.draw_data.firstIndex, segment.draw_data.vertexOffset, 0);
+  }
   vkCmdEndRenderPass(primary_cb);
 }
 

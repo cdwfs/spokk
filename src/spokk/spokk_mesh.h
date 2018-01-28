@@ -29,10 +29,16 @@ struct Mesh {
   std::vector<Buffer> vertex_buffers;
   MeshFormat mesh_format;
   Buffer index_buffer;
-  uint32_t vertex_count;
-  uint32_t index_count;
+  uint32_t total_vertex_count;
+  uint32_t total_index_count; // across all segments -- do not use for draw calls!
   VkIndexType index_type;
   VkPrimitiveTopology topology;
+
+  struct Segment {
+    VkDrawIndexedIndirectCommand draw_data; // indices and counts to draw each segment
+    // TODO(cort): AABB?
+  };
+  std::vector<Segment> segments;
 
   // Handy arrays of buffer offsets, to avoid allocating them for every bind call
   std::vector<VkDeviceSize> vertex_buffer_byte_offsets;
@@ -55,9 +61,8 @@ struct MeshFileHeader {
   uint32_t bytes_per_index;
   uint32_t vertex_count;
   uint32_t index_count;
+  uint32_t segment_count;
   VkPrimitiveTopology topology;
-  float aabb_min[3];
-  float aabb_max[3];
 };
 
 }  // namespace spokk

@@ -17,7 +17,9 @@ struct VertexLayout {
 
   // Assumes vertices are tightly packed; stride will be the highest attribute
   // offset plus that attribute's size.
-  VertexLayout(std::initializer_list<AttributeInfo> attr_infos);
+  explicit VertexLayout(const std::vector<AttributeInfo> attr_infos);
+  VertexLayout::VertexLayout(std::initializer_list<AttributeInfo> attr_infos)
+    : VertexLayout(std::vector<AttributeInfo>(attr_infos)) {}
   // Another shortcut to build a VertexLayout from a MeshFormat.
   // NOTE: binding is the bind point of the buffer to use, *not* the index of its description
   // in the vertex_buffer_bindings array!
