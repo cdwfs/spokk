@@ -41,6 +41,9 @@
         
         // Meshes
         { class: "mesh", input: "teapot.obj", output: "teapot.mesh", },
+        { class: "mesh", input: "cube.dae", output: "cube.mesh", },
+        { class: "mesh", input: "sphere.dae", output: "sphere.mesh", },
+        { class: "mesh", input: "spider.obj", output: "spider.mesh", },
 
         // Shaders
         { class: "shader", input: "../cubeswarm/rigid_mesh.vert", output: "rigid_mesh.vert.spv", stage: "vert", entry: "main", },
