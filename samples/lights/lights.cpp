@@ -29,6 +29,9 @@ struct MaterialUniforms {
   glm::vec4 emissive_color;  // xyz: emissive color, w: intensity
   glm::vec4 spec_color;  // xyz: specular color, w: intensity
   glm::vec4 spec_exp;  // x: specular exponent
+  glm::vec4 ggx_params0;  // x: metallic, y: subsurface, z: specular, w: roughness {0.0, 0.0, 0.5, 0.5}
+  glm::vec4 ggx_params1;  // x: specularTint, y: anisotropic, z: sheen, w: sheenTint {0.0, 0.0, 0.0, 0.f}
+  glm::vec4 ggx_params2;  // x: clearcoat, y: clearcoatGloss {0.0, 1.0, __, __}
 };
 struct LightUniforms {
   glm::vec4 hemi_down_color;
@@ -152,6 +155,9 @@ public:
     material_.emissive_color = glm::vec4(0.5f, 0.5f, 0.0f, 0.0f);
     material_.spec_color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
     material_.spec_exp = glm::vec4(1000.0f, 0.0f, 0.0f, 0.0f);
+    material_.ggx_params0 = {0.0f, 0.0f, 0.5f, 0.5f};  // x: metallic, y: subsurface, z: specular, w: roughness
+    material_.ggx_params1 = {0.0f, 0.0f, 0.0f, 0.0f};  // x: specularTint, y: anisotropic, z: sheen, w: sheenTint {0.0, 0.0, 0.0, 0.f}
+    material_.ggx_params2 = {0.0f, 1.0f, 0.0f, 0.0f};  // x: clearcoat, y: clearcoatGloss {0.0, 1.0, __, __}
 
     // Create pipelined buffer of mesh uniforms
     VkBufferCreateInfo mesh_uniforms_ci = {};
@@ -214,7 +220,6 @@ public:
       skybox_fs_.Destroy(device_);
       skybox_shader_program_.Destroy(device_);
       skybox_pipeline_.Destroy(device_);
-
       vkDestroySampler(device_, sampler_, host_allocator_);
       skybox_tex_.Destroy(device_);
 
@@ -247,6 +252,18 @@ public:
       ImGui::ColorEdit3("Color##Spec", &material_.spec_color.x, default_color_edit_flags);
       ImGui::SliderFloat("Intensity##Spec", &material_.spec_color.w, 0.0f, 1.0f);
       ImGui::SliderFloat("Exponent##Spec", &material_.spec_exp.x, 1.0f, 100000.0f, "%.2f", 10.0f);
+      ImGui::Separator();
+      ImGui::Text("GGX:");
+      ImGui::SliderFloat("Metallic##GGX", &material_.ggx_params0.x, 0.0f, 1.0f);
+      ImGui::SliderFloat("Subsurface##GGX", &material_.ggx_params0.y, 0.0f, 1.0f);
+      ImGui::SliderFloat("Specular##GGX", &material_.ggx_params0.z, 0.0f, 1.0f);
+      ImGui::SliderFloat("Roughness##GGX", &material_.ggx_params0.w, 0.0f, 1.0f);
+      ImGui::SliderFloat("Specular Tint##GGX", &material_.ggx_params1.x, 0.0f, 1.0f);
+      ImGui::SliderFloat("Anisotropic##GGX", &material_.ggx_params1.y, 0.0f, 1.0f);
+      ImGui::SliderFloat("Sheen##GGX", &material_.ggx_params1.z, 0.0f, 1.0f);
+      ImGui::SliderFloat("Sheen Tint##GGX", &material_.ggx_params1.w, 0.0f, 1.0f);
+      ImGui::SliderFloat("Clear Coat##GGX", &material_.ggx_params2.x, 0.0f, 1.0f);
+      ImGui::SliderFloat("Clear Coat Gloss##GGX", &material_.ggx_params2.y, 0.0f, 1.0f);
       ImGui::TreePop();
     }
     if (ImGui::TreeNode("Lights")) {

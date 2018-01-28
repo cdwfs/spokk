@@ -3,10 +3,12 @@
 
 #include <spokk_shader_interface.h>
 
-layout (location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION) in vec3 pos;
-layout (location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL) in vec3 normal;
+layout (location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION) in vec3 pos_os;
+layout (location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL) in vec3 norm_os;
+layout (location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD0) in vec2 texcoord;
 layout (location = 0) out vec3 pos_ws;
 layout (location = 1) out vec3 norm_ws;
+layout (location = 2) out vec2 uv;
 
 layout (set = 0, binding = 0) uniform SceneUniforms {
   vec4 time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
@@ -26,9 +28,10 @@ layout (set = 0, binding = 1) uniform MeshUniforms {
 
 void main() {
   mat3 n2w = mat3(mesh_consts.o2w);
-  vec4 posw = mesh_consts.o2w * vec4(pos,1);
+  vec4 posw = mesh_consts.o2w * vec4(pos_os,1);
 
   pos_ws = posw.xyz;
-  norm_ws = n2w * normal;
+  norm_ws = n2w * norm_os;
+  uv = texcoord;
   gl_Position = scene_consts.viewproj * posw;
 }
