@@ -8,6 +8,9 @@
 
 #include <assimp/DefaultLogger.hpp>
 #include <assimp/Importer.hpp>
+
+#include <nph_process.h>
+
 #include <shaderc/shaderc.hpp>
 
 #if defined(ZOMBO_PLATFORM_WINDOWS)

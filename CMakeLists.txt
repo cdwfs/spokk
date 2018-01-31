@@ -37,11 +37,13 @@ SET(SPOKKLE_HEADERS
 )
 SOURCE_GROUP("" FILES ${SPOKKLE_HEADERS} ${SPOKKLE_SOURCES})
 SOURCE_GROUP("json.h" REGULAR_EXPRESSION "json.[ch]$")
+SOURCE_GROUP("process.h" REGULAR_EXPRESSION "process.[ch]$")
 ADD_EXECUTABLE(spokkle
     ${SPOKKLE_SOURCES}
     ${SPOKKLE_HEADERS}
     ${JSON_H_DIR}/json.c
     ${JSON_H_DIR}/json.h
+    ${PROCESS_H_DIR}/nph_process.h
 )
 TARGET_LINK_LIBRARIES(spokkle
     assimp
@@ -55,6 +57,7 @@ TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     ${SIMPLE_VULKAN_SYNCHRONIZATION_DIR}
     src/spokk
     ${JSON_H_DIR}
+    ${PROCESS_H_DIR}
 )
 IF(${MSVC})
     # Windows puts some path-manipulation APIs in an optional library
@@ -147,7 +150,7 @@ TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
     ${SPIRV-Headers_SOURCE_DIR}/include/spirv/unified1
     ${VULKAN_MEMORY_ALLOCATOR_DIR}
     ${Vulkan_INCLUDE_DIR}
-    "src/spokk"
+    ${CMAKE_SOURCE_DIR}/src/spokk
 )
 
 # custom target to build/copy sample assets
