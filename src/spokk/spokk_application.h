@@ -148,7 +148,6 @@ private:
 
   bool is_imgui_enabled_ = false;  // Used to avoid calling functions that will crash if the app does not enable imgui.
   bool is_imgui_visible_ = false;  // Tracks whether the UI is visible or not.
-  VkDescriptorPool imgui_dpool_ = VK_NULL_HANDLE;
   RenderPass imgui_render_pass_ = {};
   std::vector<VkFramebuffer> imgui_framebuffers_;
 

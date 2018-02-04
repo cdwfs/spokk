@@ -19,8 +19,8 @@ struct ImGui_ImplGlfwVulkan_Init_Data
     VkPhysicalDevice       gpu;
     VkDevice               device;
     VkRenderPass           render_pass;
+    uint32_t               subpass;
     VkPipelineCache        pipeline_cache;
-    VkDescriptorPool       descriptor_pool;
     void (*check_vk_result)(VkResult err);
 };
 
