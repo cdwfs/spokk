@@ -32,15 +32,15 @@ static VkAllocationCallbacks* g_Allocator = NULL;
 static VkPhysicalDevice       g_Gpu = VK_NULL_HANDLE;
 static VkDevice               g_Device = VK_NULL_HANDLE;
 static VkRenderPass           g_RenderPass = VK_NULL_HANDLE;
+static uint32_t               g_Subpass = 0;
 static VkPipelineCache        g_PipelineCache = VK_NULL_HANDLE;
-static VkDescriptorPool       g_DescriptorPool = VK_NULL_HANDLE;
 static void (*g_CheckVkResult)(VkResult err) = NULL;
 
 static VkCommandBuffer        g_CommandBuffer = VK_NULL_HANDLE;
-static size_t                 g_BufferMemoryAlignment = 256;
 static VkPipelineCreateFlags  g_PipelineCreateFlags = 0;
 static int                    g_FrameIndex = 0;
 
+static VkDescriptorPool       g_DescriptorPool = VK_NULL_HANDLE;
 static VkDescriptorSetLayout  g_DescriptorSetLayout = VK_NULL_HANDLE;
 static VkPipelineLayout       g_PipelineLayout = VK_NULL_HANDLE;
 static VkDescriptorSet        g_DescriptorSet = VK_NULL_HANDLE;
@@ -51,12 +51,16 @@ static VkDeviceMemory         g_FontMemory = VK_NULL_HANDLE;
 static VkImage                g_FontImage = VK_NULL_HANDLE;
 static VkImageView            g_FontView = VK_NULL_HANDLE;
 
-static VkDeviceMemory         g_VertexBufferMemory[IMGUI_VK_QUEUED_FRAMES] = {};
-static VkDeviceMemory         g_IndexBufferMemory[IMGUI_VK_QUEUED_FRAMES] = {};
-static size_t                 g_VertexBufferSize[IMGUI_VK_QUEUED_FRAMES] = {};
-static size_t                 g_IndexBufferSize[IMGUI_VK_QUEUED_FRAMES] = {};
+static const double           g_BufferReallocationScaleFactor = 1.25;
+static VkDeviceMemory         g_BufferMemory[IMGUI_VK_QUEUED_FRAMES] = {}; // vertex + index for each frame
+static size_t                 g_VertexBufferCapacity[IMGUI_VK_QUEUED_FRAMES] = {};
+static size_t                 g_IndexBufferCapacity[IMGUI_VK_QUEUED_FRAMES] = {};
 static VkBuffer               g_VertexBuffer[IMGUI_VK_QUEUED_FRAMES] = {};
 static VkBuffer               g_IndexBuffer[IMGUI_VK_QUEUED_FRAMES] = {};
+static VkBuffer               g_UniformBuffer[IMGUI_VK_QUEUED_FRAMES] = {};
+static ImDrawVert*            g_VertexBufferMapped[IMGUI_VK_QUEUED_FRAMES] = {};
+static ImDrawIdx*             g_IndexBufferMapped[IMGUI_VK_QUEUED_FRAMES] = {};
+static VkMappedMemoryRange    g_BufferMappedRange[IMGUI_VK_QUEUED_FRAMES] = {};
 
 static VkDeviceMemory         g_UploadBufferMemory = VK_NULL_HANDLE;
 static VkBuffer               g_UploadBuffer = VK_NULL_HANDLE;
@@ -157,74 +161,95 @@ void ImGui_ImplGlfwVulkan_RenderDrawLists(ImDrawData* draw_data)
     VkResult err;
     ImGuiIO& io = ImGui::GetIO();
 
-    // Create the Vertex Buffer:
-    size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
-    if (!g_VertexBuffer[g_FrameIndex] || g_VertexBufferSize[g_FrameIndex] < vertex_size)
-    {
-        if (g_VertexBuffer[g_FrameIndex])
-            vkDestroyBuffer(g_Device, g_VertexBuffer[g_FrameIndex], g_Allocator);
-        if (g_VertexBufferMemory[g_FrameIndex])
-            vkFreeMemory(g_Device, g_VertexBufferMemory[g_FrameIndex], g_Allocator);
-        size_t vertex_buffer_size = ((vertex_size-1) / g_BufferMemoryAlignment+1) * g_BufferMemoryAlignment;
-        VkBufferCreateInfo buffer_info = {};
-        buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        buffer_info.size = vertex_buffer_size;
-        buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        err = vkCreateBuffer(g_Device, &buffer_info, g_Allocator, &g_VertexBuffer[g_FrameIndex]);
-        ImGui_ImplGlfwVulkan_VkResult(err);
-        VkMemoryRequirements req;
-        vkGetBufferMemoryRequirements(g_Device, g_VertexBuffer[g_FrameIndex], &req);
-        g_BufferMemoryAlignment = (g_BufferMemoryAlignment > req.alignment) ? g_BufferMemoryAlignment : req.alignment;
-        VkMemoryAllocateInfo alloc_info = {};
-        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        alloc_info.allocationSize = req.size;
-        alloc_info.memoryTypeIndex = ImGui_ImplGlfwVulkan_MemoryType(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, req.memoryTypeBits);
-        err = vkAllocateMemory(g_Device, &alloc_info, g_Allocator, &g_VertexBufferMemory[g_FrameIndex]);
-        ImGui_ImplGlfwVulkan_VkResult(err);
-        err = vkBindBufferMemory(g_Device, g_VertexBuffer[g_FrameIndex], g_VertexBufferMemory[g_FrameIndex], 0);
-        ImGui_ImplGlfwVulkan_VkResult(err);
-        g_VertexBufferSize[g_FrameIndex] = vertex_buffer_size;
-    }
+    // Allocate GPU buffers. If any of the raw sizes are larger than the corresponding capacities,
+    // increase the capacity and reallocate the whole block.
+    size_t raw_vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
+    size_t raw_index_size = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
+    bool need_allocation = !g_VertexBuffer[g_FrameIndex] || raw_vertex_size > g_VertexBufferCapacity[g_FrameIndex]
+      || !g_IndexBuffer[g_FrameIndex] || raw_index_size > g_IndexBufferCapacity[g_FrameIndex];
+    if (need_allocation) {
+      // Destroy existing buffer objects
+      if (g_VertexBuffer[g_FrameIndex]) {
+        vkDestroyBuffer(g_Device, g_VertexBuffer[g_FrameIndex], g_Allocator);
+        g_VertexBuffer[g_FrameIndex] = VK_NULL_HANDLE;
+      }
+      if (g_IndexBuffer[g_FrameIndex]) {
+        vkDestroyBuffer(g_Device, g_IndexBuffer[g_FrameIndex], g_Allocator);
+        g_IndexBuffer[g_FrameIndex] = VK_NULL_HANDLE;
+      }
+      if (g_BufferMemory[g_FrameIndex]) {
+        vkFreeMemory(g_Device, g_BufferMemory[g_FrameIndex], g_Allocator);
+        g_BufferMemory[g_FrameIndex] = VK_NULL_HANDLE;
+      }
 
-    // Create the Index Buffer:
-    size_t index_size = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
-    if (!g_IndexBuffer[g_FrameIndex] || g_IndexBufferSize[g_FrameIndex] < index_size)
-    {
-        if (g_IndexBuffer[g_FrameIndex])
-            vkDestroyBuffer(g_Device, g_IndexBuffer[g_FrameIndex], g_Allocator);
-        if (g_IndexBufferMemory[g_FrameIndex])
-            vkFreeMemory(g_Device, g_IndexBufferMemory[g_FrameIndex], g_Allocator);
-        size_t index_buffer_size = ((index_size-1) / g_BufferMemoryAlignment+1) * g_BufferMemoryAlignment;
-        VkBufferCreateInfo buffer_info = {};
-        buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        buffer_info.size = index_buffer_size;
-        buffer_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-        buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        err = vkCreateBuffer(g_Device, &buffer_info, g_Allocator, &g_IndexBuffer[g_FrameIndex]);
-        ImGui_ImplGlfwVulkan_VkResult(err);
-        VkMemoryRequirements req;
-        vkGetBufferMemoryRequirements(g_Device, g_IndexBuffer[g_FrameIndex], &req);
-        g_BufferMemoryAlignment = (g_BufferMemoryAlignment > req.alignment) ? g_BufferMemoryAlignment : req.alignment;
-        VkMemoryAllocateInfo alloc_info = {};
-        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        alloc_info.allocationSize = req.size;
-        alloc_info.memoryTypeIndex = ImGui_ImplGlfwVulkan_MemoryType(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, req.memoryTypeBits);
-        err = vkAllocateMemory(g_Device, &alloc_info, g_Allocator, &g_IndexBufferMemory[g_FrameIndex]);
-        ImGui_ImplGlfwVulkan_VkResult(err);
-        err = vkBindBufferMemory(g_Device, g_IndexBuffer[g_FrameIndex], g_IndexBufferMemory[g_FrameIndex], 0);
-        ImGui_ImplGlfwVulkan_VkResult(err);
-        g_IndexBufferSize[g_FrameIndex] = index_buffer_size;
+      // Increase raw sizes by a scale factor before reallocating, to amortize the overheard of
+      // repeated reallocations.
+      raw_vertex_size = (size_t)(g_BufferReallocationScaleFactor * (double)raw_vertex_size);
+      raw_index_size = (size_t)(g_BufferReallocationScaleFactor * (double)raw_index_size);
+
+      // Create buffer objects,  determine their memory requirements, and compute the total
+      // required device memory allocation size.
+      VkDeviceSize allocation_size = 0;
+      uint32_t memory_type_bits = UINT32_MAX;
+
+      VkBufferCreateInfo vertex_buffer_info = {};
+      vertex_buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+      vertex_buffer_info.size = raw_vertex_size;
+      vertex_buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+      vertex_buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      err = vkCreateBuffer(g_Device, &vertex_buffer_info, g_Allocator, &g_VertexBuffer[g_FrameIndex]);
+      ImGui_ImplGlfwVulkan_VkResult(err);
+      VkMemoryRequirements vertex_buffer_req = {};
+      vkGetBufferMemoryRequirements(g_Device, g_VertexBuffer[g_FrameIndex], &vertex_buffer_req);
+      VkDeviceSize vertex_buffer_offset = (allocation_size + vertex_buffer_req.alignment - 1) & ~(vertex_buffer_req.alignment - 1);
+      allocation_size = vertex_buffer_offset + vertex_buffer_req.size;
+      memory_type_bits &= vertex_buffer_req.memoryTypeBits;
+      g_VertexBufferCapacity[g_FrameIndex] = vertex_buffer_req.size;
+
+      VkBufferCreateInfo index_buffer_info = {};
+      index_buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+      index_buffer_info.size = raw_index_size;
+      index_buffer_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+      index_buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      err = vkCreateBuffer(g_Device, &index_buffer_info, g_Allocator, &g_IndexBuffer[g_FrameIndex]);
+      ImGui_ImplGlfwVulkan_VkResult(err);
+      VkMemoryRequirements index_buffer_req = {};
+      vkGetBufferMemoryRequirements(g_Device, g_IndexBuffer[g_FrameIndex], &index_buffer_req);
+      VkDeviceSize index_buffer_offset = (allocation_size + index_buffer_req.alignment - 1) & ~(index_buffer_req.alignment - 1);
+      allocation_size = index_buffer_offset + index_buffer_req.size;
+      memory_type_bits &= index_buffer_req.memoryTypeBits;
+      g_IndexBufferCapacity[g_FrameIndex] = index_buffer_req.size;
+
+      // Allocate device memory
+      VkMemoryAllocateInfo alloc_info = {};
+      alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+      alloc_info.allocationSize = allocation_size;
+      VkMemoryPropertyFlags memory_property_flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+      alloc_info.memoryTypeIndex = ImGui_ImplGlfwVulkan_MemoryType(memory_property_flags, memory_type_bits);
+      err = vkAllocateMemory(g_Device, &alloc_info, g_Allocator, &g_BufferMemory[g_FrameIndex]);
+      ImGui_ImplGlfwVulkan_VkResult(err);
+
+      // Bind buffer objects to their appropriate offset within the allocation.
+      err = vkBindBufferMemory(g_Device, g_VertexBuffer[g_FrameIndex], g_BufferMemory[g_FrameIndex], vertex_buffer_offset);
+      ImGui_ImplGlfwVulkan_VkResult(err);
+      err = vkBindBufferMemory(g_Device, g_IndexBuffer[g_FrameIndex], g_BufferMemory[g_FrameIndex], index_buffer_offset);
+      ImGui_ImplGlfwVulkan_VkResult(err);
+
+      // Update mapped buffer memory pointers and ranges
+      uintptr_t mapped_buffer = 0;
+      err = vkMapMemory(g_Device, g_BufferMemory[g_FrameIndex], 0, allocation_size, 0, (void**)&mapped_buffer);
+      ImGui_ImplGlfwVulkan_VkResult(err);
+      g_VertexBufferMapped[g_FrameIndex] = (ImDrawVert*)(mapped_buffer + vertex_buffer_offset);
+      g_IndexBufferMapped[g_FrameIndex] = (ImDrawIdx*)(mapped_buffer + index_buffer_offset);
+      g_BufferMappedRange[g_FrameIndex] = { VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE };
+      g_BufferMappedRange[g_FrameIndex].memory = g_BufferMemory[g_FrameIndex];
+      g_BufferMappedRange[g_FrameIndex].size = allocation_size;
     }
 
     // Upload Vertex and index Data:
     {
-        ImDrawVert* vtx_dst;
-        ImDrawIdx* idx_dst;
-        err = vkMapMemory(g_Device, g_VertexBufferMemory[g_FrameIndex], 0, vertex_size, 0, (void**)(&vtx_dst));
-        ImGui_ImplGlfwVulkan_VkResult(err);
-        err = vkMapMemory(g_Device, g_IndexBufferMemory[g_FrameIndex], 0, index_size, 0, (void**)(&idx_dst));
-        ImGui_ImplGlfwVulkan_VkResult(err);
+        ImDrawVert* vtx_dst = g_VertexBufferMapped[g_FrameIndex];
+        ImDrawIdx* idx_dst = g_IndexBufferMapped[g_FrameIndex];
         for (int n = 0; n < draw_data->CmdListsCount; n++)
         {
             const ImDrawList* cmd_list = draw_data->CmdLists[n];
@@ -232,18 +257,11 @@ void ImGui_ImplGlfwVulkan_RenderDrawLists(ImDrawData* draw_data)
             memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
             vtx_dst += cmd_list->VtxBuffer.Size;
             idx_dst += cmd_list->IdxBuffer.Size;
+            // assert: intptr_t(vtx_dst) <= intptr_t(g_VertexBufferMapped) + g_VertexBufferCapacity
+            // assert: intptr_t(idx_dst) <= intptr_t(g_IndexBufferMapped) + g_IndexBufferCapacity
         }
-        VkMappedMemoryRange range[2] = {};
-        range[0].sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-        range[0].memory = g_VertexBufferMemory[g_FrameIndex];
-        range[0].size = VK_WHOLE_SIZE;
-        range[1].sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-        range[1].memory = g_IndexBufferMemory[g_FrameIndex];
-        range[1].size = VK_WHOLE_SIZE;
-        err = vkFlushMappedMemoryRanges(g_Device, 2, range);
+        err = vkFlushMappedMemoryRanges(g_Device, 1, &g_BufferMappedRange[g_FrameIndex]);
         ImGui_ImplGlfwVulkan_VkResult(err);
-        vkUnmapMemory(g_Device, g_VertexBufferMemory[g_FrameIndex]);
-        vkUnmapMemory(g_Device, g_IndexBufferMemory[g_FrameIndex]);
     }
 
     // Bind pipeline and descriptor sets:
@@ -438,7 +456,6 @@ bool ImGui_ImplGlfwVulkan_CreateFontsTexture(VkCommandBuffer command_buffer)
         ImGui_ImplGlfwVulkan_VkResult(err);
         VkMemoryRequirements req;
         vkGetBufferMemoryRequirements(g_Device, g_UploadBuffer, &req);
-        g_BufferMemoryAlignment = (g_BufferMemoryAlignment > req.alignment) ? g_BufferMemoryAlignment : req.alignment;
         VkMemoryAllocateInfo alloc_info = {};
         alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         alloc_info.allocationSize = req.size;
@@ -562,6 +579,19 @@ bool ImGui_ImplGlfwVulkan_CreateDeviceObjects()
         ImGui_ImplGlfwVulkan_VkResult(err);
     }
 
+    if (!g_DescriptorPool)
+    {
+        VkDescriptorPoolSize pool_sizes[] = {
+          {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+        };
+        VkDescriptorPoolCreateInfo info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        info.flags                      = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        info.maxSets                    = IMGUI_VK_QUEUED_FRAMES;
+        info.poolSizeCount              = sizeof(pool_sizes) / sizeof(pool_sizes[0]);
+        info.pPoolSizes                 = pool_sizes;
+        err = vkCreateDescriptorPool(g_Device, &info, g_Allocator, &g_DescriptorPool);
+        ImGui_ImplGlfwVulkan_VkResult(err);
+    }
     // Create Descriptor Set:
     {
         VkDescriptorSetAllocateInfo alloc_info = {};
@@ -684,6 +714,7 @@ bool ImGui_ImplGlfwVulkan_CreateDeviceObjects()
     info.pDynamicState = &dynamic_state;
     info.layout = g_PipelineLayout;
     info.renderPass = g_RenderPass;
+    info.subpass = g_Subpass;
     err = vkCreateGraphicsPipelines(g_Device, g_PipelineCache, 1, &info, g_Allocator, &g_Pipeline);
     ImGui_ImplGlfwVulkan_VkResult(err);
 
@@ -714,9 +745,8 @@ void    ImGui_ImplGlfwVulkan_InvalidateDeviceObjects()
     for (int i = 0; i < IMGUI_VK_QUEUED_FRAMES; i++)
     {
         if (g_VertexBuffer[i])          { vkDestroyBuffer(g_Device, g_VertexBuffer[i], g_Allocator); g_VertexBuffer[i] = VK_NULL_HANDLE; }
-        if (g_VertexBufferMemory[i])    { vkFreeMemory(g_Device, g_VertexBufferMemory[i], g_Allocator); g_VertexBufferMemory[i] = VK_NULL_HANDLE; }
         if (g_IndexBuffer[i])           { vkDestroyBuffer(g_Device, g_IndexBuffer[i], g_Allocator); g_IndexBuffer[i] = VK_NULL_HANDLE; }
-        if (g_IndexBufferMemory[i])     { vkFreeMemory(g_Device, g_IndexBufferMemory[i], g_Allocator); g_IndexBufferMemory[i] = VK_NULL_HANDLE; }
+        if (g_BufferMemory[i])          { vkFreeMemory(g_Device, g_BufferMemory[i], g_Allocator); g_BufferMemory[i] = VK_NULL_HANDLE; }
     }
 
     if (g_FontView)             { vkDestroyImageView(g_Device, g_FontView, g_Allocator); g_FontView = VK_NULL_HANDLE; }
@@ -724,6 +754,7 @@ void    ImGui_ImplGlfwVulkan_InvalidateDeviceObjects()
     if (g_FontMemory)           { vkFreeMemory(g_Device, g_FontMemory, g_Allocator); g_FontMemory = VK_NULL_HANDLE; }
     if (g_FontSampler)          { vkDestroySampler(g_Device, g_FontSampler, g_Allocator); g_FontSampler = VK_NULL_HANDLE; }
     if (g_DescriptorSetLayout)  { vkDestroyDescriptorSetLayout(g_Device, g_DescriptorSetLayout, g_Allocator); g_DescriptorSetLayout = VK_NULL_HANDLE; }
+    if (g_DescriptorPool)       { vkDestroyDescriptorPool(g_Device, g_DescriptorPool, g_Allocator); g_DescriptorPool = VK_NULL_HANDLE; }
     if (g_PipelineLayout)       { vkDestroyPipelineLayout(g_Device, g_PipelineLayout, g_Allocator); g_PipelineLayout = VK_NULL_HANDLE; }
     if (g_Pipeline)             { vkDestroyPipeline(g_Device, g_Pipeline, g_Allocator); g_Pipeline = VK_NULL_HANDLE; }
 }
@@ -734,8 +765,8 @@ bool    ImGui_ImplGlfwVulkan_Init(GLFWwindow* window, bool install_callbacks, Im
     g_Gpu = init_data->gpu;
     g_Device = init_data->device;
     g_RenderPass = init_data->render_pass;
+    g_Subpass = init_data->subpass;
     g_PipelineCache = init_data->pipeline_cache;
-    g_DescriptorPool = init_data->descriptor_pool;
     g_CheckVkResult = init_data->check_vk_result;
 
     g_Window = window;

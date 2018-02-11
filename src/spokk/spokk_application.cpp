@@ -208,7 +208,7 @@ VkResult SpokkVmaAlloc(void *pUserData, const spokk::Device& /*device*/, const V
     vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
   }
   vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_USER_DATA_COPY_STRING_BIT;
-  vma_allocation_ci.pUserData = "beans and/or franks";
+  vma_allocation_ci.pUserData = const_cast<char*>("beans and/or franks");
   VmaAllocation vma_allocation = {};
   VmaAllocationInfo vma_allocation_info = {};
   result = vmaAllocateMemory(vma_allocator, &memory_reqs, &vma_allocation_ci, &vma_allocation, &vma_allocation_info);
@@ -815,37 +815,14 @@ void Application::HandleWindowResize(VkExtent2D new_window_extent) {
 }
 
 bool Application::InitImgui(VkRenderPass ui_render_pass) {
-  VkDescriptorPoolSize pool_size[11] = {
-      // clang-format off
-      {VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
-      {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000}, 
-      {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
-      {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
-      {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
-      {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
-      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
-      {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
-      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
-      {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
-      {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}
-      // clang-format on
-  };
-  VkDescriptorPoolCreateInfo pool_info = {};
-  pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-  pool_info.maxSets = 1000 * 11;
-  pool_info.poolSizeCount = 11;
-  pool_info.pPoolSizes = pool_size;
-  SPOKK_VK_CHECK(vkCreateDescriptorPool(device_, &pool_info, device_.HostAllocator(), &imgui_dpool_));
-
   // Setup ImGui binding
   ImGui_ImplGlfwVulkan_Init_Data init_data = {};
   init_data.allocator = const_cast<VkAllocationCallbacks *>(device_.HostAllocator());
   init_data.gpu = device_.Physical();
   init_data.device = device_.Logical();
   init_data.render_pass = ui_render_pass;
+  init_data.subpass = 0;
   init_data.pipeline_cache = device_.PipelineCache();
-  init_data.descriptor_pool = imgui_dpool_;
   init_data.check_vk_result = [](VkResult result) { SPOKK_VK_CHECK(result); };
   bool install_glfw_input_callbacks = true;
   bool init_success = ImGui_ImplGlfwVulkan_Init(window_.get(), install_glfw_input_callbacks, &init_data);
@@ -912,12 +889,10 @@ void Application::ShowImgui(bool visible) {
 void Application::RenderImgui(VkCommandBuffer cb) const { ImGui_ImplGlfwVulkan_Render(cb); }
 
 void Application::DestroyImgui(void) {
-  if (device_.Logical() != VK_NULL_HANDLE && imgui_dpool_ != VK_NULL_HANDLE) {
+  if (device_.Logical() != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(device_);
 
     ImGui_ImplGlfwVulkan_Shutdown();
-    vkDestroyDescriptorPool(device_, imgui_dpool_, device_.HostAllocator());
-    imgui_dpool_ = VK_NULL_HANDLE;
 
     ShowImgui(false);
     is_imgui_enabled_ = false;

@@ -76,9 +76,9 @@ VkResult PipelinedBuffer::Load(const Device& device, uint32_t pframe, const void
     vkCmdPipelineBarrier(
         cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
     Buffer staging_buffer = {};  // TODO(cort): staging buffer
-    if (data_size <= 65536) {
+    if (data_size <= 65536 && (data_size % 4) == 0) {
       uintptr_t src_dwords = uintptr_t(src_data) + src_offset;
-      ZOMBO_ASSERT((src_dwords % sizeof(uint32_t)) == 0, "src_data (%p) + src_offset (%d) must be 4-byte aligned.",
+      ZOMBO_ASSERT((src_dwords % 4) == 0, "src_data (%p) + src_offset (%d) must be 4-byte aligned.",
           src_data, uint32_t(src_offset));
       vkCmdUpdateBuffer(cb, Handle(pframe), dst_offset, data_size, reinterpret_cast<const uint32_t*>(src_dwords));
     } else {

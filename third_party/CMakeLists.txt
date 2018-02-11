@@ -120,7 +120,6 @@ SET(SHADERC_TARGETS
     build-version
     check-copyright
     glslc
-    glslc_doc_README
     glslc_exe
     shaderc
     shaderc_combined_genfile

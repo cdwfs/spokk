@@ -121,9 +121,6 @@ public:
       dsets_[pframe] = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
     }
     DescriptorSetWriter dset_writer(mesh_shader_program_.dset_layout_cis[0]);
-    dset_writer.BindImage(
-        albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mesh_fs_.GetDescriptorBindPoint("tex").binding);
-    dset_writer.BindSampler(sampler_, mesh_fs_.GetDescriptorBindPoint("samp").binding);
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
       dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
