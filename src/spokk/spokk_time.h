@@ -13,7 +13,7 @@ public:
   struct CreateInfo {
     uint32_t swapchain_image_count;
     uint32_t timestamp_id_count;
-    uint32_t queue_family_index;
+    uint32_t queue_family_index;  // used to query timestamp granularity
   };
 
   VkResult Create(const Device& device, const CreateInfo& ci);
@@ -50,5 +50,15 @@ private:
   int32_t target_swapchain_image_index_ = -1;
   uint32_t timestamp_id_count_ = 0;
   std::vector<int64_t> swapchain_image_frame_indices_;  // one per swapchain image
+
+  // TODO(cort): I want the application to not need to manually track whether queries have been submitted for
+  // a given swapchain image before retrieving results; if no queries were submitted, just treat all timestamps
+  // as invalid / not ready. But I don't like this specific implementation:
+  // 1) Emitting a WriteTimestamp command to a command buffer does not necessarily imply that CB will ever be submitted.
+  // 2) There is currently an implicit requirement that SetTargetFrame() be called before WriteTimestamp(), or else
+  //    the "queries written" flag will be cleared after it's set.
+  // I need to make this API more foolproof, but this unblocks me for the new validation errors in SDK 1.0.68.
+  std::vector<bool>
+      queries_written_for_swapchain_image_;  // has at least one query been written for a given swapchain image
 };
 }  // namespace spokk
