@@ -34,11 +34,11 @@ enum BenchmarkMode {
   BENCHMARK_MODE_COUNT
 };
 const std::array<const char*, BENCHMARK_MODE_COUNT> benchmark_mode_names = {
-  "DRAW_PER_INSTANCE",
-  "DRAW_ALL_INSTANCES",
-  "DRAW_INDIRECT_PER_INSTANCE",
-  "DRAW_INDIRECT_ALL_INSTANCES",
-  "DRAW_INDIRECT_ALL_INSTANCES_SPARSE",
+    "DRAW_PER_INSTANCE",
+    "DRAW_ALL_INSTANCES",
+    "DRAW_INDIRECT_PER_INSTANCE",
+    "DRAW_INDIRECT_ALL_INSTANCES",
+    "DRAW_INDIRECT_ALL_INSTANCES_SPARSE",
 };
 
 enum TimestampId {
@@ -184,7 +184,7 @@ public:
     scene_uniforms_.FlushPframeHostCache(device_, pframe_index_);
 
     // Update object-to-world matrices.
-    const float secs = 0;//(float)seconds_elapsed_;
+    const float secs = 0;  //(float)seconds_elapsed_;
     MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
     const glm::vec3 swarm_center(0, 0, -2);
     for (uint32_t iMesh = 0; iMesh < MESH_INSTANCE_COUNT; ++iMesh) {
@@ -264,7 +264,8 @@ public:
       char gpu_draw_times_average_str[32];
       sprintf(gpu_draw_times_average_str, "avg: %.3fms", gpu_draw_times_average_ms_);
       ImGui::PlotLines("##DrawTime", gpu_draw_times_ms_.data(), (int)gpu_draw_times_ms_.size(),
-        frame_index_ % FRAME_TIME_COUNT, gpu_draw_times_average_str, 0.0f, FLT_MAX, ImVec2(0.75f * (float)swapchain_extent_.width, 100));
+          frame_index_ % FRAME_TIME_COUNT, gpu_draw_times_average_str, 0.0f, FLT_MAX,
+          ImVec2(0.75f * (float)swapchain_extent_.width, 100));
       ImGui::PopStyleColor(2);
       ImGui::End();
     }
@@ -272,11 +273,11 @@ public:
     if (benchmark_mode_ == BENCHMARK_MODE_DRAW_PER_INSTANCE) {
       // One draw call per instance
       for (uint32_t i = 0; i < MESH_INSTANCE_COUNT; ++i) {
-        vkCmdDrawIndexed(primary_cb, triangles_per_instance_*3, 1, 0, 0, i);
+        vkCmdDrawIndexed(primary_cb, triangles_per_instance_ * 3, 1, 0, 0, i);
       }
     } else if (benchmark_mode_ == BENCHMARK_MODE_DRAW_ALL_INSTANCES) {
       // One instanced draw call
-      vkCmdDrawIndexed(primary_cb, triangles_per_instance_*3, MESH_INSTANCE_COUNT, 0, 0, 0);
+      vkCmdDrawIndexed(primary_cb, triangles_per_instance_ * 3, MESH_INSTANCE_COUNT, 0, 0, 0);
     } else if (benchmark_mode_ == BENCHMARK_MODE_DRAW_INDIRECT_PER_INSTANCE) {
       // One indirect draw call per instance
       for (uint32_t i = 0; i < MESH_INSTANCE_COUNT; ++i) {
