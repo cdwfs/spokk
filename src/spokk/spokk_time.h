@@ -8,6 +8,48 @@ namespace spokk {
 
 class Device;  // from spokk_device.h
 
+// Plan:
+// - Application must call SetTargetFrame(frame_index) on a pool before writing any timestamps
+//   for that frame.
+//   Internally, this advances a counter to the next available bank of timestamps, and writes a
+//   command that resets that bank's queries.
+//   - Q: Is it possible to detect writes to timestamps between submission and SetTargetFrame?
+//   - A: Yeah, probably.
+// - Application then writes whatever timestamps it pleases.
+//   - Q: is it an error to write the same timestamp ID twice in a single frame?
+//   - A: Almost certainly, but let's make it configurable.
+// - Application must do *something* to confirm that a particular frame's timestamps were actually
+//   submitted, and to associate them with a swapchain image index.
+//   - Q: Unfortunately this would need to happen for every pool involved in a particular CB submission.
+//        I wish it could be made implicit. Would it be a fair assumption for now that I'm submitting
+//        every command buffer I build?
+// - Application retrieves query results.
+//   - Option: in CPU code, one reasonably safe way to do this is to call vkAcquireNextImageKHR() and
+//     then use the resulting swapchain image index to look up the appropriate bank of queries to
+//     retrieve. But they're still not guaranteed to be ready, and if they're not, then what?
+//   - Option: keep a small set of frames who've been submitted but not retrieved yet. Every
+//     frame, attempt to retrieve the results of all frames in this set. If results are ready, remove
+//     that frame from the set. If not, skip it until next time.
+//     - Q: does AMD's driver store timers in host-visible memory, or is this a guaranteed transfer+block?
+//   - Option: copy results into a GPU ring buffer. This is really only viable if the results are being
+//     consumed by a shader, as there's no way to prevent the host from reading the results mid-write.
+//     - command sequence:
+//       - barrier1 = VkBufferMemoryBarrier(results_buffer, old=*_READ, new=TRANSFER_WRITE,
+//                                          offset=(frame_index*frame_size) % buffer_size,
+//                                          size=frame_size);
+//       - vkCmdPipelineBarriers(barrier1);
+//       - vkCmdCopyQueryPoolResults(results_buffer);
+//       - vkCmdFillBuffer(); // write any metadata into the results: frame_index, etc.
+//       - barrier2 = VkBufferMemoryBarrier(results_buffer, old=TRANSFER_WRITE, new=*_READ,
+//                                          offset=(frame_index*frame_size) % buffer_size,
+//                                          size=frame_size);
+//       - barrier3 = VkBufferMemoryBarrier(result_buffer_pointer, old=*_READ, new=TRANSFER_WRITE,
+//                                          offset=..., size=sizeof(uint32_t));
+//       - vkCmdPipelineBarriers(barrier2, barrier3);
+//       - vkCmdFillBuffer(); // update pointer to oldest entry in the ring buffer
+//     - this sequence must happen outside a render pass.
+//     - this sequence must either be in the same command buffer as the query writes, or in a separate CB
+//       that waits on semaphore(s) signaled by the CBs in which the queries are written.
 class TimestampQueryPool {
 public:
   struct CreateInfo {
