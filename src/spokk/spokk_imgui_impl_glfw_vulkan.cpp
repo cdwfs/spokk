@@ -57,7 +57,6 @@ static size_t                 g_VertexBufferCapacity[IMGUI_VK_QUEUED_FRAMES] = {
 static size_t                 g_IndexBufferCapacity[IMGUI_VK_QUEUED_FRAMES] = {};
 static VkBuffer               g_VertexBuffer[IMGUI_VK_QUEUED_FRAMES] = {};
 static VkBuffer               g_IndexBuffer[IMGUI_VK_QUEUED_FRAMES] = {};
-static VkBuffer               g_UniformBuffer[IMGUI_VK_QUEUED_FRAMES] = {};
 static ImDrawVert*            g_VertexBufferMapped[IMGUI_VK_QUEUED_FRAMES] = {};
 static ImDrawIdx*             g_IndexBufferMapped[IMGUI_VK_QUEUED_FRAMES] = {};
 static VkMappedMemoryRange    g_BufferMappedRange[IMGUI_VK_QUEUED_FRAMES] = {};
