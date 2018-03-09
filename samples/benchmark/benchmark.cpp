@@ -255,6 +255,8 @@ public:
       ImGui::BeginGroup();
       ImGui::SliderFloat("Scale", &instance_scale_, 0.01f, 3.0f, "%4.2f");
       ImGui::SliderInt("Tris", &triangles_per_instance_, 0, mesh_.index_count / 3);
+      ImGui::Text("Rendering %d instances (%d total triangles)", MESH_INSTANCE_COUNT,
+          MESH_INSTANCE_COUNT * triangles_per_instance_);
       ImGui::Combo("Mode", (int*)&benchmark_mode_, benchmark_mode_names.data(), (int)benchmark_mode_names.size());
       ImGui::EndGroup();
       ImGui::PopItemWidth();
