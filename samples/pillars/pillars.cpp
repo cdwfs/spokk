@@ -193,7 +193,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   VkBufferCreateInfo visible_cells_buffer_ci = {};
   visible_cells_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   visible_cells_buffer_ci.size = HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY * sizeof(uint32_t);
-  visible_cells_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  visible_cells_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
   visible_cells_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(visible_cells_buffer_.Create(
       device_, PFRAME_COUNT, visible_cells_buffer_ci, uniform_buffer_memory_flags));
@@ -219,6 +219,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
         visible_cells_buffer_.View(pframe), pillar_vs_.GetDescriptorBindPoint("visible_cells").binding);
     dset_writer.BindTexelBuffer(
         heightfield_buffer_.View(pframe), pillar_vs_.GetDescriptorBindPoint("cell_heights").binding);
+    dset_writer.BindBuffer(visible_cells_buffer_.Handle(pframe), 7);
     dset_writer.WriteAll(device_, dsets_[pframe]);
   }
 }

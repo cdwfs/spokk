@@ -34,9 +34,9 @@ void Shader::AddShaderResourceToDescriptorSetLayout(
   for (uint32_t iBinding = 0; iBinding < layout_info.bindings.size(); ++iBinding) {
     auto& binding = layout_info.bindings[iBinding];
     if (binding.binding == binding_index) {
-      ZOMBO_ERROR("Binding %u appears twice in a Shader? WTF?", binding_index);
-      ZOMBO_ASSERT(binding.descriptorType == desc_type, "binding %u appears twice with different types in shader",
-          binding_index);
+      //ZOMBO_ERROR("Binding %u appears twice in a Shader? WTF?", binding_index);
+      //ZOMBO_ASSERT(binding.descriptorType == desc_type, "binding %u appears twice with different types in shader",
+      //    binding_index);
       ZOMBO_ASSERT(binding.descriptorCount == array_size,
           "binding %u appears twice with different array sizes in shader", binding_index);
       found_binding = true;

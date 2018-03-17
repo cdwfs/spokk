@@ -15,6 +15,19 @@ layout (set = 0, binding = 0) uniform SceneUniforms {
 layout (set = 0, binding = 1) uniform isamplerBuffer visible_cells;
 layout (set = 0, binding = 2) uniform samplerBuffer cell_heights;
 
+#define SIZ_ (256*1024*1024)
+layout(set=0,binding=7,std430)                    buffer ssbo0_ {uint  bufA32[SIZ_/4];};
+layout(set=0,binding=7,std430)                    buffer ssbo1_ {uvec2 bufA64[SIZ_/8];};
+layout(set=0,binding=7,std430)           readonly buffer ssbo2_ {uint  bufR32[SIZ_/4];};
+layout(set=0,binding=7,std430)           readonly buffer ssbo3_ {uvec2 bufR64[SIZ_/8];};
+layout(set=0,binding=7,std430)           readonly buffer ssbo4_ {uvec4 bufR128[SIZ_/16];};
+layout(set=0,binding=7,std430) coherent writeonly buffer ssbo5_ {uint  bufW32[SIZ_/4];};
+layout(set=0,binding=7,std430) coherent writeonly buffer ssbo6_ {uvec2 bufW64[SIZ_/8];};
+layout(set=0,binding=7,std430) coherent writeonly buffer ssbo7_ {uvec4 bufW128[SIZ_/16];};
+layout(set=0,binding=7,std430) volatile writeonly buffer ssbo8_ {uint  bufV32[SIZ_/4];};
+layout(set=0,binding=7,std430) volatile writeonly buffer ssbo9_ {uvec2 bufV64[SIZ_/8];};
+layout(set=0,binding=7,std430) volatile writeonly buffer ssboA_ {uvec4 bufV128[SIZ_/16];};
+
 void main() {
   int cell = texelFetch(visible_cells, gl_InstanceIndex).x;
   int cell_x = cell % 256;
