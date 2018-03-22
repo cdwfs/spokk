@@ -107,6 +107,8 @@ SET(SPIRV_TOOLS_TARGETS
     SPIRV-Tools-link
     spirv-tools-build-version
     spirv-tools-cpp-example
+    spirv-tools-pkg-config
+    spirv-tools-shared-pkg-config
     spirv-tools-spv-amd-gcn-shader
     spirv-tools-spv-amd-shader-ballot
     spirv-tools-spv-amd-shader-explicit-vertex-parameter
@@ -121,6 +123,7 @@ SET(SHADERC_TARGETS
     check-copyright
     glslc
     glslc_exe
+    glslc_doc_README
     shaderc
     shaderc_combined_genfile
     shaderc_shared
