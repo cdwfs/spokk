@@ -37,6 +37,7 @@ SET(ASSIMP_TARGETS
 IF(${MSVC})
     LIST(APPEND ASSIMP_TARGETS
         UpdateAssimpLibsDebugSymbolsAndDLLs
+        zlib
         zlibstatic
     )
 ENDIF(${MSVC})
