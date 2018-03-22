@@ -321,8 +321,9 @@ int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const 
     }
   } else {
     // transition to final layout/access
-    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-        VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &barrier_dst_to_final);
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0,
+        nullptr, 0, nullptr, 1, &barrier_dst_to_final);
   }
   SPOKK_VK_CHECK(staging_buffer.FlushHostCache(device));
   cpool.EndSubmitAndFree(&cb);

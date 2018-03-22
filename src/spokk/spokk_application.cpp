@@ -263,6 +263,7 @@ Application::Application(const CreateInfo &ci) {
   if (ci.debug_report_flags != 0) {
 #if defined(_DEBUG)  // validation layers should only be enabled in debug builds
     optional_instance_layer_names.push_back("VK_LAYER_LUNARG_standard_validation");
+    optional_instance_layer_names.push_back("VK_LAYER_LUNARG_assistant_layer");
 #endif
   }
   std::vector<const char *> enabled_instance_layer_names = {};
