@@ -64,6 +64,7 @@ SET(SPIRV_CROSS_TARGETS
     spirv-cross-hlsl
     spirv-cross-cpp
     spirv-cross-msl
+    spirv-cross-util
     spirv-cross
 )
 SET_TARGET_PROPERTIES(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
