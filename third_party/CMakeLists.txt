@@ -37,6 +37,7 @@ SET(ASSIMP_TARGETS
 IF(${MSVC})
     LIST(APPEND ASSIMP_TARGETS
         UpdateAssimpLibsDebugSymbolsAndDLLs
+        zlib
         zlibstatic
     )
 ENDIF(${MSVC})
@@ -64,6 +65,7 @@ SET(SPIRV_CROSS_TARGETS
     spirv-cross-hlsl
     spirv-cross-cpp
     spirv-cross-msl
+    spirv-cross-util
     spirv-cross
 )
 SET_TARGET_PROPERTIES(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
@@ -107,6 +109,8 @@ SET(SPIRV_TOOLS_TARGETS
     SPIRV-Tools-link
     spirv-tools-build-version
     spirv-tools-cpp-example
+    spirv-tools-pkg-config
+    spirv-tools-shared-pkg-config
     spirv-tools-spv-amd-gcn-shader
     spirv-tools-spv-amd-shader-ballot
     spirv-tools-spv-amd-shader-explicit-vertex-parameter
@@ -121,6 +125,7 @@ SET(SHADERC_TARGETS
     check-copyright
     glslc
     glslc_exe
+    glslc_doc_README
     shaderc
     shaderc_combined_genfile
     shaderc_shared

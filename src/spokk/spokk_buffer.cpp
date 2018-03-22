@@ -74,7 +74,7 @@ VkResult PipelinedBuffer::Load(const Device& device, uint32_t pframe, const void
     barrier.offset = dst_offset;
     barrier.size = data_size;
     vkCmdPipelineBarrier(
-        cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+        cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
     Buffer staging_buffer = {};  // TODO(cort): staging buffer
     if (data_size <= 65536 && (data_size % 4) == 0) {
       uintptr_t src_dwords = uintptr_t(src_data) + src_offset;
@@ -114,7 +114,7 @@ VkResult PipelinedBuffer::Load(const Device& device, uint32_t pframe, const void
     barrier.dstAccessMask =
         VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;  // TODO(cort): pass in more specific access flags
     vkCmdPipelineBarrier(
-        cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+        cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
     if (staging_buffer.Handle() != VK_NULL_HANDLE) {
       staging_buffer.FlushHostCache(device);
     }
