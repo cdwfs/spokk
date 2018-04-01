@@ -56,42 +56,41 @@ void Shader::AddShaderResourceToDescriptorSetLayout(const SpvReflectDescriptorBi
 }
 
 void Shader::ParseShaderResources(const SpvReflectShaderModule& refl_module) {
-  for (uint32_t i_binding = 0; i_binding < refl_module.descriptor_binding_count; ++i_binding) {
-    AddShaderResourceToDescriptorSetLayout(refl_module.descriptor_bindings[i_binding]);
+  uint32_t binding_count = 0;
+  SPIRV_REFLECT_CHECK(spvReflectEnumerateDescriptorBindings(&refl_module, &binding_count, nullptr));
+  std::vector<SpvReflectDescriptorBinding*> bindings(binding_count);
+  SPIRV_REFLECT_CHECK(spvReflectEnumerateDescriptorBindings(&refl_module, &binding_count, bindings.data()));
+  for (const auto* binding : bindings) {
+    AddShaderResourceToDescriptorSetLayout(*binding);
   }
 
   // Handle push constants. Each shader stage is only allowed to have one push constant range,
   // so if the SPIRV defines more than one block, we have to merge them here.
-  if (refl_module.push_constant_block_count > 0) {
+  uint32_t push_constant_block_count = 0;
+  SPIRV_REFLECT_CHECK(spvReflectEnumeratePushConstantBlocks(&refl_module, &push_constant_block_count, nullptr));
+  if (push_constant_block_count > 0) {
     ZOMBO_ERROR(
         "This code path is completely untested! "
         "Step through & make sure things looks sane, then remove this assert.");
   }
+  std::vector<SpvReflectBlockVariable*> push_constant_blocks(push_constant_block_count);
+  SPIRV_REFLECT_CHECK(
+      spvReflectEnumeratePushConstantBlocks(&refl_module, &push_constant_block_count, push_constant_blocks.data()));
   push_constant_range = {};
   push_constant_range.stageFlags = stage;
   uint32_t min_offset = UINT32_MAX, first_unused_offset = 0;
-  for (uint32_t i_pc = 0; i_pc < refl_module.push_constant_block_count; ++i_pc) {
-    const SpvReflectBlockVariable& push_constant_block = refl_module.push_constant_blocks[i_pc];
-    if (push_constant_block.member_count == 0) {
+  for(const auto* push_constant_block : push_constant_blocks) {
+    if (push_constant_block->member_count == 0) {
       continue;
     }
-    if (push_constant_block.offset < min_offset) {
-      min_offset = push_constant_block.offset;
+    if (push_constant_block->offset < min_offset) {
+      min_offset = push_constant_block->offset;
     }
-    if (push_constant_block.offset + push_constant_block.size > first_unused_offset) {
-      first_unused_offset = push_constant_block.offset + push_constant_block.size;
+    if (push_constant_block->offset + push_constant_block->size > first_unused_offset) {
+      first_unused_offset = push_constant_block->offset + push_constant_block->size;
     }
     push_constant_range.offset = min_offset;
     push_constant_range.size = (first_unused_offset - min_offset);
-  }
-  // parse (and ignore) input/output variables
-  for (uint32_t i_iv = 0; i_iv < refl_module.input_variable_count; ++i_iv) {
-    const SpvReflectInterfaceVariable& input = refl_module.input_variables[i_iv];
-    (void)input;
-  }
-  for (uint32_t i_ov = 0; i_ov < refl_module.output_variable_count; ++i_ov) {
-    const SpvReflectInterfaceVariable& output = refl_module.output_variables[i_ov];
-    (void)output;
   }
 }
 
