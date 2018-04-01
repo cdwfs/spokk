@@ -121,7 +121,6 @@ SET(SHADERC_TARGETS
     check-copyright
     glslc
     glslc_exe
-    glslc_doc_README
     shaderc
     shaderc_combined_genfile
     shaderc_shared
@@ -129,6 +128,11 @@ SET(SHADERC_TARGETS
     shaderc-online-compile
     testdata
 )
+# This target is only created if asciidoctor happens to be installed. If so, it should
+# be grouped with the shaderc targets as well.
+IF(TARGET glslc_doc_README)
+    LIST(APPEND SHADERC_TARGETS glslc_doc_README)
+ENDIF(TARGET glslc_doc_README)
 SET_TARGET_PROPERTIES(${GLSLANG_TARGETS} PROPERTIES FOLDER "shaderc/glslang")
 SET_TARGET_PROPERTIES(${SPIRV_HEADERS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-headers")
 SET_TARGET_PROPERTIES(${SPIRV_TOOLS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-tools")
