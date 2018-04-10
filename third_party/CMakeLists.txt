@@ -1,10 +1,10 @@
 # Suppress all warnings from external projects.
 IF(${MSVC})
     SET_PROPERTY(DIRECTORY APPEND PROPERTY COMPILE_OPTIONS /W0)
-    SET(CMAKE_CXX_FLAGS_RELEASE "/MD" CACHE TYPE STRING FORCE)
-    SET(CMAKE_CXX_FLAGS_DEBUG   "/MDd" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS_RELEASE "/MD" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS_DEBUG   "/MDd" CACHE TYPE STRING FORCE)
+    SET(CMAKE_CXX_FLAGS_RELEASE "/MP /MD" CACHE TYPE STRING FORCE)
+    SET(CMAKE_CXX_FLAGS_DEBUG   "/MP /MDd" CACHE TYPE STRING FORCE)
+    SET(CMAKE_C_FLAGS_RELEASE "/MP /MD" CACHE TYPE STRING FORCE)
+    SET(CMAKE_C_FLAGS_DEBUG   "/MP /MDd" CACHE TYPE STRING FORCE)
 ELSEIF(${UNIX})
     SET_PROPERTY(DIRECTORY APPEND PROPERTY COMPILE_OPTIONS -w)
 ENDIF()
@@ -57,18 +57,14 @@ SET(IMGUI_SOURCE_FILES
 # json.h
 set(JSON_H_DIR ${CMAKE_CURRENT_SOURCE_DIR}/json.h PARENT_SCOPE)
 
-# SPIRV-Cross
-ADD_SUBDIRECTORY(SPIRV-Cross)
-SET(SPIRV_CROSS_TARGETS
-    spirv-cross-core
-    spirv-cross-glsl
-    spirv-cross-hlsl
-    spirv-cross-cpp
-    spirv-cross-msl
-    spirv-cross-util
-    spirv-cross
+# SPIRV-Reflect
+SET(SPIRV_REFLECT_SOURCE_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/SPIRV-Reflect/spirv_reflect.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/SPIRV-Reflect/spirv_reflect.h
+    PARENT_SCOPE
 )
-SET_TARGET_PROPERTIES(${SPIRV_CROSS_TARGETS} PROPERTIES FOLDER "SPIRV-Cross")
+
+# Nothing to configure
 
 # shaderc
 SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
@@ -109,6 +105,8 @@ SET(SPIRV_TOOLS_TARGETS
     SPIRV-Tools-link
     spirv-tools-build-version
     spirv-tools-cpp-example
+    spirv-tools-debuginfo
+    spirv-tools-header-DebugInfo
     spirv-tools-pkg-config
     spirv-tools-shared-pkg-config
     spirv-tools-spv-amd-gcn-shader
@@ -117,6 +115,7 @@ SET(SPIRV_TOOLS_TARGETS
     spirv-tools-spv-amd-shader-trinary-minmax
     spirv-tools-vimsyntax
     SPIRV-Tools-opt
+    SPIRV-Tools-shared
     spirv-val
 )
 SET(SHADERC_TARGETS
@@ -125,7 +124,6 @@ SET(SHADERC_TARGETS
     check-copyright
     glslc
     glslc_exe
-    glslc_doc_README
     shaderc
     shaderc_combined_genfile
     shaderc_shared
@@ -133,6 +131,11 @@ SET(SHADERC_TARGETS
     shaderc-online-compile
     testdata
 )
+# This target is only created if asciidoctor happens to be installed. If so, it should
+# be grouped with the shaderc targets as well.
+IF(TARGET glslc_doc_README)
+    LIST(APPEND SHADERC_TARGETS glslc_doc_README)
+ENDIF(TARGET glslc_doc_README)
 SET_TARGET_PROPERTIES(${GLSLANG_TARGETS} PROPERTIES FOLDER "shaderc/glslang")
 SET_TARGET_PROPERTIES(${SPIRV_HEADERS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-headers")
 SET_TARGET_PROPERTIES(${SPIRV_TOOLS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-tools")
@@ -140,7 +143,6 @@ SET_TARGET_PROPERTIES(${SHADERC_TARGETS} PROPERTIES FOLDER "shaderc")
 
 # Skip executable targets; we only care about the library anyway.
 FOREACH(SHADERC_TARGET IN LISTS
-        SPIRV_CROSS_TARGETS
         GLSLANG_TARGETS
         SPIRV_HEADERS_TARGETS
         SPIRV_TOOLS_TARGETS

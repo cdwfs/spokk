@@ -1,133 +1,97 @@
 #include "spokk_shader.h"
 #include "spokk_platform.h"
 
-#include <spirv_glsl.hpp>
+#include <SPIRV-Reflect/spirv_reflect.h>
 
 #include <algorithm>
 #include <cstdint>
 
+#define SPIRV_REFLECT_CHECK(expr) ZOMBO_RETVAL_CHECK(SPV_REFLECT_RESULT_SUCCESS, expr)
+
 namespace spokk {
 
-// Helper for SPIRV-Cross shader resource parsing
-void Shader::AddShaderResourceToDescriptorSetLayout(
-    const spirv_cross::CompilerGLSL& glsl, const spirv_cross::Resource& resource, VkDescriptorType desc_type) {
-  uint32_t dset_index = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
-  uint32_t binding_index = glsl.get_decoration(resource.id, spv::DecorationBinding);
-  auto resource_type = glsl.get_type(resource.type_id);
-  // In some cases, we need to tweak the descriptor type based on the resource type.
-  if (resource_type.basetype == spirv_cross::SPIRType::SampledImage && resource_type.image.dim == spv::DimBuffer) {
-    desc_type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
-  } else if (resource_type.basetype == spirv_cross::SPIRType::Image && resource_type.image.dim == spv::DimBuffer) {
-    desc_type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+void Shader::AddShaderResourceToDescriptorSetLayout(const SpvReflectDescriptorBinding& new_binding) {
+  if ((size_t)new_binding.set >= dset_layout_infos.size()) {
+    dset_layout_infos.resize(new_binding.set + 1);
   }
-  uint32_t array_size = 1;
-  for (auto arr_size : resource_type.array) {
-    array_size *= arr_size;
+  uint32_t total_desc_count = 1;
+  for (uint32_t i_dim = 0; i_dim < new_binding.array.dims_count; ++i_dim) {
+    total_desc_count *= new_binding.array.dims[i_dim];
   }
-  // Add new (empty) dset(s) if necessary
-  if (dset_index >= dset_layout_infos.size()) {
-    dset_layout_infos.resize(dset_index + 1);
-  }
-  DescriptorSetLayoutInfo& layout_info = dset_layout_infos[dset_index];
+
+  DescriptorSetLayoutInfo& layout_info = dset_layout_infos[new_binding.set];
   // Is this binding already in use?
   bool found_binding = false;
-  for (uint32_t iBinding = 0; iBinding < layout_info.bindings.size(); ++iBinding) {
-    auto& binding = layout_info.bindings[iBinding];
-    if (binding.binding == binding_index) {
-      ZOMBO_ERROR("Binding %u appears twice in a Shader? WTF?", binding_index);
-      ZOMBO_ASSERT(binding.descriptorType == desc_type, "binding %u appears twice with different types in shader",
-          binding_index);
-      ZOMBO_ASSERT(binding.descriptorCount == array_size,
-          "binding %u appears twice with different array sizes in shader", binding_index);
+  for (uint32_t i_binding = 0; i_binding < layout_info.bindings.size(); ++i_binding) {
+    const VkDescriptorSetLayoutBinding& existing_binding = layout_info.bindings[i_binding];
+    if (existing_binding.binding == new_binding.binding) {
+      // I'm not sure this should ever actually happen...but if it does, let's at least avoid
+      // adding a redundant binding entry.
+      ZOMBO_ERROR("set=%u binding=%u appears twice in a Shader? WTF?", new_binding.set, new_binding.binding);
+      ZOMBO_ASSERT(new_binding.descriptor_type == existing_binding.descriptorType,
+          "set=%u binding=%u appears twice with different types in shader", new_binding.set, new_binding.binding);
+      ZOMBO_ASSERT(existing_binding.descriptorCount == total_desc_count,
+          "set=%u binding=%u appears twice with different array sizes in shader", new_binding.set, new_binding.binding);
       found_binding = true;
       break;
     }
   }
   if (!found_binding) {
-    VkDescriptorSetLayoutBinding new_binding = {};
-    new_binding.binding = binding_index;
-    new_binding.descriptorType = desc_type;
-    new_binding.descriptorCount = array_size;
-    new_binding.stageFlags = stage;
-    new_binding.pImmutableSamplers = nullptr;
-    layout_info.bindings.push_back(new_binding);
+    VkDescriptorSetLayoutBinding to_add = {};
+    to_add.binding = new_binding.binding;
+    to_add.descriptorType = new_binding.descriptor_type;
+    to_add.descriptorCount = total_desc_count;
+    to_add.stageFlags = stage;
+    to_add.pImmutableSamplers = nullptr;
+    layout_info.bindings.push_back(to_add);
 
-    const std::string& binding_name = glsl.get_name(resource.id);
+    const std::string& binding_name = new_binding.name;
     ZOMBO_ASSERT(name_to_index_.find(binding_name) == name_to_index_.cend(),
         "Binding name '%s' appears multiple times in shader?", binding_name.c_str());
     DescriptorBindPoint bind_point = {};
-    bind_point.set = dset_index;
-    bind_point.binding = binding_index;
+    bind_point.set = new_binding.set;
+    bind_point.binding = new_binding.binding;
     name_to_index_[binding_name] = bind_point;
   }
 }
 
-void Shader::ParseShaderResources(const spirv_cross::CompilerGLSL& glsl) {
-  spirv_cross::ShaderResources resources = glsl.get_shader_resources();
-  // handle shader resources
-  for (auto& resource : resources.uniform_buffers) {
-    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+void Shader::ParseShaderResources(const SpvReflectShaderModule& refl_module) {
+  uint32_t binding_count = 0;
+  SPIRV_REFLECT_CHECK(spvReflectEnumerateDescriptorBindings(&refl_module, &binding_count, nullptr));
+  std::vector<SpvReflectDescriptorBinding*> bindings(binding_count);
+  SPIRV_REFLECT_CHECK(spvReflectEnumerateDescriptorBindings(&refl_module, &binding_count, bindings.data()));
+  for (const auto* binding : bindings) {
+    AddShaderResourceToDescriptorSetLayout(*binding);
   }
-  for (auto& resource : resources.storage_buffers) {
-    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+
+  // Handle push constants. Each shader stage is only allowed to have one push constant range,
+  // so if the SPIRV defines more than one block, we have to merge them here.
+  uint32_t push_constant_block_count = 0;
+  SPIRV_REFLECT_CHECK(spvReflectEnumeratePushConstantBlocks(&refl_module, &push_constant_block_count, nullptr));
+  if (push_constant_block_count > 0) {
+    ZOMBO_ERROR(
+        "This code path is completely untested! "
+        "Step through & make sure things looks sane, then remove this assert.");
   }
-  for (auto& resource : resources.storage_images) {
-    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-  }
-  for (auto& resource : resources.sampled_images) {
-    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-  }
-  for (auto& resource : resources.separate_images) {
-    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-  }
-  for (auto& resource : resources.separate_samplers) {
-    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_SAMPLER);
-  }
-  for (auto& resource : resources.subpass_inputs) {
-    AddShaderResourceToDescriptorSetLayout(glsl, resource, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT);
-  }
-  // Handle push constants. Each shader stage is only allowed to have one push constant block, so if the SPIRV
-  // defines more than one range, we have to merge them here.
+  std::vector<SpvReflectBlockVariable*> push_constant_blocks(push_constant_block_count);
+  SPIRV_REFLECT_CHECK(
+      spvReflectEnumeratePushConstantBlocks(&refl_module, &push_constant_block_count, push_constant_blocks.data()));
   push_constant_range = {};
   push_constant_range.stageFlags = stage;
-  for (auto& resource : resources.push_constant_buffers) {
-    size_t min_offset = SIZE_MAX, first_unused_offset = 0;
-    auto ranges = glsl.get_active_buffer_ranges(resource.id);
-    if (!ranges.empty()) {
-      for (const auto& range : ranges) {
-        if (range.offset < min_offset) {
-          min_offset = range.offset;
-        }
-        if (range.offset + range.range > first_unused_offset) {
-          first_unused_offset = range.offset + range.range;
-        }
-      }
-      push_constant_range.offset = (uint32_t)min_offset;
-      push_constant_range.size = (uint32_t)(first_unused_offset - min_offset);
+  uint32_t min_offset = UINT32_MAX, first_unused_offset = 0;
+  for(const auto* push_constant_block : push_constant_blocks) {
+    if (push_constant_block->member_count == 0) {
+      continue;
     }
+    if (push_constant_block->offset < min_offset) {
+      min_offset = push_constant_block->offset;
+    }
+    if (push_constant_block->offset + push_constant_block->size > first_unused_offset) {
+      first_unused_offset = push_constant_block->offset + push_constant_block->size;
+    }
+    push_constant_range.offset = min_offset;
+    push_constant_range.size = (first_unused_offset - min_offset);
   }
-#if 0
-  // Handle stage inputs/outputs
-  for (auto &resource : resources.stage_inputs) {
-    uint32_t set = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
-    uint32_t binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
-    uint32_t loc = glsl.get_decoration(resource.id, spv::DecorationLocation);
-    printf("set = %4u, binding = %4u, loc = %4u: stage input '%s'\n", set, binding, loc, resource.name.c_str());
-  }
-  for (auto &resource : resources.stage_outputs) {
-    uint32_t set = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
-    uint32_t binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
-    uint32_t loc = glsl.get_decoration(resource.id, spv::DecorationLocation);
-    printf("set = %4u, binding = %4u, loc = %4u: stage output '%s'\n", set, binding, loc, resource.name.c_str());
-  }
-  // ???
-  for (auto &resource : resources.atomic_counters)
-  {
-    unsigned set = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
-    unsigned binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
-    printf("set = %4u, binding = %4u: atomic counter '%s'\n", set, binding, resource.name.c_str());
-  }
-#endif
 }
 
 //
@@ -166,25 +130,31 @@ VkResult Shader::CreateAndLoadSpirvMem(const Device& device, const void* buffer,
 }
 
 VkResult Shader::ParseSpirvAndCreate(const Device& device) {
-  spirv_cross::CompilerGLSL glsl(spirv);  // NOTE: throws an exception if you hand it malformed/invalid SPIRV.
-  stage = VkShaderStageFlagBits(0);
-  spv::ExecutionModel execution_model = glsl.get_execution_model();
-  if (execution_model == spv::ExecutionModelVertex) {
-    stage = VK_SHADER_STAGE_VERTEX_BIT;
-  } else if (execution_model == spv::ExecutionModelTessellationControl) {
-    stage = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-  } else if (execution_model == spv::ExecutionModelTessellationEvaluation) {
-    stage = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-  } else if (execution_model == spv::ExecutionModelGeometry) {
-    stage = VK_SHADER_STAGE_GEOMETRY_BIT;
-  } else if (execution_model == spv::ExecutionModelFragment) {
-    stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-  } else if (execution_model == spv::ExecutionModelGLCompute) {
-    stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  }
-  ZOMBO_ASSERT_RETURN(stage != 0, VK_ERROR_INITIALIZATION_FAILED, "invalid shader stage %d", stage);
+  SpvReflectShaderModule refl_module = {};
+  SPIRV_REFLECT_CHECK(spvReflectGetShaderModule(spirv.size() * sizeof(uint32_t), spirv.data(), &refl_module));
 
-  ParseShaderResources(glsl);
+  stage = VkShaderStageFlagBits(0);
+  if (refl_module.spirv_execution_model == SpvExecutionModelVertex) {
+    stage = VK_SHADER_STAGE_VERTEX_BIT;
+  } else if (refl_module.spirv_execution_model == SpvExecutionModelTessellationControl) {
+    stage = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+  } else if (refl_module.spirv_execution_model == SpvExecutionModelTessellationEvaluation) {
+    stage = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+  } else if (refl_module.spirv_execution_model == SpvExecutionModelGeometry) {
+    stage = VK_SHADER_STAGE_GEOMETRY_BIT;
+  } else if (refl_module.spirv_execution_model == SpvExecutionModelFragment) {
+    stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+  } else if (refl_module.spirv_execution_model == SpvExecutionModelGLCompute) {
+    stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  } else if (refl_module.spirv_execution_model == SpvExecutionModelKernel) {
+    ZOMBO_ERROR_RETURN(VK_ERROR_INITIALIZATION_FAILED, "execution mode = Kernel; is this an OpenCL shader?");
+  }
+  ZOMBO_ASSERT_RETURN(
+      stage != 0, VK_ERROR_INITIALIZATION_FAILED, "invalid execution mode %d", refl_module.spirv_execution_model);
+
+  ParseShaderResources(refl_module);
+
+  entry_point = std::string(refl_module.entry_point_name);
 
   // validation
   for (size_t s = 0; s < dset_layout_infos.size(); ++s) {
@@ -196,6 +166,8 @@ VkResult Shader::ParseSpirvAndCreate(const Device& device) {
           (uint32_t)b, layout_info.bindings[b].stageFlags, stage);
     }
   }
+
+  spvReflectDestroyShaderModule(&refl_module);
 
   VkShaderModuleCreateInfo shader_ci = {};
   shader_ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -242,7 +214,7 @@ void Shader::Destroy(const Device& device) {
 //
 // ShaderProgram
 //
-VkResult ShaderProgram::AddShader(const Shader* shader, const char* entry_point) {
+VkResult ShaderProgram::AddShader(const Shader* shader) {
   if (pipeline_layout != VK_NULL_HANDLE) {
     return VK_ERROR_INITIALIZATION_FAILED;  // program is already finalized; can't add more shaders
   }
@@ -263,7 +235,7 @@ VkResult ShaderProgram::AddShader(const Shader* shader, const char* entry_point)
   // Add shader stage info
   size_t index = entry_point_names.size();
   ZOMBO_ASSERT(index == shader_stage_cis.size(), "invariant failure: shader stage array size mismatch");
-  entry_point_names.push_back(entry_point);
+  entry_point_names.push_back(shader->entry_point);
   VkPipelineShaderStageCreateInfo new_stage_ci = {};
   new_stage_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   new_stage_ci.stage = shader->stage;
@@ -460,7 +432,8 @@ int ShaderProgram::MergeLayouts(const std::vector<DescriptorSetLayoutInfo>& new_
       merged_range = new_range;
     } else if (new_range.size > 0) {
       // src and dst are both valid; merge them
-      uint32_t first_unused_offset = std::max(merged_range.offset + merged_range.size, new_range.offset + new_range.size);
+      uint32_t first_unused_offset =
+          std::max(merged_range.offset + merged_range.size, new_range.offset + new_range.size);
       merged_range.offset = std::min(merged_range.offset, new_range.offset);
       merged_range.size = first_unused_offset - merged_range.offset;
       merged_range.stageFlags |= new_range.stageFlags;
@@ -506,7 +479,7 @@ void DescriptorPool::Add(const VkDescriptorSetLayoutCreateInfo& dset_layout, uin
 VkResult DescriptorPool::Finalize(const Device& device, VkDescriptorPoolCreateFlags flags) {
   ci.flags = flags;
   // descriptor counts can't be zero. Let's just bump them up to one, it won't hurt anything.
-  for(auto& pool_size : pool_sizes) {
+  for (auto& pool_size : pool_sizes) {
     if (pool_size.descriptorCount == 0) {
       pool_size.descriptorCount += 1;
     }
