@@ -105,6 +105,8 @@ SET(SPIRV_TOOLS_TARGETS
     SPIRV-Tools-link
     spirv-tools-build-version
     spirv-tools-cpp-example
+    spirv-tools-debuginfo
+    spirv-tools-header-DebugInfo
     spirv-tools-pkg-config
     spirv-tools-shared-pkg-config
     spirv-tools-spv-amd-gcn-shader
@@ -113,6 +115,7 @@ SET(SPIRV_TOOLS_TARGETS
     spirv-tools-spv-amd-shader-trinary-minmax
     spirv-tools-vimsyntax
     SPIRV-Tools-opt
+    SPIRV-Tools-shared
     spirv-val
 )
 SET(SHADERC_TARGETS
