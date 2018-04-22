@@ -54,6 +54,7 @@ using namespace spokk;
 #pragma warning(disable : 4100)  // unreferenced formal parameter
 #pragma warning(disable : 4189)  // initialized-but-unused local variable
 #endif
+#define VMA_ASSERT(expr) ZOMBO_ASSERT(expr, "Assert failed: %s", #expr)
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
 #ifdef _MSC_VER
