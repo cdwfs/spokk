@@ -131,7 +131,7 @@ VkResult Shader::CreateAndLoadSpirvMem(const Device& device, const void* buffer,
 
 VkResult Shader::ParseSpirvAndCreate(const Device& device) {
   SpvReflectShaderModule refl_module = {};
-  SPIRV_REFLECT_CHECK(spvReflectGetShaderModule(spirv.size() * sizeof(uint32_t), spirv.data(), &refl_module));
+  SPIRV_REFLECT_CHECK(spvReflectCreateShaderModule(spirv.size() * sizeof(uint32_t), spirv.data(), &refl_module));
 
   stage = VkShaderStageFlagBits(0);
   if (refl_module.spirv_execution_model == SpvExecutionModelVertex) {
