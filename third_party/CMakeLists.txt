@@ -57,6 +57,12 @@ SET(IMGUI_SOURCE_FILES
 # json.h
 set(JSON_H_DIR ${CMAKE_CURRENT_SOURCE_DIR}/json.h PARENT_SCOPE)
 
+# simple_vulkan_synchronization
+set(SIMPLE_VULKAN_SYNCHRONIZATION_DIR
+    ${CMAKE_CURRENT_SOURCE_DIR}/simple_vulkan_synchronization
+    PARENT_SCOPE
+)
+
 # SPIRV-Reflect
 SET(SPIRV_REFLECT_SOURCE_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/SPIRV-Reflect/spirv_reflect.c

@@ -45,6 +45,7 @@ TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     ${CMAKE_BINARY_DIR}/third_party/assimp/include # for config.h
     ${CMAKE_SOURCE_DIR}/third_party/assimp/include # for everything else
     ${VULKAN_INCLUDE_DIR}
+    ${SIMPLE_VULKAN_SYNCHRONIZATION_DIR}
     src/spokk
     ${JSON_H_DIR}
 )
@@ -74,6 +75,7 @@ SET(SPOKK_HEADERS
     src/spokk/image_file.h
     src/spokk/spokk.h
     src/spokk/spokk_application.h
+    src/spokk/spokk_barrier.h
     src/spokk/spokk_buffer.h
     src/spokk/spokk_debug.h
     src/spokk/spokk_device.h
@@ -94,6 +96,7 @@ SET(SPOKK_HEADERS
 SET(SPOKK_SOURCES
     src/spokk/image_file.c
     src/spokk/spokk_application.cpp
+    src/spokk/spokk_barrier.cpp
     src/spokk/spokk_buffer.cpp
     src/spokk/spokk_device.cpp
     src/spokk/spokk_image.cpp
@@ -123,6 +126,7 @@ TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
     "third_party/glm"
     "third_party/imgui"
     ${VULKAN_MEMORY_ALLOCATOR_DIR}
+    ${SIMPLE_VULKAN_SYNCHRONIZATION_DIR}
     "third_party"
     ${VULKAN_INCLUDE_DIR}
     "src/spokk"

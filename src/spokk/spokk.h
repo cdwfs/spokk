@@ -1,6 +1,7 @@
 #pragma once
 
 #include "spokk_application.h"
+#include "spokk_barrier.h"
 #include "spokk_buffer.h"
 #include "spokk_debug.h"
 #include "spokk_device.h"
