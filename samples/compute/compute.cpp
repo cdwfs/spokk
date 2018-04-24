@@ -78,35 +78,29 @@ public:
     cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info));
 
-    VkBufferMemoryBarrier buffer_barriers[2] = {};
-    buffer_barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    buffer_barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-    buffer_barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    buffer_barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barriers[0].buffer = in_buffer.Handle();
-    buffer_barriers[0].offset = 0;
-    buffer_barriers[0].size = VK_WHOLE_SIZE;
-    buffer_barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    buffer_barriers[1].srcAccessMask = 0;
-    buffer_barriers[1].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    buffer_barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barriers[1].buffer = out_buffer.Handle();
-    buffer_barriers[1].offset = 0;
-    buffer_barriers[1].size = VK_WHOLE_SIZE;
-    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 2,
-        buffer_barriers, 0, nullptr);
+    // These barriers are *probably* unnecessary; spec section 6.9 guarantees host write ordering across a call to
+    // vkQueueSubmit(). But, enh.
+    VkMemoryBarrier barriers[2] = {};
+    VkPipelineStageFlags barrier_src_stages = 0, barrier_dst_stages = 0;
+    // barrier for input buffer
+    spokk::BuildVkMemoryBarrier(THSVS_ACCESS_HOST_WRITE, THSVS_ACCESS_COMPUTE_SHADER_READ_OTHER, &barrier_src_stages,
+        &barrier_dst_stages, &barriers[0]);
+    // barrier for output buffer
+    spokk::BuildVkMemoryBarrier(
+        THSVS_ACCESS_NONE, THSVS_ACCESS_COMPUTE_SHADER_WRITE, &barrier_src_stages, &barrier_dst_stages, &barriers[1]);
+    vkCmdPipelineBarrier(cb, barrier_src_stages, barrier_dst_stages, 0, 2, barriers, 0, nullptr, 0, nullptr);
 
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline.handle);
     vkCmdBindDescriptorSets(
         cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_shader_program.pipeline_layout, 0, 1, &dset, 0, nullptr);
     vkCmdDispatch(cb, BUXEL_COUNT, 1, 1);
 
-    buffer_barriers[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    buffer_barriers[1].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1,
-        &buffer_barriers[1], 0, nullptr);
+    // barrier to read from output buffer. This barrier *is necessary; see the notes for vkWaitForFences() in the spec.
+    barrier_src_stages = 0;
+    barrier_dst_stages = 0;
+    spokk::BuildVkMemoryBarrier(THSVS_ACCESS_COMPUTE_SHADER_WRITE, THSVS_ACCESS_HOST_READ, &barrier_src_stages,
+        &barrier_dst_stages, &barriers[1]);
+    vkCmdPipelineBarrier(cb, barrier_src_stages, barrier_dst_stages, 0, 1, &barriers[1], 0, nullptr, 0, nullptr);
 
     SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
     VkSubmitInfo submit_info = {};
