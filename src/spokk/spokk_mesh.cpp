@@ -103,7 +103,8 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
   index_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
   index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(index_buffer.Create(device, index_buffer_ci));
-  SPOKK_VK_CHECK(index_buffer.Load(device, indices.data(), indices.size()));
+  SPOKK_VK_CHECK(
+      index_buffer.Load(device, THSVS_ACCESS_NONE, THSVS_ACCESS_INDEX_BUFFER, indices.data(), indices.size()));
   vertex_buffers.resize(mesh_header.vertex_buffer_count, {});
   for (uint32_t iVB = 0; iVB < mesh_header.vertex_buffer_count; ++iVB) {
     VkBufferCreateInfo vertex_buffer_ci = {};
@@ -112,7 +113,8 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
     vertex_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(vertex_buffers[iVB].Create(device, vertex_buffer_ci));
-    SPOKK_VK_CHECK(vertex_buffers[iVB].Load(device, vertices.data(), vertices.size()));
+    SPOKK_VK_CHECK(vertex_buffers[iVB].Load(
+        device, THSVS_ACCESS_NONE, THSVS_ACCESS_VERTEX_BUFFER, vertices.data(), vertices.size()));
   }
 
   // Populate buffer offsets
@@ -154,8 +156,7 @@ struct DebugMeshVertex {
   float tu, tv;
 };
 
-void GenerateMeshBox(
-    const Device& device, Mesh* out_mesh, const float min_extent[3], const float max_extent[3]) {
+void GenerateMeshBox(const Device& device, Mesh* out_mesh, const float min_extent[3], const float max_extent[3]) {
   out_mesh->mesh_format.vertex_attributes = {
       // clang-format off
     {SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION,  0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(DebugMeshVertex, px) },
@@ -203,7 +204,8 @@ void GenerateMeshBox(
   vb_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   out_mesh->vertex_buffers.resize(1);
   SPOKK_VK_CHECK(out_mesh->vertex_buffers[0].Create(device, vb_ci));
-  SPOKK_VK_CHECK(out_mesh->vertex_buffers[0].Load(device, vertices.data(), vb_ci.size));
+  SPOKK_VK_CHECK(out_mesh->vertex_buffers[0].Load(
+      device, THSVS_ACCESS_NONE, THSVS_ACCESS_VERTEX_BUFFER, vertices.data(), vb_ci.size));
   out_mesh->vertex_buffer_byte_offsets = {0};
   out_mesh->vertex_count = (uint32_t)vertices.size();
 
@@ -222,7 +224,7 @@ void GenerateMeshBox(
   ib_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
   ib_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(out_mesh->index_buffer.Create(device, ib_ci));
-  SPOKK_VK_CHECK(out_mesh->index_buffer.Load(device, indices.data(), ib_ci.size));
+  SPOKK_VK_CHECK(out_mesh->index_buffer.Load(device, THSVS_ACCESS_NONE, THSVS_ACCESS_INDEX_BUFFER, indices.data(), ib_ci.size));
   out_mesh->index_buffer_byte_offset = 0;
   out_mesh->index_count = (uint32_t)indices.size();
   out_mesh->index_type = VK_INDEX_TYPE_UINT16;
@@ -230,3 +232,4 @@ void GenerateMeshBox(
 
 
 }  // namespace spokk
+

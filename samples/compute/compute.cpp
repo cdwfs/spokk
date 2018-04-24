@@ -41,7 +41,8 @@ public:
     buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     Buffer in_buffer = {}, out_buffer = {};
     SPOKK_VK_CHECK(in_buffer.Create(device_, buffer_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
-    SPOKK_VK_CHECK(in_buffer.Load(device_, in_data.data(), buffer_ci.size));
+    SPOKK_VK_CHECK(in_buffer.Load(
+        device_, THSVS_ACCESS_NONE, THSVS_ACCESS_COMPUTE_SHADER_READ_OTHER, in_data.data(), buffer_ci.size));
     buffer_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     // TODO(cort): until I have buffer.unload, the output buffer must be host-visible.
     SPOKK_VK_CHECK(out_buffer.Create(device_, buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
