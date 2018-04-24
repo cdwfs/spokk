@@ -1,4 +1,6 @@
 #include "spokk_image.h"
+
+#include "spokk_barrier.h"
 #include "spokk_debug.h"
 #include "spokk_utilities.h"
 
@@ -175,7 +177,7 @@ VkResult Image::Create(const Device& device, const VkImageCreateInfo& ci, VkMemo
   return result;
 }
 int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const std::string& filename,
-    VkBool32 generate_mipmaps, VkImageLayout final_layout, VkAccessFlags final_access_flags) {
+    VkBool32 generate_mipmaps, ThsvsAccessType final_access) {
   ZOMBO_ASSERT_RETURN(handle == VK_NULL_HANDLE, -1, "Can't re-create an existing Image");
 
   // Load image file. TODO(cort): ideally, we'd load directly into the staging buffer here to save a memcpy.
@@ -223,24 +225,6 @@ int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const 
   OneShotCommandPool cpool(device, *queue, queue->family, device.HostAllocator());
   VkCommandBuffer cb = cpool.AllocateAndBegin();
 
-  // transition image into TRANSFER_DST most for loading
-  VkImageMemoryBarrier barrier_init_to_dst = {};
-  barrier_init_to_dst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  barrier_init_to_dst.srcAccessMask = 0;
-  barrier_init_to_dst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barrier_init_to_dst.oldLayout = image_ci.initialLayout;
-  barrier_init_to_dst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-  barrier_init_to_dst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier_init_to_dst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier_init_to_dst.image = handle;
-  barrier_init_to_dst.subresourceRange.aspectMask = GetImageAspectFlags(image_ci.format);
-  barrier_init_to_dst.subresourceRange.baseArrayLayer = 0;
-  barrier_init_to_dst.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-  barrier_init_to_dst.subresourceRange.baseMipLevel = 0;
-  barrier_init_to_dst.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0,
-      nullptr, 0, nullptr, 1, &barrier_init_to_dst);
-
   // Load those mips!
   int32_t texel_block_bytes = g_format_attributes[image_file.data_format].texel_block_bytes;
   int32_t texel_block_width = g_format_attributes[image_file.data_format].texel_block_width;
@@ -260,18 +244,36 @@ int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const 
   Buffer staging_buffer = {};
   SPOKK_VK_CHECK(staging_buffer.Create(
       device, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
+  // transition image into TRANSFER_DST for loading
+  ThsvsAccessType src_access = THSVS_ACCESS_NONE;
+  ThsvsAccessType dst_access = THSVS_ACCESS_TRANSFER_WRITE;
+  ThsvsImageBarrier th_barrier_init_to_dst = {};
+  th_barrier_init_to_dst.prevAccessCount = 1;
+  th_barrier_init_to_dst.pPrevAccesses = &src_access;
+  th_barrier_init_to_dst.nextAccessCount = 1;
+  th_barrier_init_to_dst.pNextAccesses = &dst_access;
+  th_barrier_init_to_dst.prevLayout = THSVS_IMAGE_LAYOUT_OPTIMAL;
+  th_barrier_init_to_dst.nextLayout = THSVS_IMAGE_LAYOUT_OPTIMAL;
+  th_barrier_init_to_dst.discardContents = VK_TRUE;
+  th_barrier_init_to_dst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  th_barrier_init_to_dst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  th_barrier_init_to_dst.image = handle;
+  th_barrier_init_to_dst.subresourceRange.aspectMask = GetImageAspectFlags(image_ci.format);
+  th_barrier_init_to_dst.subresourceRange.baseArrayLayer = 0;
+  th_barrier_init_to_dst.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+  th_barrier_init_to_dst.subresourceRange.baseMipLevel = 0;
+  th_barrier_init_to_dst.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+  VkImageMemoryBarrier barrier_init_to_dst = {};
+  VkPipelineStageFlags barrier_src_stages = 0, barrier_dst_stages = 0;
+  thsvsGetVulkanImageMemoryBarrier(
+      th_barrier_init_to_dst, &barrier_src_stages, &barrier_dst_stages, &barrier_init_to_dst);
   // barrier between host writes and transfer reads
-  VkBufferMemoryBarrier buffer_barrier = {};
-  buffer_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  buffer_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-  buffer_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  buffer_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  buffer_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  buffer_barrier.buffer = staging_buffer.Handle();
-  buffer_barrier.offset = 0;
-  buffer_barrier.size = VK_WHOLE_SIZE;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1,
-      &buffer_barrier, 0, nullptr);  // TODO(cort): combine with previous barrier
+  VkMemoryBarrier staging_buffer_memory_barrier = {};
+  spokk::BuildVkMemoryBarrier(THSVS_ACCESS_HOST_WRITE, THSVS_ACCESS_TRANSFER_READ, &barrier_src_stages,
+      &barrier_dst_stages, &staging_buffer_memory_barrier);
+  // emit both barriers
+  vkCmdPipelineBarrier(cb, barrier_src_stages, barrier_dst_stages, 0, 1, &staging_buffer_memory_barrier, 0, nullptr, 1,
+      &barrier_init_to_dst);
   VkDeviceSize src_offset = 0;
   for (uint32_t i_mip = 0; i_mip < mips_to_load; ++i_mip) {
     ImageFileSubresource subresource;
@@ -309,21 +311,22 @@ int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const 
   }
 
   // Generate remaining mips, if requested
-  VkImageMemoryBarrier barrier_dst_to_final = barrier_init_to_dst;
-  barrier_dst_to_final.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  barrier_dst_to_final.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barrier_dst_to_final.dstAccessMask = final_access_flags;
-  barrier_dst_to_final.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-  barrier_dst_to_final.newLayout = final_layout;
+  ThsvsImageBarrier th_barrier_dst_to_final = th_barrier_init_to_dst;
+  src_access = THSVS_ACCESS_TRANSFER_WRITE;
+  dst_access = final_access;
   if (generate_mipmaps) {
     for (uint32_t i_layer = 0; i_layer < image_file.array_layers; ++i_layer) {
-      GenerateMipmapsImpl(cb, barrier_dst_to_final, i_layer, 0, image_ci.mipLevels - 1);
+      GenerateMipmapsImpl(cb, th_barrier_dst_to_final, i_layer, 0, image_ci.mipLevels - 1);
     }
   } else {
     // transition to final layout/access
-    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT,
-        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0,
-        nullptr, 0, nullptr, 1, &barrier_dst_to_final);
+    VkImageMemoryBarrier barrier_dst_to_final = {};
+    barrier_src_stages = 0;
+    barrier_dst_stages = 0;
+    thsvsGetVulkanImageMemoryBarrier(
+        th_barrier_dst_to_final, &barrier_src_stages, &barrier_dst_stages, &barrier_dst_to_final);
+    vkCmdPipelineBarrier(cb, barrier_src_stages, barrier_dst_stages, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0,
+        nullptr, 1, &barrier_dst_to_final);
   }
   SPOKK_VK_CHECK(staging_buffer.FlushHostCache(device));
   cpool.EndSubmitAndFree(&cb);
@@ -354,7 +357,7 @@ void Image::Destroy(const Device& device) {
 
 int Image::LoadSubresourceFromMemory(const Device& device, const DeviceQueue* queue, const void* src_data,
     size_t src_nbytes, uint32_t src_row_nbytes, uint32_t src_layer_height, const VkImageSubresource& dst_subresource,
-    VkImageLayout final_layout, VkAccessFlags final_access_flags) {
+    ThsvsAccessType final_access) {
   ZOMBO_ASSERT_RETURN(handle != VK_NULL_HANDLE, -1, "Call Create() first!");
 
   // Gimme a command buffer
@@ -371,33 +374,36 @@ int Image::LoadSubresourceFromMemory(const Device& device, const DeviceQueue* qu
   SPOKK_VK_CHECK(staging_buffer.Create(
       device, staging_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, spokk::DEVICE_ALLOCATION_SCOPE_FRAME));
   memcpy((uint8_t*)staging_buffer.Mapped(), src_data, src_nbytes);
-  // transition destination subresource into TRANSFER_DST most for loading
+  // transition destination subresource into TRANSFER_DST for loading
+  ThsvsAccessType src_access = THSVS_ACCESS_NONE;
+  ThsvsAccessType dst_access = THSVS_ACCESS_TRANSFER_WRITE;
+  ThsvsImageBarrier th_barrier_init_to_dst = {};
+  th_barrier_init_to_dst.prevAccessCount = 1;
+  th_barrier_init_to_dst.pPrevAccesses = &src_access;
+  th_barrier_init_to_dst.nextAccessCount = 1;
+  th_barrier_init_to_dst.pNextAccesses = &dst_access;
+  th_barrier_init_to_dst.prevLayout = THSVS_IMAGE_LAYOUT_OPTIMAL;
+  th_barrier_init_to_dst.nextLayout = THSVS_IMAGE_LAYOUT_OPTIMAL;
+  th_barrier_init_to_dst.discardContents = VK_TRUE;
+  th_barrier_init_to_dst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  th_barrier_init_to_dst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  th_barrier_init_to_dst.image = handle;
+  th_barrier_init_to_dst.subresourceRange.aspectMask = dst_subresource.aspectMask;
+  th_barrier_init_to_dst.subresourceRange.baseArrayLayer = dst_subresource.arrayLayer;
+  th_barrier_init_to_dst.subresourceRange.layerCount = 1;
+  th_barrier_init_to_dst.subresourceRange.baseMipLevel = dst_subresource.mipLevel;
+  th_barrier_init_to_dst.subresourceRange.levelCount = 1;
   VkImageMemoryBarrier barrier_init_to_dst = {};
-  barrier_init_to_dst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  barrier_init_to_dst.srcAccessMask = 0;
-  barrier_init_to_dst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barrier_init_to_dst.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  barrier_init_to_dst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-  barrier_init_to_dst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier_init_to_dst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier_init_to_dst.image = handle;
-  barrier_init_to_dst.subresourceRange.aspectMask = dst_subresource.aspectMask;
-  barrier_init_to_dst.subresourceRange.baseArrayLayer = dst_subresource.arrayLayer;
-  barrier_init_to_dst.subresourceRange.layerCount = 1;
-  barrier_init_to_dst.subresourceRange.baseMipLevel = dst_subresource.mipLevel;
-  barrier_init_to_dst.subresourceRange.levelCount = 1;
+  VkPipelineStageFlags barrier_src_stages = 0, barrier_dst_stages = 0;
+  thsvsGetVulkanImageMemoryBarrier(
+      th_barrier_init_to_dst, &barrier_src_stages, &barrier_dst_stages, &barrier_init_to_dst);
   // barrier between host writes and transfer reads
-  VkBufferMemoryBarrier buffer_barrier = {};
-  buffer_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  buffer_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-  buffer_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  buffer_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  buffer_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  buffer_barrier.buffer = staging_buffer.Handle();
-  buffer_barrier.offset = 0;
-  buffer_barrier.size = VK_WHOLE_SIZE;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1,
-      &buffer_barrier, 1, &barrier_init_to_dst);
+  VkMemoryBarrier staging_buffer_memory_barrier = {};
+  spokk::BuildVkMemoryBarrier(THSVS_ACCESS_HOST_WRITE, THSVS_ACCESS_TRANSFER_READ, &barrier_src_stages,
+      &barrier_dst_stages, &staging_buffer_memory_barrier);
+  // emit both barriers
+  vkCmdPipelineBarrier(cb, barrier_src_stages, barrier_dst_stages, 0, 1, &staging_buffer_memory_barrier, 0, nullptr, 1,
+      &barrier_init_to_dst);
 
   // Load!
   const ImageFormatAttributes& format_info = GetVkFormatInfo(image_ci.format);
@@ -430,14 +436,16 @@ int Image::LoadSubresourceFromMemory(const Device& device, const DeviceQueue* qu
   vkCmdCopyBufferToImage(cb, staging_buffer.Handle(), handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
 
   // transition to final layout/access
-  VkImageMemoryBarrier barrier_dst_to_final = barrier_init_to_dst;
-  barrier_dst_to_final.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  barrier_dst_to_final.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barrier_dst_to_final.dstAccessMask = final_access_flags;
-  barrier_dst_to_final.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-  barrier_dst_to_final.newLayout = final_layout;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-      VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &barrier_dst_to_final);
+  ThsvsImageBarrier th_barrier_dst_to_final = th_barrier_init_to_dst;
+  src_access = THSVS_ACCESS_TRANSFER_WRITE;
+  dst_access = final_access;
+  VkImageMemoryBarrier barrier_dst_to_final = {};
+  barrier_src_stages = 0;
+  barrier_dst_stages = 0;
+  thsvsGetVulkanImageMemoryBarrier(
+      th_barrier_dst_to_final, &barrier_src_stages, &barrier_dst_stages, &barrier_dst_to_final);
+  vkCmdPipelineBarrier(cb, barrier_src_stages, barrier_dst_stages, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr,
+      1, &barrier_dst_to_final);
 
   SPOKK_VK_CHECK(staging_buffer.FlushHostCache(device));
   cpool.EndSubmitAndFree(&cb);
@@ -445,7 +453,7 @@ int Image::LoadSubresourceFromMemory(const Device& device, const DeviceQueue* qu
   return 0;
 }
 
-int Image::GenerateMipmaps(const Device& device, const DeviceQueue* queue, const VkImageMemoryBarrier& barrier,
+int Image::GenerateMipmaps(const Device& device, const DeviceQueue* queue, const ThsvsImageBarrier& barrier,
     uint32_t layer, uint32_t src_mip_level, uint32_t mips_to_gen) {
   ZOMBO_ASSERT(handle != VK_NULL_HANDLE, "must create image first!");
 
@@ -462,7 +470,7 @@ int Image::GenerateMipmaps(const Device& device, const DeviceQueue* queue, const
   return 0;
 }
 
-int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& dst_barrier, uint32_t layer,
+int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const ThsvsImageBarrier& dst_barrier, uint32_t layer,
     uint32_t src_mip_level, uint32_t mips_to_gen) {
   if (mips_to_gen == 0) {
     return 0;  // nothing to do
@@ -476,55 +484,56 @@ int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& d
     mips_to_gen = (image_ci.mipLevels - src_mip_level) - 1;
   }
 
-#if 0  // validation -- higher-level code should be doing this already
-  VkFormatProperties format_properties = {};
-  vkGetPhysicalDeviceFormatProperties(device_.PhysicalDevice(), image_ci.format, &format_properties);
-  const VkFormatFeatureFlags blit_mask = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
-  const VkFormatFeatureFlags feature_flags = (image_ci.tiling == VK_IMAGE_TILING_LINEAR)
-    ? format_properties.linearTilingFeatures : format_properties.optimalTilingFeatures;
-  if ( (feature_flags & blit_mask) != blit_mask ) {
-    return -1;  // format does not support blitting; automatic mipmap generation won't work.
-  }
-#endif
-
   VkImageAspectFlags aspect_flags = GetImageAspectFlags(image_ci.format);
 
   // transition mip 0 to TRANSFER_READ, mip 1 to TRANSFER_WRITE
+  const ThsvsAccessType access_none = THSVS_ACCESS_NONE;
+  const ThsvsAccessType access_transfer_read = THSVS_ACCESS_TRANSFER_READ;
+  const ThsvsAccessType access_transfer_write = THSVS_ACCESS_TRANSFER_WRITE;
+  std::array<ThsvsImageBarrier, 2> th_image_barriers = {};
+  th_image_barriers[0].prevAccessCount = dst_barrier.prevAccessCount;
+  th_image_barriers[0].pPrevAccesses = dst_barrier.pPrevAccesses;
+  th_image_barriers[0].nextAccessCount = 1;
+  th_image_barriers[0].pNextAccesses = &access_transfer_read;
+  th_image_barriers[0].prevLayout = THSVS_IMAGE_LAYOUT_OPTIMAL;
+  th_image_barriers[0].nextLayout = THSVS_IMAGE_LAYOUT_OPTIMAL;
+  th_image_barriers[0].discardContents = VK_FALSE;
+  th_image_barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  th_image_barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  th_image_barriers[0].image = handle;
+  th_image_barriers[0].subresourceRange.aspectMask = aspect_flags;
+  th_image_barriers[0].subresourceRange.baseArrayLayer = layer;
+  th_image_barriers[0].subresourceRange.layerCount = 1;
+  th_image_barriers[0].subresourceRange.baseMipLevel = src_mip_level;
+  th_image_barriers[0].subresourceRange.levelCount = 1;
+  th_image_barriers[1].prevAccessCount = 1;
+  th_image_barriers[1].pPrevAccesses = &access_none;
+  th_image_barriers[1].nextAccessCount = 1;
+  th_image_barriers[1].pNextAccesses = &access_transfer_write;
+  th_image_barriers[1].prevLayout = THSVS_IMAGE_LAYOUT_OPTIMAL;
+  th_image_barriers[1].nextLayout = THSVS_IMAGE_LAYOUT_OPTIMAL;
+  th_image_barriers[1].discardContents = VK_TRUE;
+  th_image_barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  th_image_barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  th_image_barriers[1].image = handle;
+  th_image_barriers[1].subresourceRange.aspectMask = aspect_flags;
+  th_image_barriers[1].subresourceRange.baseArrayLayer = layer;
+  th_image_barriers[1].subresourceRange.layerCount = 1;
+  th_image_barriers[1].subresourceRange.baseMipLevel = src_mip_level + 1;
+  th_image_barriers[1].subresourceRange.levelCount = 1;
   std::array<VkImageMemoryBarrier, 2> image_barriers = {};
-  image_barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  image_barriers[0].srcAccessMask = dst_barrier.srcAccessMask;
-  image_barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  image_barriers[0].oldLayout = dst_barrier.oldLayout;
-  image_barriers[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-  image_barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  image_barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  image_barriers[0].image = handle;
-  image_barriers[0].subresourceRange.aspectMask = aspect_flags;
-  image_barriers[0].subresourceRange.baseArrayLayer = layer;
-  image_barriers[0].subresourceRange.layerCount = 1;
-  image_barriers[0].subresourceRange.baseMipLevel = src_mip_level;
-  image_barriers[0].subresourceRange.levelCount = 1;
-  image_barriers[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  image_barriers[1].srcAccessMask = 0;
-  image_barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  image_barriers[1].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  image_barriers[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-  image_barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  image_barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  image_barriers[1].image = handle;
-  image_barriers[1].subresourceRange.aspectMask = aspect_flags;
-  image_barriers[1].subresourceRange.baseArrayLayer = layer;
-  image_barriers[1].subresourceRange.layerCount = 1;
-  image_barriers[1].subresourceRange.baseMipLevel = src_mip_level + 1;
-  image_barriers[1].subresourceRange.levelCount = mips_to_gen;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, (VkDependencyFlags)0, 0,
-      NULL, 0, NULL, (uint32_t)image_barriers.size(), image_barriers.data());
+  VkPipelineStageFlags image_barrier_src_stages = 0, image_barrier_dst_stages = 0;
+  thsvsGetVulkanImageMemoryBarrier(
+      th_image_barriers[0], &image_barrier_src_stages, &image_barrier_dst_stages, &image_barriers[0]);
+  thsvsGetVulkanImageMemoryBarrier(
+      th_image_barriers[1], &image_barrier_src_stages, &image_barrier_dst_stages, &image_barriers[1]);
+  vkCmdPipelineBarrier(cb, image_barrier_src_stages, image_barrier_dst_stages, (VkDependencyFlags)0, 0, nullptr, 0,
+      nullptr, (uint32_t)image_barriers.size(), image_barriers.data());
   // recycle image_barriers[0] to transition each dst_mip from TRANSFER_DST to TRANSFER_SRC after its blit
   image_barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
   image_barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
   image_barriers[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
   image_barriers[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-  image_barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   image_barriers[0].subresourceRange.baseMipLevel = src_mip_level + 1;
 
   VkImageBlit blit_region = {};
@@ -552,8 +561,9 @@ int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& d
     vkCmdBlitImage(cb, handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
         &blit_region, VK_FILTER_LINEAR);
     if (dst_mip != src_mip_level + mips_to_gen) {  // all but the last mip must be switched from WRITE/DST to READ/SRC
-      vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, (VkDependencyFlags)0, 0,
-          NULL, 0, NULL, 1, &image_barriers[0]);
+      vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+          VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, (VkDependencyFlags)0, 0, NULL, 0, NULL, 1,
+          &image_barriers[0]);
     }
     image_barriers[0].subresourceRange.baseMipLevel += 1;
 
@@ -568,26 +578,45 @@ int Image::GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& d
   }
   // Coming out of the loop, all but the last mip are in TRANSFER_SRC mode, and the last mip
   // is in TRANSFER_DST. Convert them all to the final layout/access mode.
-  image_barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  image_barriers[0].dstAccessMask = dst_barrier.dstAccessMask;
-  image_barriers[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-  image_barriers[0].newLayout = dst_barrier.newLayout;
-  image_barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  image_barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  image_barriers[0].subresourceRange.baseArrayLayer = layer;
-  image_barriers[0].subresourceRange.layerCount = 1;
-  image_barriers[0].subresourceRange.baseMipLevel = src_mip_level;
-  image_barriers[0].subresourceRange.levelCount = mips_to_gen;
-  image_barriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  image_barriers[1].dstAccessMask = dst_barrier.dstAccessMask;
-  image_barriers[1].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-  image_barriers[1].newLayout = dst_barrier.newLayout;
-  image_barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  image_barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  image_barriers[1].subresourceRange.baseMipLevel = src_mip_level + mips_to_gen;
-  image_barriers[1].subresourceRange.levelCount = 1;
-  vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, (VkDependencyFlags)0, 0,
-      NULL, 0, NULL, (uint32_t)image_barriers.size(), image_barriers.data());
+  th_image_barriers[0].prevAccessCount = 1;
+  th_image_barriers[0].pPrevAccesses = &access_transfer_read;
+  th_image_barriers[0].nextAccessCount = dst_barrier.nextAccessCount;
+  th_image_barriers[0].pNextAccesses = dst_barrier.pNextAccesses;
+  th_image_barriers[0].prevLayout = THSVS_IMAGE_LAYOUT_OPTIMAL;
+  th_image_barriers[0].nextLayout = THSVS_IMAGE_LAYOUT_OPTIMAL;
+  th_image_barriers[0].discardContents = VK_FALSE;
+  th_image_barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  th_image_barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  th_image_barriers[0].image = handle;
+  th_image_barriers[0].subresourceRange.aspectMask = aspect_flags;
+  th_image_barriers[0].subresourceRange.baseArrayLayer = layer;
+  th_image_barriers[0].subresourceRange.layerCount = 1;
+  th_image_barriers[0].subresourceRange.baseMipLevel = src_mip_level;
+  th_image_barriers[0].subresourceRange.levelCount = mips_to_gen;
+  th_image_barriers[1].prevAccessCount = 1;
+  th_image_barriers[1].pPrevAccesses = &access_transfer_write;
+  th_image_barriers[1].nextAccessCount = dst_barrier.nextAccessCount;
+  th_image_barriers[1].pNextAccesses = dst_barrier.pNextAccesses;
+  th_image_barriers[1].prevLayout = THSVS_IMAGE_LAYOUT_OPTIMAL;
+  th_image_barriers[1].nextLayout = THSVS_IMAGE_LAYOUT_OPTIMAL;
+  th_image_barriers[1].discardContents = VK_FALSE;
+  th_image_barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  th_image_barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  th_image_barriers[1].image = handle;
+  th_image_barriers[1].subresourceRange.aspectMask = aspect_flags;
+  th_image_barriers[1].subresourceRange.baseArrayLayer = layer;
+  th_image_barriers[1].subresourceRange.layerCount = 1;
+  th_image_barriers[1].subresourceRange.baseMipLevel = src_mip_level + mips_to_gen;
+  th_image_barriers[1].subresourceRange.levelCount = 1;
+
+  image_barrier_src_stages = 0;
+  image_barrier_dst_stages = 0;
+  thsvsGetVulkanImageMemoryBarrier(
+      th_image_barriers[0], &image_barrier_src_stages, &image_barrier_dst_stages, &image_barriers[0]);
+  thsvsGetVulkanImageMemoryBarrier(
+      th_image_barriers[1], &image_barrier_src_stages, &image_barrier_dst_stages, &image_barriers[1]);
+  vkCmdPipelineBarrier(cb, image_barrier_src_stages, image_barrier_dst_stages, (VkDependencyFlags)0, 0, nullptr, 0,
+      nullptr, (uint32_t)image_barriers.size(), image_barriers.data());
 
   return 0;
 }

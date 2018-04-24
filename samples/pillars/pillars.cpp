@@ -97,7 +97,8 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   VkSamplerCreateInfo sampler_ci =
       GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
   SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-  albedo_tex_.CreateFromFile(device_, graphics_and_present_queue_, "data/redf.ktx");
+  albedo_tex_.CreateFromFile(device_, graphics_and_present_queue_, "data/redf.ktx", VK_FALSE,
+      THSVS_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE_OR_UNIFORM_TEXEL_BUFFER);
 
   // Load shader pipelines
   SPOKK_VK_CHECK(pillar_vs_.CreateAndLoadSpirvFile(device_, "data/pillar.vert.spv"));

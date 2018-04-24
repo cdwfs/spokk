@@ -1,8 +1,9 @@
 #pragma once
 
-#include <vector>
 #include "spokk_barrier.h"
 #include "spokk_memory.h"
+
+#include <vector>
 
 namespace spokk {
 
