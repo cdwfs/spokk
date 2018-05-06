@@ -255,12 +255,12 @@ Application::Application(const CreateInfo &ci) {
   // Initialize Vulkan
   host_allocator_ = ci.host_allocator;
 
-  std::vector<const char *> required_instance_layer_names = {};
-  std::vector<const char *> optional_instance_layer_names = {
+  std::vector<const char *> required_instance_layer_names = ci.required_instance_layer_names;
+  std::vector<const char *> optional_instance_layer_names = ci.optional_instance_layer_names;
 #if defined(_DEBUG)
-    "VK_LAYER_LUNARG_monitor",
+  optional_instance_layer_names.push_back("VK_LAYER_LUNARG_monitor");
 #endif
-  };
+
   if (ci.debug_report_flags != 0) {
 #if defined(_DEBUG)  // validation layers should only be enabled in debug builds
     optional_instance_layer_names.push_back("VK_LAYER_LUNARG_standard_validation");
@@ -272,12 +272,12 @@ Application::Application(const CreateInfo &ci) {
   SPOKK_VK_CHECK(GetSupportedInstanceLayers(required_instance_layer_names, optional_instance_layer_names,
       &enabled_instance_layer_properties, &enabled_instance_layer_names));
 
-  std::vector<const char *> required_instance_extension_names = {};
+  std::vector<const char *> required_instance_extension_names = ci.required_instance_extension_names;
   if (ci.enable_graphics) {
     required_instance_extension_names.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
     required_instance_extension_names.push_back(SPOKK_PLATFORM_SURFACE_EXTENSION_NAME);
   }
-  std::vector<const char *> optional_instance_extension_names = {};
+  std::vector<const char *> optional_instance_extension_names = ci.optional_instance_extension_names;
   if (ci.debug_report_flags != 0) {
     optional_instance_extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
   }
@@ -344,15 +344,16 @@ Application::Application(const CreateInfo &ci) {
   };
   ZOMBO_ASSERT(queue_priorities.size() == total_queue_count, "queue count mismatch");
 
-  std::vector<const char *> required_device_extension_names = {};
+  std::vector<const char *> required_device_extension_names = ci.required_device_extension_names;
   if (ci.enable_graphics) {
     required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
   }
-  std::vector<const char *> optional_device_extension_names = {
-      VK_EXT_DEBUG_MARKER_EXTENSION_NAME,  // TODO(cort): may want to hide this behind a flag, enabled in debug &
-                                           // profiling builds.
-  };
+  std::vector<const char *> optional_device_extension_names = ci.optional_device_extension_names;
+  // TODO(cort): may want to hide this behind a flag, enabled in debug &
+  // profiling builds. It also didn't really work reliably in SDK 1.1.73 and earlier,
+  // due to a missing NULL pointer check.
+  optional_device_extension_names.push_back(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
   std::vector<const char *> enabled_device_extension_names = {};
   std::vector<VkExtensionProperties> enabled_device_extension_properties = {};
   SPOKK_VK_CHECK(

@@ -128,15 +128,15 @@ private:
   const VkAllocationCallbacks* allocator_ = nullptr;
 };
 
+// These functions automatically filter their input lists to remove duplicate entries, because
+// some loaders don't like duplicates. You're welcome.
 VkResult GetSupportedInstanceLayers(const std::vector<const char*>& required_names,
     const std::vector<const char*>& optional_names, std::vector<VkLayerProperties>* out_supported_layers,
     std::vector<const char*>* out_supported_layer_names);
-
 VkResult GetSupportedInstanceExtensions(const std::vector<VkLayerProperties>& enabled_instance_layers,
     const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
     std::vector<VkExtensionProperties>* out_supported_extensions,
     std::vector<const char*>* out_supported_extension_names);
-
 VkResult GetSupportedDeviceExtensions(VkPhysicalDevice physical_device,
     const std::vector<VkLayerProperties>& enabled_instance_layers, const std::vector<const char*>& required_names,
     const std::vector<const char*>& optional_names, std::vector<VkExtensionProperties>* out_supported_extensions,

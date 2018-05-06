@@ -61,6 +61,12 @@ public:
         VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
 #endif
     std::vector<QueueFamilyRequest> queue_family_requests;
+    std::vector<const char*> required_instance_layer_names = {};
+    std::vector<const char*> required_instance_extension_names = {};
+    std::vector<const char*> required_device_extension_names = {};
+    std::vector<const char*> optional_instance_layer_names = {};
+    std::vector<const char*> optional_instance_extension_names = {};
+    std::vector<const char*> optional_device_extension_names = {};
     // If NULL, no device features are enabled. To easily enable all supported features,
     // pass EnableAllSupportedDeviceFeatures.
     SetDeviceFeaturesFunc pfn_set_device_features = nullptr;
