@@ -51,10 +51,10 @@
 #include <glm/gtc/matrix_access.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/random.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/norm.hpp>
 #include <glm/gtx/quaternion.hpp>
-
 namespace spokk {
 
 // Construct a transformation matrix from the supplied operations, suitable for M*v.
