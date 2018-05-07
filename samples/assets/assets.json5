@@ -57,5 +57,10 @@
         { class: "shader", input: "../pillars/pillar.frag", output: "pillars/pillar.frag.spv", stage: "frag", entry: "main", },
 
         { class: "shader", input: "../shadertoy/fullscreen.vert", output: "shadertoy/fullscreen.vert.spv", stage: "vert", entry: "main", },
+
+        { class: "shader", input: "../trails/particle.vert", output: "trails/particle.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../trails/particle.frag", output: "trails/particle.frag.spv", stage: "frag", entry: "main", },
+        { class: "shader", input: "../trails/trail.vert", output: "trails/trail.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../trails/trail.frag", output: "trails/trail.frag.spv", stage: "frag", entry: "main", },
     ],
 }

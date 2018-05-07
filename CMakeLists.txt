@@ -228,3 +228,19 @@ SPOKK_ADD_SHADERS(spokk-shadertoy
 )
 SPOKK_ADD_EXECUTABLE(spokk-shadertoy)
 TARGET_LINK_LIBRARIES(spokk-shadertoy shaderc)
+
+# spokk-trails
+SPOKK_ADD_SOURCES(spokk-trails
+    samples/common/camera.cpp
+    samples/trails/trails.cpp
+)
+SPOKK_ADD_HEADERS(spokk-trails
+    samples/common/camera.h
+)
+SPOKK_ADD_SHADERS(spokk-trails
+    samples/trails/particle.vert
+    samples/trails/particle.frag
+    samples/trails/trail.vert
+    samples/trails/trail.frag
+)
+SPOKK_ADD_EXECUTABLE(spokk-trails)
