@@ -5,7 +5,6 @@
 
 #include <spokk_shader_interface.h>
 
-layout (location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION) in vec3 pos;
 layout (location = 0) out vec3 fromEye;
 
 layout (set = 0, binding = 0) uniform SceneUniforms {

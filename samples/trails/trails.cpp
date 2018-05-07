@@ -141,7 +141,7 @@ private:
 
   std::vector<glm::vec3> host_particle_positions_;
   std::vector<glm::vec3> host_particle_velocities_;
-  std::vector<int32_t> host_trail_starts_;
+  std::vector<int32_t> host_trail_ends_;
   std::vector<int32_t> host_trail_lengths_;
 
   PipelinedBuffer scene_uniforms_;
@@ -198,13 +198,13 @@ TrailsApp::TrailsApp(Application::CreateInfo& ci) : Application(ci) {
   // Particle attributes, used for host-side simulation.
   host_particle_positions_.resize(MAX_PARTICLE_COUNT, glm::vec3(0, 0, 0));
   host_particle_velocities_.resize(MAX_PARTICLE_COUNT, glm::vec3(0, 0, 0));
-  host_trail_starts_.resize(MAX_PARTICLE_COUNT, 0);
+  host_trail_ends_.resize(MAX_PARTICLE_COUNT, 0);
   host_trail_lengths_.resize(MAX_PARTICLE_COUNT, 0);
   // TODO: better initialization. For now, just assign random position/velocities
   for (int32_t i_part = 0; i_part < MAX_PARTICLE_COUNT; ++i_part) {
     host_particle_positions_[i_part] = glm::sphericalRand(3.0f);  // glm::ballRand(3.0f);
-    host_particle_velocities_[i_part] = glm::sphericalRand(0.1f);
-    host_trail_lengths_[i_part] = 1;
+    host_particle_velocities_[i_part] = glm::sphericalRand(0.01f);
+    host_trail_lengths_[i_part] = 0;
   }
 
   // Manually create mesh format for particle vertex buffer
@@ -239,11 +239,11 @@ TrailsApp::TrailsApp(Application::CreateInfo& ci) : Application(ci) {
 
   // Create pipelined trail positions buffer.
   VkBufferCreateInfo trail_positions_buffer_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-  trail_positions_buffer_ci.size = MAX_PARTICLE_COUNT * MAX_PARTICLE_LENGTH * sizeof(glm::vec3);
+  trail_positions_buffer_ci.size = MAX_PARTICLE_COUNT * MAX_PARTICLE_LENGTH * sizeof(glm::vec4);
   trail_positions_buffer_ci.usage = VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
   SPOKK_VK_CHECK(
       trail_positions_.Create(device_, PFRAME_COUNT, trail_positions_buffer_ci, cpu_to_gpu_dynamic_memflags));
-  SPOKK_VK_CHECK(trail_positions_.CreateViews(device_, VK_FORMAT_R32G32B32_SFLOAT));
+  SPOKK_VK_CHECK(trail_positions_.CreateViews(device_, VK_FORMAT_R32G32B32A32_SFLOAT));
 
   // Create pipelined buffer of VkDrawIndrectCommand
   VkBufferCreateInfo indirect_draw_buffer_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -253,12 +253,13 @@ TrailsApp::TrailsApp(Application::CreateInfo& ci) : Application(ci) {
       indirect_draw_commands_.Create(device_, PFRAME_COUNT, indirect_draw_buffer_ci, cpu_to_gpu_dynamic_memflags));
 
   // We need empty mesh format for the trail pipeline
-  trail_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+  trail_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_LINE_STRIP);
 
   // Create graphics pipelines
-  particle_pipeline_.Init(&particle_mesh_format_, &particle_shader_program_, &render_pass_, 0);
-  SPOKK_VK_CHECK(particle_pipeline_.Finalize(device_));
+  //particle_pipeline_.Init(&particle_mesh_format_, &particle_shader_program_, &render_pass_, 0);
+  //SPOKK_VK_CHECK(particle_pipeline_.Finalize(device_));
   trail_pipeline_.Init(&trail_mesh_format_, &trail_shader_program_, &render_pass_, 0);
+  trail_pipeline_.rasterization_state_ci.lineWidth = 5.0f;
   SPOKK_VK_CHECK(trail_pipeline_.Finalize(device_));
 
   // Create and populate descriptor sets.
@@ -326,8 +327,10 @@ void TrailsApp::Update(double dt) {
   // TODO: simulate particles. Need an acceleration term, probably
   // from a vector field.
   for (int32_t i_part = 0; i_part < MAX_PARTICLE_COUNT; ++i_part) {
-    host_particle_positions_[i_part] += (float)dt * host_particle_velocities_[i_part];
-    if (host_trail_lengths_[i_part] > 0 && host_trail_lengths_[i_part] < MAX_PARTICLE_LENGTH) {
+    //host_particle_positions_[i_part] += (float)dt * host_particle_velocities_[i_part];
+    host_particle_positions_[i_part] = glm::vec3(0.1f * float(i_part) * sinf((float)seconds_elapsed_ + 0.1f*(float)i_part),
+      2.0f * cosf((float)seconds_elapsed_ + 0.1f*(float)i_part), 0);
+    if (host_trail_lengths_[i_part] >= 0 && host_trail_lengths_[i_part] < MAX_PARTICLE_LENGTH) {
       host_trail_lengths_[i_part] += 1;
     }
   }
@@ -350,10 +353,13 @@ void TrailsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_inde
   memcpy(dst_particle_positions, host_particle_positions_.data(), particle_vb_.BytesPerPframe());
   SPOKK_VK_CHECK(particle_vb_.FlushPframeHostCache(device_, pframe_index_));
 
-  glm::vec3* dst_trail_positions = (glm::vec3*)trail_positions_.Mapped(pframe_index_);
+  glm::vec4* src_trail_positions = (glm::vec4*)trail_positions_.Mapped(1 - pframe_index_);
+  glm::vec4* dst_trail_positions = (glm::vec4*)trail_positions_.Mapped(pframe_index_);
+  memcpy(dst_trail_positions, src_trail_positions, trail_positions_.BytesPerPframe()); // waaaaaste
   for (int32_t i_part = 0; i_part < MAX_PARTICLE_COUNT; ++i_part) {
-    host_trail_starts_[i_part] = (host_trail_starts_[i_part] + 1) % MAX_PARTICLE_LENGTH;
-    dst_trail_positions[i_part * MAX_PARTICLE_LENGTH + host_trail_starts_[i_part]] = host_particle_positions_[i_part];
+    glm::vec4 out_pos(host_particle_positions_[i_part], 1.0f);
+    dst_trail_positions[i_part * MAX_PARTICLE_LENGTH + (host_trail_ends_[i_part] % MAX_PARTICLE_LENGTH)] = out_pos;
+    host_trail_ends_[i_part] += 1;
   }
   SPOKK_VK_CHECK(trail_positions_.FlushPframeHostCache(device_, pframe_index_));
 
@@ -365,9 +371,10 @@ void TrailsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_inde
   uint32_t draw_count = 0;
   VkDrawIndirectCommand* draw_cmds = (VkDrawIndirectCommand*)indirect_draw_commands_.Mapped(pframe_index_);
   for (int32_t i_part = 0; i_part < MAX_PARTICLE_COUNT; ++i_part) {
+    int32_t trail_start = host_trail_ends_[i_part] - host_trail_lengths_[i_part];
     draw_cmds[draw_count].vertexCount = host_trail_lengths_[i_part];
     draw_cmds[draw_count].instanceCount = 1;
-    draw_cmds[draw_count].firstVertex = host_trail_starts_[i_part];  // gl_BaseVertex
+    draw_cmds[draw_count].firstVertex = trail_start >= 0 ? (trail_start % MAX_PARTICLE_LENGTH): 0;  // gl_BaseVertex
     draw_cmds[draw_count].firstInstance = i_part;  // gl_BaseInstance
     ++draw_count;
   }
@@ -378,11 +385,11 @@ void TrailsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_inde
   render_pass_.begin_info.framebuffer = framebuffer;
   render_pass_.begin_info.renderArea.extent = swapchain_extent_;
   vkCmdBeginRenderPass(primary_cb, &render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
-  vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, trail_pipeline_.handle);
   VkRect2D scissor_rect = render_pass_.begin_info.renderArea;
   VkViewport viewport = Rect2DToViewport(scissor_rect);
   vkCmdSetViewport(primary_cb, 0, 1, &viewport);
   vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
+  vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, trail_pipeline_.handle);
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, trail_pipeline_.shader_program->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
   vkCmdDrawIndirect(
