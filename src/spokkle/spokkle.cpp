@@ -1222,6 +1222,16 @@ int AssetManifest::ProcessImage(const ImageAsset& image) {
     return query_error;
   }
   if (build_output) {
+    // create missing subdirectories in abs_output_path if necessary.
+    // This should be a helper function.
+    std::string output_dir = abs_output_path;
+    int truncate_error = TruncatePathToDir(&output_dir[0]);
+    ZOMBO_ASSERT_RETURN(!truncate_error, -1, "TruncatePathToDir('%s') failed (%d)",
+      output_dir.c_str(), truncate_error);
+    int create_dir_error = CreateDirectoryAndParents(output_dir.c_str());
+    ZOMBO_ASSERT_RETURN(!create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)",
+      output_dir.c_str(), create_dir_error);
+
     int copy_error = CopyAssetFile(image.input_path, abs_output_path.c_str());
     if (copy_error) {
       fprintf(stderr, "%s: error: CopyAssetFile() failed for image\n", image.json_location.c_str());
@@ -1245,6 +1255,16 @@ int AssetManifest::ProcessMesh(const MeshAsset& mesh) {
     return query_error;
   }
   if (build_output) {
+    // create missing subdirectories in abs_output_path if necessary.
+    // This should be a helper function.
+    std::string output_dir = abs_output_path;
+    int truncate_error = TruncatePathToDir(&output_dir[0]);
+    ZOMBO_ASSERT_RETURN(!truncate_error, -1, "TruncatePathToDir('%s') failed (%d)",
+      output_dir.c_str(), truncate_error);
+    int create_dir_error = CreateDirectoryAndParents(output_dir.c_str());
+    ZOMBO_ASSERT_RETURN(!create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)",
+      output_dir.c_str(), create_dir_error);
+
     int process_error = ConvertSceneToMesh(mesh.input_path, abs_output_path.c_str());
     if (process_error) {
       return process_error;
@@ -1267,6 +1287,16 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
     return query_error;
   }
   if (build_output) {
+    // create missing subdirectories in abs_output_path if necessary.
+    // This should be a helper function.
+    std::string output_dir = abs_output_path;
+    int truncate_error = TruncatePathToDir(&output_dir[0]);
+    ZOMBO_ASSERT_RETURN(!truncate_error, -1, "TruncatePathToDir('%s') failed (%d)",
+      output_dir.c_str(), truncate_error);
+    int create_dir_error = CreateDirectoryAndParents(output_dir.c_str());
+    ZOMBO_ASSERT_RETURN(!create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)",
+      output_dir.c_str(), create_dir_error);
+
     shaderc_shader_kind shader_kind = shaderc_glsl_infer_from_source;
     if (shader.shader_stage == "vert" || shader.shader_stage == "vertex") {
       shader_kind = shaderc_vertex_shader;

@@ -77,8 +77,8 @@ CubeSwarmApp::CubeSwarmApp(Application::CreateInfo& ci) : Application(ci) {
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
   // Load shader pipelines
-  SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_, "data/rigid_mesh.vert.spv"));
-  SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_, "data/rigid_mesh.frag.spv"));
+  SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_, "data/cubeswarm/rigid_mesh.vert.spv"));
+  SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_, "data/cubeswarm/rigid_mesh.frag.spv"));
   SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_vs_));
   SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_fs_));
   SPOKK_VK_CHECK(mesh_shader_program_.Finalize(device_));
