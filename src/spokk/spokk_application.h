@@ -155,7 +155,6 @@ private:
   VkSemaphore submit_complete_semaphore_ = VK_NULL_HANDLE;
   std::array<VkFence, PFRAME_COUNT> submit_complete_fences_ = {};
 
-  bool is_imgui_enabled_ = false;  // Used to avoid calling functions that will crash if the app does not enable imgui.
   bool is_imgui_visible_ = false;  // Tracks whether the UI is visible or not.
   RenderPass imgui_render_pass_ = {};
   std::vector<VkFramebuffer> imgui_framebuffers_ = {};

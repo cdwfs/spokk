@@ -248,8 +248,6 @@ Application::Application(const CreateInfo &ci) {
         [](GLFWwindow *w) { glfwDestroyWindow(w); });
     glfwSetInputMode(window_.get(), GLFW_STICKY_KEYS, 1);
     glfwPollEvents();  // dummy poll for first loop iteration
-
-    input_state_.SetWindow(window_);
   }
 
   // Initialize Vulkan
@@ -473,7 +471,8 @@ Application::Application(const CreateInfo &ci) {
     }
 
     InitImgui(imgui_render_pass_.handle);
-    ShowImgui(false);
+    // Don't initialize the input state until IMGUI is initialized
+    input_state_.SetWindow(window_);
 
     // Allocate primary command buffers for graphics apps
     VkCommandPoolCreateInfo cpool_ci = {};
@@ -587,15 +586,12 @@ int Application::Run() {
     const double dt = zomboTicksToSeconds(ticks_now - ticks_prev);
     ticks_prev = ticks_now;
 
-    if (is_imgui_enabled_) {
-      ImGui_ImplGlfwVulkan_NewFrame();
-
+    ImGui_ImplGlfwVulkan_NewFrame();
 #if 0  // IMGUI demo window
-      if (is_imgui_visible_) {
-        ImGui::ShowTestWindow();
-      }
-#endif
+    if (is_imgui_visible_) {
+      ImGui::ShowDemoWindow();
     }
+#endif
 
     input_state_.Update();
     Update(dt);
@@ -655,7 +651,7 @@ int Application::Run() {
       vkCmdBeginRenderPass(cb, &imgui_render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
       RenderImgui(cb);
       vkCmdEndRenderPass(cb);
-    } else if (is_imgui_enabled_ && !is_imgui_visible_) {
+    } else {
       RenderImgui(cb);  // still needs to be called if the UI system is active, even if nothing is drawn.
     }
     // This must happen outside the IMGUI NewFrame/Render pair, so may lag by a frame, but enh.
@@ -725,7 +721,11 @@ void Application::HandleWindowResize(VkExtent2D new_window_extent) {
 }
 
 bool Application::InitImgui(VkRenderPass ui_render_pass) {
-  // Setup ImGui binding
+  // Setup Dear ImGui binding
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGuiIO &io = ImGui::GetIO();
+  (void)io;
   ImGui_ImplGlfwVulkan_Init_Data init_data = {};
   init_data.allocator = const_cast<VkAllocationCallbacks *>(device_.HostAllocator());
   init_data.gpu = device_.Physical();
@@ -778,8 +778,8 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
   ImGui_ImplGlfwVulkan_InvalidateFontUploadObjects();
   vkDestroyCommandPool(device_, cpool, device_.HostAllocator());
 
-  is_imgui_enabled_ = true;
-  ShowImgui(true);
+  ImGui_ImplGlfwVulkan_Hide();
+  is_imgui_visible_ = false;
 
   return true;
 }
@@ -805,7 +805,6 @@ void Application::DestroyImgui(void) {
     ImGui_ImplGlfwVulkan_Shutdown();
 
     ShowImgui(false);
-    is_imgui_enabled_ = false;
   }
 }
 
