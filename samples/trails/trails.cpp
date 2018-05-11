@@ -97,8 +97,8 @@ constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;
 
-constexpr int32_t MAX_PARTICLE_COUNT = 16;
-constexpr int32_t MAX_PARTICLE_LENGTH = 256;
+constexpr int32_t MAX_PARTICLE_COUNT = 256;
+constexpr int32_t MAX_PARTICLE_LENGTH = 64;
 }  // namespace
 
 class TrailsApp : public spokk::Application {
@@ -120,6 +120,7 @@ private:
 
   double seconds_elapsed_;
 
+  Image msaa_color_image_;
   Image depth_image_;
 
   RenderPass render_pass_;
@@ -168,9 +169,20 @@ TrailsApp::TrailsApp(Application::CreateInfo& ci) : Application(ci) {
   drone_ = my_make_unique<CameraDrone>(*camera_);
 
   // Create render pass
-  render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
-  SPOKK_VK_CHECK(render_pass_.Finalize(device_));
-  render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
+  //render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
+  // clang-format off
+  render_pass_.attachment_descs = {
+    {0, swapchain_surface_format_.format, VK_SAMPLE_COUNT_8_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL},
+    {0, VK_FORMAT_D32_SFLOAT, VK_SAMPLE_COUNT_8_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL },
+    {0, swapchain_surface_format_.format, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR },
+  };
+  render_pass_.subpass_attachments.resize(1);
+  render_pass_.subpass_attachments[0].color_refs = { {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL} };
+  render_pass_.subpass_attachments[0].depth_stencil_refs = { { 1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL } };
+  render_pass_.subpass_attachments[0].resolve_refs = { { 2, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL } };
+  // clang-format on
+  render_pass_.Finalize(device_);
+  render_pass_.clear_values[0] = CreateColorClearValue(0.05f, 0.05f, 0.05f);
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
   // Build shader programs
@@ -259,7 +271,11 @@ TrailsApp::TrailsApp(Application::CreateInfo& ci) : Application(ci) {
   //particle_pipeline_.Init(&particle_mesh_format_, &particle_shader_program_, &render_pass_, 0);
   //SPOKK_VK_CHECK(particle_pipeline_.Finalize(device_));
   trail_pipeline_.Init(&trail_mesh_format_, &trail_shader_program_, &render_pass_, 0);
-  trail_pipeline_.rasterization_state_ci.lineWidth = 5.0f;
+  //trail_pipeline_.rasterization_state_ci.lineWidth = 5.0f;
+  trail_pipeline_.color_blend_attachment_states[0].blendEnable = VK_TRUE;
+  trail_pipeline_.color_blend_attachment_states[0].colorBlendOp = VK_BLEND_OP_ADD;
+  trail_pipeline_.color_blend_attachment_states[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+  trail_pipeline_.color_blend_attachment_states[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
   SPOKK_VK_CHECK(trail_pipeline_.Finalize(device_));
 
   // Create and populate descriptor sets.
@@ -316,6 +332,7 @@ TrailsApp::~TrailsApp() {
     }
     render_pass_.Destroy(device_);
 
+    msaa_color_image_.Destroy(device_);
     depth_image_.Destroy(device_);
   }
 }
@@ -407,6 +424,7 @@ void TrailsApp::HandleWindowResize(VkExtent2D new_window_extent) {
     }
   }
   framebuffers_.clear();
+  msaa_color_image_.Destroy(device_);
   depth_image_.Destroy(device_);
 
   float aspect_ratio = (float)new_window_extent.width / (float)new_window_extent.height;
@@ -416,6 +434,12 @@ void TrailsApp::HandleWindowResize(VkExtent2D new_window_extent) {
 }
 
 void TrailsApp::CreateRenderBuffers(VkExtent2D extent) {
+  // Create MSAA color buffer
+  VkImageCreateInfo msaa_color_image_ci = render_pass_.GetAttachmentImageCreateInfo(0, extent);
+  msaa_color_image_ = {};
+  SPOKK_VK_CHECK(msaa_color_image_.Create(
+    device_, msaa_color_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
+
   // Create depth buffer
   VkImageCreateInfo depth_image_ci = render_pass_.GetAttachmentImageCreateInfo(1, extent);
   depth_image_ = {};
@@ -424,14 +448,15 @@ void TrailsApp::CreateRenderBuffers(VkExtent2D extent) {
 
   // Create VkFramebuffers
   std::vector<VkImageView> attachment_views = {
-      VK_NULL_HANDLE,  // filled in below
+      msaa_color_image_.view,
       depth_image_.view,
+      VK_NULL_HANDLE,  // filled in below
   };
   VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(extent);
   framebuffer_ci.pAttachments = attachment_views.data();
   framebuffers_.resize(swapchain_image_views_.size());
   for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
-    attachment_views[0] = swapchain_image_views_[i];
+    attachment_views[2] = swapchain_image_views_[i];
     SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
   }
 }

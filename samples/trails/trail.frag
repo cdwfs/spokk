@@ -5,5 +5,5 @@ layout (location = 0) out vec4 out_fragColor;
 in vec4 gl_FragCoord;
 
 void main() {
-    out_fragColor = vec4(1,1,1,1);
+    out_fragColor = vec4(1,1,1,0.2);
 }
