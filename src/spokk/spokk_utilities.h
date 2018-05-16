@@ -8,6 +8,7 @@
 #include <vector>
 
 // No magic here, it just eliminates a typecast & some redundant typing.
+// Usage: auto mySomeNewFunction = SPOKK_VK_GET_INSTANCE_PROC_ADDR(my_instance, vkSomeNewFunctionEXT)
 #define SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance, func) \
   reinterpret_cast<PFN_##func>(vkGetInstanceProcAddr((instance), #func))
 #define SPOKK_VK_GET_DEVICE_PROC_ADDR(device, func) reinterpret_cast<PFN_##func>(vkGetDeviceProcAddr((device), #func))
