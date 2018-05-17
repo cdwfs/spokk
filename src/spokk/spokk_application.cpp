@@ -510,10 +510,6 @@ Application::Application(const CreateInfo &ci) {
   }
   required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
   std::vector<const char *> optional_device_extension_names = ci.optional_device_extension_names;
-  // TODO(cort): may want to hide this behind a flag, enabled in debug &
-  // profiling builds. It also didn't really work reliably in SDK 1.1.73 and earlier,
-  // due to a missing NULL pointer check.
-  optional_device_extension_names.push_back(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
   std::vector<const char *> enabled_device_extension_names = {};
   std::vector<VkExtensionProperties> enabled_device_extension_properties = {};
   SPOKK_VK_CHECK(
@@ -591,6 +587,7 @@ Application::Application(const CreateInfo &ci) {
   // Remaining work is for graphics apps only
   if (ci.enable_graphics) {
     graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
+    SPOKK_VK_CHECK(device_.SetObjectName(graphics_and_present_queue_->handle, "graphics/present queue"));
 
     VkExtent2D default_extent = {ci.window_width, ci.window_height};
     CreateSwapchain(default_extent);
@@ -619,6 +616,8 @@ Application::Application(const CreateInfo &ci) {
         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
     imgui_render_pass_.subpass_dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     SPOKK_VK_CHECK(imgui_render_pass_.Finalize(device_));
+    SPOKK_VK_CHECK(device_.SetObjectName(imgui_render_pass_.handle, "IMGUI render pass"));
+
     // Create framebuffers for imgui render pass
     VkFramebufferCreateInfo framebuffer_ci = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
     framebuffer_ci.renderPass = imgui_render_pass_.handle;
@@ -630,6 +629,8 @@ Application::Application(const CreateInfo &ci) {
     for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
       framebuffer_ci.pAttachments = &swapchain_image_views_[i];
       SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &imgui_framebuffers_[i]));
+      SPOKK_VK_CHECK(device_.SetObjectName(imgui_framebuffers_[i],
+          std::string("imgui framebuffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
     }
 
     InitImgui(imgui_render_pass_.handle);
@@ -642,25 +643,35 @@ Application::Application(const CreateInfo &ci) {
     cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
     SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &primary_cpool_));
+    SPOKK_VK_CHECK(device_.SetObjectName(primary_cpool_, "primary graphics command pool"));
     VkCommandBufferAllocateInfo cb_allocate_info = {};
     cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     cb_allocate_info.commandPool = primary_cpool_;
     cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cb_allocate_info.commandBufferCount = (uint32_t)primary_command_buffers_.size();
     SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, primary_command_buffers_.data()));
+    for (uint32_t i = 0; i < primary_command_buffers_.size(); ++i) {
+      SPOKK_VK_CHECK(device_.SetObjectName(primary_command_buffers_[i],
+          std::string("primary graphics command buffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
+    }
     // Create the semaphores used to synchronize access to swapchain images
     VkSemaphoreCreateInfo semaphore_ci = {};
     semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
+    SPOKK_VK_CHECK(device_.SetObjectName(image_acquire_semaphore_, "image acquire semaphore"));
     SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
+    SPOKK_VK_CHECK(device_.SetObjectName(image_acquire_semaphore_, "submit complete semaphore"));
 
     // Create the fences used to wait for each swapchain image's command buffer to be submitted.
     // This prevents re-writing the command buffer contents before it's been submitted and processed.
     VkFenceCreateInfo fence_ci = {};
     fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    for (auto &fence : submit_complete_fences_) {
+    for (size_t i = 0; i < submit_complete_fences_.size(); ++i) {
+      auto &fence = submit_complete_fences_[i];
       SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
+      SPOKK_VK_CHECK(device_.SetObjectName(fence,
+          std::string("submit complete fence ") + std::to_string(i)));  // TODO(cort): absl::StrCat
     }
   }
 
@@ -808,9 +819,11 @@ int Application::Run() {
     cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info));
-
+    const float main_label_color[4] = {0, 0, 1, 1};
+    device_.DebugLabelBegin(cb, "Sample frame rendering", main_label_color);
     // Applications-specific render code
     Render(cb, swapchain_image_index);
+    device_.DebugLabelEnd(cb);
     if (force_exit_) {
       break;
     }
@@ -826,11 +839,14 @@ int Application::Run() {
 
     // optional UI render pass
     if (is_imgui_visible_) {
+      const float imgui_label_color[4] = {0, 1, 0, 1};
+      device_.DebugLabelBegin(cb, "IMGUI rendering", imgui_label_color);
       imgui_render_pass_.begin_info.framebuffer = imgui_framebuffers_[swapchain_image_index];
       imgui_render_pass_.begin_info.renderArea.extent = swapchain_extent_;
       vkCmdBeginRenderPass(cb, &imgui_render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
       RenderImgui(cb);
       vkCmdEndRenderPass(cb);
+      device_.DebugLabelEnd(cb);
     } else {
       RenderImgui(cb);  // still needs to be called if the UI system is active, even if nothing is drawn.
     }
@@ -850,8 +866,10 @@ int Application::Run() {
     submit_info.pCommandBuffers = &cb;
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = &submit_complete_semaphore_;
+    device_.DebugLabelBegin(*graphics_and_present_queue_, "Primary Queue");
     SPOKK_VK_CHECK(
         vkQueueSubmit(*graphics_and_present_queue_, 1, &submit_info, submit_complete_fences_[pframe_index_]));
+    device_.DebugLabelEnd(*graphics_and_present_queue_);
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present_info.pNext = NULL;
@@ -1125,11 +1143,16 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   image_view_ci.subresourceRange.baseArrayLayer = 0;
   image_view_ci.subresourceRange.layerCount = 1;
   swapchain_image_views_.reserve(swapchain_images_.size());
-  for (auto image : swapchain_images_) {
+  for (size_t i = 0; i < swapchain_images_.size(); ++i) {
+    auto image = swapchain_images_[i];
     image_view_ci.image = image;
     VkImageView view = VK_NULL_HANDLE;
     SPOKK_VK_CHECK(vkCreateImageView(device_, &image_view_ci, host_allocator_, &view));
     swapchain_image_views_.push_back(view);
+    SPOKK_VK_CHECK(device_.SetObjectName(image,
+        std::string("swapchain image ") + std::to_string(i)));  // TODO(cort): absl::StrCat
+    SPOKK_VK_CHECK(device_.SetObjectName(view,
+        std::string("swapchain image view ") + std::to_string(i)));  // TODO(cort): absl::StrCat
   }
   return VK_SUCCESS;
 }

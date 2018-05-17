@@ -107,6 +107,10 @@ VkResult Shader::CreateAndLoadSpirvFile(const Device& device, const std::string&
   fseek(spv_file, 0, SEEK_SET);
   VkResult result = CreateAndLoadSpirvFp(device, spv_file, spv_file_size);
   fclose(spv_file);
+
+  if (result == VK_SUCCESS) {
+    result = device.SetObjectName(handle, filename);
+  }
   return result;
 }
 VkResult Shader::CreateAndLoadSpirvFp(const Device& device, FILE* fp, int len_bytes) {
