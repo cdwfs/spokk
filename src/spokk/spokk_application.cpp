@@ -187,7 +187,7 @@ VkResult FindPhysicalDevice(const std::vector<Application::QueueFamilyRequest> &
   return VK_ERROR_INITIALIZATION_FAILED;
 }
 
-VkResult SpokkVmaAlloc(void *pUserData, const spokk::Device& /*device*/, const VkMemoryRequirements &memory_reqs,
+VkResult SpokkVmaAlloc(void *pUserData, const spokk::Device & /*device*/, const VkMemoryRequirements &memory_reqs,
     VkMemoryPropertyFlags memory_property_flags, spokk::DeviceAllocationScope /*allocation_scope*/,
     spokk::DeviceMemoryAllocation *out_allocation) {
   VmaAllocator vma_allocator = reinterpret_cast<VmaAllocator>(pUserData);
@@ -202,7 +202,7 @@ VkResult SpokkVmaAlloc(void *pUserData, const spokk::Device& /*device*/, const V
     vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
   }
   vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_USER_DATA_COPY_STRING_BIT;
-  vma_allocation_ci.pUserData = const_cast<char*>("beans and/or franks");
+  vma_allocation_ci.pUserData = const_cast<char *>("beans and/or franks");
   VmaAllocation vma_allocation = {};
   VmaAllocationInfo vma_allocation_info = {};
   result = vmaAllocateMemory(vma_allocator, &memory_reqs, &vma_allocation_ci, &vma_allocation, &vma_allocation_info);
@@ -648,13 +648,12 @@ int Application::Run() {
       RenderImgui(cb);
       vkCmdEndRenderPass(cb);
     } else if (is_imgui_enabled_ && !is_imgui_visible_) {
-      RenderImgui(cb); // still needs to be called if the UI system is active, even if nothing is drawn.
+      RenderImgui(cb);  // still needs to be called if the UI system is active, even if nothing is drawn.
     }
     // This must happen outside the IMGUI NewFrame/Render pair, so may lag by a frame, but enh.
     if (input_state_.IsPressed(InputState::DIGITAL_MENU)) {
       ShowImgui(!is_imgui_visible_);
     }
-
 
     SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
     const VkPipelineStageFlags submit_wait_stages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
