@@ -347,8 +347,8 @@ Application::Application(const CreateInfo &ci) {
   std::vector<const char *> required_device_extension_names = ci.required_device_extension_names;
   if (ci.enable_graphics) {
     required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-    required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
   }
+  required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
   std::vector<const char *> optional_device_extension_names = ci.optional_device_extension_names;
   // TODO(cort): may want to hide this behind a flag, enabled in debug &
   // profiling builds. It also didn't really work reliably in SDK 1.1.73 and earlier,
@@ -428,9 +428,10 @@ Application::Application(const CreateInfo &ci) {
       enabled_device_features, enabled_instance_layer_properties, enabled_instance_extension_properties,
       enabled_device_extension_properties, host_allocator_, &device_allocator_);
 
-  graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
-
+  // Remaining work is for graphics apps only
   if (ci.enable_graphics) {
+    graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
+
     VkExtent2D default_extent = {ci.window_width, ci.window_height};
     CreateSwapchain(default_extent);
 
@@ -473,34 +474,33 @@ Application::Application(const CreateInfo &ci) {
 
     InitImgui(imgui_render_pass_.handle);
     ShowImgui(false);
-  }
 
-  // Allocate command buffers
-  VkCommandPoolCreateInfo cpool_ci = {};
-  cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-  cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-  cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
-  SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &primary_cpool_));
-  VkCommandBufferAllocateInfo cb_allocate_info = {};
-  cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  cb_allocate_info.commandPool = primary_cpool_;
-  cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  cb_allocate_info.commandBufferCount = (uint32_t)primary_command_buffers_.size();
-  SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, primary_command_buffers_.data()));
+    // Allocate primary command buffers for graphics apps
+    VkCommandPoolCreateInfo cpool_ci = {};
+    cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
+    SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &primary_cpool_));
+    VkCommandBufferAllocateInfo cb_allocate_info = {};
+    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cb_allocate_info.commandPool = primary_cpool_;
+    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cb_allocate_info.commandBufferCount = (uint32_t)primary_command_buffers_.size();
+    SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, primary_command_buffers_.data()));
+    // Create the semaphores used to synchronize access to swapchain images
+    VkSemaphoreCreateInfo semaphore_ci = {};
+    semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
+    SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
 
-  // Create the semaphores used to synchronize access to swapchain images
-  VkSemaphoreCreateInfo semaphore_ci = {};
-  semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-  SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
-  SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
-
-  // Create the fences used to wait for each swapchain image's command buffer to be submitted.
-  // This prevents re-writing the command buffer contents before it's been submitted and processed.
-  VkFenceCreateInfo fence_ci = {};
-  fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-  fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-  for (auto &fence : submit_complete_fences_) {
-    SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
+    // Create the fences used to wait for each swapchain image's command buffer to be submitted.
+    // This prevents re-writing the command buffer contents before it's been submitted and processed.
+    VkFenceCreateInfo fence_ci = {};
+    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    for (auto &fence : submit_complete_fences_) {
+      SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
+    }
   }
 
   init_successful_ = true;
@@ -515,12 +515,20 @@ Application::~Application() {
     }
     imgui_render_pass_.Destroy(device_);
 
-    vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
-    vkDestroySemaphore(device_, submit_complete_semaphore_, host_allocator_);
-    for (auto fence : submit_complete_fences_) {
-      vkDestroyFence(device_, fence, host_allocator_);
+    if (image_acquire_semaphore_ != VK_NULL_HANDLE) {
+      vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
     }
-    vkDestroyCommandPool(device_, primary_cpool_, host_allocator_);
+    if (submit_complete_semaphore_ != VK_NULL_HANDLE) {
+      vkDestroySemaphore(device_, submit_complete_semaphore_, host_allocator_);
+    }
+    for (auto fence : submit_complete_fences_) {
+      if (fence != VK_NULL_HANDLE) {
+        vkDestroyFence(device_, fence, host_allocator_);
+      }
+    }
+    if (primary_cpool_ != VK_NULL_HANDLE) {
+      vkDestroyCommandPool(device_, primary_cpool_, host_allocator_);
+    }
 
     if (swapchain_ != VK_NULL_HANDLE) {
       for (auto &view : swapchain_image_views_) {

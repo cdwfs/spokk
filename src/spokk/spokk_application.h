@@ -104,7 +104,7 @@ protected:
 
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
   VkSurfaceFormatKHR swapchain_surface_format_ = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
-  VkExtent2D swapchain_extent_;
+  VkExtent2D swapchain_extent_ = {};
   std::vector<VkImage> swapchain_images_ = {};
   std::vector<VkImageView> swapchain_image_views_ = {};
 
@@ -146,16 +146,16 @@ private:
 
   bool init_successful_ = false;
 
-  VkCommandPool primary_cpool_;
+  VkCommandPool primary_cpool_ = VK_NULL_HANDLE;
   std::array<VkCommandBuffer, PFRAME_COUNT> primary_command_buffers_;
-  VkSemaphore image_acquire_semaphore_;
-  VkSemaphore submit_complete_semaphore_;
-  std::array<VkFence, PFRAME_COUNT> submit_complete_fences_;
+  VkSemaphore image_acquire_semaphore_ = VK_NULL_HANDLE;
+  VkSemaphore submit_complete_semaphore_ = VK_NULL_HANDLE;
+  std::array<VkFence, PFRAME_COUNT> submit_complete_fences_ = {};
 
   bool is_imgui_enabled_ = false;  // Used to avoid calling functions that will crash if the app does not enable imgui.
   bool is_imgui_visible_ = false;  // Tracks whether the UI is visible or not.
   RenderPass imgui_render_pass_ = {};
-  std::vector<VkFramebuffer> imgui_framebuffers_;
+  std::vector<VkFramebuffer> imgui_framebuffers_ = {};
 
   VmaAllocator_T* vma_allocator_ = nullptr;
   DeviceAllocationCallbacks device_allocator_ = {};
