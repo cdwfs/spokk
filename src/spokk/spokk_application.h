@@ -1,7 +1,10 @@
-#pragma once
+#if !defined(SPOKK_APPLICATION_H)
+#define SPOKK_APPLICATION_H
 
-#ifdef _MSC_VER
-#include <windows.h>
+#include "spokk_platform.h"
+
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+#include <wingdi.h>
 #endif
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -162,3 +165,5 @@ private:
 };
 
 }  // namespace spokk
+
+#endif // !defined(SPOKK_APPLICATION_H)

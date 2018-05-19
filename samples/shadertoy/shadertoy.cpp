@@ -5,10 +5,15 @@ using namespace spokk;
 
 #include <glm/glm.hpp>
 
-#if defined(__linux__)
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+#include <fileapi.h>
+#include <synchapi.h>
+#include <sysinfoapi.h>
+#include <WinBase.h>
+#elif defined(ZOMBO_PLATFORM_POSIX)
 #include <limits.h>
 #include <sys/inotify.h>
-#endif  // defined(__linux__)
+#endif
 
 #include <array>
 #include <atomic>
