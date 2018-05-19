@@ -22,6 +22,8 @@ your choice. Build and run any of the "samples" projects.
 Acknowledgements
 ----------------
 spokk builds upon the following projects, which will be automatically included and configured as submodules):
+- [abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) for C++ utilities that should be in the standard
+  library, but aren't (necessarily (yet)).
 - [assimp/assimp](https://github.com/assimp/assimp) for loading common 3D file formats.
 - [glfw/glfw](https://github.com/glfw/glfw) for windowing and keyboard/mouse input.
 - [sheredom/json.h](https://github.com/sheredom/json.h) for JSON parsing.

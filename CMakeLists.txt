@@ -44,6 +44,9 @@ ADD_EXECUTABLE(spokkle
     ${JSON_H_DIR}/json.h
 )
 TARGET_LINK_LIBRARIES(spokkle
+    absl::memory
+    absl::strings
+    absl::time
     assimp
     shaderc
     ${VULKAN_LIBRARY}
@@ -134,6 +137,7 @@ ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC
     ${SPIRV_REFLECT_SOURCE_FILES}
 )
 TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME}
+    absl::strings
     glfw ${GLFW_LIBRARIES}
     ${libs}
     ${VULKAN_LIBRARY}

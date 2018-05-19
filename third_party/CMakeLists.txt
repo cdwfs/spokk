@@ -20,6 +20,10 @@ ADD_SUBDIRECTORY(glfw)
 # GLM
 set(GLM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/glm PARENT_SCOPE)
 
+# abseil
+OPTION(BUILD_TESTING "Abseil build tests" OFF)
+ADD_SUBDIRECTORY(abseil-cpp)
+
 # assimp
 OPTION(ASSIMP_BUILD_ASSIMP_TOOLS "If the supplementary tools for Assimp are built in addition to the library." OFF)
 OPTION(ASSIMP_BUILD_TESTS "If the test suite for Assimp is built in addition to the library." OFF)
@@ -95,11 +99,6 @@ SET(GLSLANG_TARGETS
     SPIRV
     spirv-remap
     SPVRemapper
-    Continuous
-    Experimental
-    Nightly
-    NightlyMemoryCheck
-
 )
 SET(SPIRV_HEADERS_TARGETS
     install-headers

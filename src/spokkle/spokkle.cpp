@@ -1,7 +1,20 @@
 #include <spokk_mesh.h>  // for MeshHeader
-#include <spokk_platform.h>
 #include <spokk_shader_interface.h>
 #include <spokk_vertex.h>
+
+#include <absl/memory/memory.h>
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable:4127) // constant conditional expression
+#endif
+#include <absl/strings/str_cat.h>
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+#include <absl/time/time.h>
+// Abseil expects to be the first place windows.h is included,
+// so spokk_platform.h should be included later.
+#include <spokk_platform.h>
 
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
@@ -12,6 +25,7 @@
 
 #if defined(ZOMBO_PLATFORM_WINDOWS)
 #include <Shlwapi.h>  // for Path*() functions
+#undef StrCat // shlwapi.h globally defines StrCat, which conflicts with abseil
 #elif defined(ZOMBO_PLATFORM_POSIX)
 #include <unistd.h>
 #endif
@@ -29,17 +43,11 @@
 
 namespace {
 
-// Effective Modern C++, Item 21: make_unique() is C++14 only, but easy to implement in C++11.
-template <typename T, typename... Ts>
-std::unique_ptr<T> my_make_unique(Ts&&... params) {
-  return std::unique_ptr<T>(new T(std::forward<Ts>(params)...));
-}
-
-int GetFileModificationTime(const char* path, time_t* out_mtime) {
+int GetFileModificationTime(const char* path, absl::Time* out_mtime) {
   ZomboStatStruct out_stats = {};
   int stat_error = zomboStat(path, &out_stats);
   if (!stat_error) {
-    *out_mtime = out_stats.st_mtime;
+    *out_mtime = absl::FromTimeT(out_stats.st_mtime);
   }
   return stat_error;
 }
@@ -120,7 +128,9 @@ int CombineAbsDirAndPath(const char* abs_dir, const char* path, int* buffer_ncha
     return 0;
   } else {
     // Just smoosh 'em together
-    std::string tmp_path = IsRelativePath(path) ? (std::string(abs_dir) + std::string("/") + std::string(path)) : path;
+    std::string tmp_path = IsRelativePath(path)
+      ? absl::StrCat(abs_dir, "/" + path)
+      : path;
     // Frustratingly, realpath() doesn't work if some/all of the path doesn't exist.
     // So, canonicalize manually.
     const char* src = tmp_path.c_str();
@@ -710,7 +720,7 @@ private:
   std::string output_root_;
   bool force_rebuild_;
 
-  time_t manifest_mtime_;
+  absl::Time manifest_mtime_;
 
   std::vector<std::string> shader_include_dirs_;
 
@@ -831,7 +841,7 @@ const char* AssetManifest::JsonParseErrorStr(const json_parse_error_e error_code
 
 std::string AssetManifest::JsonValueLocationStr(const json_value_s* val) const {
   const json_value_ex_s* val_ex = (const json_value_ex_s*)val;
-  return manifest_filename_ + "(" + std::to_string(val_ex->line_no) + ":" + std::to_string(val_ex->row_no) + ")";
+  return absl::StrCat(manifest_filename_, "(", val_ex->line_no, ":", val_ex->row_no, ")");
 }
 
 int AssetManifest::ParseRoot(const json_value_s* val) {
@@ -1124,7 +1134,7 @@ int AssetManifest::IsOutputOutOfDate(
   // If both files exists, we compare last-write time.
   bool output_is_older = false;
   if (input_exists && output_exists) {
-    time_t input_mtime = 0, output_mtime = 0;
+    absl::Time input_mtime = absl::InfinitePast(), output_mtime = absl::InfinitePast();
     int input_attr_error = GetFileModificationTime(input_path.c_str(), &input_mtime);
     ZOMBO_ASSERT_RETURN(!input_attr_error, -3, "Failed to read file attributes for %s", input_path.c_str());
     int output_attr_error = GetFileModificationTime(output_path.c_str(), &output_mtime);
@@ -1317,7 +1327,7 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
 
     shaderc::CompileOptions options;
     std::unique_ptr<ShaderFileIncluder> includer =
-        my_make_unique<ShaderFileIncluder>(manifest_dir_, shader_include_dirs_);
+        absl::make_unique<ShaderFileIncluder>(manifest_dir_, shader_include_dirs_);
     options.SetIncluder(std::move(includer));
     shaderc::Compiler compiler;
     shaderc::SpvCompilationResult compile_result = compiler.CompileGlslToSpv(
