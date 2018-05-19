@@ -77,11 +77,12 @@ bool FileExists(const char* path) {
 }
 
 #if defined(ZOMBO_PLATFORM_WINDOWS)
-void CharFromAToB(char* str, char a, char b) {
+// Modifies str in-place to replace all instances of ca with cb.
+void CharFromAToB(char* str, char ca, char cb) {
   char* c = str;
   while (*c != '\0') {
-    if (*c == a) {
-      *c = b;
+    if (*c == ca) {
+      *c = cb;
     }
     ++c;
   }
@@ -268,20 +269,6 @@ int CreateDirectoryAndParents(const char* abs_dir) {
   return zomboMkdir(abs_dir);
 }
 
-#if 0 && defined(ZOMBO_PLATFORM_WINDOWS)
-// Converts a UTF8-encoded JSON string to a UTF16 string. Not sure if I'll need this.
-int ConvertUtf8ToWide(const json_string_s* utf8, std::wstring* out_wide) {
-  static_assert(sizeof(wchar_t) == sizeof(WCHAR), "This code assumes sizeof(wchar_t) == sizeof(WCHAR)");
-  int nchars = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, nullptr, 0);
-  ZOMBO_ASSERT_RETURN(nchars != 0, -1, "malformed UTF-8, I guess?");
-  out_wide->resize(nchars + 1);
-  int nchars_final = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, &(*out_wide)[0], nchars + 1);
-  ZOMBO_ASSERT_RETURN(nchars_final != 0, -2, "failed to decode UTF-8");
-  (*out_wide)[nchars_final] = 0;
-  return nchars_final;
-}
-#endif
-
 }  // namespace
 
 constexpr int SPOKK_MAX_VERTEX_COLORS = 4;
@@ -292,7 +279,7 @@ struct SourceAttribute {
   const void* values;
 };
 
-static void handleReadFileError(const std::string& errorString) { fprintf(stderr, "ERROR: %s\n", errorString.c_str()); }
+static void HandleReadFileError(const std::string& errorString) { fprintf(stderr, "ERROR: %s\n", errorString.c_str()); }
 
 int ConvertSceneToMesh(const std::string& input_scene_filename, const std::string& output_mesh_filename) {
   // Uncomment to enable importer logging (can be quite verbose!)
@@ -332,7 +319,7 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
   // clang-format on
   // If the import failed, report it
   if (!scene) {
-    handleReadFileError(importer.GetErrorString());
+    HandleReadFileError(importer.GetErrorString());
     return -1;
   }
 
@@ -683,7 +670,7 @@ private:
   AssetManifest& operator=(const AssetManifest& rhs) = delete;
 
   // Converts a json_parse_error_e to a human-readable string
-  std::string JsonParseErrorStr(const json_parse_error_e error_code) const;
+  const char* JsonParseErrorStr(const json_parse_error_e error_code) const;
   // Returns a human-readable location of the specified json_value_s.
   // This assumes the manifest file was parsed with the
   // 'json_parse_flags_allow_location_information' flag enabled.
@@ -773,7 +760,7 @@ int AssetManifest::Load(const std::string& json5_filename) {
   if (!manifest) {
     fprintf(stderr, "%s(%u): error %u at column %u (%s)\n", manifest_filename_.c_str(),
         (uint32_t)parse_result.error_line_no, (uint32_t)parse_result.error, (uint32_t)parse_result.error_row_no,
-        JsonParseErrorStr((json_parse_error_e)parse_result.error).c_str());
+        JsonParseErrorStr((json_parse_error_e)parse_result.error));
     return -5;
   }
   int parse_error = ParseRoot(manifest);
@@ -812,7 +799,7 @@ int AssetManifest::Build() {
   return 0;
 }
 
-std::string AssetManifest::JsonParseErrorStr(const json_parse_error_e error_code) const {
+const char* AssetManifest::JsonParseErrorStr(const json_parse_error_e error_code) const {
   switch (error_code) {
   case json_parse_error_none:
     return "Success";
