@@ -163,7 +163,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
 
   // Look up the appropriate memory flags for uniform buffers on this platform
   VkMemoryPropertyFlags uniform_buffer_memory_flags =
-    device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
+      device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
 
   // Create pipelined buffer of shader uniforms
   VkBufferCreateInfo uniform_buffer_ci = {};
@@ -179,8 +179,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   heightfield_buffer_ci.size = HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY * sizeof(float);
   heightfield_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
   heightfield_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(
-      heightfield_buffer_.Create(device_, PFRAME_COUNT, heightfield_buffer_ci, uniform_buffer_memory_flags));
+  SPOKK_VK_CHECK(heightfield_buffer_.Create(device_, PFRAME_COUNT, heightfield_buffer_ci, uniform_buffer_memory_flags));
   SPOKK_VK_CHECK(heightfield_buffer_.CreateViews(device_, VK_FORMAT_R32_SFLOAT));
   for (int32_t iY = 0; iY < HEIGHTFIELD_DIMY; ++iY) {
     for (int32_t iX = 0; iX < HEIGHTFIELD_DIMX; ++iX) {
@@ -195,8 +194,8 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   visible_cells_buffer_ci.size = HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY * sizeof(uint32_t);
   visible_cells_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   visible_cells_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(visible_cells_buffer_.Create(
-      device_, PFRAME_COUNT, visible_cells_buffer_ci, uniform_buffer_memory_flags));
+  SPOKK_VK_CHECK(
+      visible_cells_buffer_.Create(device_, PFRAME_COUNT, visible_cells_buffer_ci, uniform_buffer_memory_flags));
   SPOKK_VK_CHECK(visible_cells_buffer_.CreateViews(device_, VK_FORMAT_R32_SINT));
 
   for (const auto& dset_layout_ci : pillar_shader_program_.dset_layout_cis) {
@@ -292,7 +291,7 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
   // Update uniforms
   SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
   uniforms->time_and_res =
-    glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+      glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
   uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
   glm::mat4 w2v = camera_->getViewMatrix();
   const glm::mat4 proj = camera_->getProjectionMatrix();
