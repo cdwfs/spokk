@@ -154,8 +154,7 @@ struct DebugMeshVertex {
   float tu, tv;
 };
 
-void GenerateMeshBox(
-    const Device& device, Mesh* out_mesh, const float min_extent[3], const float max_extent[3]) {
+void GenerateMeshBox(const Device& device, Mesh* out_mesh, const float min_extent[3], const float max_extent[3]) {
   out_mesh->mesh_format.vertex_attributes = {
       // clang-format off
     {SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION,  0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(DebugMeshVertex, px) },
@@ -230,3 +229,4 @@ void GenerateMeshBox(
 
 
 }  // namespace spokk
+
