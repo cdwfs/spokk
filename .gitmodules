@@ -37,3 +37,6 @@
 [submodule "third_party/simple_vulkan_synchronization"]
 	path = third_party/simple_vulkan_synchronization
 	url = https://github.com/Tobski/simple_vulkan_synchronization.git
+[submodule "third_party/abseil-cpp"]
+	path = third_party/abseil-cpp
+	url = https://github.com/abseil/abseil-cpp
