@@ -271,7 +271,7 @@ TrailsApp::TrailsApp(Application::CreateInfo& ci) : Application(ci) {
   // particle_pipeline_.Init(&particle_mesh_format_, &particle_shader_program_, &render_pass_, 0);
   // SPOKK_VK_CHECK(particle_pipeline_.Finalize(device_));
   trail_pipeline_.Init(&trail_mesh_format_, &trail_shader_program_, &render_pass_, 0);
-  // trail_pipeline_.rasterization_state_ci.lineWidth = 5.0f;
+  trail_pipeline_.rasterization_state_ci.lineWidth = 3.0f;
   trail_pipeline_.color_blend_attachment_states[0].blendEnable = VK_TRUE;
   trail_pipeline_.color_blend_attachment_states[0].colorBlendOp = VK_BLEND_OP_ADD;
   trail_pipeline_.color_blend_attachment_states[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
@@ -473,6 +473,11 @@ static VkBool32 EnableAppDeviceFeatures(
     return false;
   }
   enabled_features->largePoints = VK_TRUE;
+  // wideLines is required
+  if (!supported_features.wideLines) {
+    return false;
+  }
+  enabled_features->wideLines = VK_TRUE;
   // drawIndirectFirstInstance is required
   if (!supported_features.drawIndirectFirstInstance) {
     return false;
