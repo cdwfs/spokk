@@ -8,6 +8,7 @@
 #include <vector>
 
 // No magic here, it just eliminates a typecast & some redundant typing.
+// Usage: auto mySomeNewFunction = SPOKK_VK_GET_INSTANCE_PROC_ADDR(my_instance, vkSomeNewFunctionEXT)
 #define SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance, func) \
   reinterpret_cast<PFN_##func>(vkGetInstanceProcAddr((instance), #func))
 #define SPOKK_VK_GET_DEVICE_PROC_ADDR(device, func) reinterpret_cast<PFN_##func>(vkGetDeviceProcAddr((device), #func))
@@ -128,15 +129,15 @@ private:
   const VkAllocationCallbacks* allocator_ = nullptr;
 };
 
+// These functions automatically filter their input lists to remove duplicate entries, because
+// some loaders don't like duplicates. You're welcome.
 VkResult GetSupportedInstanceLayers(const std::vector<const char*>& required_names,
     const std::vector<const char*>& optional_names, std::vector<VkLayerProperties>* out_supported_layers,
     std::vector<const char*>* out_supported_layer_names);
-
 VkResult GetSupportedInstanceExtensions(const std::vector<VkLayerProperties>& enabled_instance_layers,
     const std::vector<const char*>& required_names, const std::vector<const char*>& optional_names,
     std::vector<VkExtensionProperties>* out_supported_extensions,
     std::vector<const char*>* out_supported_extension_names);
-
 VkResult GetSupportedDeviceExtensions(VkPhysicalDevice physical_device,
     const std::vector<VkLayerProperties>& enabled_instance_layers, const std::vector<const char*>& required_names,
     const std::vector<const char*>& optional_names, std::vector<VkExtensionProperties>* out_supported_extensions,

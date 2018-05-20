@@ -1,7 +1,10 @@
-#pragma once
+#if !defined(SPOKK_APPLICATION_H)
+#define SPOKK_APPLICATION_H
 
-#ifdef _MSC_VER
-#include <windows.h>
+#include "spokk_platform.h"
+
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+#include <wingdi.h>
 #endif
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -61,6 +64,12 @@ public:
         VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
 #endif
     std::vector<QueueFamilyRequest> queue_family_requests;
+    std::vector<const char*> required_instance_layer_names = {};
+    std::vector<const char*> required_instance_extension_names = {};
+    std::vector<const char*> required_device_extension_names = {};
+    std::vector<const char*> optional_instance_layer_names = {};
+    std::vector<const char*> optional_instance_extension_names = {};
+    std::vector<const char*> optional_device_extension_names = {};
     // If NULL, no device features are enabled. To easily enable all supported features,
     // pass EnableAllSupportedDeviceFeatures.
     SetDeviceFeaturesFunc pfn_set_device_features = nullptr;
@@ -98,7 +107,7 @@ protected:
 
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
   VkSurfaceFormatKHR swapchain_surface_format_ = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
-  VkExtent2D swapchain_extent_;
+  VkExtent2D swapchain_extent_ = {};
   std::vector<VkImage> swapchain_images_ = {};
   std::vector<VkImageView> swapchain_image_views_ = {};
 
@@ -140,19 +149,20 @@ private:
 
   bool init_successful_ = false;
 
-  VkCommandPool primary_cpool_;
+  VkCommandPool primary_cpool_ = VK_NULL_HANDLE;
   std::array<VkCommandBuffer, PFRAME_COUNT> primary_command_buffers_;
-  VkSemaphore image_acquire_semaphore_;
-  VkSemaphore submit_complete_semaphore_;
-  std::array<VkFence, PFRAME_COUNT> submit_complete_fences_;
+  VkSemaphore image_acquire_semaphore_ = VK_NULL_HANDLE;
+  VkSemaphore submit_complete_semaphore_ = VK_NULL_HANDLE;
+  std::array<VkFence, PFRAME_COUNT> submit_complete_fences_ = {};
 
-  bool is_imgui_enabled_ = false;  // Used to avoid calling functions that will crash if the app does not enable imgui.
   bool is_imgui_visible_ = false;  // Tracks whether the UI is visible or not.
   RenderPass imgui_render_pass_ = {};
-  std::vector<VkFramebuffer> imgui_framebuffers_;
+  std::vector<VkFramebuffer> imgui_framebuffers_ = {};
 
   VmaAllocator_T* vma_allocator_ = nullptr;
   DeviceAllocationCallbacks device_allocator_ = {};
 };
 
 }  // namespace spokk
+
+#endif // !defined(SPOKK_APPLICATION_H)

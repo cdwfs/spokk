@@ -187,7 +187,7 @@ VkResult FindPhysicalDevice(const std::vector<Application::QueueFamilyRequest> &
   return VK_ERROR_INITIALIZATION_FAILED;
 }
 
-VkResult SpokkVmaAlloc(void *pUserData, const spokk::Device& /*device*/, const VkMemoryRequirements &memory_reqs,
+VkResult SpokkVmaAlloc(void *pUserData, const spokk::Device & /*device*/, const VkMemoryRequirements &memory_reqs,
     VkMemoryPropertyFlags memory_property_flags, spokk::DeviceAllocationScope /*allocation_scope*/,
     spokk::DeviceMemoryAllocation *out_allocation) {
   VmaAllocator vma_allocator = reinterpret_cast<VmaAllocator>(pUserData);
@@ -202,7 +202,7 @@ VkResult SpokkVmaAlloc(void *pUserData, const spokk::Device& /*device*/, const V
     vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
   }
   vma_allocation_ci.flags |= VMA_ALLOCATION_CREATE_USER_DATA_COPY_STRING_BIT;
-  vma_allocation_ci.pUserData = const_cast<char*>("beans and/or franks");
+  vma_allocation_ci.pUserData = const_cast<char *>("beans and/or franks");
   VmaAllocation vma_allocation = {};
   VmaAllocationInfo vma_allocation_info = {};
   result = vmaAllocateMemory(vma_allocator, &memory_reqs, &vma_allocation_ci, &vma_allocation, &vma_allocation_info);
@@ -248,19 +248,17 @@ Application::Application(const CreateInfo &ci) {
         [](GLFWwindow *w) { glfwDestroyWindow(w); });
     glfwSetInputMode(window_.get(), GLFW_STICKY_KEYS, 1);
     glfwPollEvents();  // dummy poll for first loop iteration
-
-    input_state_.SetWindow(window_);
   }
 
   // Initialize Vulkan
   host_allocator_ = ci.host_allocator;
 
-  std::vector<const char *> required_instance_layer_names = {};
-  std::vector<const char *> optional_instance_layer_names = {
+  std::vector<const char *> required_instance_layer_names = ci.required_instance_layer_names;
+  std::vector<const char *> optional_instance_layer_names = ci.optional_instance_layer_names;
 #if defined(_DEBUG)
-    "VK_LAYER_LUNARG_monitor",
+  optional_instance_layer_names.push_back("VK_LAYER_LUNARG_monitor");
 #endif
-  };
+
   if (ci.debug_report_flags != 0) {
 #if defined(_DEBUG)  // validation layers should only be enabled in debug builds
     optional_instance_layer_names.push_back("VK_LAYER_LUNARG_standard_validation");
@@ -272,12 +270,12 @@ Application::Application(const CreateInfo &ci) {
   SPOKK_VK_CHECK(GetSupportedInstanceLayers(required_instance_layer_names, optional_instance_layer_names,
       &enabled_instance_layer_properties, &enabled_instance_layer_names));
 
-  std::vector<const char *> required_instance_extension_names = {};
+  std::vector<const char *> required_instance_extension_names = ci.required_instance_extension_names;
   if (ci.enable_graphics) {
     required_instance_extension_names.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
     required_instance_extension_names.push_back(SPOKK_PLATFORM_SURFACE_EXTENSION_NAME);
   }
-  std::vector<const char *> optional_instance_extension_names = {};
+  std::vector<const char *> optional_instance_extension_names = ci.optional_instance_extension_names;
   if (ci.debug_report_flags != 0) {
     optional_instance_extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
   }
@@ -344,15 +342,16 @@ Application::Application(const CreateInfo &ci) {
   };
   ZOMBO_ASSERT(queue_priorities.size() == total_queue_count, "queue count mismatch");
 
-  std::vector<const char *> required_device_extension_names = {};
+  std::vector<const char *> required_device_extension_names = ci.required_device_extension_names;
   if (ci.enable_graphics) {
     required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-    required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
   }
-  std::vector<const char *> optional_device_extension_names = {
-      VK_EXT_DEBUG_MARKER_EXTENSION_NAME,  // TODO(cort): may want to hide this behind a flag, enabled in debug &
-                                           // profiling builds.
-  };
+  required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
+  std::vector<const char *> optional_device_extension_names = ci.optional_device_extension_names;
+  // TODO(cort): may want to hide this behind a flag, enabled in debug &
+  // profiling builds. It also didn't really work reliably in SDK 1.1.73 and earlier,
+  // due to a missing NULL pointer check.
+  optional_device_extension_names.push_back(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
   std::vector<const char *> enabled_device_extension_names = {};
   std::vector<VkExtensionProperties> enabled_device_extension_properties = {};
   SPOKK_VK_CHECK(
@@ -427,9 +426,10 @@ Application::Application(const CreateInfo &ci) {
       enabled_device_features, enabled_instance_layer_properties, enabled_instance_extension_properties,
       enabled_device_extension_properties, host_allocator_, &device_allocator_);
 
-  graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
-
+  // Remaining work is for graphics apps only
   if (ci.enable_graphics) {
+    graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
+
     VkExtent2D default_extent = {ci.window_width, ci.window_height};
     CreateSwapchain(default_extent);
 
@@ -451,7 +451,7 @@ Application::Application(const CreateInfo &ci) {
     imgui_render_pass_.subpass_dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
     imgui_render_pass_.subpass_dependencies[0].dstSubpass = 0;
     imgui_render_pass_.subpass_dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    imgui_render_pass_.subpass_dependencies[0].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    imgui_render_pass_.subpass_dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     imgui_render_pass_.subpass_dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     imgui_render_pass_.subpass_dependencies[0].dstAccessMask =
         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
@@ -471,35 +471,35 @@ Application::Application(const CreateInfo &ci) {
     }
 
     InitImgui(imgui_render_pass_.handle);
-    ShowImgui(false);
-  }
+    // Don't initialize the input state until IMGUI is initialized
+    input_state_.SetWindow(window_);
 
-  // Allocate command buffers
-  VkCommandPoolCreateInfo cpool_ci = {};
-  cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-  cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-  cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
-  SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &primary_cpool_));
-  VkCommandBufferAllocateInfo cb_allocate_info = {};
-  cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  cb_allocate_info.commandPool = primary_cpool_;
-  cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  cb_allocate_info.commandBufferCount = (uint32_t)primary_command_buffers_.size();
-  SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, primary_command_buffers_.data()));
+    // Allocate primary command buffers for graphics apps
+    VkCommandPoolCreateInfo cpool_ci = {};
+    cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
+    SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &primary_cpool_));
+    VkCommandBufferAllocateInfo cb_allocate_info = {};
+    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cb_allocate_info.commandPool = primary_cpool_;
+    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cb_allocate_info.commandBufferCount = (uint32_t)primary_command_buffers_.size();
+    SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, primary_command_buffers_.data()));
+    // Create the semaphores used to synchronize access to swapchain images
+    VkSemaphoreCreateInfo semaphore_ci = {};
+    semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
+    SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
 
-  // Create the semaphores used to synchronize access to swapchain images
-  VkSemaphoreCreateInfo semaphore_ci = {};
-  semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-  SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
-  SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
-
-  // Create the fences used to wait for each swapchain image's command buffer to be submitted.
-  // This prevents re-writing the command buffer contents before it's been submitted and processed.
-  VkFenceCreateInfo fence_ci = {};
-  fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-  fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-  for (auto &fence : submit_complete_fences_) {
-    SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
+    // Create the fences used to wait for each swapchain image's command buffer to be submitted.
+    // This prevents re-writing the command buffer contents before it's been submitted and processed.
+    VkFenceCreateInfo fence_ci = {};
+    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    for (auto &fence : submit_complete_fences_) {
+      SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
+    }
   }
 
   init_successful_ = true;
@@ -514,12 +514,20 @@ Application::~Application() {
     }
     imgui_render_pass_.Destroy(device_);
 
-    vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
-    vkDestroySemaphore(device_, submit_complete_semaphore_, host_allocator_);
-    for (auto fence : submit_complete_fences_) {
-      vkDestroyFence(device_, fence, host_allocator_);
+    if (image_acquire_semaphore_ != VK_NULL_HANDLE) {
+      vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
     }
-    vkDestroyCommandPool(device_, primary_cpool_, host_allocator_);
+    if (submit_complete_semaphore_ != VK_NULL_HANDLE) {
+      vkDestroySemaphore(device_, submit_complete_semaphore_, host_allocator_);
+    }
+    for (auto fence : submit_complete_fences_) {
+      if (fence != VK_NULL_HANDLE) {
+        vkDestroyFence(device_, fence, host_allocator_);
+      }
+    }
+    if (primary_cpool_ != VK_NULL_HANDLE) {
+      vkDestroyCommandPool(device_, primary_cpool_, host_allocator_);
+    }
 
     if (swapchain_ != VK_NULL_HANDLE) {
       for (auto &view : swapchain_image_views_) {
@@ -578,15 +586,12 @@ int Application::Run() {
     const double dt = zomboTicksToSeconds(ticks_now - ticks_prev);
     ticks_prev = ticks_now;
 
-    if (is_imgui_enabled_) {
-      ImGui_ImplGlfwVulkan_NewFrame();
-
+    ImGui_ImplGlfwVulkan_NewFrame();
 #if 0  // IMGUI demo window
-      if (is_imgui_visible_) {
-        ImGui::ShowTestWindow();
-      }
-#endif
+    if (is_imgui_visible_) {
+      ImGui::ShowDemoWindow();
     }
+#endif
 
     input_state_.Update();
     Update(dt);
@@ -646,14 +651,13 @@ int Application::Run() {
       vkCmdBeginRenderPass(cb, &imgui_render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
       RenderImgui(cb);
       vkCmdEndRenderPass(cb);
-    } else if (is_imgui_enabled_ && !is_imgui_visible_) {
-      RenderImgui(cb); // still needs to be called if the UI system is active, even if nothing is drawn.
+    } else {
+      RenderImgui(cb);  // still needs to be called if the UI system is active, even if nothing is drawn.
     }
     // This must happen outside the IMGUI NewFrame/Render pair, so may lag by a frame, but enh.
     if (input_state_.IsPressed(InputState::DIGITAL_MENU)) {
       ShowImgui(!is_imgui_visible_);
     }
-
 
     SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
     const VkPipelineStageFlags submit_wait_stages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -717,7 +721,11 @@ void Application::HandleWindowResize(VkExtent2D new_window_extent) {
 }
 
 bool Application::InitImgui(VkRenderPass ui_render_pass) {
-  // Setup ImGui binding
+  // Setup Dear ImGui binding
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGuiIO &io = ImGui::GetIO();
+  (void)io;
   ImGui_ImplGlfwVulkan_Init_Data init_data = {};
   init_data.allocator = const_cast<VkAllocationCallbacks *>(device_.HostAllocator());
   init_data.gpu = device_.Physical();
@@ -770,8 +778,8 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
   ImGui_ImplGlfwVulkan_InvalidateFontUploadObjects();
   vkDestroyCommandPool(device_, cpool, device_.HostAllocator());
 
-  is_imgui_enabled_ = true;
-  ShowImgui(true);
+  ImGui_ImplGlfwVulkan_Hide();
+  is_imgui_visible_ = false;
 
   return true;
 }
@@ -797,7 +805,6 @@ void Application::DestroyImgui(void) {
     ImGui_ImplGlfwVulkan_Shutdown();
 
     ShowImgui(false);
-    is_imgui_enabled_ = false;
   }
 }
 

@@ -91,12 +91,12 @@ public:
     ZOMBO_ASSERT(load_error == 0, "texture load error (%d)", load_error);
 
     // Load shaders (forcing compatible pipeline layouts)
-    SPOKK_VK_CHECK(skybox_vs_.CreateAndLoadSpirvFile(device_, "data/skybox.vert.spv"));
-    SPOKK_VK_CHECK(skybox_fs_.CreateAndLoadSpirvFile(device_, "data/skybox.frag.spv"));
+    SPOKK_VK_CHECK(skybox_vs_.CreateAndLoadSpirvFile(device_, "data/lights/skybox.vert.spv"));
+    SPOKK_VK_CHECK(skybox_fs_.CreateAndLoadSpirvFile(device_, "data/lights/skybox.frag.spv"));
     SPOKK_VK_CHECK(skybox_shader_program_.AddShader(&skybox_vs_));
     SPOKK_VK_CHECK(skybox_shader_program_.AddShader(&skybox_fs_));
-    SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_, "data/lit_mesh.vert.spv"));
-    SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_, "data/lit_mesh.frag.spv"));
+    SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_, "data/lights/lit_mesh.vert.spv"));
+    SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_, "data/lights/lit_mesh.frag.spv"));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_vs_));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_fs_));
     SPOKK_VK_CHECK(

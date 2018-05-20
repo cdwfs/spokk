@@ -50,7 +50,7 @@ public:
     // Load shaders
     Shader double_ints_cs = {};
     ShaderProgram compute_shader_program = {};
-    SPOKK_VK_CHECK(double_ints_cs.CreateAndLoadSpirvFile(device_, "data/double_ints.comp.spv"));
+    SPOKK_VK_CHECK(double_ints_cs.CreateAndLoadSpirvFile(device_, "data/compute/double_ints.comp.spv"));
     SPOKK_VK_CHECK(compute_shader_program.AddShader(&double_ints_cs));
     SPOKK_VK_CHECK(compute_shader_program.Finalize(device_));
 

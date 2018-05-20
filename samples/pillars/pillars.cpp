@@ -101,8 +101,8 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
       THSVS_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE_OR_UNIFORM_TEXEL_BUFFER);
 
   // Load shader pipelines
-  SPOKK_VK_CHECK(pillar_vs_.CreateAndLoadSpirvFile(device_, "data/pillar.vert.spv"));
-  SPOKK_VK_CHECK(pillar_fs_.CreateAndLoadSpirvFile(device_, "data/pillar.frag.spv"));
+  SPOKK_VK_CHECK(pillar_vs_.CreateAndLoadSpirvFile(device_, "data/pillars/pillar.vert.spv"));
+  SPOKK_VK_CHECK(pillar_fs_.CreateAndLoadSpirvFile(device_, "data/pillars/pillar.frag.spv"));
   SPOKK_VK_CHECK(pillar_shader_program_.AddShader(&pillar_vs_));
   SPOKK_VK_CHECK(pillar_shader_program_.AddShader(&pillar_fs_));
   SPOKK_VK_CHECK(pillar_shader_program_.Finalize(device_));

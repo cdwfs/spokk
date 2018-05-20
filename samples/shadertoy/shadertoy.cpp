@@ -5,10 +5,15 @@ using namespace spokk;
 
 #include <glm/glm.hpp>
 
-#if defined(__linux__)
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+#include <WinBase.h>
+#include <fileapi.h>
+#include <synchapi.h>
+#include <sysinfoapi.h>
+#elif defined(ZOMBO_PLATFORM_POSIX)
 #include <limits.h>
 #include <sys/inotify.h>
-#endif  // defined(__linux__)
+#endif
 
 #include <array>
 #include <atomic>
@@ -124,7 +129,7 @@ public:
     active_images_[3] = &textures_[3];
 
     // Load shader pipelines
-    SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_, "data/fullscreen.vert.spv"));
+    SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_, "data/shadertoy/fullscreen.vert.spv"));
 
     active_pipeline_index_ = 0;
     ReloadShader();  // force a reload of of the shadertoy shader into slot 1

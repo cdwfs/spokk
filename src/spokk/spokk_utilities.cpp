@@ -186,6 +186,7 @@ VkResult GetSupportedInstanceLayers(const std::vector<const char*>& required_nam
       }
     }
     if (!found) {
+      fprintf(stderr, "ERROR: required instance layer %s is not supported.", layer_name);
       out_supported_layers->clear();
       return VK_ERROR_LAYER_NOT_PRESENT;
     }
@@ -268,6 +269,7 @@ VkResult GetSupportedInstanceExtensions(const std::vector<VkLayerProperties>& en
       }
     }
     if (!found) {
+      fprintf(stderr, "ERROR: required instance extension %s not supported\n", extension_name);
       out_supported_extensions->clear();
       return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
@@ -348,7 +350,7 @@ VkResult GetSupportedDeviceExtensions(VkPhysicalDevice physical_device,
       }
     }
     if (!found) {
-      fprintf(stderr, "Extension %s not supported\n", extension_name);
+      fprintf(stderr, "ERROR: required device extension %s not supported\n", extension_name);
       out_supported_extensions->clear();
       return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
