@@ -169,7 +169,7 @@ TrailsApp::TrailsApp(Application::CreateInfo& ci) : Application(ci) {
   drone_ = my_make_unique<CameraDrone>(*camera_);
 
   // Create render pass
-  //render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
+  // render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
   // clang-format off
   render_pass_.attachment_descs = {
     {0, swapchain_surface_format_.format, VK_SAMPLE_COUNT_8_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL},
@@ -268,10 +268,10 @@ TrailsApp::TrailsApp(Application::CreateInfo& ci) : Application(ci) {
   trail_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_LINE_STRIP);
 
   // Create graphics pipelines
-  //particle_pipeline_.Init(&particle_mesh_format_, &particle_shader_program_, &render_pass_, 0);
-  //SPOKK_VK_CHECK(particle_pipeline_.Finalize(device_));
+  // particle_pipeline_.Init(&particle_mesh_format_, &particle_shader_program_, &render_pass_, 0);
+  // SPOKK_VK_CHECK(particle_pipeline_.Finalize(device_));
   trail_pipeline_.Init(&trail_mesh_format_, &trail_shader_program_, &render_pass_, 0);
-  //trail_pipeline_.rasterization_state_ci.lineWidth = 5.0f;
+  // trail_pipeline_.rasterization_state_ci.lineWidth = 5.0f;
   trail_pipeline_.color_blend_attachment_states[0].blendEnable = VK_TRUE;
   trail_pipeline_.color_blend_attachment_states[0].colorBlendOp = VK_BLEND_OP_ADD;
   trail_pipeline_.color_blend_attachment_states[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
@@ -344,9 +344,10 @@ void TrailsApp::Update(double dt) {
   // TODO: simulate particles. Need an acceleration term, probably
   // from a vector field.
   for (int32_t i_part = 0; i_part < MAX_PARTICLE_COUNT; ++i_part) {
-    //host_particle_positions_[i_part] += (float)dt * host_particle_velocities_[i_part];
-    host_particle_positions_[i_part] = glm::vec3(0.1f * float(i_part) * sinf((float)seconds_elapsed_ + 0.1f*(float)i_part),
-      2.0f * cosf((float)seconds_elapsed_ + 0.1f*(float)i_part), 0);
+    // host_particle_positions_[i_part] += (float)dt * host_particle_velocities_[i_part];
+    host_particle_positions_[i_part] =
+        glm::vec3(0.1f * float(i_part) * sinf((float)seconds_elapsed_ + 0.1f * (float)i_part),
+            2.0f * cosf((float)seconds_elapsed_ + 0.1f * (float)i_part), 0);
     if (host_trail_lengths_[i_part] >= 0 && host_trail_lengths_[i_part] < MAX_PARTICLE_LENGTH) {
       host_trail_lengths_[i_part] += 1;
     }
@@ -372,7 +373,7 @@ void TrailsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_inde
 
   glm::vec4* src_trail_positions = (glm::vec4*)trail_positions_.Mapped(1 - pframe_index_);
   glm::vec4* dst_trail_positions = (glm::vec4*)trail_positions_.Mapped(pframe_index_);
-  memcpy(dst_trail_positions, src_trail_positions, trail_positions_.BytesPerPframe()); // waaaaaste
+  memcpy(dst_trail_positions, src_trail_positions, trail_positions_.BytesPerPframe());  // waaaaaste
   for (int32_t i_part = 0; i_part < MAX_PARTICLE_COUNT; ++i_part) {
     glm::vec4 out_pos(host_particle_positions_[i_part], 1.0f);
     dst_trail_positions[i_part * MAX_PARTICLE_LENGTH + (host_trail_ends_[i_part] % MAX_PARTICLE_LENGTH)] = out_pos;
@@ -391,7 +392,7 @@ void TrailsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_inde
     int32_t trail_start = host_trail_ends_[i_part] - host_trail_lengths_[i_part];
     draw_cmds[draw_count].vertexCount = host_trail_lengths_[i_part];
     draw_cmds[draw_count].instanceCount = 1;
-    draw_cmds[draw_count].firstVertex = trail_start >= 0 ? (trail_start % MAX_PARTICLE_LENGTH): 0;  // gl_BaseVertex
+    draw_cmds[draw_count].firstVertex = trail_start >= 0 ? (trail_start % MAX_PARTICLE_LENGTH) : 0;  // gl_BaseVertex
     draw_cmds[draw_count].firstInstance = i_part;  // gl_BaseInstance
     ++draw_count;
   }
@@ -438,7 +439,7 @@ void TrailsApp::CreateRenderBuffers(VkExtent2D extent) {
   VkImageCreateInfo msaa_color_image_ci = render_pass_.GetAttachmentImageCreateInfo(0, extent);
   msaa_color_image_ = {};
   SPOKK_VK_CHECK(msaa_color_image_.Create(
-    device_, msaa_color_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
+      device_, msaa_color_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
 
   // Create depth buffer
   VkImageCreateInfo depth_image_ci = render_pass_.GetAttachmentImageCreateInfo(1, extent);
@@ -448,8 +449,7 @@ void TrailsApp::CreateRenderBuffers(VkExtent2D extent) {
 
   // Create VkFramebuffers
   std::vector<VkImageView> attachment_views = {
-      msaa_color_image_.view,
-      depth_image_.view,
+      msaa_color_image_.view, depth_image_.view,
       VK_NULL_HANDLE,  // filled in below
   };
   VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(extent);
