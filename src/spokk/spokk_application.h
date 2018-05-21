@@ -165,4 +165,4 @@ private:
 
 }  // namespace spokk
 
-#endif // !defined(SPOKK_APPLICATION_H)
+#endif  // !defined(SPOKK_APPLICATION_H)

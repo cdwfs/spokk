@@ -79,7 +79,7 @@ void Shader::ParseShaderResources(const SpvReflectShaderModule& refl_module) {
   push_constant_range = {};
   push_constant_range.stageFlags = stage;
   uint32_t min_offset = UINT32_MAX, first_unused_offset = 0;
-  for(const auto* push_constant_block : push_constant_blocks) {
+  for (const auto* push_constant_block : push_constant_blocks) {
     if (push_constant_block->member_count == 0) {
       continue;
     }

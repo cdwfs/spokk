@@ -719,7 +719,8 @@ private:
   std::vector<ShaderAsset> shader_assets_;
 };
 
-AssetManifest::AssetManifest() : launch_dir_("."), manifest_dir_("."), manifest_filename_(""), output_root_("."), force_rebuild_(false) {}
+AssetManifest::AssetManifest()
+  : launch_dir_("."), manifest_dir_("."), manifest_filename_(""), output_root_("."), force_rebuild_(false) {}
 AssetManifest::~AssetManifest() {}
 
 int AssetManifest::Load(const std::string& json5_filename) {
@@ -772,9 +773,7 @@ int AssetManifest::OverrideOutputRoot(const std::string& output_root_dir) {
   return CombineAbsDirAndPath(launch_dir_.c_str(), output_root_dir.c_str(), &output_root_);
 }
 
-void AssetManifest::SetForceRebuild(bool force_rebuild_all) {
-  force_rebuild_ = force_rebuild_all;
-}
+void AssetManifest::SetForceRebuild(bool force_rebuild_all) { force_rebuild_ = force_rebuild_all; }
 
 int AssetManifest::Build() {
   int process_error = 0;
@@ -843,7 +842,7 @@ int AssetManifest::ParseRoot(const json_value_s* val) {
   json_object_s* root_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
   int parse_error = 0;
-  for (json_object_element_s *child_elem = root_obj->start; i_child < root_obj->length;
+  for (json_object_element_s* child_elem = root_obj->start; i_child < root_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "assets") == 0) {
       parse_error = ParseAssets(child_elem->value);
@@ -868,7 +867,7 @@ int AssetManifest::ParseDefaults(const json_value_s* val) {
   const json_object_s* defaults_obj = (const json_object_s*)(val->payload);
   size_t i_child = 0;
   int parse_error = 0;
-  for (json_object_element_s *child_elem = defaults_obj->start; i_child < defaults_obj->length;
+  for (json_object_element_s* child_elem = defaults_obj->start; i_child < defaults_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "output_root") == 0) {
       parse_error = ParseDefaultOutputRoot(child_elem->value);
@@ -902,7 +901,7 @@ int AssetManifest::ParseDefaultShaderIncludeDirs(const json_value_s* val) {
   const json_array_s* includes_array = (const json_array_s*)(val->payload);
   size_t i_child = 0;
   int parse_error = 0;
-  for (json_array_element_s *child_elem = includes_array->start; i_child < includes_array->length;
+  for (json_array_element_s* child_elem = includes_array->start; i_child < includes_array->length;
        ++i_child, child_elem = child_elem->next) {
     // parse array of shader includes. Combine each dir with the manifest dir and canonicalize
     if (child_elem->value->type != json_type_string) {
@@ -930,7 +929,7 @@ int AssetManifest::ParseAssets(const json_value_s* val) {
   const json_array_s* assets_array = (const json_array_s*)(val->payload);
   size_t i_child = 0;
   int parse_error = 0;
-  for (json_array_element_s *child_elem = assets_array->start; i_child < assets_array->length;
+  for (json_array_element_s* child_elem = assets_array->start; i_child < assets_array->length;
        ++i_child, child_elem = child_elem->next) {
     parse_error = ParseAsset(child_elem->value);
     if (parse_error) {
@@ -949,7 +948,7 @@ int AssetManifest::ParseAsset(const json_value_s* val) {
   // variant to call.
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
-  for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
+  for (json_object_element_s* child_elem = asset_obj->start; i_child < asset_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       if (child_elem->value->type != json_type_string) {
@@ -979,7 +978,7 @@ int AssetManifest::ParseImageAsset(const json_value_s* val) {
   const json_string_s* output_path = nullptr;
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
-  for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
+  for (json_object_element_s* child_elem = asset_obj->start; i_child < asset_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
@@ -1018,7 +1017,7 @@ int AssetManifest::ParseMeshAsset(const json_value_s* val) {
   const json_string_s* output_path = nullptr;
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
-  for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
+  for (json_object_element_s* child_elem = asset_obj->start; i_child < asset_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
@@ -1059,7 +1058,7 @@ int AssetManifest::ParseShaderAsset(const json_value_s* val) {
   const json_string_s* shader_stage = nullptr;
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
-  for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
+  for (json_object_element_s* child_elem = asset_obj->start; i_child < asset_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
@@ -1213,11 +1212,10 @@ int AssetManifest::ProcessImage(const ImageAsset& image) {
     // This should be a helper function.
     std::string output_dir = abs_output_path;
     int truncate_error = TruncatePathToDir(&output_dir[0]);
-    ZOMBO_ASSERT_RETURN(!truncate_error, -1, "TruncatePathToDir('%s') failed (%d)",
-      output_dir.c_str(), truncate_error);
+    ZOMBO_ASSERT_RETURN(!truncate_error, -1, "TruncatePathToDir('%s') failed (%d)", output_dir.c_str(), truncate_error);
     int create_dir_error = CreateDirectoryAndParents(output_dir.c_str());
-    ZOMBO_ASSERT_RETURN(!create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)",
-      output_dir.c_str(), create_dir_error);
+    ZOMBO_ASSERT_RETURN(
+        !create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)", output_dir.c_str(), create_dir_error);
 
     int copy_error = CopyAssetFile(image.input_path, abs_output_path.c_str());
     if (copy_error) {
@@ -1246,11 +1244,10 @@ int AssetManifest::ProcessMesh(const MeshAsset& mesh) {
     // This should be a helper function.
     std::string output_dir = abs_output_path;
     int truncate_error = TruncatePathToDir(&output_dir[0]);
-    ZOMBO_ASSERT_RETURN(!truncate_error, -1, "TruncatePathToDir('%s') failed (%d)",
-      output_dir.c_str(), truncate_error);
+    ZOMBO_ASSERT_RETURN(!truncate_error, -1, "TruncatePathToDir('%s') failed (%d)", output_dir.c_str(), truncate_error);
     int create_dir_error = CreateDirectoryAndParents(output_dir.c_str());
-    ZOMBO_ASSERT_RETURN(!create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)",
-      output_dir.c_str(), create_dir_error);
+    ZOMBO_ASSERT_RETURN(
+        !create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)", output_dir.c_str(), create_dir_error);
 
     int process_error = ConvertSceneToMesh(mesh.input_path, abs_output_path.c_str());
     if (process_error) {
@@ -1278,11 +1275,10 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
     // This should be a helper function.
     std::string output_dir = abs_output_path;
     int truncate_error = TruncatePathToDir(&output_dir[0]);
-    ZOMBO_ASSERT_RETURN(!truncate_error, -1, "TruncatePathToDir('%s') failed (%d)",
-      output_dir.c_str(), truncate_error);
+    ZOMBO_ASSERT_RETURN(!truncate_error, -1, "TruncatePathToDir('%s') failed (%d)", output_dir.c_str(), truncate_error);
     int create_dir_error = CreateDirectoryAndParents(output_dir.c_str());
-    ZOMBO_ASSERT_RETURN(!create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)",
-      output_dir.c_str(), create_dir_error);
+    ZOMBO_ASSERT_RETURN(
+        !create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)", output_dir.c_str(), create_dir_error);
 
     shaderc_shader_kind shader_kind = shaderc_glsl_infer_from_source;
     if (shader.shader_stage == "vert" || shader.shader_stage == "vertex") {

@@ -77,9 +77,9 @@ public:
   void HostFree(void *ptr) const;
 
   // active layer/extension queries
-  bool IsInstanceLayerEnabled(const char* layer_name) const;
-  bool IsInstanceExtensionEnabled(const char* layer_name) const;
-  bool IsDeviceExtensionEnabled(const char* layer_name) const;
+  bool IsInstanceLayerEnabled(const char *layer_name) const;
+  bool IsInstanceExtensionEnabled(const char *layer_name) const;
+  bool IsDeviceExtensionEnabled(const char *layer_name) const;
 
   // VK_EXT_debug_marker wrappers
   // If the extension is unavailable, these calls will be no-ops.

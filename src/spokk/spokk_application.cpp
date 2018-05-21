@@ -601,7 +601,7 @@ int Application::Run() {
 
     // Press "V" to trigger a Vulkan validation error, to confirm that validation is active.
     if (input_state_.IsPressed(InputState::DIGITAL_RPAD_UP)) {
-      VkFenceCreateInfo invalid_fence_ci = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+      VkFenceCreateInfo invalid_fence_ci = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
       VkFence invalid_fence = VK_NULL_HANDLE;
       fprintf(stderr, "Attempting to create a VkFence with invalid sType...\n");
       VkResult failure_result = vkCreateFence(device_, &invalid_fence_ci, host_allocator_, &invalid_fence);
