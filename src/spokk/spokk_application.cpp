@@ -599,6 +599,18 @@ int Application::Run() {
       break;
     }
 
+    // Press "V" to trigger a Vulkan validation error, to confirm that validation is active.
+    if (input_state_.IsPressed(InputState::DIGITAL_RPAD_UP)) {
+      VkFenceCreateInfo invalid_fence_ci = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+      VkFence invalid_fence = VK_NULL_HANDLE;
+      fprintf(stderr, "Attempting to create a VkFence with invalid sType...\n");
+      VkResult failure_result = vkCreateFence(device_, &invalid_fence_ci, host_allocator_, &invalid_fence);
+      if (failure_result == VK_SUCCESS) {
+        fprintf(stderr, "Invalid fence created successfully; validation is not active\n");
+        vkDestroyFence(device_, invalid_fence, host_allocator_);
+      }
+    }
+
     // Wait for the command buffer previously used to generate this swapchain image to be submitted.
     vkWaitForFences(device_, 1, &submit_complete_fences_[pframe_index_], VK_TRUE, UINT64_MAX);
     vkResetFences(device_, 1, &submit_complete_fences_[pframe_index_]);

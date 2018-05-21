@@ -36,6 +36,7 @@ void InputState::Update(void) {
     current_.digital[DIGITAL_LPAD_DOWN] = SPOKK__IS_KEY_DOWN(GLFW_KEY_S);
     current_.digital[DIGITAL_RPAD_LEFT] = SPOKK__IS_KEY_DOWN(GLFW_KEY_LEFT_SHIFT);
     current_.digital[DIGITAL_RPAD_DOWN] = SPOKK__IS_KEY_DOWN(GLFW_KEY_SPACE);
+    current_.digital[DIGITAL_RPAD_UP] = SPOKK__IS_KEY_DOWN(GLFW_KEY_V);
     current_.digital[DIGITAL_MENU] = SPOKK__IS_KEY_DOWN(GLFW_KEY_GRAVE_ACCENT);
 #undef SPOKK__IS_KEY_DOWN
   } else {
