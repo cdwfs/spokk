@@ -64,6 +64,7 @@ using namespace spokk;
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <sstream>
 
 #define SPOKK__CLAMP(x, xmin, xmax) (((x) < (xmin)) ? (xmin) : (((x) > (xmax)) ? (xmax) : (x)))
 
@@ -102,6 +103,118 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkFlags msgFlags, Vk
 #endif
   free(output);
   return (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT) ? VK_TRUE : VK_FALSE;
+}
+
+static const char *StringMaybe(const char *str) { return str ? str : "???"; }
+static const char *ObjectTypeToString(VkObjectType obj_type) {
+  // clang-format off
+  switch(obj_type) {
+  case VK_OBJECT_TYPE_UNKNOWN: return "UNKNOWN";
+  case VK_OBJECT_TYPE_INSTANCE: return "VkInstance";
+  case VK_OBJECT_TYPE_PHYSICAL_DEVICE: return "VkPhysicalDevice";
+  case VK_OBJECT_TYPE_DEVICE: return "VkDevice";
+  case VK_OBJECT_TYPE_QUEUE: return "VkQueue";
+  case VK_OBJECT_TYPE_SEMAPHORE: return "VkSemaphore";
+  case VK_OBJECT_TYPE_COMMAND_BUFFER: return "VkCommandBuffer";
+  case VK_OBJECT_TYPE_FENCE: return "VkFence";
+  case VK_OBJECT_TYPE_DEVICE_MEMORY: return "VkDeviceMemory";
+  case VK_OBJECT_TYPE_BUFFER: return "VkBuffer";
+  case VK_OBJECT_TYPE_IMAGE: return "VkImage";
+  case VK_OBJECT_TYPE_EVENT: return "VkEvent";
+  case VK_OBJECT_TYPE_QUERY_POOL: return "VkQueryPool";
+  case VK_OBJECT_TYPE_BUFFER_VIEW: return "VkBufferView";
+  case VK_OBJECT_TYPE_IMAGE_VIEW: return "VkImageView";
+  case VK_OBJECT_TYPE_SHADER_MODULE: return "VkShaderModule";
+  case VK_OBJECT_TYPE_PIPELINE_CACHE: return "VkPipelineCache";
+  case VK_OBJECT_TYPE_PIPELINE_LAYOUT: return "VkPipelineLayout";
+  case VK_OBJECT_TYPE_RENDER_PASS: return "VkRenderPass";
+  case VK_OBJECT_TYPE_PIPELINE: return "VkPipeline";
+  case VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT: return "VkDescriptorSetLayout";
+  case VK_OBJECT_TYPE_SAMPLER: return "VkSampler";
+  case VK_OBJECT_TYPE_DESCRIPTOR_POOL: return "VkDescriptorPool";
+  case VK_OBJECT_TYPE_DESCRIPTOR_SET: return "VkDescriptorSet";
+  case VK_OBJECT_TYPE_FRAMEBUFFER: return "VkFramebuffer";
+  case VK_OBJECT_TYPE_COMMAND_POOL: return "VkCommandPool";
+  case VK_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION: return "VkSamplerYcbcrConversion";
+  case VK_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE: return "VkDescriptorUpdateTemplate";
+  case VK_OBJECT_TYPE_SURFACE_KHR: return "VkSurfaceKHR";
+  case VK_OBJECT_TYPE_SWAPCHAIN_KHR: return "VkSwapchainKHR";
+  case VK_OBJECT_TYPE_DISPLAY_KHR: return "VkDisplayKHR";
+  case VK_OBJECT_TYPE_DISPLAY_MODE_KHR: return "VkDisplayModeKHR";
+  case VK_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT: return "VkDebugReportCallbackEXT";
+  case VK_OBJECT_TYPE_OBJECT_TABLE_NVX: return "VkObjectTableNVX";
+  case VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NVX: return "VkIndirectCommandsLayoutNVX";
+  case VK_OBJECT_TYPE_DEBUG_UTILS_MESSENGER_EXT: return "VkDebugUtilsMessengerEXT";
+  case VK_OBJECT_TYPE_VALIDATION_CACHE_EXT: return "VkValidationCacheEXT";
+  default: return "???";
+  }
+  // clang-format on
+}
+static VkBool32 MyDebugUtilsCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+    void * /*pUserData*/) {
+  const char *severity_str = "???";
+  if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+    severity_str = "ERROR";
+  } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+    severity_str = "WARNING";
+  } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+    severity_str = "INFO";
+  } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
+    severity_str = "VERBOSE";
+  }
+
+  const char *type_str = "???";
+  if (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) {
+    type_str = "VALIDATION";
+  } else if (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) {
+    type_str = "PERFORMANCE";
+  } else if (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT) {
+    type_str = "GENERAL";
+  }
+
+  // This callback can be invoked from multiple threads, so let's make the output thread-safe
+  std::mutex callback_mutex;
+  {
+    std::lock_guard<std::mutex> callback_guard(callback_mutex);
+
+    std::stringstream sstream;
+    sstream << "[" << type_str << " " << severity_str << " " << pCallbackData->messageIdNumber
+            << "]: " << pCallbackData->pMessage << std::endl;
+    if (pCallbackData->queueLabelCount > 0) {
+      sstream << "  queues:";
+      for (uint32_t i = 0; i < pCallbackData->queueLabelCount; ++i) {
+        sstream << std::endl << "  - " << StringMaybe(pCallbackData->pQueueLabels[i].pLabelName) << std::endl;
+      }
+    }
+    if (pCallbackData->cmdBufLabelCount > 0) {
+      sstream << "  command buffers:";
+      for (uint32_t i = 0; i < pCallbackData->cmdBufLabelCount; ++i) {
+        sstream << "  - " << StringMaybe(pCallbackData->pCmdBufLabels[i].pLabelName) << std::endl;
+      }
+    }
+    if (pCallbackData->objectCount > 0) {
+      sstream << "  objects:";
+      for (uint32_t i = 0; i < pCallbackData->objectCount; ++i) {
+        sstream << std::endl << "  - [" << ObjectTypeToString(pCallbackData->pObjects[i].objectType) << " 0x";
+        sstream.width(16);
+        sstream.fill('0');
+        sstream << std::hex << pCallbackData->pObjects[i].objectHandle << std::dec << "]";
+        if (pCallbackData->pObjects[i].pObjectName) {
+          sstream << " \"" << pCallbackData->pObjects[i].pObjectName << "\"";
+        }
+        sstream << std::endl;
+      }
+    }
+
+#if 0  //_WIN32
+    MessageBoxA(NULL, sstream.c_str(), "Alert", MB_OK);
+#else
+    fprintf(stderr, "%s\n", sstream.str().c_str());
+    fflush(stdout);
+#endif
+  }
+  return VK_FALSE;  // application callbacks must always return VK_FALSE
 }
 
 VkResult FindPhysicalDevice(const std::vector<Application::QueueFamilyRequest> &qf_reqs, VkInstance instance,
@@ -259,7 +372,11 @@ Application::Application(const CreateInfo &ci) {
   optional_instance_layer_names.push_back("VK_LAYER_LUNARG_monitor");
 #endif
 
-  if (ci.debug_report_flags != 0) {
+  if (ci.debug_report_flags != 0
+#if defined(VK_EXT_debug_utils)
+      || (ci.debug_utils_severity_flags != 0 && ci.debug_utils_type_flags != 0)
+#endif
+  ) {
 #if defined(_DEBUG)  // validation layers should only be enabled in debug builds
     optional_instance_layer_names.push_back("VK_LAYER_LUNARG_standard_validation");
     optional_instance_layer_names.push_back("VK_LAYER_LUNARG_assistant_layer");
@@ -277,8 +394,14 @@ Application::Application(const CreateInfo &ci) {
   }
   std::vector<const char *> optional_instance_extension_names = ci.optional_instance_extension_names;
   if (ci.debug_report_flags != 0) {
-    optional_instance_extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+    optional_instance_extension_names.push_back(
+        VK_EXT_DEBUG_REPORT_EXTENSION_NAME);  // deprecate this once debug_utils is core
   }
+#if defined(VK_EXT_debug_utils)
+  if (ci.debug_utils_severity_flags != 0 && ci.debug_utils_type_flags != 0) {
+    optional_instance_extension_names.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+  }
+#endif  // defined(VK_EXT_debug_utils
   std::vector<const char *> enabled_instance_extension_names;
   std::vector<VkExtensionProperties> enabled_instance_extension_properties = {};
   SPOKK_VK_CHECK(GetSupportedInstanceExtensions(enabled_instance_layer_properties, required_instance_extension_names,
@@ -298,16 +421,55 @@ Application::Application(const CreateInfo &ci) {
   instance_ci.ppEnabledLayerNames = enabled_instance_layer_names.data();
   instance_ci.enabledExtensionCount = (uint32_t)enabled_instance_extension_names.size();
   instance_ci.ppEnabledExtensionNames = enabled_instance_extension_names.data();
+#if defined(VK_EXT_debug_utils)
+  // This struct is used to create a temporary debug utils messenger for instance creation.
+  VkDebugUtilsMessengerCreateInfoEXT instance_debug_utils_msgr_ci = {
+      VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+  instance_debug_utils_msgr_ci.pNext = instance_ci.pNext;
+  // clang-format off
+  instance_debug_utils_msgr_ci.messageSeverity = 0
+    | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+    | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
+    ;
+  instance_debug_utils_msgr_ci.messageType = 0
+    // | VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT // disable until annoying RenderDoc message at startup is fixed
+    | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+    | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+    ;
+  // clang-format on
+  instance_debug_utils_msgr_ci.pfnUserCallback = MyDebugUtilsCallback;
+  instance_debug_utils_msgr_ci.pUserData = nullptr;
+  instance_ci.pNext = &instance_debug_utils_msgr_ci;
+#endif  // defined(VK_EXT_debug_utils)
   SPOKK_VK_CHECK(vkCreateInstance(&instance_ci, host_allocator_, &instance_));
 
   bool is_debug_report_ext_enabled = false;
+  bool is_debug_utils_ext_enabled = false;
   for (const char *ext_name : enabled_instance_extension_names) {
     if (strcmp(ext_name, VK_EXT_DEBUG_REPORT_EXTENSION_NAME) == 0) {
       is_debug_report_ext_enabled = true;
-      break;
     }
+#if defined(VK_EXT_debug_utils)
+    else if (strcmp(ext_name, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
+      is_debug_utils_ext_enabled = true;
+    }
+#endif  // defined(VK_EXT_debug_utils)
   }
-  if (is_debug_report_ext_enabled && ci.debug_report_flags != 0) {
+
+#if defined(VK_EXT_debug_utils)
+  if (is_debug_utils_ext_enabled && ci.debug_utils_severity_flags != 0 && ci.debug_utils_type_flags != 0) {
+    VkDebugUtilsMessengerCreateInfoEXT debug_utils_msgr_ci = {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+    debug_utils_msgr_ci.pNext = instance_ci.pNext;
+    debug_utils_msgr_ci.messageSeverity = ci.debug_utils_severity_flags;
+    debug_utils_msgr_ci.messageType = ci.debug_utils_type_flags;
+    debug_utils_msgr_ci.pfnUserCallback = MyDebugUtilsCallback;
+    debug_utils_msgr_ci.pUserData = nullptr;
+    auto create_debug_utils_msgr_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkCreateDebugUtilsMessengerEXT);
+    SPOKK_VK_CHECK(create_debug_utils_msgr_func(instance_, &debug_utils_msgr_ci, host_allocator_, &debug_utils_msgr_));
+    is_debug_report_ext_enabled = false;
+  } else
+#endif  // defined(VK_EXT_debug_utils)
+      if (is_debug_report_ext_enabled && ci.debug_report_flags != 0) {
     VkDebugReportCallbackCreateInfoEXT debug_report_callback_ci = {};
     debug_report_callback_ci.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
     debug_report_callback_ci.flags = ci.debug_report_flags;
@@ -348,10 +510,6 @@ Application::Application(const CreateInfo &ci) {
   }
   required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
   std::vector<const char *> optional_device_extension_names = ci.optional_device_extension_names;
-  // TODO(cort): may want to hide this behind a flag, enabled in debug &
-  // profiling builds. It also didn't really work reliably in SDK 1.1.73 and earlier,
-  // due to a missing NULL pointer check.
-  optional_device_extension_names.push_back(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
   std::vector<const char *> enabled_device_extension_names = {};
   std::vector<VkExtensionProperties> enabled_device_extension_properties = {};
   SPOKK_VK_CHECK(
@@ -429,6 +587,7 @@ Application::Application(const CreateInfo &ci) {
   // Remaining work is for graphics apps only
   if (ci.enable_graphics) {
     graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
+    SPOKK_VK_CHECK(device_.SetObjectName(graphics_and_present_queue_->handle, "graphics/present queue"));
 
     VkExtent2D default_extent = {ci.window_width, ci.window_height};
     CreateSwapchain(default_extent);
@@ -457,6 +616,8 @@ Application::Application(const CreateInfo &ci) {
         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
     imgui_render_pass_.subpass_dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     SPOKK_VK_CHECK(imgui_render_pass_.Finalize(device_));
+    SPOKK_VK_CHECK(device_.SetObjectName(imgui_render_pass_.handle, "IMGUI render pass"));
+
     // Create framebuffers for imgui render pass
     VkFramebufferCreateInfo framebuffer_ci = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
     framebuffer_ci.renderPass = imgui_render_pass_.handle;
@@ -468,6 +629,8 @@ Application::Application(const CreateInfo &ci) {
     for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
       framebuffer_ci.pAttachments = &swapchain_image_views_[i];
       SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &imgui_framebuffers_[i]));
+      SPOKK_VK_CHECK(device_.SetObjectName(imgui_framebuffers_[i],
+          std::string("imgui framebuffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
     }
 
     InitImgui(imgui_render_pass_.handle);
@@ -480,25 +643,35 @@ Application::Application(const CreateInfo &ci) {
     cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
     SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &primary_cpool_));
+    SPOKK_VK_CHECK(device_.SetObjectName(primary_cpool_, "primary graphics command pool"));
     VkCommandBufferAllocateInfo cb_allocate_info = {};
     cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     cb_allocate_info.commandPool = primary_cpool_;
     cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cb_allocate_info.commandBufferCount = (uint32_t)primary_command_buffers_.size();
     SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, primary_command_buffers_.data()));
+    for (uint32_t i = 0; i < primary_command_buffers_.size(); ++i) {
+      SPOKK_VK_CHECK(device_.SetObjectName(primary_command_buffers_[i],
+          std::string("primary graphics command buffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
+    }
     // Create the semaphores used to synchronize access to swapchain images
     VkSemaphoreCreateInfo semaphore_ci = {};
     semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
+    SPOKK_VK_CHECK(device_.SetObjectName(image_acquire_semaphore_, "image acquire semaphore"));
     SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
+    SPOKK_VK_CHECK(device_.SetObjectName(image_acquire_semaphore_, "submit complete semaphore"));
 
     // Create the fences used to wait for each swapchain image's command buffer to be submitted.
     // This prevents re-writing the command buffer contents before it's been submitted and processed.
     VkFenceCreateInfo fence_ci = {};
     fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    for (auto &fence : submit_complete_fences_) {
+    for (size_t i = 0; i < submit_complete_fences_.size(); ++i) {
+      auto &fence = submit_complete_fences_[i];
       SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
+      SPOKK_VK_CHECK(device_.SetObjectName(fence,
+          std::string("submit complete fence ") + std::to_string(i)));  // TODO(cort): absl::StrCat
     }
   }
 
@@ -547,6 +720,12 @@ Application::~Application() {
     auto destroy_debug_report_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkDestroyDebugReportCallbackEXT);
     destroy_debug_report_func(instance_, debug_report_callback_, host_allocator_);
   }
+#if defined(VK_EXT_debug_utils)
+  if (debug_utils_msgr_ != VK_NULL_HANDLE) {
+    auto destroy_debug_utils_msgr_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkDestroyDebugUtilsMessengerEXT);
+    destroy_debug_utils_msgr_func(instance_, debug_utils_msgr_, host_allocator_);
+  }
+#endif  // defined(VK_EXT_debug_utils)
   if (surface_ != VK_NULL_HANDLE) {
     vkDestroySurfaceKHR(instance_, surface_, host_allocator_);
     surface_ = VK_NULL_HANDLE;
@@ -640,9 +819,11 @@ int Application::Run() {
     cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info));
-
+    const float main_label_color[4] = {0, 0, 1, 1};
+    device_.DebugLabelBegin(cb, "Sample frame rendering", main_label_color);
     // Applications-specific render code
     Render(cb, swapchain_image_index);
+    device_.DebugLabelEnd(cb);
     if (force_exit_) {
       break;
     }
@@ -658,11 +839,14 @@ int Application::Run() {
 
     // optional UI render pass
     if (is_imgui_visible_) {
+      const float imgui_label_color[4] = {0, 1, 0, 1};
+      device_.DebugLabelBegin(cb, "IMGUI rendering", imgui_label_color);
       imgui_render_pass_.begin_info.framebuffer = imgui_framebuffers_[swapchain_image_index];
       imgui_render_pass_.begin_info.renderArea.extent = swapchain_extent_;
       vkCmdBeginRenderPass(cb, &imgui_render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
       RenderImgui(cb);
       vkCmdEndRenderPass(cb);
+      device_.DebugLabelEnd(cb);
     } else {
       RenderImgui(cb);  // still needs to be called if the UI system is active, even if nothing is drawn.
     }
@@ -682,8 +866,10 @@ int Application::Run() {
     submit_info.pCommandBuffers = &cb;
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = &submit_complete_semaphore_;
+    device_.DebugLabelBegin(*graphics_and_present_queue_, "Primary Queue");
     SPOKK_VK_CHECK(
         vkQueueSubmit(*graphics_and_present_queue_, 1, &submit_info, submit_complete_fences_[pframe_index_]));
+    device_.DebugLabelEnd(*graphics_and_present_queue_);
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present_info.pNext = NULL;
@@ -957,11 +1143,16 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   image_view_ci.subresourceRange.baseArrayLayer = 0;
   image_view_ci.subresourceRange.layerCount = 1;
   swapchain_image_views_.reserve(swapchain_images_.size());
-  for (auto image : swapchain_images_) {
+  for (size_t i = 0; i < swapchain_images_.size(); ++i) {
+    auto image = swapchain_images_[i];
     image_view_ci.image = image;
     VkImageView view = VK_NULL_HANDLE;
     SPOKK_VK_CHECK(vkCreateImageView(device_, &image_view_ci, host_allocator_, &view));
     swapchain_image_views_.push_back(view);
+    SPOKK_VK_CHECK(device_.SetObjectName(image,
+        std::string("swapchain image ") + std::to_string(i)));  // TODO(cort): absl::StrCat
+    SPOKK_VK_CHECK(device_.SetObjectName(view,
+        std::string("swapchain image view ") + std::to_string(i)));  // TODO(cort): absl::StrCat
   }
   return VK_SUCCESS;
 }

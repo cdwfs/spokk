@@ -75,6 +75,7 @@ CubeSwarmApp::CubeSwarmApp(Application::CreateInfo& ci) : Application(ci) {
   SPOKK_VK_CHECK(render_pass_.Finalize(device_));
   render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
+  device_.SetObjectName(render_pass_.handle, "Primary Render Pass");
 
   // Load shader pipelines
   SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_, "data/cubeswarm/rigid_mesh.vert.spv"));
@@ -109,6 +110,7 @@ CubeSwarmApp::CubeSwarmApp(Application::CreateInfo& ci) : Application(ci) {
 
   mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
   SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
+  SPOKK_VK_CHECK(device_.SetObjectName(mesh_pipeline_.handle, "rigid mesh pipeline"));
 
   for (const auto& dset_layout_ci : mesh_shader_program_.dset_layout_cis) {
     dpool_.Add(dset_layout_ci, PFRAME_COUNT);
@@ -198,6 +200,7 @@ void CubeSwarmApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_i
   VkViewport viewport = Rect2DToViewport(scissor_rect);
   vkCmdSetViewport(primary_cb, 0, 1, &viewport);
   vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
+  device_.DebugLabelInsert(primary_cb, "draw teapots");
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
       0, 1, &dsets_[pframe_index_], 0, nullptr);
   mesh_.BindBuffers(primary_cb);
@@ -229,6 +232,8 @@ void CubeSwarmApp::CreateRenderBuffers(VkExtent2D extent) {
   depth_image_ = {};
   SPOKK_VK_CHECK(depth_image_.Create(
       device_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
+  SPOKK_VK_CHECK(device_.SetObjectName(depth_image_.handle, "depth image"));
+  SPOKK_VK_CHECK(device_.SetObjectName(depth_image_.view, "depth image view"));
 
   // Create VkFramebuffers
   std::vector<VkImageView> attachment_views = {
@@ -241,6 +246,8 @@ void CubeSwarmApp::CreateRenderBuffers(VkExtent2D extent) {
   for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
     attachment_views[0] = swapchain_image_views_[i];
     SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
+    SPOKK_VK_CHECK(device_.SetObjectName(
+        framebuffers_[i], std::string("swapchain framebuffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
   }
 }
 
