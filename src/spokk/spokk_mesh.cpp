@@ -5,6 +5,7 @@
 #include "spokk_shader_interface.h"
 
 #include <array>
+#include <string>
 
 namespace spokk {
 
@@ -104,6 +105,7 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
   index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(index_buffer.Create(device, index_buffer_ci));
   SPOKK_VK_CHECK(index_buffer.Load(device, indices.data(), indices.size()));
+  SPOKK_VK_CHECK(device.SetObjectName(index_buffer.Handle(), std::string(mesh_filename) + " index buffer"));
   vertex_buffers.resize(mesh_header.vertex_buffer_count, {});
   for (uint32_t iVB = 0; iVB < mesh_header.vertex_buffer_count; ++iVB) {
     VkBufferCreateInfo vertex_buffer_ci = {};
@@ -113,6 +115,8 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
     vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(vertex_buffers[iVB].Create(device, vertex_buffer_ci));
     SPOKK_VK_CHECK(vertex_buffers[iVB].Load(device, vertices.data(), vertices.size()));
+    SPOKK_VK_CHECK(device.SetObjectName(vertex_buffers[iVB].Handle(),
+        std::string(mesh_filename) + " vertex buffer " + std::to_string(iVB)));  // TODO(cort): absl::StrCat
   }
 
   // Populate buffer offsets
@@ -229,4 +233,5 @@ void GenerateMeshBox(const Device& device, Mesh* out_mesh, const float min_exten
 
 
 }  // namespace spokk
+
 

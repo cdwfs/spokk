@@ -36,7 +36,8 @@ public:
   // Invalidate the specified pframe's data in the host's caches, to
   // ensure GPU writes to its range are visible by the host.
   // If this allocation is not mapped, this function has no effect.
-  VkResult InvalidatePframeHostCache(const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const;
+  VkResult InvalidatePframeHostCache(
+      const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const;
   VkResult InvalidatePframeHostCache(const Device& device, uint32_t pframe) const {
     return InvalidatePframeHostCache(device, pframe, 0, bytes_per_pframe_);
   }

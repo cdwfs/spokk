@@ -91,13 +91,27 @@ AttributeFormatInfo GetAttributeFormatInfo(VkFormat format) {
 }
 bool IsValidAttributeFormat(VkFormat format) { return GetAttributeFormatInfo(format).format != VK_FORMAT_UNDEFINED; }
 
-typedef struct u8x4 { uint8_t elem[4]; } u8x4;
-typedef struct s8x4 { int8_t elem[4]; } s8x4;
-typedef struct u16x4 { uint16_t elem[4]; } u16x4;
-typedef struct s16x4 { int16_t elem[4]; } s16x4;
-typedef struct u32x4 { uint32_t elem[4]; } u32x4;
-typedef struct s32x4 { int32_t elem[4]; } s32x4;
-typedef struct f32x4 { float elem[4]; } f32x4;
+typedef struct u8x4 {
+  uint8_t elem[4];
+} u8x4;
+typedef struct s8x4 {
+  int8_t elem[4];
+} s8x4;
+typedef struct u16x4 {
+  uint16_t elem[4];
+} u16x4;
+typedef struct s16x4 {
+  int16_t elem[4];
+} s16x4;
+typedef struct u32x4 {
+  uint32_t elem[4];
+} u32x4;
+typedef struct s32x4 {
+  int32_t elem[4];
+} s32x4;
+typedef struct f32x4 {
+  float elem[4];
+} f32x4;
 
 typedef union f32 {
   float asFloat;

@@ -79,7 +79,7 @@ void Shader::ParseShaderResources(const SpvReflectShaderModule& refl_module) {
   push_constant_range = {};
   push_constant_range.stageFlags = stage;
   uint32_t min_offset = UINT32_MAX, first_unused_offset = 0;
-  for(const auto* push_constant_block : push_constant_blocks) {
+  for (const auto* push_constant_block : push_constant_blocks) {
     if (push_constant_block->member_count == 0) {
       continue;
     }
@@ -107,6 +107,10 @@ VkResult Shader::CreateAndLoadSpirvFile(const Device& device, const std::string&
   fseek(spv_file, 0, SEEK_SET);
   VkResult result = CreateAndLoadSpirvFp(device, spv_file, spv_file_size);
   fclose(spv_file);
+
+  if (result == VK_SUCCESS) {
+    result = device.SetObjectName(handle, filename);
+  }
   return result;
 }
 VkResult Shader::CreateAndLoadSpirvFp(const Device& device, FILE* fp, int len_bytes) {

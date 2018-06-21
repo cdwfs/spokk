@@ -73,13 +73,13 @@ VkResult PipelinedBuffer::Load(const Device& device, uint32_t pframe, const void
     barrier.buffer = Handle(pframe);
     barrier.offset = dst_offset;
     barrier.size = data_size;
-    vkCmdPipelineBarrier(
-        cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1,
+        &barrier, 0, nullptr);
     Buffer staging_buffer = {};  // TODO(cort): staging buffer
     if (data_size <= 65536 && (data_size % 4) == 0) {
       uintptr_t src_dwords = uintptr_t(src_data) + src_offset;
-      ZOMBO_ASSERT((src_dwords % 4) == 0, "src_data (%p) + src_offset (%d) must be 4-byte aligned.",
-          src_data, uint32_t(src_offset));
+      ZOMBO_ASSERT((src_dwords % 4) == 0, "src_data (%p) + src_offset (%d) must be 4-byte aligned.", src_data,
+          uint32_t(src_offset));
       vkCmdUpdateBuffer(cb, Handle(pframe), dst_offset, data_size, reinterpret_cast<const uint32_t*>(src_dwords));
     } else {
       // TODO(cort): this should be replaced with a dedicated Buffer in the DeviceContext
@@ -163,11 +163,13 @@ void PipelinedBuffer::Destroy(const Device& device) {
   depth_ = 0;
 }
 
-VkResult PipelinedBuffer::InvalidatePframeHostCache(const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const {
+VkResult PipelinedBuffer::InvalidatePframeHostCache(
+    const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const {
   return memory_.InvalidateHostCache(device, memory_.offset + pframe * bytes_per_pframe_ + offset, nbytes);
 }
 
-VkResult PipelinedBuffer::FlushPframeHostCache(const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const {
+VkResult PipelinedBuffer::FlushPframeHostCache(
+    const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const {
   return memory_.FlushHostCache(device, memory_.offset + pframe * bytes_per_pframe_ + offset, nbytes);
 }
 

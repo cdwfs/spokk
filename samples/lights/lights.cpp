@@ -79,6 +79,7 @@ public:
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
     SPOKK_VK_CHECK(render_pass_.Finalize(device_));
+    SPOKK_VK_CHECK(device_.SetObjectName(render_pass_.handle, "main color/depth pass"));
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
@@ -86,6 +87,7 @@ public:
     VkSamplerCreateInfo sampler_ci =
         GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
+    SPOKK_VK_CHECK(device_.SetObjectName(sampler_, "linear+repeat sampler"));
     int load_error = skybox_tex_.CreateFromFile(device_, graphics_and_present_queue_, "data/sanfrancisco4-512.ktx");
     ZOMBO_ASSERT(load_error == 0, "texture load error (%d)", load_error);
 
@@ -107,6 +109,7 @@ public:
     skybox_pipeline_.depth_stencil_state_ci.depthWriteEnable = VK_FALSE;
     skybox_pipeline_.depth_stencil_state_ci.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     SPOKK_VK_CHECK(skybox_pipeline_.Finalize(device_));
+    SPOKK_VK_CHECK(device_.SetObjectName(skybox_pipeline_.handle, "skybox pipeline"));
 
     // Populate Mesh object
     int mesh_load_error = mesh_.CreateFromFile(device_, "data/teapot.mesh");
@@ -115,6 +118,7 @@ public:
     // Create mesh pipeline
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
+    SPOKK_VK_CHECK(device_.SetObjectName(mesh_pipeline_.handle, "mesh pipeline"));
 
     // Look up the appropriate memory flags for uniform buffers on this platform
     VkMemoryPropertyFlags uniform_buffer_memory_flags =
@@ -344,10 +348,12 @@ public:
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
         0, 1, &dsets_[pframe_index_], 0, nullptr);
     // Render scene
+    device_.DebugLabelInsert(primary_cb, "render mesh");
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
     mesh_.BindBuffers(primary_cb);
     vkCmdDrawIndexed(primary_cb, mesh_.index_count, 1, 0, 0, 0);
     // Render skybox
+    device_.DebugLabelInsert(primary_cb, "render skybox");
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, skybox_pipeline_.handle);
     vkCmdDraw(primary_cb, 36, 1, 0, 0);
     vkCmdEndRenderPass(primary_cb);
@@ -379,6 +385,8 @@ private:
     depth_image_ = {};
     SPOKK_VK_CHECK(depth_image_.Create(
         device_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
+    SPOKK_VK_CHECK(device_.SetObjectName(depth_image_.handle, "depth image"));
+    SPOKK_VK_CHECK(device_.SetObjectName(depth_image_.view, "depth image view"));
 
     // Create VkFramebuffers
     std::vector<VkImageView> attachment_views = {
@@ -391,6 +399,8 @@ private:
     for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
       attachment_views[0] = swapchain_image_views_[i];
       SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
+      SPOKK_VK_CHECK(device_.SetObjectName(
+          framebuffers_[i], std::string("swapchain framebuffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
     }
   }
 

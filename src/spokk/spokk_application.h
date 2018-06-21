@@ -57,12 +57,24 @@ public:
     std::string app_name = "Spokk Application";
     uint32_t window_width = 1280, window_height = 720;
     bool enable_graphics = true;
-    VkDebugReportFlagsEXT debug_report_flags =
-#ifdef NDEBUG
-        0;
-#else
-        VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
-#endif
+
+    // clang-format off
+    VkDebugReportFlagsEXT debug_report_flags = 0
+      | VK_DEBUG_REPORT_ERROR_BIT_EXT
+      | VK_DEBUG_REPORT_WARNING_BIT_EXT
+      ;
+#if defined(VK_EXT_debug_utils)
+    VkDebugUtilsMessageSeverityFlagsEXT debug_utils_severity_flags = 0
+      | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+      ;
+    VkDebugUtilsMessageTypeFlagsEXT debug_utils_type_flags = 0
+      | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+      ;
+#endif  // defined(VK_EXT_debug_utils)
+
     std::vector<QueueFamilyRequest> queue_family_requests;
     std::vector<const char*> required_instance_layer_names = {};
     std::vector<const char*> required_instance_extension_names = {};
@@ -103,6 +115,9 @@ protected:
   const VkAllocationCallbacks* host_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
   VkDebugReportCallbackEXT debug_report_callback_ = VK_NULL_HANDLE;
+#if defined(VK_EXT_debug_utils)
+  VkDebugUtilsMessengerEXT debug_utils_msgr_ = VK_NULL_HANDLE;
+#endif // defined(VK_EXT_debug_utils)
   VkSurfaceKHR surface_ = VK_NULL_HANDLE;
 
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
@@ -165,4 +180,4 @@ private:
 
 }  // namespace spokk
 
-#endif // !defined(SPOKK_APPLICATION_H)
+#endif  // !defined(SPOKK_APPLICATION_H)

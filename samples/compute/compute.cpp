@@ -13,6 +13,7 @@ public:
   explicit ComputeApp(Application::CreateInfo &ci) : Application(ci) {
     // Find a compute queue
     const DeviceQueue *compute_queue = device_.FindQueue(VK_QUEUE_COMPUTE_BIT);
+    SPOKK_VK_CHECK(device_.SetObjectName(compute_queue->handle, "compute queue"));
 
     // Allocate command buffers
     VkCommandPoolCreateInfo cpool_ci = {};
@@ -21,6 +22,7 @@ public:
     cpool_ci.queueFamilyIndex = compute_queue->family;
     VkCommandPool cpool = VK_NULL_HANDLE;
     SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &cpool));
+    SPOKK_VK_CHECK(device_.SetObjectName(cpool, "Primary command pool"));
     VkCommandBufferAllocateInfo cb_allocate_info = {};
     cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     cb_allocate_info.commandPool = cpool;
@@ -28,6 +30,7 @@ public:
     cb_allocate_info.commandBufferCount = 1;
     VkCommandBuffer cb = VK_NULL_HANDLE;
     SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, &cb));
+    SPOKK_VK_CHECK(device_.SetObjectName(cb, "Primary command buffer"));
 
     std::array<int32_t, BUXEL_COUNT> in_data, out_ref;
     for (size_t iBuxel = 0; iBuxel < BUXEL_COUNT; ++iBuxel) {
@@ -41,10 +44,12 @@ public:
     buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     Buffer in_buffer = {}, out_buffer = {};
     SPOKK_VK_CHECK(in_buffer.Create(device_, buffer_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+    SPOKK_VK_CHECK(device_.SetObjectName(in_buffer.Handle(), "input buffer"));
     SPOKK_VK_CHECK(in_buffer.Load(device_, in_data.data(), buffer_ci.size));
     buffer_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     // TODO(cort): until I have buffer.unload, the output buffer must be host-visible.
     SPOKK_VK_CHECK(out_buffer.Create(device_, buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(device_.SetObjectName(out_buffer.Handle(), "output buffer"));
 
     // Load shaders
     Shader double_ints_cs = {};
@@ -56,6 +61,7 @@ public:
     ComputePipeline compute_pipeline = {};
     compute_pipeline.Init(&compute_shader_program);
     SPOKK_VK_CHECK(compute_pipeline.Finalize(device_));
+    SPOKK_VK_CHECK(device_.SetObjectName(compute_pipeline.handle, "integer-doubling pipeline"));
 
     DescriptorPool dpool = {};
     dpool.Add((uint32_t)compute_shader_program.dset_layout_cis.size(), compute_shader_program.dset_layout_cis.data());
@@ -71,6 +77,7 @@ public:
     fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     VkFence compute_done_fence = VK_NULL_HANDLE;
     SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &compute_done_fence));
+    SPOKK_VK_CHECK(device_.SetObjectName(compute_done_fence, "compute done fence"));
 
     VkCommandBufferBeginInfo cb_begin_info = {};
     cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -100,6 +107,8 @@ public:
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline.handle);
     vkCmdBindDescriptorSets(
         cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_shader_program.pipeline_layout, 0, 1, &dset, 0, nullptr);
+    const float dispatch_label_color[4] = { 1,1,0,1 };
+    device_.DebugLabelInsert(cb, "double those ints!", dispatch_label_color);
     vkCmdDispatch(cb, BUXEL_COUNT, 1, 1);
 
     buffer_barriers[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;

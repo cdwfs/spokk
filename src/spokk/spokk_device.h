@@ -77,20 +77,23 @@ public:
   void HostFree(void *ptr) const;
 
   // active layer/extension queries
-  bool IsInstanceLayerEnabled(const char* layer_name) const;
-  bool IsInstanceExtensionEnabled(const char* layer_name) const;
-  bool IsDeviceExtensionEnabled(const char* layer_name) const;
+  bool IsInstanceLayerEnabled(const char *layer_name) const;
+  bool IsInstanceExtensionEnabled(const char *layer_name) const;
+  bool IsDeviceExtensionEnabled(const char *layer_name) const;
 
-  // VK_EXT_debug_marker wrappers
+  // VK_EXT_debug_utils wrappers
   // If the extension is unavailable, these calls will be no-ops.
-  void DebugMarkerBegin(VkCommandBuffer cb, const char *marker_name, const float marker_color[4] = nullptr) const;
-  void DebugMarkerEnd(VkCommandBuffer cb) const;
-  void DebugMarkerInsert(VkCommandBuffer cb, const char *marker_name, const float marker_color[4] = nullptr) const;
+  void DebugLabelBegin(VkCommandBuffer cb, const std::string& label_name, const float label_color[4] = nullptr) const;
+  void DebugLabelBegin(VkQueue queue, const std::string& label_name, const float label_color[4] = nullptr) const;
+  void DebugLabelEnd(VkCommandBuffer cb) const;
+  void DebugLabelEnd(VkQueue queue) const;
+  void DebugLabelInsert(VkCommandBuffer cb, const std::string& label_name, const float label_color[4] = nullptr) const;
+  void DebugLabelInsert(VkQueue queue, const std::string& label_name, const float label_color[4] = nullptr) const;
   // Specializations provided for all relevant Vulkan handle types.
   template <typename VK_HANDLE_T>
   VkResult SetObjectTag(VK_HANDLE_T handle, uint64_t tag_name, size_t tag_size, const void *tag) const;
   template <typename VK_HANDLE_T>
-  VkResult SetObjectName(VK_HANDLE_T handle, const char *object_name) const;
+  VkResult SetObjectName(VK_HANDLE_T handle, const std::string& label_name) const;
 
 private:
   VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
@@ -108,12 +111,15 @@ private:
   std::vector<VkExtensionProperties> instance_extensions_ = {};
   std::vector<VkExtensionProperties> device_extensions_ = {};
 
-#if defined(VK_EXT_debug_marker)
-  PFN_vkCmdDebugMarkerBeginEXT pfnVkCmdDebugMarkerBeginEXT_ = nullptr;
-  PFN_vkCmdDebugMarkerEndEXT pfnVkCmdDebugMarkerEndEXT_ = nullptr;
-  PFN_vkCmdDebugMarkerInsertEXT pfnVkCmdDebugMarkerInsertEXT_ = nullptr;
-  PFN_vkDebugMarkerSetObjectNameEXT pfnVkDebugMarkerSetObjectNameEXT_ = nullptr;
-  PFN_vkDebugMarkerSetObjectTagEXT pfnVkDebugMarkerSetObjectTagEXT_ = nullptr;
+#if defined(VK_EXT_debug_utils)
+  PFN_vkCmdBeginDebugUtilsLabelEXT pfnVkCmdBeginDebugUtilsLabelEXT_ = nullptr;
+  PFN_vkCmdEndDebugUtilsLabelEXT pfnVkCmdEndDebugUtilsLabelEXT_ = nullptr;
+  PFN_vkCmdInsertDebugUtilsLabelEXT pfnVkCmdInsertDebugUtilsLabelEXT_ = nullptr;
+  PFN_vkQueueBeginDebugUtilsLabelEXT pfnVkQueueBeginDebugUtilsLabelEXT_ = nullptr;
+  PFN_vkQueueEndDebugUtilsLabelEXT pfnVkQueueEndDebugUtilsLabelEXT_ = nullptr;
+  PFN_vkQueueInsertDebugUtilsLabelEXT pfnVkQueueInsertDebugUtilsLabelEXT_ = nullptr;
+  PFN_vkSetDebugUtilsObjectNameEXT pfnVkSetDebugUtilsObjectNameEXT_ = nullptr;
+  PFN_vkSetDebugUtilsObjectTagEXT pfnVkSetDebugUtilsObjectTagEXT_ = nullptr;
 #endif
 };
 
