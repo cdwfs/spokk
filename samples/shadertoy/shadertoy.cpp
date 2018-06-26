@@ -100,12 +100,15 @@ public:
     // Customize
     render_pass_.attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     SPOKK_VK_CHECK(render_pass_.Finalize(device_));
+    SPOKK_VK_CHECK(device_.SetObjectName(render_pass_.handle, "main color pass"));
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
         GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
-    for (auto& sampler : samplers_) {
-      SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler));
+    for (size_t i = 0; i < samplers_.size(); ++i) {
+      SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &samplers_[i]));
+      SPOKK_VK_CHECK(device_.SetObjectName(
+          samplers_[i], std::string("basic linear+wrap sampler ") + std::to_string(i)));  // TODO(cort): absl::StrCat
     }
     for (size_t i = 0; i < textures_.size(); ++i) {
       char filename[17];
@@ -310,6 +313,8 @@ private:
     for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
       attachment_views[0] = swapchain_image_views_[i];
       SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
+      SPOKK_VK_CHECK(device_.SetObjectName(
+          framebuffers_[i], std::string("swapchain framebuffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
     }
   }
 
@@ -357,6 +362,7 @@ private:
       GraphicsPipeline& new_pipeline = pipelines_[1 - active_pipeline_index_];
       new_pipeline.Init(&empty_mesh_format_, &new_shader_program, &render_pass_, 0);
       SPOKK_VK_CHECK(new_pipeline.Finalize(device_));
+      SPOKK_VK_CHECK(device_.SetObjectName(new_pipeline.handle, "shadertoy pipeline"));
       swap_shader_.store(true);
     } else {
       printf("%s\n", compile_result.GetErrorMessage().c_str());

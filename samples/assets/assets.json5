@@ -40,9 +40,15 @@
         { class: "image", input: "tex15.ktx", output: "tex15.ktx", },
         
         // Meshes
+        { class: "mesh", input: "cube.obj", output: "cube.mesh", },
         { class: "mesh", input: "teapot.obj", output: "teapot.mesh", },
 
         // Shaders
+        { class: "shader", input: "../blending/dsb_mesh.vert", output: "blending/dsb_mesh.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../blending/dsb_mesh.frag", output: "blending/dsb_mesh.frag.spv", stage: "frag", entry: "main", },
+        { class: "shader", input: "../blending/opaque_mesh.vert", output: "blending/opaque_mesh.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../blending/opaque_mesh.frag", output: "blending/opaque_mesh.frag.spv", stage: "frag", entry: "main", },
+
         { class: "shader", input: "../cubeswarm/rigid_mesh.vert", output: "cubeswarm/rigid_mesh.vert.spv", stage: "vert", entry: "main", },
         { class: "shader", input: "../cubeswarm/rigid_mesh.frag", output: "cubeswarm/rigid_mesh.frag.spv", stage: "frag", entry: "main", },
 

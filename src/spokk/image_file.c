@@ -22,11 +22,8 @@
 #define IMAGEFILE__MAX(a, b) ((a) > (b) ? (a) : (b))
 
 static int IsSubresourceValid(const ImageFile *image, const ImageFileSubresource subresource) {
-  return (
-    (int32_t)subresource.mip_level >= 0 &&
-    subresource.mip_level < image->mip_levels &&
-    (int32_t)subresource.array_layer >= 0 &&
-    subresource.array_layer < image->array_layers);
+  return ((int32_t)subresource.mip_level >= 0 && subresource.mip_level < image->mip_levels &&
+      (int32_t)subresource.array_layer >= 0 && subresource.array_layer < image->array_layers);
 }
 
 uint32_t ImageFileGetBytesPerTexelBlock(ImageFileDataFormat format) {

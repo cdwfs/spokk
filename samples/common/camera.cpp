@@ -758,3 +758,4 @@ void CameraDrone::Update(const spokk::InputState& input_state, float dt) {
     velocity_ = glm::vec3(0,0,0);
   }
 }
+

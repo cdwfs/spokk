@@ -18,4 +18,4 @@
 #define SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD3   13
 // clang-format on
 
-#endif // !defined(SPOKK_SHADER_INTERFACE_H)
+#endif  // !defined(SPOKK_SHADER_INTERFACE_H)

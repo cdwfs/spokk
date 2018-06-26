@@ -90,6 +90,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   // Create render pass
   render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
   SPOKK_VK_CHECK(render_pass_.Finalize(device_));
+  SPOKK_VK_CHECK(device_.SetObjectName(render_pass_.handle, "main color/depth pass"));
   render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
@@ -97,6 +98,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   VkSamplerCreateInfo sampler_ci =
       GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
   SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
+  SPOKK_VK_CHECK(device_.SetObjectName(sampler_, "basic linear+repeat sampler"));
   albedo_tex_.CreateFromFile(device_, graphics_and_present_queue_, "data/redf.ktx", VK_FALSE,
       THSVS_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE_OR_UNIFORM_TEXEL_BUFFER);
 
@@ -130,6 +132,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   index_buffer_ci.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(mesh_.index_buffer.Create(device_, index_buffer_ci));
+  SPOKK_VK_CHECK(device_.SetObjectName(mesh_.index_buffer.Handle(), "mesh index buffer"));
   SPOKK_VK_CHECK(mesh_.index_buffer.Load(
       device_, THSVS_ACCESS_NONE, THSVS_ACCESS_INDEX_BUFFER, cube_indices, index_buffer_ci.size));
   // vertex buffer
@@ -142,6 +145,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   mesh_.vertex_buffer_byte_offsets.resize(1, 0);
   mesh_.index_buffer_byte_offset = 0;
   SPOKK_VK_CHECK(mesh_.vertex_buffers[0].Create(device_, vertex_buffer_ci));
+  SPOKK_VK_CHECK(device_.SetObjectName(mesh_.vertex_buffers[0].Handle(), "mesh vertex buffer 0"));
   // Convert the vertex data from its original uncompressed format to its final format.
   // In a real application, this conversion would happen at asset build time.
   // clang-format off
@@ -163,6 +167,7 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   // Create graphics pipelines
   pillar_pipeline_.Init(&(mesh_.mesh_format), &pillar_shader_program_, &render_pass_, 0);
   SPOKK_VK_CHECK(pillar_pipeline_.Finalize(device_));
+  SPOKK_VK_CHECK(device_.SetObjectName(pillar_pipeline_.handle, "pillar pipeline"));
 
   // Look up the appropriate memory flags for uniform buffers on this platform
   VkMemoryPropertyFlags uniform_buffer_memory_flags =
@@ -347,6 +352,8 @@ void PillarsApp::CreateRenderBuffers(VkExtent2D extent) {
   depth_image_ = {};
   SPOKK_VK_CHECK(depth_image_.Create(
       device_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
+  SPOKK_VK_CHECK(device_.SetObjectName(depth_image_.handle, "depth image"));
+  SPOKK_VK_CHECK(device_.SetObjectName(depth_image_.view, "depth image view"));
 
   // Create VkFramebuffers
   std::vector<VkImageView> attachment_views = {
@@ -359,6 +366,8 @@ void PillarsApp::CreateRenderBuffers(VkExtent2D extent) {
   for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
     attachment_views.at(0) = swapchain_image_views_[i];
     SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
+    SPOKK_VK_CHECK(device_.SetObjectName(
+        framebuffers_[i], std::string("swapchain framebuffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
   }
 }
 

@@ -5,6 +5,7 @@
 #include "spokk_shader_interface.h"
 
 #include <array>
+#include <string>
 
 namespace spokk {
 
@@ -103,6 +104,7 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
   index_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
   index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(index_buffer.Create(device, index_buffer_ci));
+  SPOKK_VK_CHECK(device.SetObjectName(index_buffer.Handle(), std::string(mesh_filename) + " index buffer"));
   SPOKK_VK_CHECK(
       index_buffer.Load(device, THSVS_ACCESS_NONE, THSVS_ACCESS_INDEX_BUFFER, indices.data(), indices.size()));
   vertex_buffers.resize(mesh_header.vertex_buffer_count, {});
@@ -113,6 +115,8 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
     vertex_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(vertex_buffers[iVB].Create(device, vertex_buffer_ci));
+    SPOKK_VK_CHECK(device.SetObjectName(vertex_buffers[iVB].Handle(),
+        std::string(mesh_filename) + " vertex buffer " + std::to_string(iVB)));  // TODO(cort): absl::StrCat
     SPOKK_VK_CHECK(vertex_buffers[iVB].Load(
         device, THSVS_ACCESS_NONE, THSVS_ACCESS_VERTEX_BUFFER, vertices.data(), vertices.size()));
   }
@@ -232,4 +236,5 @@ void GenerateMeshBox(const Device& device, Mesh* out_mesh, const float min_exten
 
 
 }  // namespace spokk
+
 

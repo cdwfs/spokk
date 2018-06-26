@@ -340,6 +340,13 @@ int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const 
     return -1;
   }
 
+  if (result == VK_SUCCESS) {
+    result = device.SetObjectName(handle, filename);
+  }
+  if (result == VK_SUCCESS) {
+    result = device.SetObjectName(view, filename + " view");
+  }
+
   return 0;
 }
 

@@ -181,6 +181,22 @@ FUNCTION (SPOKK_ADD_EXECUTABLE APP_TARGET)
     ADD_DEPENDENCIES(${APP_TARGET} build-assets)
 ENDFUNCTION(SPOKK_ADD_EXECUTABLE APP_TARGET)
 
+# spokk-blending
+SPOKK_ADD_SOURCES(spokk-blending
+    samples/common/camera.cpp
+    samples/blending/blending.cpp
+)
+SPOKK_ADD_HEADERS(spokk-blending
+    samples/common/camera.h
+)
+SPOKK_ADD_SHADERS(spokk-blending
+    samples/blending/opaque_mesh.vert
+    samples/blending/opaque_mesh.frag
+    samples/blending/dsb_mesh.vert
+    samples/blending/dsb_mesh.frag
+)
+SPOKK_ADD_EXECUTABLE(spokk-blending)
+
 # spokk-cubeswarm
 SPOKK_ADD_SOURCES(spokk-cubeswarm
     samples/common/camera.cpp
@@ -223,6 +239,7 @@ SPOKK_ADD_SOURCES(spokk-pillars
 )
 SPOKK_ADD_HEADERS(spokk-pillars
     samples/common/camera.h
+    samples/common/cube_mesh.h
 )
 SPOKK_ADD_SHADERS(spokk-pillars
     samples/pillars/pillar.vert
