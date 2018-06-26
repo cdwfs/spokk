@@ -13,14 +13,16 @@ layout (set = 0, binding = 0) uniform SceneUniforms {
   vec4 eye;
   mat4 viewproj;
 } scene_consts;
-layout (set = 0, binding = 2) uniform MeshUniforms {
+layout (set = 0, binding = 1) uniform MeshUniforms {
   mat4 o2w;
-} glass_mesh_consts;
+  vec4 albedo; // xyz=color, w=opacity
+  vec4 spec_params;  // x=exponent, y=intensity
+} mesh_consts;
 
 
 void main() {
-  mat3 n2w = mat3(glass_mesh_consts.o2w);
-  vec4 posw = glass_mesh_consts.o2w * vec4(pos,1);
+  mat3 n2w = mat3(mesh_consts.o2w);
+  vec4 posw = mesh_consts.o2w * vec4(pos,1);
 
   pos_ws = posw.xyz;
   norm_ws = n2w * normal;

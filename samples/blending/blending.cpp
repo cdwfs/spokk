@@ -4,6 +4,8 @@ using namespace spokk;
 #include <common/camera.h>
 #include <common/cube_mesh.h>
 
+#include <imgui.h>
+
 #include <array>
 #include <cstdio>
 #include <memory>
@@ -16,6 +18,8 @@ struct SceneUniforms {
 };
 struct MeshUniforms {
   glm::mat4 o2w;
+  glm::vec4 albedo;  // xyz=color, w=opacity
+  glm::vec4 spec_params;  // x=exponent, y=intensity
 };
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
@@ -45,37 +49,30 @@ public:
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
 
     // Load shader pipelines
-    SPOKK_VK_CHECK(opaque_mesh_vs_.CreateAndLoadSpirvFile(device_, "data/blending/opaque_mesh.vert.spv"));
-    SPOKK_VK_CHECK(opaque_mesh_fs_.CreateAndLoadSpirvFile(device_, "data/blending/opaque_mesh.frag.spv"));
-    SPOKK_VK_CHECK(opaque_mesh_shader_program_.AddShader(&opaque_mesh_vs_));
-    SPOKK_VK_CHECK(opaque_mesh_shader_program_.AddShader(&opaque_mesh_fs_));
-
-    SPOKK_VK_CHECK(glass_mesh_vs_.CreateAndLoadSpirvFile(device_, "data/blending/dsb_mesh.vert.spv"));
-    SPOKK_VK_CHECK(glass_mesh_fs_.CreateAndLoadSpirvFile(device_, "data/blending/dsb_mesh.frag.spv"));
-    SPOKK_VK_CHECK(glass_mesh_shader_program_.AddShader(&glass_mesh_vs_));
-    SPOKK_VK_CHECK(glass_mesh_shader_program_.AddShader(&glass_mesh_fs_));
-
-    std::vector<ShaderProgram*> all_shader_programs = {&opaque_mesh_shader_program_, &glass_mesh_shader_program_};
-    SPOKK_VK_CHECK(ShaderProgram::ForceCompatibleLayoutsAndFinalize(device_, all_shader_programs));
+    SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_, "data/blending/dsb_mesh.vert.spv"));
+    SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_, "data/blending/dsb_mesh.frag.spv"));
+    SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_vs_));
+    SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_fs_));
+    SPOKK_VK_CHECK(mesh_shader_program_.Finalize(device_));
 
     // Populate Mesh objects
-    int mesh_load_error = opaque_mesh_.CreateFromFile(device_, "data/cube.mesh");
+    int mesh_load_error = bg_mesh_.CreateFromFile(device_, "data/cube.mesh");
     ZOMBO_ASSERT(!mesh_load_error, "load error: %d", mesh_load_error);
-    mesh_load_error = glass_mesh_.CreateFromFile(device_, "data/teapot.mesh");
+    mesh_load_error = fg_mesh_.CreateFromFile(device_, "data/teapot.mesh");
     ZOMBO_ASSERT(!mesh_load_error, "load error: %d", mesh_load_error);
 
     // Look up the appropriate memory flags for uniform buffers on this platform
     VkMemoryPropertyFlags uniform_buffer_memory_flags =
         device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
 
-    // Create pipelined buffer of per-mesh object-to-world matrices.
+    // Create pipelined buffer of per-mesh uniforms
     VkBufferCreateInfo o2w_buffer_ci = {};
     o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    o2w_buffer_ci.size = sizeof(glm::mat4);
+    o2w_buffer_ci.size = sizeof(MeshUniforms);
     o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(opaque_mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, uniform_buffer_memory_flags));
-    SPOKK_VK_CHECK(glass_mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, uniform_buffer_memory_flags));
+    SPOKK_VK_CHECK(bg_mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, uniform_buffer_memory_flags));
+    SPOKK_VK_CHECK(fg_mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, uniform_buffer_memory_flags));
 
     // Create pipelined buffer of shader uniforms
     VkBufferCreateInfo scene_uniforms_ci = {};
@@ -85,38 +82,34 @@ public:
     scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, uniform_buffer_memory_flags));
 
-    opaque_mesh_pipeline_.Init(&opaque_mesh_.mesh_format, &opaque_mesh_shader_program_, &render_pass_, 0);
-    SPOKK_VK_CHECK(opaque_mesh_pipeline_.Finalize(device_));
-    glass_mesh_pipeline_.Init(&glass_mesh_.mesh_format, &glass_mesh_shader_program_, &render_pass_, 0);
-    glass_mesh_pipeline_.color_blend_attachment_states[0].blendEnable = VK_TRUE;
-    glass_mesh_pipeline_.color_blend_attachment_states[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-    glass_mesh_pipeline_.color_blend_attachment_states[0].dstColorBlendFactor = VK_BLEND_FACTOR_SRC1_COLOR;
-    glass_mesh_pipeline_.color_blend_attachment_states[0].colorBlendOp = VK_BLEND_OP_ADD;
-    glass_mesh_pipeline_.color_blend_attachment_states[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    glass_mesh_pipeline_.color_blend_attachment_states[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    glass_mesh_pipeline_.color_blend_attachment_states[0].alphaBlendOp = VK_BLEND_OP_ADD;
-    SPOKK_VK_CHECK(glass_mesh_pipeline_.Finalize(device_));
+    mesh_pipeline_.Init(&fg_mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
+    mesh_pipeline_.color_blend_attachment_states[0].blendEnable = VK_TRUE;
+    mesh_pipeline_.color_blend_attachment_states[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    mesh_pipeline_.color_blend_attachment_states[0].dstColorBlendFactor = VK_BLEND_FACTOR_SRC1_COLOR;
+    mesh_pipeline_.color_blend_attachment_states[0].colorBlendOp = VK_BLEND_OP_ADD;
+    mesh_pipeline_.color_blend_attachment_states[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    mesh_pipeline_.color_blend_attachment_states[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    mesh_pipeline_.color_blend_attachment_states[0].alphaBlendOp = VK_BLEND_OP_ADD;
+    SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
+    SPOKK_VK_CHECK(device_.SetObjectName(mesh_pipeline_.handle, "mesh pipeline"));
 
-    for (const auto& dset_layout_ci : opaque_mesh_shader_program_.dset_layout_cis) {
-      dpool_.Add(dset_layout_ci, PFRAME_COUNT);
-    }
-    for (const auto& dset_layout_ci : glass_mesh_shader_program_.dset_layout_cis) {
-      dpool_.Add(dset_layout_ci, PFRAME_COUNT);
+    for (const auto& dset_layout_ci : mesh_shader_program_.dset_layout_cis) {
+      dpool_.Add(dset_layout_ci, PFRAME_COUNT);  // for bg mesh
+      dpool_.Add(dset_layout_ci, PFRAME_COUNT);  // for fg mesh
     }
     SPOKK_VK_CHECK(dpool_.Finalize(device_));
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      // TODO(cort): allocate_pipelined_set()?
-      dsets_[pframe] = dpool_.AllocateSet(device_, opaque_mesh_shader_program_.dset_layouts[0]);
+      bg_dsets_[pframe] = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
+      fg_dsets_[pframe] = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
     }
-    DescriptorSetWriter dset_writer(opaque_mesh_shader_program_.dset_layout_cis[0]);
+    DescriptorSetWriter dset_writer(mesh_shader_program_.dset_layout_cis[0]);
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      dset_writer.BindBuffer(
-          scene_uniforms_.Handle(pframe), opaque_mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
-      dset_writer.BindBuffer(
-          opaque_mesh_uniforms_.Handle(pframe), opaque_mesh_vs_.GetDescriptorBindPoint("opaque_mesh_consts").binding);
-      dset_writer.BindBuffer(
-          glass_mesh_uniforms_.Handle(pframe), glass_mesh_vs_.GetDescriptorBindPoint("glass_mesh_consts").binding);
-      dset_writer.WriteAll(device_, dsets_[pframe]);
+      dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
+      dset_writer.BindBuffer(bg_mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
+      dset_writer.WriteAll(device_, bg_dsets_[pframe]);
+
+      dset_writer.BindBuffer(fg_mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
+      dset_writer.WriteAll(device_, fg_dsets_[pframe]);
     }
 
     // Create swapchain-sized buffers
@@ -128,21 +121,17 @@ public:
 
       dpool_.Destroy(device_);
 
-      glass_mesh_uniforms_.Destroy(device_);
-      opaque_mesh_uniforms_.Destroy(device_);
+      fg_mesh_uniforms_.Destroy(device_);
+      bg_mesh_uniforms_.Destroy(device_);
       scene_uniforms_.Destroy(device_);
 
-      glass_mesh_.Destroy(device_);
-      opaque_mesh_.Destroy(device_);
+      fg_mesh_.Destroy(device_);
+      bg_mesh_.Destroy(device_);
 
-      glass_mesh_vs_.Destroy(device_);
-      glass_mesh_fs_.Destroy(device_);
-      glass_mesh_shader_program_.Destroy(device_);
-      glass_mesh_pipeline_.Destroy(device_);
-      opaque_mesh_vs_.Destroy(device_);
-      opaque_mesh_fs_.Destroy(device_);
-      opaque_mesh_shader_program_.Destroy(device_);
-      opaque_mesh_pipeline_.Destroy(device_);
+      mesh_vs_.Destroy(device_);
+      mesh_fs_.Destroy(device_);
+      mesh_shader_program_.Destroy(device_);
+      mesh_pipeline_.Destroy(device_);
 
       for (const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
@@ -159,38 +148,56 @@ public:
   virtual void Update(double dt) override {
     seconds_elapsed_ += dt;
     drone_->Update(input_state_, (float)dt);
+
+    const ImGuiColorEditFlags default_color_edit_flags = ImGuiColorEditFlags_Float |
+        ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreview;
+    ImGui::Text("Background Mesh");
+    ImGui::ColorEdit4("Albedo##BG", &bg_mesh_albedo_.x, default_color_edit_flags);
+    ImGui::SliderFloat("Spec Exp##BG", &bg_mesh_spec_exponent_, 1.0f, 100000.0f, "%.2f", 10.0f);
+    ImGui::SliderFloat("Spec Intensity##BG", &bg_mesh_spec_exponent_, 0.0f, 1.0f);
+    ImGui::Separator();
+    ImGui::Text("Foreground Mesh");
+    ImGui::ColorEdit4("Albedo##FG", &fg_mesh_albedo_.x, default_color_edit_flags);
+    ImGui::SliderFloat("Spec Exp##FG", &fg_mesh_spec_exponent_, 1.0f, 100000.0f, "%.2f", 10.0f);
+    ImGui::SliderFloat("Spec Intensity##FG", &fg_mesh_spec_exponent_, 0.0f, 1.0f);
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
     // Update uniforms
-    SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
-    uniforms->time_and_res =
+    SceneUniforms* scene_uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
+    scene_uniforms->time_and_res =
         glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
-    uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
+    scene_uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
     glm::mat4 w2v = camera_->getViewMatrix();
     const glm::mat4 proj = camera_->getProjectionMatrix();
-    uniforms->viewproj = proj * w2v;
+    scene_uniforms->viewproj = proj * w2v;
     SPOKK_VK_CHECK(scene_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
-    // Update object-to-world matrices.
+    // Update mesh uniforms
     const float secs = (float)seconds_elapsed_;
-    MeshUniforms* opaque_mesh_uniforms = (MeshUniforms*)opaque_mesh_uniforms_.Mapped(pframe_index_);
+    MeshUniforms* bg_mesh_uniforms = (MeshUniforms*)bg_mesh_uniforms_.Mapped(pframe_index_);
     // clang-format off
-    opaque_mesh_uniforms->o2w = ComposeTransform(
+    bg_mesh_uniforms->o2w = ComposeTransform(
       glm::vec3(sinf(0.2f * secs), 0.0f, -5.0f),
       glm::angleAxis(0.0f, glm::vec3(0,1,0)),
       1.0f);
+    bg_mesh_uniforms->albedo = bg_mesh_albedo_;
+    bg_mesh_uniforms->spec_params.x = bg_mesh_spec_exponent_;
+    bg_mesh_uniforms->spec_params.y = bg_mesh_spec_intensity_;
     // clang-format on
-    SPOKK_VK_CHECK(opaque_mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_));
+    SPOKK_VK_CHECK(bg_mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
-    MeshUniforms* glass_mesh_uniforms = (MeshUniforms*)glass_mesh_uniforms_.Mapped(pframe_index_);
+    MeshUniforms* fg_mesh_uniforms = (MeshUniforms*)fg_mesh_uniforms_.Mapped(pframe_index_);
     // clang-format off
-    glass_mesh_uniforms->o2w = ComposeTransform(
+    fg_mesh_uniforms->o2w = ComposeTransform(
       glm::vec3(0.0f, 0.0f, -0.0f),
       glm::angleAxis(0.0f, glm::vec3(0,1,0)),
       1.0f);
+    fg_mesh_uniforms->albedo = fg_mesh_albedo_;
+    fg_mesh_uniforms->spec_params.x = fg_mesh_spec_exponent_;
+    fg_mesh_uniforms->spec_params.y = fg_mesh_spec_intensity_;
     // clang-format on
-    SPOKK_VK_CHECK(glass_mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_));
+    SPOKK_VK_CHECK(fg_mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_));
 
     // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
@@ -201,16 +208,17 @@ public:
     VkViewport viewport = Rect2DToViewport(scissor_rect);
     vkCmdSetViewport(primary_cb, 0, 1, &viewport);
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
-    vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        opaque_mesh_pipeline_.shader_program->pipeline_layout, 0, 1, &dsets_[pframe_index_], 0, nullptr);
+    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
 
-    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, opaque_mesh_pipeline_.handle);
-    opaque_mesh_.BindBuffers(primary_cb);
-    vkCmdDrawIndexed(primary_cb, opaque_mesh_.index_count, 1, 0, 0, 0);
+    vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
+        0, 1, &bg_dsets_[pframe_index_], 0, nullptr);
+    bg_mesh_.BindBuffers(primary_cb);
+    vkCmdDrawIndexed(primary_cb, bg_mesh_.index_count, 1, 0, 0, 0);
 
-    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, glass_mesh_pipeline_.handle);
-    glass_mesh_.BindBuffers(primary_cb);
-    vkCmdDrawIndexed(primary_cb, glass_mesh_.index_count, 1, 0, 0, 0);
+    vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
+        0, 1, &fg_dsets_[pframe_index_], 0, nullptr);
+    fg_mesh_.BindBuffers(primary_cb);
+    vkCmdDrawIndexed(primary_cb, fg_mesh_.index_count, 1, 0, 0, 0);
 
     vkCmdEndRenderPass(primary_cb);
   }
@@ -263,22 +271,27 @@ private:
   RenderPass render_pass_;
   std::vector<VkFramebuffer> framebuffers_;
 
-  Shader opaque_mesh_vs_, opaque_mesh_fs_;
-  ShaderProgram opaque_mesh_shader_program_;
-  GraphicsPipeline opaque_mesh_pipeline_;
-
-  Shader glass_mesh_vs_, glass_mesh_fs_;
-  ShaderProgram glass_mesh_shader_program_;
-  GraphicsPipeline glass_mesh_pipeline_;
+  Shader mesh_vs_, mesh_fs_;
+  ShaderProgram mesh_shader_program_;
+  GraphicsPipeline mesh_pipeline_;
 
   DescriptorPool dpool_;
-  std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
+  std::array<VkDescriptorSet, PFRAME_COUNT> bg_dsets_;
+  std::array<VkDescriptorSet, PFRAME_COUNT> fg_dsets_;
 
-  Mesh opaque_mesh_;
-  PipelinedBuffer opaque_mesh_uniforms_;
+  glm::vec4 bg_mesh_albedo_ = glm::vec4(0.0, 0.5f, 0.5f, 1.0f);
+  float bg_mesh_spec_exponent_ = 100.0f;
+  float bg_mesh_spec_intensity_ = 1.0f;
 
-  Mesh glass_mesh_;
-  PipelinedBuffer glass_mesh_uniforms_;
+  glm::vec4 fg_mesh_albedo_ = glm::vec4(1.0f, 0.5f, 0.2f, 0.2f);
+  float fg_mesh_spec_exponent_ = 100.0f;
+  float fg_mesh_spec_intensity_ = 1.0f;
+
+  Mesh bg_mesh_;
+  PipelinedBuffer bg_mesh_uniforms_;
+
+  Mesh fg_mesh_;
+  PipelinedBuffer fg_mesh_uniforms_;
 
   PipelinedBuffer scene_uniforms_;
 

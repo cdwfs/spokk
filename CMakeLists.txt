@@ -190,8 +190,6 @@ SPOKK_ADD_HEADERS(spokk-blending
     samples/common/camera.h
 )
 SPOKK_ADD_SHADERS(spokk-blending
-    samples/blending/opaque_mesh.vert
-    samples/blending/opaque_mesh.frag
     samples/blending/dsb_mesh.vert
     samples/blending/dsb_mesh.frag
 )
