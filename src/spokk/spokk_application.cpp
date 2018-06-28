@@ -182,21 +182,21 @@ static VkBool32 MyDebugUtilsCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
     sstream << "[" << type_str << " " << severity_str << " " << pCallbackData->messageIdNumber
             << "]: " << pCallbackData->pMessage << std::endl;
     if (pCallbackData->queueLabelCount > 0) {
-      sstream << "  queues:";
+      sstream << "  queues:" << std::endl;
       for (uint32_t i = 0; i < pCallbackData->queueLabelCount; ++i) {
-        sstream << std::endl << "  - " << StringMaybe(pCallbackData->pQueueLabels[i].pLabelName) << std::endl;
+        sstream << "  - " << StringMaybe(pCallbackData->pQueueLabels[i].pLabelName) << std::endl;
       }
     }
     if (pCallbackData->cmdBufLabelCount > 0) {
-      sstream << "  command buffers:";
+      sstream << "  command buffers:" << std::endl;
       for (uint32_t i = 0; i < pCallbackData->cmdBufLabelCount; ++i) {
         sstream << "  - " << StringMaybe(pCallbackData->pCmdBufLabels[i].pLabelName) << std::endl;
       }
     }
     if (pCallbackData->objectCount > 0) {
-      sstream << "  objects:";
+      sstream << "  objects:" << std::endl;
       for (uint32_t i = 0; i < pCallbackData->objectCount; ++i) {
-        sstream << std::endl << "  - [" << ObjectTypeToString(pCallbackData->pObjects[i].objectType) << " 0x";
+        sstream << "  - [" << ObjectTypeToString(pCallbackData->pObjects[i].objectType) << " 0x";
         sstream.width(16);
         sstream.fill('0');
         sstream << std::hex << pCallbackData->pObjects[i].objectHandle << std::dec << "]";
@@ -460,7 +460,7 @@ Application::Application(const CreateInfo &ci) {
 #if defined(VK_EXT_debug_utils)
   if (is_debug_utils_ext_enabled && ci.debug_utils_severity_flags != 0 && ci.debug_utils_type_flags != 0) {
     VkDebugUtilsMessengerCreateInfoEXT debug_utils_msgr_ci = {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
-    debug_utils_msgr_ci.pNext = instance_ci.pNext;
+    debug_utils_msgr_ci.pNext = nullptr;
     debug_utils_msgr_ci.messageSeverity = ci.debug_utils_severity_flags;
     debug_utils_msgr_ci.messageType = ci.debug_utils_type_flags;
     debug_utils_msgr_ci.pfnUserCallback = MyDebugUtilsCallback;
