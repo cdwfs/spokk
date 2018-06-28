@@ -179,7 +179,7 @@ static VkBool32 MyDebugUtilsCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
     std::lock_guard<std::mutex> callback_guard(callback_mutex);
 
     std::stringstream sstream;
-    sstream << "[" << type_str << " " << severity_str << " " << pCallbackData->messageIdNumber
+    sstream << "[" << type_str << " " << severity_str << " " << StringMaybe(pCallbackData->pMessageIdName)
             << "]: " << pCallbackData->pMessage << std::endl;
     if (pCallbackData->queueLabelCount > 0) {
       sstream << "  queues:" << std::endl;
