@@ -39,7 +39,7 @@ void Shader::AddShaderResourceToDescriptorSetLayout(const SpvReflectDescriptorBi
   if (!found_binding) {
     VkDescriptorSetLayoutBinding to_add = {};
     to_add.binding = new_binding.binding;
-    to_add.descriptorType = new_binding.descriptor_type;
+    to_add.descriptorType = static_cast<VkDescriptorType>(new_binding.descriptor_type);
     to_add.descriptorCount = total_desc_count;
     to_add.stageFlags = stage;
     to_add.pImmutableSamplers = nullptr;

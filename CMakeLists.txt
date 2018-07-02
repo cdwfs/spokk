@@ -140,6 +140,7 @@ TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
     ${VULKAN_MEMORY_ALLOCATOR_DIR}
     ${SIMPLE_VULKAN_SYNCHRONIZATION_DIR}
     "third_party"
+    ${SPIRV-Headers_SOURCE_DIR}/include/spirv/unified1
     ${VULKAN_INCLUDE_DIR}
     "src/spokk"
 )
