@@ -33,7 +33,7 @@ struct PointLight {
 
 void main() {
     Material mat;
-    mat.albedo_color = mesh_consts.albedo.xyz;  // demi-orange
+    mat.albedo_color = mesh_consts.albedo.xyz;
     mat.normal_wsn = normalize(norm_ws);
     mat.spec_color = vec3(1,1,1);
     mat.spec_exp = mesh_consts.spec_params.x;
