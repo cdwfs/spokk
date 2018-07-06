@@ -1002,6 +1002,7 @@ void Application::DestroyImgui(void) {
     vkDeviceWaitIdle(device_);
 
     ImGui_ImplGlfwVulkan_Shutdown();
+    ImGui::DestroyContext();
 
     ShowImgui(false);
   }
