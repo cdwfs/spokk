@@ -5,10 +5,15 @@ using namespace spokk;
 
 #include <glm/glm.hpp>
 
-#if defined(__linux__)
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+#include <WinBase.h>
+#include <fileapi.h>
+#include <synchapi.h>
+#include <sysinfoapi.h>
+#elif defined(ZOMBO_PLATFORM_POSIX)
 #include <limits.h>
 #include <sys/inotify.h>
-#endif  // defined(__linux__)
+#endif
 
 #include <array>
 #include <atomic>
@@ -95,23 +100,30 @@ public:
     // Customize
     render_pass_.attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     SPOKK_VK_CHECK(render_pass_.Finalize(device_));
+    SPOKK_VK_CHECK(device_.SetObjectName(render_pass_.handle, "main color pass"));
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
         GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
-    for (auto& sampler : samplers_) {
-      SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler));
+    for (size_t i = 0; i < samplers_.size(); ++i) {
+      SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &samplers_[i]));
+      SPOKK_VK_CHECK(device_.SetObjectName(
+          samplers_[i], std::string("basic linear+wrap sampler ") + std::to_string(i)));  // TODO(cort): absl::StrCat
     }
     for (size_t i = 0; i < textures_.size(); ++i) {
       char filename[17];
       zomboSnprintf(filename, 17, "data/tex%02u.ktx", (uint32_t)i);
-      ZOMBO_ASSERT(0 == textures_[i].CreateFromFile(device_, graphics_and_present_queue_, filename, VK_FALSE),
+      ZOMBO_ASSERT(0 ==
+              textures_[i].CreateFromFile(device_, graphics_and_present_queue_, filename, VK_FALSE,
+                  THSVS_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE_OR_UNIFORM_TEXEL_BUFFER),
           "Failed to load %s", filename);
     }
     for (size_t i = 0; i < cubemaps_.size(); ++i) {
       char filename[18];
       zomboSnprintf(filename, 18, "data/cube%02u.ktx", (uint32_t)i);
-      ZOMBO_ASSERT(0 == cubemaps_[i].CreateFromFile(device_, graphics_and_present_queue_, filename, VK_FALSE),
+      ZOMBO_ASSERT(0 ==
+              cubemaps_[i].CreateFromFile(device_, graphics_and_present_queue_, filename, VK_FALSE,
+                  THSVS_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE_OR_UNIFORM_TEXEL_BUFFER),
           "Failed to load %s", filename);
     }
     active_images_[0] = &textures_[15];
@@ -120,11 +132,15 @@ public:
     active_images_[3] = &textures_[3];
 
     // Load shader pipelines
-    SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_, "data/fullscreen.vert.spv"));
+    SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_, "data/shadertoy/fullscreen.vert.spv"));
 
     active_pipeline_index_ = 0;
     ReloadShader();  // force a reload of of the shadertoy shader into slot 1
     active_pipeline_index_ = 1 - active_pipeline_index_;
+
+    // Look up the appropriate memory flags for uniform buffers on this platform
+    VkMemoryPropertyFlags uniform_buffer_memory_flags =
+        device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
 
     // Create uniform buffer
     VkBufferCreateInfo uniform_buffer_ci = {};
@@ -132,8 +148,7 @@ public:
     uniform_buffer_ci.size = sizeof(ShaderToyUniforms);
     uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(
-      uniform_buffer_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    SPOKK_VK_CHECK(uniform_buffer_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, uniform_buffer_memory_flags));
 
     for (const auto& dset_layout_ci : shader_programs_[active_pipeline_index_].dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
@@ -236,27 +251,27 @@ public:
     viewport_.y = 0.0f;
     viewport_.height *= -1;
     scissor_rect_ = ExtentToRect2D(swapchain_extent_);
-    ShaderToyUniforms *uniforms = (ShaderToyUniforms*)uniform_buffer_.Mapped(pframe_index_);
+    ShaderToyUniforms* uniforms = (ShaderToyUniforms*)uniform_buffer_.Mapped(pframe_index_);
     uniforms->iResolution = glm::vec4(viewport_.width, viewport_.height, 1.0f, 0.0f);
     uniforms->iChannelTime[0] = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);  // TODO(cort): audio/video channels are TBI
     uniforms->iChannelTime[1] = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
     uniforms->iChannelTime[2] = glm::vec4(2.0f, 0.0f, 0.0f, 0.0f);
     uniforms->iChannelTime[3] = glm::vec4(3.0f, 0.0f, 0.0f, 0.0f);
     uniforms->iChannelResolution[0] = glm::vec4((float)active_images_[0]->image_ci.extent.width,
-      (float)active_images_[0]->image_ci.extent.height, (float)active_images_[0]->image_ci.extent.depth, 0.0f);
+        (float)active_images_[0]->image_ci.extent.height, (float)active_images_[0]->image_ci.extent.depth, 0.0f);
     uniforms->iChannelResolution[1] = glm::vec4((float)active_images_[1]->image_ci.extent.width,
-      (float)active_images_[1]->image_ci.extent.height, (float)active_images_[1]->image_ci.extent.depth, 0.0f);
+        (float)active_images_[1]->image_ci.extent.height, (float)active_images_[1]->image_ci.extent.depth, 0.0f);
     uniforms->iChannelResolution[2] = glm::vec4((float)active_images_[2]->image_ci.extent.width,
-      (float)active_images_[2]->image_ci.extent.height, (float)active_images_[2]->image_ci.extent.depth, 0.0f);
+        (float)active_images_[2]->image_ci.extent.height, (float)active_images_[2]->image_ci.extent.depth, 0.0f);
     uniforms->iChannelResolution[3] = glm::vec4((float)active_images_[3]->image_ci.extent.width,
-      (float)active_images_[3]->image_ci.extent.height, (float)active_images_[3]->image_ci.extent.depth, 0.0f);
+        (float)active_images_[3]->image_ci.extent.height, (float)active_images_[3]->image_ci.extent.depth, 0.0f);
     uniforms->iGlobalTime = (float)seconds_elapsed_;
     uniforms->iTimeDelta = current_dt_;
     uniforms->iFrame = (int)frame_index_;
     uniforms->iMouse = glm::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
     uniforms->iDate = glm::vec4(year, month, mday, dsec);
     uniforms->iSampleRate = 44100.0f;
-    uniform_buffer_.FlushPframeHostCache(pframe_index_);
+    SPOKK_VK_CHECK(uniform_buffer_.FlushPframeHostCache(device_, pframe_index_));
 
     // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
@@ -298,6 +313,8 @@ private:
     for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
       attachment_views[0] = swapchain_image_views_[i];
       SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
+      SPOKK_VK_CHECK(device_.SetObjectName(
+          framebuffers_[i], std::string("swapchain framebuffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
     }
   }
 
@@ -345,6 +362,7 @@ private:
       GraphicsPipeline& new_pipeline = pipelines_[1 - active_pipeline_index_];
       new_pipeline.Init(&empty_mesh_format_, &new_shader_program, &render_pass_, 0);
       SPOKK_VK_CHECK(new_pipeline.Finalize(device_));
+      SPOKK_VK_CHECK(device_.SetObjectName(new_pipeline.handle, "shadertoy pipeline"));
       swap_shader_.store(true);
     } else {
       printf("%s\n", compile_result.GetErrorMessage().c_str());
@@ -392,7 +410,7 @@ private:
         }
         // printf("%s: 0x%08X\n", event->name, event->mask);
         if ((event->mask & IN_MODIFY) != 0) {
-          sleep(1); // serves two purposes: only process one reload per second, and delay reload until after a rename
+          sleep(1);  // serves two purposes: only process one reload per second, and delay reload until after a rename
           ReloadShader();
         } else if ((event->mask & (IN_IGNORED | IN_UNMOUNT | IN_Q_OVERFLOW)) != 0) {
           ZOMBO_ERROR("inotify event mask (0x%08X) indicates something awful is afoot!", event->mask);

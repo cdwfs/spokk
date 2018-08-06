@@ -5,10 +5,8 @@
 
 layout (location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION) in vec3 pos;
 layout (location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_NORMAL) in vec3 normal;
-layout (location = SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD0) in vec2 attr;
-layout (location = 0) out vec2 texcoord;
-layout (location = 1) out vec3 norm;
-layout (location = 2) out vec3 fromEye;
+layout (location = 0) out vec3 norm;
+layout (location = 1) out vec3 fromEye;
 
 layout (set = 0, binding = 0) uniform SceneUniforms {
   vec4 time_and_res;
@@ -21,8 +19,6 @@ layout (set = 0, binding = 1) uniform MeshUniforms {
 
 
 void main() {
-  texcoord = attr;
-
   mat4 o2w = mat4(
     mesh_consts.matrix_columns[4*gl_InstanceIndex+0],
     mesh_consts.matrix_columns[4*gl_InstanceIndex+1],

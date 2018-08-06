@@ -40,23 +40,32 @@
         { class: "image", input: "tex15.ktx", output: "tex15.ktx", },
         
         // Meshes
+        { class: "mesh", input: "cube.obj", output: "cube.mesh", },
         { class: "mesh", input: "teapot.obj", output: "teapot.mesh", },
 
         // Fonts
-        { class: "font", input: "SourceCodePro-Semibold.ttf", output: "SourceCodePro-Semibold.ttf", },
+        { class: "font", input: "SourceCodePro-Semibold.ttf", output: "text/SourceCodePro-Semibold.ttf", },
 
         // Shaders
-        { class: "shader", input: "../cubeswarm/rigid_mesh.vert", output: "rigid_mesh.vert.spv", stage: "vert", entry: "main", },
-        { class: "shader", input: "../cubeswarm/rigid_mesh.frag", output: "rigid_mesh.frag.spv", stage: "frag", entry: "main", },
-        { class: "shader", input: "../compute/double_ints.comp", output: "double_ints.comp.spv", stage: "comp", entry: "main", },
-        { class: "shader", input: "../lights/lit_mesh.vert", output: "lit_mesh.vert.spv", stage: "vert", entry: "main", },
-        { class: "shader", input: "../lights/lit_mesh.frag", output: "lit_mesh.frag.spv", stage: "frag", entry: "main", },
-        { class: "shader", input: "../lights/skybox.vert", output: "skybox.vert.spv", stage: "vert", entry: "main", },
-        { class: "shader", input: "../lights/skybox.frag", output: "skybox.frag.spv", stage: "frag", entry: "main", },
-        { class: "shader", input: "../pillars/pillar.vert", output: "pillar.vert.spv", stage: "vert", entry: "main", },
-        { class: "shader", input: "../pillars/pillar.frag", output: "pillar.frag.spv", stage: "frag", entry: "main", },
-        { class: "shader", input: "../shadertoy/fullscreen.vert", output: "fullscreen.vert.spv", stage: "vert", entry: "main", },
-        { class: "shader", input: "../text/text.vert", output: "text.vert.spv", stage: "vert", entry: "main", },
-        { class: "shader", input: "../text/text.frag", output: "text.frag.spv", stage: "frag", entry: "main", },
+        { class: "shader", input: "../blending/dsb_mesh.vert", output: "blending/dsb_mesh.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../blending/dsb_mesh.frag", output: "blending/dsb_mesh.frag.spv", stage: "frag", entry: "main", },
+
+        { class: "shader", input: "../cubeswarm/rigid_mesh.vert", output: "cubeswarm/rigid_mesh.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../cubeswarm/rigid_mesh.frag", output: "cubeswarm/rigid_mesh.frag.spv", stage: "frag", entry: "main", },
+
+        { class: "shader", input: "../compute/double_ints.comp", output: "compute/double_ints.comp.spv", stage: "comp", entry: "main", },
+
+        { class: "shader", input: "../lights/lit_mesh.vert", output: "lights/lit_mesh.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../lights/lit_mesh.frag", output: "lights/lit_mesh.frag.spv", stage: "frag", entry: "main", },
+        { class: "shader", input: "../lights/skybox.vert", output: "lights/skybox.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../lights/skybox.frag", output: "lights/skybox.frag.spv", stage: "frag", entry: "main", },
+
+        { class: "shader", input: "../pillars/pillar.vert", output: "pillars/pillar.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../pillars/pillar.frag", output: "pillars/pillar.frag.spv", stage: "frag", entry: "main", },
+
+        { class: "shader", input: "../shadertoy/fullscreen.vert", output: "shadertoy/fullscreen.vert.spv", stage: "vert", entry: "main", },
+
+        { class: "shader", input: "../text/text.vert", output: "text/text.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../text/text.frag", output: "text/text.frag.spv", stage: "frag", entry: "main", },
     ],
 }

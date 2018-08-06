@@ -39,3 +39,6 @@ build
 
 # RenderDoc capture settings
 *.cap
+
+# allow .obj models in the assets directory
+!samples/assets/*.obj

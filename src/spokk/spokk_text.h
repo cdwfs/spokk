@@ -135,11 +135,11 @@ public:
     const FontAtlas* font_atlas;
   };
 
-  int BindDrawState(VkCommandBuffer cb, const State& state);
+  int BindDrawState(const Device& device, VkCommandBuffer cb, const State& state);
 
   // x/y here are the coordinates of the point at the baseline where rendering should begin
   // (*not* the upper-left corner of the first glyph)
-  void Printf(VkCommandBuffer cb, float* x, float* y, const char* format, ...);
+  void Printf(const Device& device, VkCommandBuffer cb, float* x, float* y, const char* format, ...);
 
 private:
   uint32_t pframe_count_ = 0;  // Number of concurrent frames in flight.

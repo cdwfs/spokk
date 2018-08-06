@@ -2,7 +2,6 @@
 using namespace spokk;
 
 #include <common/camera.h>
-#include <common/cube_mesh.h>
 
 #include <array>
 #include <cstdio>
@@ -74,13 +73,10 @@ TextApp::TextApp(Application::CreateInfo &ci) : Application(ci) {
   SPOKK_VK_CHECK(render_pass_.Finalize(device_));
   render_pass_.clear_values[0] = CreateColorClearValue(1.0f, 1.0f, 1.0f, 1.0f);
   render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
-
-  // Initialize IMGUI
-  InitImgui(render_pass_);
-  ShowImgui(false);
+  device_.SetObjectName(render_pass_.handle, "Primary Render Pass");
 
   // Load font
-  int font_create_error = font_.Create("data/SourceCodePro-Semibold.ttf");
+  int font_create_error = font_.Create("data/text/SourceCodePro-Semibold.ttf");
   ZOMBO_ASSERT(font_create_error == 0, "Font loading error: %d", font_create_error);
 
   // Create font atlas
@@ -154,10 +150,9 @@ void TextApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index)
   text_state.color[3] = 0.0f;
   text_state.viewport = viewport;
   text_state.font_atlas = &font_atlas_;
-  texter_.BindDrawState(primary_cb, text_state);
+  texter_.BindDrawState(device_, primary_cb, text_state);
   float str_x = 100.0f, str_y = 100.0f;
-  texter_.Printf(primary_cb, &str_x, &str_y, "Vulkan is %d winners %c render with!", 4, '2');
-  RenderImgui(primary_cb);
+  texter_.Printf(device_, primary_cb, &str_x, &str_y, "Vulkan is %d winners %c render with!", 4, '2');
   vkCmdEndRenderPass(primary_cb);
 }
 

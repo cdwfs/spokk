@@ -1,8 +1,8 @@
 #pragma once
 
+#include <stdint.h>
 #include <array>
 #include <memory>
-#include <stdint.h>
 
 struct GLFWwindow;
 

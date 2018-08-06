@@ -25,7 +25,7 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb/stb_truetype.h>
 
-#include <varargs.h>
+#include <stdarg.h>
 #include <algorithm>
 #include <array>
 
@@ -271,9 +271,9 @@ int FontAtlas::Create(const Device &device, const FontAtlasCreateInfo &ci) {
   dst_subresource.arrayLayer = 0;
   const DeviceQueue *graphics_queue = device.FindQueue(VK_QUEUE_GRAPHICS_BIT);
   int atlas_load_err = atlas_image_.LoadSubresourceFromMemory(device, graphics_queue, atlas_pixels.data(),
-      atlas_pixels.size(), ci.image_width, ci.image_height, dst_subresource, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-      VK_ACCESS_SHADER_READ_BIT);
+      atlas_pixels.size(), ci.image_width, ci.image_height, dst_subresource);
   ZOMBO_ASSERT(atlas_load_err == 0, "error (%d) while loading font atlas into memory", atlas_load_err);
+  SPOKK_VK_CHECK(device.SetObjectName(atlas_image_.handle, "font atlas image"));
 #if defined(ENABLE_FONT_ATLAS_MIPMAPS)
   VkImageMemoryBarrier mipmap_barrier = {};
   mipmap_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -347,8 +347,8 @@ const MeshFormat &FontAtlas::GetQuadFormat() {
         {0, sizeof(GlyphVertex), VK_VERTEX_INPUT_RATE_VERTEX},
     };
     fmt.vertex_attributes = {
-      {0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
-      {1, 0, VK_FORMAT_R32G32_SFLOAT, 8},
+        {0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
+        {1, 0, VK_FORMAT_R32G32_SFLOAT, 8},
     };
     fmt.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
   }
@@ -397,7 +397,9 @@ int TextRenderer::Create(const Device &device, const CreateInfo &ci) {
   quad_index_buffer_ci.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   quad_index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(quad_index_buffer_.Create(device, quad_index_buffer_ci));
-  SPOKK_VK_CHECK(quad_index_buffer_.Load(device, quad_indices.data(), quad_index_buffer_ci.size));
+  SPOKK_VK_CHECK(quad_index_buffer_.Load(
+      device, THSVS_ACCESS_NONE, THSVS_ACCESS_INDEX_BUFFER, quad_indices.data(), quad_index_buffer_ci.size));
+  SPOKK_VK_CHECK(device.SetObjectName(quad_index_buffer_.Handle(), "text renderer index buffer"));
 
   // Vertex buffers
   VkBufferCreateInfo vertex_buffer_ci = {};
@@ -407,6 +409,10 @@ int TextRenderer::Create(const Device &device, const CreateInfo &ci) {
   vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(
       vertex_buffers_.Create(device, ci.pframe_count, vertex_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+  for (uint32_t pframe = 0; pframe < ci.pframe_count; ++pframe) {
+    SPOKK_VK_CHECK(device.SetObjectName(vertex_buffers_.Handle(pframe),
+        std::string("text renderer vertex buffer ") + std::to_string(pframe)));  // TODO(cort): absl::StrCat
+  }
 
   // Uniform buffers
   // Currently using dynamic uniform buffers to select which instance of uniforms to use for a given
@@ -424,13 +430,17 @@ int TextRenderer::Create(const Device &device, const CreateInfo &ci) {
   uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(
       uniform_buffers_.Create(device, ci.pframe_count, uniform_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+  for (uint32_t pframe = 0; pframe < ci.pframe_count; ++pframe) {
+    SPOKK_VK_CHECK(device.SetObjectName(uniform_buffers_.Handle(pframe),
+        std::string("text renderer uniform buffer ") + std::to_string(pframe)));  // TODO(cort): absl::StrCat
+  }
 
   // Shaders and shader program
   // TODO(cort): embed these shaders in the binary?
-  SPOKK_VK_CHECK(vertex_shader_.CreateAndLoadSpirvFile(device, "data/text.vert.spv"));
+  SPOKK_VK_CHECK(vertex_shader_.CreateAndLoadSpirvFile(device, "data/text/text.vert.spv"));
   vertex_shader_.OverrideDescriptorType(0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
   SPOKK_VK_CHECK(program_.AddShader(&vertex_shader_));
-  SPOKK_VK_CHECK(fragment_shader_.CreateAndLoadSpirvFile(device, "data/text.frag.spv"));
+  SPOKK_VK_CHECK(fragment_shader_.CreateAndLoadSpirvFile(device, "data/text/text.frag.spv"));
   fragment_shader_.OverrideDescriptorType(0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
   SPOKK_VK_CHECK(program_.AddShader(&fragment_shader_));
   SPOKK_VK_CHECK(program_.Finalize(device));
@@ -455,6 +465,7 @@ int TextRenderer::Create(const Device &device, const CreateInfo &ci) {
   pipeline_settings.rasterization_state_ci.cullMode = VK_CULL_MODE_NONE;
   SPOKK_VK_CHECK(pipeline_settings.Finalize(device));
   pipeline_ = pipeline_settings.handle;
+  SPOKK_VK_CHECK(device.SetObjectName(pipeline_, "text renderer pipeline"));
 
   // Font atlases
   ZOMBO_ASSERT(ci.font_atlases.size() == 1, "Currently, only one font atlas is supportd.");  // TEMP
@@ -512,7 +523,7 @@ void TextRenderer::Destroy(const Device &device) {
   }
 }
 
-int TextRenderer::BindDrawState(VkCommandBuffer cb, const State &state) {
+int TextRenderer::BindDrawState(const Device &device, VkCommandBuffer cb, const State &state) {
   if (state.pframe_index != current_state_.pframe_index) {
     // first state for a new pframe; reset counts and swap uniform buffers
     current_glyph_count_ = 0;
@@ -533,10 +544,11 @@ int TextRenderer::BindDrawState(VkCommandBuffer cb, const State &state) {
   uniforms->viewport_to_clip[1] = 2.0f / state.viewport.height;  // TODO(cort): proper scale/bias
   uniforms->viewport_to_clip[2] = -1.0f;
   uniforms->viewport_to_clip[3] = (state.viewport.height < 0) ? +1.0f : -1.0f;
-  uniform_buffers_.FlushPframeHostCache(state.pframe_index, uniform_offset, uniform_buffer_stride_);
+  uniform_buffers_.FlushPframeHostCache(device, state.pframe_index, uniform_offset, uniform_buffer_stride_);
   // Bind the pipeline and the appropriate descriptor sets
   vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
-  ZOMBO_ASSERT(state.font_atlas == font_atlases_[0], "font atlas mismatch");  // TODO(cort): sort out multiple atlas support.
+  ZOMBO_ASSERT(
+      state.font_atlas == font_atlases_[0], "font atlas mismatch");  // TODO(cort): sort out multiple atlas support.
   std::array<VkDescriptorSet, 2> dsets = {{
       uniform_dsets_[state.pframe_index],
       font_atlas_dsets_[0],
@@ -549,12 +561,12 @@ int TextRenderer::BindDrawState(VkCommandBuffer cb, const State &state) {
   current_state_ = state;
   return 0;
 }
-void TextRenderer::Printf(VkCommandBuffer cb, float *x, float *y, const char *format, ...) {
+void TextRenderer::Printf(const Device &device, VkCommandBuffer cb, float *x, float *y, const char *fmt, ...) {
   va_list args;
-  va_start(args, format);
-  int nchars = 1 + vsnprintf(nullptr, 0, format, args);
+  va_start(args, fmt);
+  int nchars = 1 + vsnprintf(nullptr, 0, fmt, args);
   std::vector<char> buffer(nchars);
-  vsnprintf(buffer.data(), nchars, format, args);
+  vsnprintf(buffer.data(), nchars, fmt, args);
   va_end(args);
 
   // Generate quads for a string.
@@ -579,7 +591,7 @@ void TextRenderer::Printf(VkCommandBuffer cb, float *x, float *y, const char *fo
   }
   current_glyph_count_ += string_quad_count;
   vertex_buffers_.FlushPframeHostCache(
-      current_state_.pframe_index, vb_offset, string_quad_count * 4 * sizeof(GlyphVertex));
+      device, current_state_.pframe_index, vb_offset, string_quad_count * 4 * sizeof(GlyphVertex));
 
   VkBuffer vb = vertex_buffers_.Handle(current_state_.pframe_index);
   vkCmdBindVertexBuffers(cb, 0, 1, &vb, &vb_offset);

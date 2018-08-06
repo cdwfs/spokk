@@ -1,4 +1,5 @@
-#pragma once
+#if !defined(SPOKK_SHADER_INTERFACE_H)
+#define SPOKK_SHADER_INTERFACE_H
 
 // clang-format off
 #define SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION     0
@@ -16,3 +17,5 @@
 #define SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD2   12
 #define SPOKK_VERTEX_ATTRIBUTE_LOCATION_TEXCOORD3   13
 // clang-format on
+
+#endif  // !defined(SPOKK_SHADER_INTERFACE_H)

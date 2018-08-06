@@ -7,10 +7,8 @@
 #include <string>
 #include <vector>
 
-namespace spirv_cross {
-class CompilerGLSL;
-struct Resource;
-}  // namespace spirv_cross
+struct SpvReflectShaderModule;  // from spirv_reflect.h
+struct SpvReflectDescriptorBinding;  // from spirv_reflect.h
 
 namespace spokk {
 
@@ -44,14 +42,14 @@ struct Shader {
   VkShaderModule handle = VK_NULL_HANDLE;
   std::vector<uint32_t> spirv = {};
   VkShaderStageFlagBits stage = (VkShaderStageFlagBits)0;
+  std::string entry_point = "main";
   // Resources used by this shader:
   std::vector<DescriptorSetLayoutInfo> dset_layout_infos = {};  // one per dset (including empty ones)
   VkPushConstantRange push_constant_range = {};  // range.size = 0 means this stage doesn't use push constants.
 private:
   VkResult ParseSpirvAndCreate(const Device& device);
-  void ParseShaderResources(const spirv_cross::CompilerGLSL& glsl);
-  void AddShaderResourceToDescriptorSetLayout(
-      const spirv_cross::CompilerGLSL& glsl, const spirv_cross::Resource& resource, VkDescriptorType desc_type);
+  void ParseShaderResources(const SpvReflectShaderModule& refl_module);
+  void AddShaderResourceToDescriptorSetLayout(const SpvReflectDescriptorBinding& new_binding);
 
   std::map<std::string, DescriptorBindPoint> name_to_index_ = {};  // one per binding across all dsets in this Shader.
 };
@@ -62,7 +60,7 @@ struct ShaderProgram {
   ShaderProgram(const ShaderProgram& rhs) = delete;
   ShaderProgram& operator=(const ShaderProgram& rhs) = delete;
 
-  VkResult AddShader(const Shader* shader, const char* entry_point = "main");
+  VkResult AddShader(const Shader* shader);
   static VkResult ForceCompatibleLayoutsAndFinalize(const Device& device, const std::vector<ShaderProgram*> programs);
   VkResult Finalize(const Device& device);
   void Destroy(const Device& device);

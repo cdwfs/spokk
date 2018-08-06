@@ -28,8 +28,12 @@ spokk builds upon the following projects, which will be automatically included a
 - [g-truc/glm](https://github.com/google/mathfu) for 3D math.
 - [google/shaderc](https://github.com/google/shaderc) for shader compilation.
 - [ocornut/imgui](https://github.com/ocornut/imgui) for quick & dirty runtime GUI.
-- [KhronosGroup/SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) for introspection of
-  SPIR-V shaders (used to automatically generate descriptor set layouts).
+- [tobski/simple_vulkan_synchronization](https://github.com/tobski/simple_vulkan_synchronization) for
+  simplified Vulkan barrier configuration.
+- [chaoticbob/SPIRV-Reflect](https://github.com/chaoticbob/SPIRV-Reflect) for introspection of
+  SPIR-V shaders (i.e. data-driven VkDescriptorSetLayout and VkPipelineLayout generation).
 - [nothings/stb](https://github.com/nothings/stb) for loading common image formats (`stb_image`), writing
   images (`stb_image_write`), mipmap generation (`stb_image_resize`), and TrueType font loading
   (`stb_truetype`).
+- [GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
+  for Vulkan device memory allocation.
