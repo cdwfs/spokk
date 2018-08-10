@@ -105,7 +105,6 @@ public:
         ShaderProgram::ForceCompatibleLayoutsAndFinalize(device_, {&skybox_shader_program_, &mesh_shader_program_}));
 
     // Create skybox pipeline
-    empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     skybox_pipeline_.Init(&empty_mesh_format_, &skybox_shader_program_, &render_pass_, 0);
     skybox_pipeline_.depth_stencil_state_ci.depthWriteEnable = VK_FALSE;
     skybox_pipeline_.depth_stencil_state_ci.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;

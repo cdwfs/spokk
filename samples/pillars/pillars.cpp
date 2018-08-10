@@ -120,11 +120,11 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
     {2, 0, VK_FORMAT_R8G8_UNORM, 8},
   };
   // clang-format on
-  mesh_.mesh_format.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
   // Populate Mesh object
   mesh_.index_type = (sizeof(cube_indices[0]) == sizeof(uint32_t)) ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
   mesh_.index_count = cube_index_count;
+  mesh_.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
   // index buffer
   VkBufferCreateInfo index_buffer_ci = {};
   index_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;

@@ -12,30 +12,12 @@ namespace spokk {
 //
 // MeshFormat
 //
-MeshFormat::MeshFormat()
-  : vertex_buffer_bindings{}, vertex_attributes{}, vertex_input_state_ci{}, input_assembly_state_ci{} {}
+MeshFormat::MeshFormat() : vertex_buffer_bindings{}, vertex_attributes{} {}
 MeshFormat::MeshFormat(const MeshFormat& rhs) { *this = rhs; }
 MeshFormat& MeshFormat::operator=(const MeshFormat& rhs) {
   vertex_buffer_bindings = rhs.vertex_buffer_bindings;
   vertex_attributes = rhs.vertex_attributes;
-  vertex_input_state_ci = rhs.vertex_input_state_ci;
-  vertex_input_state_ci.pVertexAttributeDescriptions = vertex_attributes.data();
-  vertex_input_state_ci.pVertexBindingDescriptions = vertex_buffer_bindings.data();
-  input_assembly_state_ci = rhs.input_assembly_state_ci;
   return *this;
-}
-
-void MeshFormat::Finalize(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart) {
-  vertex_input_state_ci = {};
-  vertex_input_state_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-  vertex_input_state_ci.vertexBindingDescriptionCount = (uint32_t)vertex_buffer_bindings.size();
-  vertex_input_state_ci.pVertexBindingDescriptions = vertex_buffer_bindings.data();
-  vertex_input_state_ci.vertexAttributeDescriptionCount = (uint32_t)vertex_attributes.size();
-  vertex_input_state_ci.pVertexAttributeDescriptions = vertex_attributes.data();
-  input_assembly_state_ci = {};
-  input_assembly_state_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-  input_assembly_state_ci.topology = topology;
-  input_assembly_state_ci.primitiveRestartEnable = enable_primitive_restart;
 }
 
 //
@@ -87,7 +69,7 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
   ZOMBO_ASSERT(read_count == mesh_header.index_count, "I/O error while reading %s", mesh_filename);
   fclose(mesh_file);
 
-  mesh_format.Finalize(mesh_header.topology);
+  topology = mesh_header.topology;
   if (mesh_header.bytes_per_index == 2) {
     index_type = VK_INDEX_TYPE_UINT16;
   } else if (mesh_header.bytes_per_index == 4) {
@@ -141,10 +123,7 @@ void Mesh::Destroy(const Device& device) {
 }
 
 void Mesh::BindBuffers(VkCommandBuffer cb) const {
-  ZOMBO_ASSERT((uint32_t)vertex_buffers.size() == mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount,
-      "Mesh's vertex buffer count (%u) does not match count in MeshFormat (%u)", (uint32_t)vertex_buffers.size(),
-      mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount);
-  for (uint32_t i = 0; i < mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount; ++i) {
+  for (uint32_t i = 0; i < mesh_format.vertex_buffer_bindings.size(); ++i) {
     VkBuffer handle = vertex_buffers[i].Handle();
     vkCmdBindVertexBuffers(
         cb, mesh_format.vertex_buffer_bindings[i].binding, 1, &handle, &vertex_buffer_byte_offsets[i]);
@@ -172,7 +151,7 @@ void GenerateMeshBox(const Device& device, Mesh* out_mesh, const float min_exten
   out_mesh->mesh_format.vertex_buffer_bindings[0].binding = 0;
   out_mesh->mesh_format.vertex_buffer_bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
   out_mesh->mesh_format.vertex_buffer_bindings[0].stride = sizeof(DebugMeshVertex);
-  out_mesh->mesh_format.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+  out_mesh->topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
   const std::vector<DebugMeshVertex> vertices = {
       // clang-format off

@@ -93,8 +93,6 @@ public:
     mouse_pos_ = glm::vec2(0, 0);
     glfwSetMouseButtonCallback(window_.get(), MyGlfwMouseButtonCallback);
 
-    empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR, swapchain_surface_format_.format);
     // Customize

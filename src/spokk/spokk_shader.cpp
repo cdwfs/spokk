@@ -64,6 +64,27 @@ void Shader::ParseShaderResources(const SpvReflectShaderModule& refl_module) {
     AddShaderResourceToDescriptorSetLayout(*binding);
   }
 
+  // Handle interface variables. For now this is mainly to compare a pipeline's vertex attribute list vs.
+  // the vertex shader's expected input variables.
+  uint32_t input_var_count = 0;
+  SPIRV_REFLECT_CHECK(spvReflectEnumerateInputVariables(&refl_module, &input_var_count, nullptr));
+  std::vector<SpvReflectInterfaceVariable*> input_vars(input_var_count);
+  SPIRV_REFLECT_CHECK(spvReflectEnumerateInputVariables(&refl_module, &input_var_count, input_vars.data()));
+  input_attributes.reserve(input_var_count);  // This is larger than necessary, as it will include built-ins.
+  for (const auto* ivar : input_vars) {
+    if (ivar->built_in != -1) {
+      continue;  // ignore built-in variables
+    }
+    std::string attr_name = ivar->name ? ivar->name : "<NULL>";
+    ZOMBO_ASSERT(static_cast<int32_t>(ivar->location) >= 0, "input variable '%s' location (%d) should be non-negative",
+        attr_name.c_str(), ivar->location);
+    ShaderInputAttribute attr = {};
+    attr.name = attr_name;
+    attr.location = ivar->location;
+    attr.format = static_cast<VkFormat>(ivar->format);
+    input_attributes.push_back(attr);
+  }
+
   // Handle push constants. Each shader stage is only allowed to have one push constant range,
   // so if the SPIRV defines more than one block, we have to merge them here.
   uint32_t push_constant_block_count = 0;
@@ -240,13 +261,17 @@ VkResult ShaderProgram::AddShader(const Shader* shader) {
   size_t index = entry_point_names.size();
   ZOMBO_ASSERT(index == shader_stage_cis.size(), "invariant failure: shader stage array size mismatch");
   entry_point_names.push_back(shader->entry_point);
-  VkPipelineShaderStageCreateInfo new_stage_ci = {};
-  new_stage_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  VkPipelineShaderStageCreateInfo new_stage_ci = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
   new_stage_ci.stage = shader->stage;
   new_stage_ci.module = shader->handle;
-  new_stage_ci.pName = nullptr;  // set this in finalize() to avoid stale pointers.
+  new_stage_ci.pName = nullptr;  // set this in Finalize() to avoid stale pointers.
   new_stage_ci.pSpecializationInfo = nullptr;  // Specialization constants are not currently supported.
   shader_stage_cis.push_back(new_stage_ci);
+
+  // Set input attributes pointer if this shader is an input stage (currently, only VS)
+  if (shader->stage == VK_SHADER_STAGE_VERTEX_BIT) {
+    input_attributes = &(shader->input_attributes);
+  }
 
   int merge_error =
       MergeLayouts(shader->dset_layout_infos, std::vector<VkPushConstantRange>{shader->push_constant_range});
