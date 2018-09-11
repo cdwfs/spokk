@@ -55,6 +55,10 @@ using namespace spokk;
 #pragma warning(disable : 4189)  // initialized-but-unused local variable
 #endif
 #define VMA_ASSERT(expr) ZOMBO_ASSERT(expr, "Assert failed: %s", #expr)
+#if defined(_DEBUG) // enable extra corruption detection in debug builds
+#define VMA_DEBUG_MARGIN 16
+#define VMA_DEBUG_DETECT_CORRUPTION 1
+#endif
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
 #ifdef _MSC_VER
