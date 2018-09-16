@@ -120,17 +120,65 @@ public:
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
     SPOKK_VK_CHECK(device_.SetObjectName(mesh_pipeline_.handle, "mesh pipeline"));
 
+    for (const auto& dset_layout_ci : skybox_shader_program_.dset_layout_cis) {
+      dpool_.Add(dset_layout_ci, PFRAME_COUNT);
+    }
+    SPOKK_VK_CHECK(dpool_.Finalize(device_));
+
     // Look up the appropriate memory flags for uniform buffers on this platform
     VkMemoryPropertyFlags uniform_buffer_memory_flags =
         device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
 
-    // Create pipelined buffer of light uniforms
-    VkBufferCreateInfo light_uniforms_ci = {};
-    light_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    light_uniforms_ci.size = sizeof(LightUniforms);
-    light_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    light_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(light_uniforms_.Create(device_, PFRAME_COUNT, light_uniforms_ci, uniform_buffer_memory_flags));
+    DescriptorSetWriter dset_writer(skybox_shader_program_.dset_layout_cis[0]);
+    dset_writer.BindImage(skybox_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      skybox_fs_.GetDescriptorBindPoint("skybox_tex").binding);
+    dset_writer.BindSampler(sampler_, skybox_fs_.GetDescriptorBindPoint("skybox_samp").binding);
+    for (auto& frame_data : frame_data_) {
+      // Create per-pframe buffer of light uniforms
+      VkBufferCreateInfo light_uniforms_ci = {};
+      light_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+      light_uniforms_ci.size = sizeof(LightUniforms);
+      light_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+      light_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      SPOKK_VK_CHECK(frame_data.light_ubo.Create(device_, light_uniforms_ci, uniform_buffer_memory_flags));
+      dset_writer.BindBuffer(frame_data.light_ubo.Handle(), mesh_fs_.GetDescriptorBindPoint("light_consts").binding);
+
+      // Create pipelined buffer of light uniforms
+      VkBufferCreateInfo material_uniforms_ci = {};
+      material_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+      material_uniforms_ci.size = sizeof(MaterialUniforms);
+      material_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+      material_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      SPOKK_VK_CHECK(frame_data.material_ubo.Create(device_, material_uniforms_ci, uniform_buffer_memory_flags));
+      dset_writer.BindBuffer(frame_data.material_ubo.Handle(), mesh_fs_.GetDescriptorBindPoint("mat_consts").binding);
+
+      // Create pipelined buffer of mesh uniforms
+      VkBufferCreateInfo mesh_uniforms_ci = {};
+      mesh_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+      mesh_uniforms_ci.size = sizeof(MeshUniforms);
+      mesh_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+      mesh_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      SPOKK_VK_CHECK(frame_data.mesh_ubo.Create(device_, mesh_uniforms_ci, uniform_buffer_memory_flags));
+      dset_writer.BindBuffer(frame_data.mesh_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
+
+      // Create pipelined buffer of shader uniforms
+      VkBufferCreateInfo scene_uniforms_ci = {};
+      scene_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+      scene_uniforms_ci.size = sizeof(SceneUniforms);
+      scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+      scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      SPOKK_VK_CHECK(frame_data.scene_ubo.Create(device_, scene_uniforms_ci, uniform_buffer_memory_flags));
+      dset_writer.BindBuffer(frame_data.scene_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
+
+      frame_data.dset = dpool_.AllocateSet(device_, skybox_shader_program_.dset_layouts[0]);
+      dset_writer.WriteAll(device_, frame_data.dset);
+    }
+
+    // Default material settings
+    material_.albedo = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    material_.emissive_color = glm::vec4(0.5f, 0.5f, 0.0f, 0.0f);
+    material_.spec_color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    material_.spec_exp = glm::vec4(1000.0f, 0.0f, 0.0f, 0.0f);
     // Default light settings
     lights_.hemi_down_color = glm::vec4(0.471f, 0.412f, 0.282f, 0.75f);
     lights_.hemi_up_color = glm::vec4(0.290f, 0.390f, 0.545f, 0.0f);
@@ -143,54 +191,6 @@ public:
     lights_.spot_neg_dir_wsn = -glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
     EncodeSpotlightFalloffAngles(&lights_.spot_falloff_angles, 10.0f, 20.0f);
 
-    // Create pipelined buffer of light uniforms
-    VkBufferCreateInfo material_uniforms_ci = {};
-    material_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    material_uniforms_ci.size = sizeof(MaterialUniforms);
-    material_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    material_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(material_uniforms_.Create(device_, PFRAME_COUNT, material_uniforms_ci, uniform_buffer_memory_flags));
-    material_.albedo = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-    material_.emissive_color = glm::vec4(0.5f, 0.5f, 0.0f, 0.0f);
-    material_.spec_color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-    material_.spec_exp = glm::vec4(1000.0f, 0.0f, 0.0f, 0.0f);
-
-    // Create pipelined buffer of mesh uniforms
-    VkBufferCreateInfo mesh_uniforms_ci = {};
-    mesh_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    mesh_uniforms_ci.size = sizeof(MeshUniforms);
-    mesh_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    mesh_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, mesh_uniforms_ci, uniform_buffer_memory_flags));
-
-    // Create pipelined buffer of shader uniforms
-    VkBufferCreateInfo scene_uniforms_ci = {};
-    scene_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    scene_uniforms_ci.size = sizeof(SceneUniforms);
-    scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, uniform_buffer_memory_flags));
-
-    for (const auto& dset_layout_ci : skybox_shader_program_.dset_layout_cis) {
-      dpool_.Add(dset_layout_ci, PFRAME_COUNT);
-    }
-    SPOKK_VK_CHECK(dpool_.Finalize(device_));
-    for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      // TODO(cort): allocate_pipelined_set()?
-      dsets_[pframe] = dpool_.AllocateSet(device_, skybox_shader_program_.dset_layouts[0]);
-    }
-    DescriptorSetWriter dset_writer(skybox_shader_program_.dset_layout_cis[0]);
-    dset_writer.BindImage(skybox_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        skybox_fs_.GetDescriptorBindPoint("skybox_tex").binding);
-    dset_writer.BindSampler(sampler_, skybox_fs_.GetDescriptorBindPoint("skybox_samp").binding);
-    for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
-      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
-      dset_writer.BindBuffer(light_uniforms_.Handle(pframe), mesh_fs_.GetDescriptorBindPoint("light_consts").binding);
-      dset_writer.BindBuffer(material_uniforms_.Handle(pframe), mesh_fs_.GetDescriptorBindPoint("mat_consts").binding);
-      dset_writer.WriteAll(device_, dsets_[pframe]);
-    }
-
     // Create swapchain-sized buffers
     CreateRenderBuffers(swapchain_extent_);
   }
@@ -200,10 +200,12 @@ public:
 
       dpool_.Destroy(device_);
 
-      light_uniforms_.Destroy(device_);
-      material_uniforms_.Destroy(device_);
-      mesh_uniforms_.Destroy(device_);
-      scene_uniforms_.Destroy(device_);
+      for (auto& frame_data : frame_data_) {
+        frame_data.light_ubo.Destroy(device_);
+        frame_data.material_ubo.Destroy(device_);
+        frame_data.mesh_ubo.Destroy(device_);
+        frame_data.scene_ubo.Destroy(device_);
+      }
 
       mesh_vs_.Destroy(device_);
       mesh_fs_.Destroy(device_);
@@ -303,8 +305,9 @@ public:
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+    const auto& frame_data = frame_data_[pframe_index_];
     // Update uniforms
-    SceneUniforms* scene_uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
+    SceneUniforms* scene_uniforms = (SceneUniforms*)frame_data.scene_ubo.Mapped();
     scene_uniforms->res_and_time =
         glm::vec4((float)swapchain_extent_.width, (float)swapchain_extent_.height, 0, (float)seconds_elapsed_);
     scene_uniforms->eye_pos_ws = glm::vec4(camera_->getEyePoint(), 1.0f);
@@ -318,22 +321,22 @@ public:
     scene_uniforms->viewproj_inv = glm::inverse(viewproj);
     scene_uniforms->view_inv = glm::inverse(view);
     scene_uniforms->proj_inv = glm::inverse(proj);
-    SPOKK_VK_CHECK(scene_uniforms_.FlushPframeHostCache(device_, pframe_index_));
+    SPOKK_VK_CHECK(frame_data.scene_ubo.FlushHostCache(device_));
 
     // Update mesh uniforms
-    MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
+    MeshUniforms* mesh_uniforms = (MeshUniforms*)frame_data.mesh_ubo.Mapped();
     mesh_uniforms->o2w = ComposeTransform(glm::vec3(0.0f, 0.0f, 0.0f), glm::quat_identity<float, glm::highp>(), 5.0f);
-    SPOKK_VK_CHECK(mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_));
+    SPOKK_VK_CHECK(frame_data.mesh_ubo.FlushHostCache(device_));
 
     // Update material uniforms
-    MaterialUniforms* material_uniforms = (MaterialUniforms*)material_uniforms_.Mapped(pframe_index_);
+    MaterialUniforms* material_uniforms = (MaterialUniforms*)frame_data.material_ubo.Mapped();
     *material_uniforms = material_;
-    SPOKK_VK_CHECK(material_uniforms_.FlushPframeHostCache(device_, pframe_index_));
+    SPOKK_VK_CHECK(frame_data.material_ubo.FlushHostCache(device_));
 
     // Update light uniforms
-    LightUniforms* light_uniforms = (LightUniforms*)light_uniforms_.Mapped(pframe_index_);
+    LightUniforms* light_uniforms = (LightUniforms*)frame_data.light_ubo.Mapped();
     *light_uniforms = lights_;
-    SPOKK_VK_CHECK(light_uniforms_.FlushPframeHostCache(device_, pframe_index_));
+    SPOKK_VK_CHECK(frame_data.light_ubo.FlushHostCache(device_));
 
     // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
@@ -346,7 +349,7 @@ public:
     vkCmdSetViewport(primary_cb, 0, 1, &viewport);
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
-        0, 1, &dsets_[pframe_index_], 0, nullptr);
+        0, 1, &frame_data.dset, 0, nullptr);
     // Render scene
     device_.DebugLabelInsert(primary_cb, "render mesh");
     vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.handle);
@@ -418,17 +421,19 @@ private:
   MeshFormat empty_mesh_format_;
 
   DescriptorPool dpool_;
-  std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
+  struct FrameData {
+    VkDescriptorSet dset;
+    Buffer light_ubo;
+    Buffer material_ubo;
+    Buffer mesh_ubo;
+    Buffer scene_ubo;
+  };
+  std::array<FrameData, PFRAME_COUNT> frame_data_;
 
   Shader mesh_vs_, mesh_fs_;
   ShaderProgram mesh_shader_program_;
   GraphicsPipeline mesh_pipeline_;
   Mesh mesh_;
-  PipelinedBuffer light_uniforms_;
-  PipelinedBuffer material_uniforms_;
-  PipelinedBuffer mesh_uniforms_;
-  PipelinedBuffer scene_uniforms_;
-
   LightUniforms lights_;
   MaterialUniforms material_;
 

@@ -87,31 +87,6 @@ public:
     int mesh_load_error = mesh_.CreateFromFile(device_, "data/teapot.mesh");
     ZOMBO_ASSERT(!mesh_load_error, "load error: %d", mesh_load_error);
 
-    // Create pipelined buffer of per-mesh object-to-world matrices.
-    VkBufferCreateInfo o2w_buffer_ci = {};
-    o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(glm::mat4);
-    o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-
-    // Create pipelined buffer of shader uniforms
-    VkBufferCreateInfo scene_uniforms_ci = {};
-    scene_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    scene_uniforms_ci.size = sizeof(SceneUniforms);
-    scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(
-        scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-
-    // Create indirect draw parameter buffer
-    VkBufferCreateInfo indirect_draw_buffers_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    indirect_draw_buffers_ci.size = INDIRECT_DRAW_COUNT * sizeof(VkDrawIndexedIndirectCommand);
-    indirect_draw_buffers_ci.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-    indirect_draw_buffers_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(indirect_draw_buffers_.Create(
-        device_, PFRAME_COUNT, indirect_draw_buffers_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
     SPOKK_VK_CHECK(device_.SetObjectName(mesh_pipeline_.handle, "mesh pipeline"));
@@ -120,18 +95,40 @@ public:
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
     SPOKK_VK_CHECK(dpool_.Finalize(device_));
-    for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      // TODO(cort): allocate_pipelined_set()?
-      dsets_[pframe] = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
-    }
+
     DescriptorSetWriter dset_writer(mesh_shader_program_.dset_layout_cis[0]);
     dset_writer.BindImage(
         albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mesh_fs_.GetDescriptorBindPoint("tex").binding);
     dset_writer.BindSampler(sampler_, mesh_fs_.GetDescriptorBindPoint("samp").binding);
-    for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
-      dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
-      dset_writer.WriteAll(device_, dsets_[pframe]);
+    for (auto& frame_data : frame_data_) {
+      // Create per-pframe buffer of per-mesh object-to-world matrices.
+      VkBufferCreateInfo o2w_buffer_ci = {};
+      o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+      o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(glm::mat4);
+      o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+      o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      SPOKK_VK_CHECK(frame_data.mesh_ubo.Create(device_, o2w_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+      dset_writer.BindBuffer(frame_data.mesh_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
+
+      // Create per-pframe buffer of shader uniforms
+      VkBufferCreateInfo scene_uniforms_ci = {};
+      scene_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+      scene_uniforms_ci.size = sizeof(SceneUniforms);
+      scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+      scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      SPOKK_VK_CHECK(frame_data.scene_ubo.Create(device_, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+      dset_writer.BindBuffer(frame_data.scene_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
+
+      // Create indirect draw parameter buffer
+      VkBufferCreateInfo indirect_draw_buffers_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+      indirect_draw_buffers_ci.size = INDIRECT_DRAW_COUNT * sizeof(VkDrawIndexedIndirectCommand);
+      indirect_draw_buffers_ci.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+      indirect_draw_buffers_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      SPOKK_VK_CHECK(frame_data.indirect_draw_buffer.Create(
+          device_, indirect_draw_buffers_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+
+      frame_data.dset = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
+      dset_writer.WriteAll(device_, frame_data.dset);
     }
 
     TimestampQueryPool::CreateInfo tspool_ci = {};
@@ -154,9 +151,11 @@ public:
 
       dpool_.Destroy(device_);
 
-      indirect_draw_buffers_.Destroy(device_);
-      mesh_uniforms_.Destroy(device_);
-      scene_uniforms_.Destroy(device_);
+      for (auto& frame_data : frame_data_) {
+        frame_data.indirect_draw_buffer.Destroy(device_);
+        frame_data.mesh_ubo.Destroy(device_);
+        frame_data.scene_ubo.Destroy(device_);
+      }
 
       mesh_.Destroy(device_);
 
@@ -183,19 +182,20 @@ public:
   virtual void Update(double dt) override { seconds_elapsed_ += dt; }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+    const auto& frame_data = frame_data_[pframe_index_];
     // Update uniforms
-    SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
+    SceneUniforms* uniforms = (SceneUniforms*)frame_data.scene_ubo.Mapped();
     uniforms->res_and_time =
         glm::vec4((float)swapchain_extent_.width, (float)swapchain_extent_.height, 0, (float)seconds_elapsed_);
     uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
     glm::mat4 w2v = camera_->getViewMatrix();
     const glm::mat4 proj = camera_->getProjectionMatrix();
     uniforms->viewproj = proj * w2v;
-    scene_uniforms_.FlushPframeHostCache(device_, pframe_index_);
+    SPOKK_VK_CHECK(frame_data.scene_ubo.FlushHostCache(device_));
 
     // Update object-to-world matrices.
     const float secs = 0;  //(float)seconds_elapsed_;
-    MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
+    MeshUniforms* mesh_uniforms = (MeshUniforms*)frame_data.mesh_ubo.Mapped();
     const glm::vec3 swarm_center(0, 0, -2);
     for (uint32_t iMesh = 0; iMesh < MESH_INSTANCE_COUNT; ++iMesh) {
       // clang-format off
@@ -210,12 +210,12 @@ public:
         instance_scale_);
       // clang-format on
     }
-    mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_);
+    SPOKK_VK_CHECK(frame_data.mesh_ubo.FlushHostCache(device_));
 
     // Write indirect draw command parameters
     VkDrawIndexedIndirectCommand* indirect_draws =
-        (VkDrawIndexedIndirectCommand*)indirect_draw_buffers_.Mapped(pframe_index_);
-    memset(indirect_draws, 0, indirect_draw_buffers_.BytesPerPframe());
+        (VkDrawIndexedIndirectCommand*)frame_data.indirect_draw_buffer.Mapped();
+    memset(indirect_draws, 0, frame_data.indirect_draw_buffer.Size());
     for (uint32_t i = 0; i < MESH_INSTANCE_COUNT; ++i) {
       indirect_draws[i].indexCount = triangles_per_instance_ * 3;
       indirect_draws[i].instanceCount = 1;
@@ -223,7 +223,7 @@ public:
       indirect_draws[i].vertexOffset = 0;
       indirect_draws[i].firstInstance = i;
     }
-    indirect_draw_buffers_.FlushPframeHostCache(device_, pframe_index_);
+    SPOKK_VK_CHECK(frame_data.indirect_draw_buffer.FlushHostCache(device_));
 
     // Retrieve earlier timestamps
     std::array<double, TIMESTAMP_COUNT> timestamps_seconds;
@@ -253,7 +253,7 @@ public:
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
     mesh_.BindBuffers(primary_cb);
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
-        0, 1, &dsets_[pframe_index_], 0, nullptr);
+        0, 1, &frame_data.dset, 0, nullptr);
     timestamp_pool_.WriteTimestamp(primary_cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, TIMESTAMP_BEFORE_DRAW);
 
     // Set up imgui overlay
@@ -294,16 +294,16 @@ public:
     } else if (benchmark_mode_ == BENCHMARK_MODE_DRAW_INDIRECT_PER_INSTANCE) {
       // One indirect draw call per instance
       for (uint32_t i = 0; i < MESH_INSTANCE_COUNT; ++i) {
-        vkCmdDrawIndexedIndirect(primary_cb, indirect_draw_buffers_.Handle(pframe_index_),
+        vkCmdDrawIndexedIndirect(primary_cb, frame_data.indirect_draw_buffer.Handle(),
             i * sizeof(VkDrawIndexedIndirectCommand), 1, sizeof(VkDrawIndexedIndirectCommand));
       }
     } else if (benchmark_mode_ == BENCHMARK_MODE_DRAW_INDIRECT_ALL_INSTANCES) {
       // Multi draw indirect
-      vkCmdDrawIndexedIndirect(primary_cb, indirect_draw_buffers_.Handle(pframe_index_), 0, MESH_INSTANCE_COUNT,
+      vkCmdDrawIndexedIndirect(primary_cb, frame_data.indirect_draw_buffer.Handle(), 0, MESH_INSTANCE_COUNT,
           sizeof(VkDrawIndexedIndirectCommand));
     } else if (benchmark_mode_ == BENCHMARK_MODE_DRAW_INDIRECT_ALL_INSTANCES_SPARSE) {
       // Sparse Multi draw indirect
-      vkCmdDrawIndexedIndirect(primary_cb, indirect_draw_buffers_.Handle(pframe_index_), 0, INDIRECT_DRAW_COUNT,
+      vkCmdDrawIndexedIndirect(primary_cb, frame_data.indirect_draw_buffer.Handle(), 0, INDIRECT_DRAW_COUNT,
           sizeof(VkDrawIndexedIndirectCommand));
     }
     timestamp_pool_.WriteTimestamp(primary_cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, TIMESTAMP_AFTER_DRAW);
@@ -367,13 +367,15 @@ private:
   GraphicsPipeline mesh_pipeline_;
 
   DescriptorPool dpool_;
-  std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
+  struct FrameData {
+    VkDescriptorSet dset;
+    Buffer mesh_ubo;
+    Buffer scene_ubo;
+    Buffer indirect_draw_buffer;
+  };
+  std::array<FrameData, PFRAME_COUNT> frame_data_;
 
   Mesh mesh_;
-  PipelinedBuffer mesh_uniforms_;
-  PipelinedBuffer scene_uniforms_;
-
-  PipelinedBuffer indirect_draw_buffers_;
 
   BenchmarkMode benchmark_mode_ = BENCHMARK_MODE_DRAW_PER_INSTANCE;
   int triangles_per_instance_ = 1;
