@@ -759,20 +759,30 @@ int Application::Run() {
   frame_index_ = 0;
   pframe_index_ = 0;
   while (!force_exit_ && !glfwWindowShouldClose(window_.get())) {
+    uint64_t ticks_now = zomboClockTicks();
+    const double dt = zomboTicksToSeconds(ticks_now - ticks_prev);
+    ticks_prev = ticks_now;
+
+    // Iconified windows should just quietly spin in the background.
+    if (glfwGetWindowAttrib(window_.get(), GLFW_ICONIFIED) == GLFW_TRUE) {
+      zomboSleepMsec(17);
+      glfwPollEvents();
+      continue;
+    }
+
     // Check for window resize, and recreate the swapchain. Need to wait for an idle device first.
     // Provide a hook for application subclasses to respond to resize events
     {
       int fb_width = -1, fb_height = -1;
       glfwGetFramebufferSize(window_.get(), &fb_width, &fb_height);
-      if (fb_width != (int)swapchain_extent_.width || fb_height != (int)swapchain_extent_.height) {
+      if (fb_width == 0 && fb_height == 0) {
+        // window is likely iconfied; just early out & handle it properly next frame
+        continue;
+      } else if (fb_width != (int)swapchain_extent_.width || fb_height != (int)swapchain_extent_.height) {
         VkExtent2D window_extent = {(uint32_t)fb_width, (uint32_t)fb_height};
         HandleWindowResizeInternal(window_extent);
       }
     }
-
-    uint64_t ticks_now = zomboClockTicks();
-    const double dt = zomboTicksToSeconds(ticks_now - ticks_prev);
-    ticks_prev = ticks_now;
 
     ImGui_ImplGlfwVulkan_NewFrame();
 #if 0  // IMGUI demo window
@@ -818,6 +828,10 @@ int Application::Run() {
       // handled.
       int fb_width = -1, fb_height = -1;
       glfwGetFramebufferSize(window_.get(), &fb_width, &fb_height);
+      if (fb_width == 0 && fb_height == 0) {
+        // window is likely iconfied; just early out & handle it properly next frame
+        continue;
+      }
       VkExtent2D window_extent = { (uint32_t)fb_width, (uint32_t)fb_width };
       HandleWindowResizeInternal(window_extent);
     } else {
@@ -893,6 +907,10 @@ int Application::Run() {
       // handled.
       int fb_width = -1, fb_height = -1;
       glfwGetFramebufferSize(window_.get(), &fb_width, &fb_height);
+      if (fb_width == 0 && fb_height == 0) {
+        // window is likely iconfied; just early out & handle it properly next frame
+        continue;
+      }
       VkExtent2D window_extent = {(uint32_t)fb_width, (uint32_t)fb_height};
       HandleWindowResizeInternal(window_extent);
     } else {
