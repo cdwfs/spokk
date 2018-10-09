@@ -55,7 +55,7 @@ using namespace spokk;
 #pragma warning(disable : 4189)  // initialized-but-unused local variable
 #endif
 #define VMA_ASSERT(expr) ZOMBO_ASSERT(expr, "Assert failed: %s", #expr)
-#if defined(_DEBUG) // enable extra corruption detection in debug builds
+#if defined(_DEBUG)  // enable extra corruption detection in debug builds
 #define VMA_DEBUG_MARGIN 16
 #define VMA_DEBUG_DETECT_CORRUPTION 1
 #endif
@@ -594,7 +594,9 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
     graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
     SPOKK_VK_CHECK(device_.SetObjectName(graphics_and_present_queue_->handle, "graphics/present queue"));
 
-    VkExtent2D default_extent = {ci.window_width, ci.window_height};
+    int fb_width = 0, fb_height = 0;
+    glfwGetFramebufferSize(window_.get(), &fb_width, &fb_height);
+    VkExtent2D default_extent = {(uint32_t)fb_width, (uint32_t)fb_height};
     CreateSwapchain(default_extent);
 
     // Create imgui render pass. This is an optional pass on the final swapchain image
@@ -760,10 +762,10 @@ int Application::Run() {
     // Check for window resize, and recreate the swapchain. Need to wait for an idle device first.
     // Provide a hook for application subclasses to respond to resize events
     {
-      int window_width = -1, window_height = -1;
-      glfwGetWindowSize(window_.get(), &window_width, &window_height);
-      if (window_width != (int)swapchain_extent_.width || window_height != (int)swapchain_extent_.height) {
-        VkExtent2D window_extent = {(uint32_t)window_width, (uint32_t)window_height};
+      int fb_width = -1, fb_height = -1;
+      glfwGetFramebufferSize(window_.get(), &fb_width, &fb_height);
+      if (fb_width != (int)swapchain_extent_.width || fb_height != (int)swapchain_extent_.height) {
+        VkExtent2D window_extent = {(uint32_t)fb_width, (uint32_t)fb_height};
         HandleWindowResizeInternal(window_extent);
       }
     }
@@ -814,9 +816,9 @@ int Application::Run() {
     if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR || acquire_result == VK_SUBOPTIMAL_KHR) {
       // I've never actually seen these error codes returned, but if they were this is probably how they should be
       // handled.
-      int window_width = -1, window_height = -1;
-      glfwGetWindowSize(window_.get(), &window_width, &window_height);
-      VkExtent2D window_extent = {(uint32_t)window_width, (uint32_t)window_height};
+      int fb_width = -1, fb_height = -1;
+      glfwGetFramebufferSize(window_.get(), &fb_width, &fb_height);
+      VkExtent2D window_extent = { (uint32_t)fb_width, (uint32_t)fb_width };
       HandleWindowResizeInternal(window_extent);
     } else {
       SPOKK_VK_CHECK(acquire_result);
@@ -889,9 +891,9 @@ int Application::Run() {
     if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR) {
       // I've never actually seen these error codes returned, but if they were this is probably how they should be
       // handled.
-      int window_width = -1, window_height = -1;
-      glfwGetWindowSize(window_.get(), &window_width, &window_height);
-      VkExtent2D window_extent = {(uint32_t)window_width, (uint32_t)window_height};
+      int fb_width = -1, fb_height = -1;
+      glfwGetFramebufferSize(window_.get(), &fb_width, &fb_height);
+      VkExtent2D window_extent = {(uint32_t)fb_width, (uint32_t)fb_height};
       HandleWindowResizeInternal(window_extent);
     } else {
       SPOKK_VK_CHECK(present_result);
