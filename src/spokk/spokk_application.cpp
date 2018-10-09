@@ -343,8 +343,8 @@ void SpokkVmaFree(void *pUserData, const spokk::Device & /*device*/, spokk::Devi
 //
 // Application
 //
-Application::Application(const CreateInfo &ci) {
-  if (ci.enable_graphics) {
+Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_graphics) {
+  if (is_graphics_app_) {
     // Initialize GLFW
     glfwSetErrorCallback(MyGlfwErrorCallback);
     if (!glfwInit()) {
@@ -389,7 +389,7 @@ Application::Application(const CreateInfo &ci) {
       &enabled_instance_layer_properties, &enabled_instance_layer_names));
 
   std::vector<const char *> required_instance_extension_names = ci.required_instance_extension_names;
-  if (ci.enable_graphics) {
+  if (is_graphics_app_) {
     required_instance_extension_names.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
     required_instance_extension_names.push_back(SPOKK_PLATFORM_SURFACE_EXTENSION_NAME);
   }
@@ -481,7 +481,7 @@ Application::Application(const CreateInfo &ci) {
         create_debug_report_func(instance_, &debug_report_callback_ci, host_allocator_, &debug_report_callback_));
   }
 
-  if (ci.enable_graphics) {
+  if (is_graphics_app_) {
     SPOKK_VK_CHECK(glfwCreateWindowSurface(instance_, window_.get(), host_allocator_, &surface_));
   }
 
@@ -506,7 +506,7 @@ Application::Application(const CreateInfo &ci) {
   ZOMBO_ASSERT(queue_priorities.size() == total_queue_count, "queue count mismatch");
 
   std::vector<const char *> required_device_extension_names = ci.required_device_extension_names;
-  if (ci.enable_graphics) {
+  if (is_graphics_app_) {
     required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
   }
   required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
@@ -586,7 +586,7 @@ Application::Application(const CreateInfo &ci) {
       enabled_device_extension_properties, host_allocator_, &device_allocator_);
 
   // Remaining work is for graphics apps only
-  if (ci.enable_graphics) {
+  if (is_graphics_app_) {
     graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
     SPOKK_VK_CHECK(device_.SetObjectName(graphics_and_present_queue_->handle, "graphics/present queue"));
 
@@ -682,11 +682,13 @@ Application::~Application() {
   if (device_ != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(device_);
 
-    DestroyImgui();
-    for (auto fb : imgui_framebuffers_) {
-      vkDestroyFramebuffer(device_, fb, host_allocator_);
+    if (is_graphics_app_) {
+      DestroyImgui();
+      for (auto fb : imgui_framebuffers_) {
+        vkDestroyFramebuffer(device_, fb, host_allocator_);
+      }
+      imgui_render_pass_.Destroy(device_);
     }
-    imgui_render_pass_.Destroy(device_);
 
     if (image_acquire_semaphore_ != VK_NULL_HANDLE) {
       vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
@@ -998,7 +1000,7 @@ void Application::ShowImgui(bool visible) {
 void Application::RenderImgui(VkCommandBuffer cb) const { ImGui_ImplGlfwVulkan_Render(cb); }
 
 void Application::DestroyImgui(void) {
-  if (device_.Logical() != VK_NULL_HANDLE) {
+  if (is_graphics_app_ && device_.Logical() != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(device_);
 
     ImGui_ImplGlfwVulkan_Shutdown();

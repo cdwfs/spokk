@@ -163,6 +163,7 @@ private:
   VkResult CreateSwapchain(VkExtent2D extent);
 
   bool init_successful_ = false;
+  bool is_graphics_app_ = false;
 
   VkCommandPool primary_cpool_ = VK_NULL_HANDLE;
   std::array<VkCommandBuffer, PFRAME_COUNT> primary_command_buffers_;
