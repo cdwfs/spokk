@@ -361,9 +361,21 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
     }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
-    window_ = std::shared_ptr<GLFWwindow>(
-        glfwCreateWindow(ci.window_width, ci.window_height, ci.app_name.c_str(), NULL, NULL),
-        [](GLFWwindow *w) { glfwDestroyWindow(w); });
+    if (ci.enable_fullscreen) {
+      GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+      const GLFWvidmode *vid_mode = glfwGetVideoMode(monitor);
+      glfwWindowHint(GLFW_RED_BITS, vid_mode->redBits);
+      glfwWindowHint(GLFW_GREEN_BITS, vid_mode->greenBits);
+      glfwWindowHint(GLFW_BLUE_BITS, vid_mode->blueBits);
+      glfwWindowHint(GLFW_REFRESH_RATE, vid_mode->refreshRate);
+      window_ = std::shared_ptr<GLFWwindow>(
+          glfwCreateWindow(vid_mode->width, vid_mode->height, ci.app_name.c_str(), monitor, NULL),
+          [](GLFWwindow *w) { glfwDestroyWindow(w); });
+    } else {
+      window_ = std::shared_ptr<GLFWwindow>(
+          glfwCreateWindow(ci.window_width, ci.window_height, ci.app_name.c_str(), NULL, NULL),
+          [](GLFWwindow *w) { glfwDestroyWindow(w); });
+    }
     glfwSetInputMode(window_.get(), GLFW_STICKY_KEYS, 1);
     glfwPollEvents();  // dummy poll for first loop iteration
   }

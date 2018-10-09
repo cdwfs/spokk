@@ -56,8 +56,8 @@ public:
   struct CreateInfo {
     std::string app_name = "Spokk Application";
     uint32_t window_width = 1280, window_height = 720;
+    bool enable_fullscreen = false;
     bool enable_graphics = true;
-
     // clang-format off
     VkDebugReportFlagsEXT debug_report_flags = 0
       | VK_DEBUG_REPORT_ERROR_BIT_EXT
