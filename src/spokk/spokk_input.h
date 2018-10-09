@@ -28,6 +28,8 @@ public:
 
     DIGITAL_MENU = 8,
 
+    DIGITAL_ENTER_KEY = 9,
+
     DIGITAL_COUNT
   };
   enum Analog {

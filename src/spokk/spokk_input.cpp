@@ -38,10 +38,42 @@ void InputState::Update(void) {
     current_.digital[DIGITAL_RPAD_DOWN] = SPOKK__IS_KEY_DOWN(GLFW_KEY_SPACE);
     current_.digital[DIGITAL_RPAD_UP] = SPOKK__IS_KEY_DOWN(GLFW_KEY_V);
     current_.digital[DIGITAL_MENU] = SPOKK__IS_KEY_DOWN(GLFW_KEY_GRAVE_ACCENT);
+    current_.digital[DIGITAL_ENTER_KEY] = SPOKK__IS_KEY_DOWN(GLFW_KEY_ENTER);
 #undef SPOKK__IS_KEY_DOWN
   } else {
     // If imgui has captured the keyboard, pretend all keys have been released.
     current_.digital.fill(0);
+  }
+
+  // TODO(cort): THIS DOES NOT BELONG HERE! I just don't have a way to query Alt+Enter from
+  // application code yet. As soon as I can, this should go into Application::Run()!
+  if (IsPressed(DIGITAL_ENTER_KEY) && ImGui::GetIO().KeyAlt) {
+    static bool started_in_fullscreen = (glfwGetWindowMonitor(pw) != nullptr);
+    static int prev_window_xpos = 100, prev_window_ypos = 100;
+    static int prev_window_w = 0, prev_window_h = 0;
+    GLFWmonitor *monitor = glfwGetWindowMonitor(pw);
+    if (!monitor) {
+      // windowed -> fullscreen.
+      // Save current window pos/size to restore later.
+      glfwGetWindowPos(pw, &prev_window_xpos, &prev_window_ypos);
+      glfwGetWindowSize(pw, &prev_window_w, &prev_window_h);
+      GLFWmonitor *primary_monitor = glfwGetPrimaryMonitor();
+      const GLFWvidmode *vid_mode = glfwGetVideoMode(primary_monitor);
+      glfwWindowHint(GLFW_RED_BITS, vid_mode->redBits);
+      glfwWindowHint(GLFW_GREEN_BITS, vid_mode->greenBits);
+      glfwWindowHint(GLFW_BLUE_BITS, vid_mode->blueBits);
+      glfwWindowHint(GLFW_REFRESH_RATE, vid_mode->refreshRate);
+      int fullscreen_w = started_in_fullscreen ? vid_mode->width : prev_window_w;
+      int fullscreen_h = started_in_fullscreen ? vid_mode->height : prev_window_h;
+      glfwSetWindowMonitor(pw, glfwGetPrimaryMonitor(), 0, 0, fullscreen_w, fullscreen_h, vid_mode->refreshRate);
+    } else {
+      // fullscreen -> windowed.
+      // Use previous pos/size if possible, or default to 1/2 monitor dimensions
+      const GLFWvidmode *vid_mode = glfwGetVideoMode(monitor);
+      int window_w = prev_window_w ? prev_window_w : (vid_mode->width / 2);
+      int window_h = prev_window_h ? prev_window_h : (vid_mode->height / 2);
+      glfwSetWindowMonitor(pw, nullptr, prev_window_xpos, prev_window_ypos, window_w, window_h, GLFW_DONT_CARE);
+    }
   }
 
   // Another option here would be if (!ImGui::GetIO().WantCaptureMouse),

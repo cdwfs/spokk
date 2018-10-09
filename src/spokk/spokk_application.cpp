@@ -916,8 +916,7 @@ int Application::Run() {
     present_info.pWaitSemaphores = &submit_complete_semaphore_;
     VkResult present_result = vkQueuePresentKHR(*graphics_and_present_queue_, &present_info);
     if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR) {
-      // I've never actually seen these error codes returned, but if they were this is probably how they should be
-      // handled.
+      // This happens on a windowed <-> fullscreen transition
       int fb_width = -1, fb_height = -1;
       glfwGetFramebufferSize(window_.get(), &fb_width, &fb_height);
       if (fb_width == 0 && fb_height == 0) {
