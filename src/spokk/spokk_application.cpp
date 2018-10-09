@@ -764,7 +764,7 @@ int Application::Run() {
       glfwGetWindowSize(window_.get(), &window_width, &window_height);
       if (window_width != (int)swapchain_extent_.width || window_height != (int)swapchain_extent_.height) {
         VkExtent2D window_extent = {(uint32_t)window_width, (uint32_t)window_height};
-        HandleWindowResize(window_extent);
+        HandleWindowResizeInternal(window_extent);
       }
     }
 
@@ -817,7 +817,7 @@ int Application::Run() {
       int window_width = -1, window_height = -1;
       glfwGetWindowSize(window_.get(), &window_width, &window_height);
       VkExtent2D window_extent = {(uint32_t)window_width, (uint32_t)window_height};
-      HandleWindowResize(window_extent);
+      HandleWindowResizeInternal(window_extent);
     } else {
       SPOKK_VK_CHECK(acquire_result);
     }
@@ -892,7 +892,7 @@ int Application::Run() {
       int window_width = -1, window_height = -1;
       glfwGetWindowSize(window_.get(), &window_width, &window_height);
       VkExtent2D window_extent = {(uint32_t)window_width, (uint32_t)window_height};
-      HandleWindowResize(window_extent);
+      HandleWindowResizeInternal(window_extent);
     } else {
       SPOKK_VK_CHECK(present_result);
     }
@@ -904,7 +904,7 @@ int Application::Run() {
   return 0;
 }
 
-void Application::HandleWindowResize(VkExtent2D new_window_extent) {
+void Application::HandleWindowResizeInternal(VkExtent2D new_window_extent) {
   SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
   SPOKK_VK_CHECK(CreateSwapchain(new_window_extent));
 
@@ -923,6 +923,9 @@ void Application::HandleWindowResize(VkExtent2D new_window_extent) {
     framebuffer_ci.pAttachments = &swapchain_image_views_[i];
     SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &imgui_framebuffers_[i]));
   }
+
+  // Subclass-specific resize handling
+  HandleWindowResize(new_window_extent);
 }
 
 bool Application::InitImgui(VkRenderPass ui_render_pass) {

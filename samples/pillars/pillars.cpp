@@ -329,8 +329,6 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
 }
 
 void PillarsApp::HandleWindowResize(VkExtent2D new_window_extent) {
-  Application::HandleWindowResize(new_window_extent);
-
   // Destroy existing objects before re-creating them.
   for (auto fb : framebuffers_) {
     if (fb != VK_NULL_HANDLE) {

@@ -287,8 +287,6 @@ public:
 
 protected:
   void HandleWindowResize(VkExtent2D new_window_extent) override {
-    Application::HandleWindowResize(new_window_extent);
-
     for (auto fb : framebuffers_) {
       if (fb != VK_NULL_HANDLE) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);

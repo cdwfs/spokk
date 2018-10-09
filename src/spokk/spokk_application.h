@@ -107,10 +107,9 @@ public:
   virtual void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) = 0;
 
 protected:
-  // Overloads must call the base class resize method before performing their own work.
   // The first thing it does is call vkDeviceWaitIdle(), so subclasses can safely assume that
   // no resources are in use on the GPU and can be safely destroyed/recreated.
-  virtual void HandleWindowResize(VkExtent2D new_window_extent);
+  virtual void HandleWindowResize(VkExtent2D new_window_extent) { (void)new_window_extent; }
 
   const VkAllocationCallbacks* host_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
@@ -159,6 +158,8 @@ private:
   // different render pass).
   // Safe to call, even if IMGUI was not initialized or has already been destroyed.
   void DestroyImgui(void);
+
+  void HandleWindowResizeInternal(VkExtent2D new_window_extent);
 
   VkResult CreateSwapchain(VkExtent2D extent);
 
