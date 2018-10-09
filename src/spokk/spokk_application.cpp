@@ -360,6 +360,7 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
       return;
     }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
     window_ = std::shared_ptr<GLFWwindow>(
         glfwCreateWindow(ci.window_width, ci.window_height, ci.app_name.c_str(), NULL, NULL),
         [](GLFWwindow *w) { glfwDestroyWindow(w); });
@@ -952,8 +953,7 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
   // Setup Dear ImGui binding
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
-  ImGuiIO &io = ImGui::GetIO();
-  (void)io;
+
   ImGui_ImplGlfwVulkan_Init_Data init_data = {};
   init_data.allocator = const_cast<VkAllocationCallbacks *>(device_.HostAllocator());
   init_data.gpu = device_.Physical();
@@ -965,6 +965,11 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
   bool install_glfw_input_callbacks = true;
   bool init_success = ImGui_ImplGlfwVulkan_Init(window_.get(), install_glfw_input_callbacks, &init_data);
   ZOMBO_ASSERT_RETURN(init_success, false, "IMGUI init failed");
+
+  float content_scale_x = 1.0f, content_scale_y = 1.0f;
+  glfwGetWindowContentScale(window_.get(), &content_scale_x, &content_scale_y);
+  ImGui::GetStyle().ScaleAllSizes(content_scale_x);
+  ImGui::GetIO().FontGlobalScale = content_scale_x;
 
   // Load Fonts
   // (there is a default font, this is only if you want to change it. see extra_fonts/README.txt for more details)

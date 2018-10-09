@@ -871,13 +871,18 @@ void ImGui_ImplGlfwVulkan_NewFrame()
     ImGuiIO& io = ImGui::GetIO();
 
     // Setup display size (every frame to accommodate for window resizing)
-    int w, h;
-    int display_w, display_h;
-    glfwGetWindowSize(g_Window, &w, &h);
-    glfwGetFramebufferSize(g_Window, &display_w, &display_h);
-    io.DisplaySize = ImVec2((float)w, (float)h);
-    io.DisplayFramebufferScale = ImVec2(w > 0 ? ((float)display_w / w) : 0, h > 0 ? ((float)display_h / h) : 0);
-
+    int win_w, win_h;
+    glfwGetWindowSize(g_Window, &win_w, &win_h);
+    int fb_w, fb_h;
+    glfwGetFramebufferSize(g_Window, &fb_w, &fb_h);
+    float win_scale_x, win_scale_y;
+    glfwGetWindowContentScale(g_Window, &win_scale_x, &win_scale_y);
+    io.DisplaySize = ImVec2((float)fb_w, (float)fb_h);
+    if (win_w == fb_w && win_h == fb_h) {
+      io.DisplayFramebufferScale = ImVec2(win_scale_x, win_scale_y);
+    } else {
+      io.DisplayFramebufferScale = ImVec2(win_w > 0 ? ((float)fb_w / win_w) : 0, win_h > 0 ? ((float)fb_h / win_h) : 0);
+    }
     // Setup time step
     double current_time =  glfwGetTime();
     io.DeltaTime = g_Time > 0.0 ? (float)(current_time - g_Time) : (float)(1.0f/60.0f);
