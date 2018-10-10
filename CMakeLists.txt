@@ -137,12 +137,13 @@ TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME}
     ${VULKAN_LIBRARY}
 )
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
-    "third_party/glm"
-    "third_party/imgui"
-    ${VULKAN_MEMORY_ALLOCATOR_DIR}
+    ${GLM_DIR}
+    ${IMGUI_DIR}
     ${SIMPLE_VULKAN_SYNCHRONIZATION_DIR}
-    "third_party"
+    ${SPIRV_REFLECT_DIR}
+    ${STB_DIR}
     ${SPIRV-Headers_SOURCE_DIR}/include/spirv/unified1
+    ${VULKAN_MEMORY_ALLOCATOR_DIR}
     ${VULKAN_INCLUDE_DIR}
     "src/spokk"
 )

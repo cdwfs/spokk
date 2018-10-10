@@ -1,7 +1,7 @@
 #include "spokk_shader.h"
 #include "spokk_platform.h"
 
-#include <SPIRV-Reflect/spirv_reflect.h>
+#include <spirv_reflect.h>
 
 #include <algorithm>
 #include <cstdint>
