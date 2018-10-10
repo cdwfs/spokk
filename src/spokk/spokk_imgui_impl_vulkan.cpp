@@ -27,7 +27,7 @@
 //  2016-08-27: Vulkan: Fix Vulkan example for use when a depth buffer is active.
 
 #include "imgui.h"
-#include "imgui_impl_vulkan.h"
+#include "spokk_imgui_impl_vulkan.h"
 #include <stdio.h>
 
 // Vulkan data
@@ -40,6 +40,7 @@ static VkQueue                      g_Queue = VK_NULL_HANDLE;
 static VkPipelineCache              g_PipelineCache = VK_NULL_HANDLE;
 static VkDescriptorPool             g_DescriptorPool = VK_NULL_HANDLE;
 static VkRenderPass                 g_RenderPass = VK_NULL_HANDLE;
+static uint32_t                     g_SubPass = 0;  // spokk: added subpass index
 static void                         (*g_CheckVkResultFn)(VkResult err) = NULL;
 
 static VkDeviceSize                 g_BufferMemoryAlignment = 256;
@@ -525,6 +526,21 @@ bool ImGui_ImplVulkan_CreateDeviceObjects()
         check_vk_result(err);
     }
 
+    // spokk: create descriptor pool internally
+    if (!g_DescriptorPool)
+    {
+      VkDescriptorPoolSize pool_sizes[] = {
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+      };
+      VkDescriptorPoolCreateInfo info = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+      info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+      info.maxSets = IMGUI_VK_QUEUED_FRAMES;
+      info.poolSizeCount = sizeof(pool_sizes) / sizeof(pool_sizes[0]);
+      info.pPoolSizes = pool_sizes;
+      err = vkCreateDescriptorPool(g_Device, &info, g_Allocator, &g_DescriptorPool);
+      check_vk_result(err);
+    }
+
     // Create Descriptor Set:
     {
         VkDescriptorSetAllocateInfo alloc_info = {};
@@ -648,6 +664,7 @@ bool ImGui_ImplVulkan_CreateDeviceObjects()
     info.pDynamicState = &dynamic_state;
     info.layout = g_PipelineLayout;
     info.renderPass = g_RenderPass;
+    info.subpass = g_SubPass;  // spokk: add subpass
     err = vkCreateGraphicsPipelines(g_Device, g_PipelineCache, 1, &info, g_Allocator, &g_Pipeline);
     check_vk_result(err);
 
@@ -689,17 +706,18 @@ void    ImGui_ImplVulkan_InvalidateDeviceObjects()
     if (g_FontMemory)           { vkFreeMemory(g_Device, g_FontMemory, g_Allocator); g_FontMemory = VK_NULL_HANDLE; }
     if (g_FontSampler)          { vkDestroySampler(g_Device, g_FontSampler, g_Allocator); g_FontSampler = VK_NULL_HANDLE; }
     if (g_DescriptorSetLayout)  { vkDestroyDescriptorSetLayout(g_Device, g_DescriptorSetLayout, g_Allocator); g_DescriptorSetLayout = VK_NULL_HANDLE; }
+    if (g_DescriptorPool)       { vkDestroyDescriptorPool(g_Device, g_DescriptorPool, g_Allocator); g_DescriptorPool = VK_NULL_HANDLE; } // spokk: pool is managed internally now
     if (g_PipelineLayout)       { vkDestroyPipelineLayout(g_Device, g_PipelineLayout, g_Allocator); g_PipelineLayout = VK_NULL_HANDLE; }
     if (g_Pipeline)             { vkDestroyPipeline(g_Device, g_Pipeline, g_Allocator); g_Pipeline = VK_NULL_HANDLE; }
 }
 
-bool    ImGui_ImplVulkan_Init(ImGui_ImplVulkan_InitInfo* info, VkRenderPass render_pass)
+bool    ImGui_ImplVulkan_Init(ImGui_ImplVulkan_InitInfo* info, VkRenderPass render_pass, uint32_t subpass) // spokk: add subpass index
 {
     IM_ASSERT(info->Instance != VK_NULL_HANDLE);
     IM_ASSERT(info->PhysicalDevice != VK_NULL_HANDLE);
     IM_ASSERT(info->Device != VK_NULL_HANDLE);
     IM_ASSERT(info->Queue != VK_NULL_HANDLE);
-    IM_ASSERT(info->DescriptorPool != VK_NULL_HANDLE);
+    //IM_ASSERT(info->DescriptorPool != VK_NULL_HANDLE);  // spokk: pool is managed internally now
     IM_ASSERT(render_pass != VK_NULL_HANDLE);
 
     g_Instance = info->Instance;
@@ -708,8 +726,9 @@ bool    ImGui_ImplVulkan_Init(ImGui_ImplVulkan_InitInfo* info, VkRenderPass rend
     g_QueueFamily = info->QueueFamily;
     g_Queue = info->Queue;
     g_RenderPass = render_pass;
+    g_SubPass = subpass; // spokk: add subpass
     g_PipelineCache = info->PipelineCache;
-    g_DescriptorPool = info->DescriptorPool;
+    //g_DescriptorPool = info->DescriptorPool;  // spokk: pool is created internally
     g_Allocator = info->Allocator;
     g_CheckVkResultFn = info->CheckVkResultFn;
 
@@ -924,7 +943,7 @@ void ImGui_ImplVulkanH_CreateWindowDataSwapChainAndFramebuffer(VkPhysicalDevice 
         VkSwapchainCreateInfoKHR info = {};
         info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         info.surface = wd->Surface;
-		info.minImageCount = min_image_count;
+    info.minImageCount = min_image_count;
         info.imageFormat = wd->SurfaceFormat.format;
         info.imageColorSpace = wd->SurfaceFormat.colorSpace;
         info.imageArrayLayers = 1;
@@ -939,9 +958,9 @@ void ImGui_ImplVulkanH_CreateWindowDataSwapChainAndFramebuffer(VkPhysicalDevice 
         err = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, wd->Surface, &cap);
         check_vk_result(err);
         if (info.minImageCount < cap.minImageCount)
-			info.minImageCount = cap.minImageCount;
-		else if (cap.maxImageCount != 0 && info.minImageCount > cap.maxImageCount)
-			info.minImageCount = cap.maxImageCount;
+      info.minImageCount = cap.minImageCount;
+    else if (cap.maxImageCount != 0 && info.minImageCount > cap.maxImageCount)
+      info.minImageCount = cap.maxImageCount;
 
         if (cap.currentExtent.width == 0xffffffff)
         {

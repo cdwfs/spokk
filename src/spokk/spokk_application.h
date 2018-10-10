@@ -143,16 +143,13 @@ protected:
 private:
   // Initialize imgui. The provided render pass must be the one that will be active when
   // RenderImgui() will be called.
-  bool InitImgui(VkRenderPass ui_render_pass);
+  bool InitImgui(VkRenderPass ui_render_pass, uint32_t ui_subpass = 0);
   // If visible=true, the imgui will be rendered, the cursor will be visible, and any
   // keyboard/mouse consumed by imgui will be ignored by InputState.
   // If visible=false, imgui will not be rendered (but UI controls throughout the code will still
   // be processed, so if they're expensive, maybe make them conditional). The mouse cursor will
   // be hidden, and InputState will get updated keyboard/mouse input every frame.
   void ShowImgui(bool visible);
-  // Generate the commands to render the IMGUI elements created earlier in the frame.
-  // This function must only be called when the ui_render_pass passed to InitImgui() is active.
-  void RenderImgui(VkCommandBuffer cb) const;
   // Cleans up all IMGUI resources. This is automatically called during application shutdown, but
   // would need to be called manually to reinitialize the GUI subsystem at runtime (e,g. with a
   // different render pass).

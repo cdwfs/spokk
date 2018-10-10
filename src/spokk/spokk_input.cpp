@@ -91,7 +91,9 @@ void InputState::Update(void) {
 void InputState::ClearHistory() {
   // This is meant to be called when starting to update inputstate after a discontinuity (e.g. when leaving UI mode).
   std::shared_ptr<GLFWwindow> w = window_.lock();
-  ZOMBO_ASSERT(w != nullptr, "window pointer is NULL");
+  if (w == nullptr) {
+    return;  // nothing to clear anyway
+  }
   GLFWwindow *pw = w.get();
 
   double mx = 0, my = 0;

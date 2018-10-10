@@ -42,11 +42,12 @@ using namespace spokk;
     w = f.w;                   \
   }                            \
   operator glm::vec4() const { return glm::vec4(x, y, z, w); }
-#define IMGUI_VK_QUEUED_FRAMES spokk::PFRAME_COUNT;
 // clang-format off
 #include <imgui/imgui.h>
-#include "spokk_imgui_impl_glfw_vulkan.h"
+#include "spokk_imgui_impl_glfw.h"
+#include "spokk_imgui_impl_vulkan.h"
 // clang-format on
+static_assert(spokk::PFRAME_COUNT == IMGUI_VK_QUEUED_FRAMES, "spokk and imgui must agree on queued frame count");
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -653,7 +654,7 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
           std::string("imgui framebuffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
     }
 
-    InitImgui(imgui_render_pass_.handle);
+    InitImgui(imgui_render_pass_.handle, 0);
     // Don't initialize the input state until IMGUI is initialized
     input_state_.SetWindow(window_);
 
@@ -797,7 +798,9 @@ int Application::Run() {
       }
     }
 
-    ImGui_ImplGlfwVulkan_NewFrame();
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
 #if 0  // IMGUI demo window
     if (is_imgui_visible_) {
       ImGui::ShowDemoWindow();
@@ -874,17 +877,16 @@ int Application::Run() {
 #endif
 
     // optional UI render pass
+    ImGui::Render();
     if (is_imgui_visible_) {
-      const float imgui_label_color[4] = {0, 1, 0, 1};
+      const float imgui_label_color[4] = { 0, 1, 0, 1 };
       device_.DebugLabelBegin(cb, "IMGUI rendering", imgui_label_color);
       imgui_render_pass_.begin_info.framebuffer = imgui_framebuffers_[swapchain_image_index];
       imgui_render_pass_.begin_info.renderArea.extent = swapchain_extent_;
       vkCmdBeginRenderPass(cb, &imgui_render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
-      RenderImgui(cb);
+      ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cb);
       vkCmdEndRenderPass(cb);
       device_.DebugLabelEnd(cb);
-    } else {
-      RenderImgui(cb);  // still needs to be called if the UI system is active, even if nothing is drawn.
     }
     // This must happen outside the IMGUI NewFrame/Render pair, so may lag by a frame, but enh.
     if (input_state_.IsPressed(InputState::DIGITAL_MENU)) {
@@ -960,22 +962,28 @@ void Application::HandleWindowResizeInternal(VkExtent2D new_window_extent) {
   HandleWindowResize(new_window_extent);
 }
 
-bool Application::InitImgui(VkRenderPass ui_render_pass) {
+bool Application::InitImgui(VkRenderPass ui_render_pass, uint32_t ui_subpass) {
   // Setup Dear ImGui binding
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
 
-  ImGui_ImplGlfwVulkan_Init_Data init_data = {};
-  init_data.allocator = const_cast<VkAllocationCallbacks *>(device_.HostAllocator());
-  init_data.gpu = device_.Physical();
-  init_data.device = device_.Logical();
-  init_data.render_pass = ui_render_pass;
-  init_data.subpass = 0;
-  init_data.pipeline_cache = device_.PipelineCache();
-  init_data.check_vk_result = [](VkResult result) { SPOKK_VK_CHECK(result); };
+  // Setup GLFW binding
   bool install_glfw_input_callbacks = true;
-  bool init_success = ImGui_ImplGlfwVulkan_Init(window_.get(), install_glfw_input_callbacks, &init_data);
-  ZOMBO_ASSERT_RETURN(init_success, false, "IMGUI init failed");
+  bool imgui_glfw_init_success = ImGui_ImplGlfw_InitForVulkan(window_.get(), install_glfw_input_callbacks);
+  ZOMBO_ASSERT_RETURN(imgui_glfw_init_success, false, "ImGui GLFW init failed");
+
+  ImGui_ImplVulkan_InitInfo imgui_vk_init_info = {};
+  imgui_vk_init_info.Instance = instance_;
+  imgui_vk_init_info.PhysicalDevice = device_.Physical();
+  imgui_vk_init_info.Device = device_.Logical();
+  imgui_vk_init_info.QueueFamily = graphics_and_present_queue_->family;
+  imgui_vk_init_info.Queue = (VkQueue)*graphics_and_present_queue_;
+  imgui_vk_init_info.PipelineCache = device_.PipelineCache();
+  imgui_vk_init_info.Allocator = const_cast<VkAllocationCallbacks *>(device_.HostAllocator());
+  imgui_vk_init_info.CheckVkResultFn = [](VkResult result) { SPOKK_VK_CHECK(result); };
+  
+  bool imgui_vk_init_success = ImGui_ImplVulkan_Init(&imgui_vk_init_info, ui_render_pass, ui_subpass);
+  ZOMBO_ASSERT_RETURN(imgui_vk_init_success, false, "ImGui VK init failed");
 
   float content_scale_x = 1.0f, content_scale_y = 1.0f;
   glfwGetWindowContentScale(window_.get(), &content_scale_x, &content_scale_y);
@@ -1010,7 +1018,7 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
   SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &begin_info));
-  bool font_create_success = ImGui_ImplGlfwVulkan_CreateFontsTexture(cb);
+  bool font_create_success = ImGui_ImplVulkan_CreateFontsTexture(cb);
   ZOMBO_ASSERT_RETURN(font_create_success, false, "IMGUI failed to create fonts");
   VkSubmitInfo end_info = {};
   end_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1019,11 +1027,12 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
   SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
   SPOKK_VK_CHECK(vkQueueSubmit(*(device_.FindQueue(VK_QUEUE_GRAPHICS_BIT)), 1, &end_info, VK_NULL_HANDLE));
   SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
-  ImGui_ImplGlfwVulkan_InvalidateFontUploadObjects();
+  ImGui_ImplVulkan_InvalidateFontUploadObjects();
   vkDestroyCommandPool(device_, cpool, device_.HostAllocator());
 
-  ImGui_ImplGlfwVulkan_Hide();
-  is_imgui_visible_ = false;
+  // hide by default (which means is_imgui_visible must be true first, so we transition to false)
+  is_imgui_visible_ = true;
+  ShowImgui(false);
 
   return true;
 }
@@ -1031,22 +1040,21 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
 void Application::ShowImgui(bool visible) {
   if (visible && !is_imgui_visible_) {
     // invisible -> visible
-    ImGui_ImplGlfwVulkan_Show();
+    glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
   } else if (!visible && is_imgui_visible_) {
     // visible -> invisible
-    ImGui_ImplGlfwVulkan_Hide();
+    glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     input_state_.ClearHistory();
   }
   is_imgui_visible_ = visible;
 }
 
-void Application::RenderImgui(VkCommandBuffer cb) const { ImGui_ImplGlfwVulkan_Render(cb); }
-
 void Application::DestroyImgui(void) {
   if (is_graphics_app_ && device_.Logical() != VK_NULL_HANDLE) {
-    vkDeviceWaitIdle(device_);
+    SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
 
-    ImGui_ImplGlfwVulkan_Shutdown();
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
     ShowImgui(false);

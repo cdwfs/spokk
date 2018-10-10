@@ -24,13 +24,13 @@ struct ImGui_ImplVulkan_InitInfo
     uint32_t                        QueueFamily;
     VkQueue                         Queue;
     VkPipelineCache                 PipelineCache;
-    VkDescriptorPool                DescriptorPool;
+    //VkDescriptorPool                DescriptorPool; // spokk: create an internal pool instead
     const VkAllocationCallbacks*    Allocator;
     void                            (*CheckVkResultFn)(VkResult err);
 };
 
 // Called by user code
-IMGUI_IMPL_API bool     ImGui_ImplVulkan_Init(ImGui_ImplVulkan_InitInfo* info, VkRenderPass render_pass);
+IMGUI_IMPL_API bool     ImGui_ImplVulkan_Init(ImGui_ImplVulkan_InitInfo* info, VkRenderPass render_pass, uint32_t subpass = 0); // spokk: add subpass param
 IMGUI_IMPL_API void     ImGui_ImplVulkan_Shutdown();
 IMGUI_IMPL_API void     ImGui_ImplVulkan_NewFrame();
 IMGUI_IMPL_API void     ImGui_ImplVulkan_RenderDrawData(ImDrawData* draw_data, VkCommandBuffer command_buffer);
@@ -40,7 +40,6 @@ IMGUI_IMPL_API void     ImGui_ImplVulkan_InvalidateFontUploadObjects();
 // Called by ImGui_ImplVulkan_Init() might be useful elsewhere.
 IMGUI_IMPL_API bool     ImGui_ImplVulkan_CreateDeviceObjects();
 IMGUI_IMPL_API void     ImGui_ImplVulkan_InvalidateDeviceObjects();
-
 
 //-------------------------------------------------------------------------
 // Internal / Miscellaneous Vulkan Helpers
@@ -89,6 +88,7 @@ struct ImGui_ImplVulkanH_WindowData
     VkSurfaceFormatKHR  SurfaceFormat;
     VkPresentModeKHR    PresentMode;
     VkRenderPass        RenderPass;
+    uint32_t            SubPass;  // spokk: added subpass index
     bool                ClearEnable;
     VkClearValue        ClearValue;
     uint32_t            BackBufferCount;

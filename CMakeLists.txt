@@ -87,7 +87,8 @@ SET(SPOKK_HEADERS
     src/spokk/spokk_debug.h
     src/spokk/spokk_device.h
     src/spokk/spokk_image.h
-    src/spokk/spokk_imgui_impl_glfw_vulkan.h
+    src/spokk/spokk_imgui_impl_glfw.h
+    src/spokk/spokk_imgui_impl_vulkan.h
     src/spokk/spokk_input.h
     src/spokk/spokk_math.h
     src/spokk/spokk_memory.h
@@ -107,7 +108,8 @@ SET(SPOKK_SOURCES
     src/spokk/spokk_buffer.cpp
     src/spokk/spokk_device.cpp
     src/spokk/spokk_image.cpp
-    src/spokk/spokk_imgui_impl_glfw_vulkan.cpp
+    src/spokk/spokk_imgui_impl_glfw.cpp
+    src/spokk/spokk_imgui_impl_vulkan.cpp
     src/spokk/spokk_input.cpp
     src/spokk/spokk_math.cpp
     src/spokk/spokk_memory.cpp
