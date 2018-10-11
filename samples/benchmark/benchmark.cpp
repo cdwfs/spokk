@@ -142,6 +142,9 @@ public:
 
     // Create swapchain-sized buffers
     CreateRenderBuffers(swapchain_extent_);
+
+    // Show GUI by default
+    ShowImgui(true);
   }
   virtual ~BenchmarkApp() {
     if (device_ != VK_NULL_HANDLE) {
