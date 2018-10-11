@@ -77,11 +77,12 @@ bool FileExists(const char* path) {
 }
 
 #if defined(ZOMBO_PLATFORM_WINDOWS)
-void CharFromAToB(char* str, char a, char b) {
+// Modifies str in-place to replace all instances of ca with cb.
+void CharFromAToB(char* str, char ca, char cb) {
   char* c = str;
   while (*c != '\0') {
-    if (*c == a) {
-      *c = b;
+    if (*c == ca) {
+      *c = cb;
     }
     ++c;
   }
@@ -268,20 +269,6 @@ int CreateDirectoryAndParents(const char* abs_dir) {
   return zomboMkdir(abs_dir);
 }
 
-#if 0 && defined(ZOMBO_PLATFORM_WINDOWS)
-// Converts a UTF8-encoded JSON string to a UTF16 string. Not sure if I'll need this.
-int ConvertUtf8ToWide(const json_string_s* utf8, std::wstring* out_wide) {
-  static_assert(sizeof(wchar_t) == sizeof(WCHAR), "This code assumes sizeof(wchar_t) == sizeof(WCHAR)");
-  int nchars = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, nullptr, 0);
-  ZOMBO_ASSERT_RETURN(nchars != 0, -1, "malformed UTF-8, I guess?");
-  out_wide->resize(nchars + 1);
-  int nchars_final = MultiByteToWideChar(CP_UTF8, 0, utf8->string, (int)utf8->string_size, &(*out_wide)[0], nchars + 1);
-  ZOMBO_ASSERT_RETURN(nchars_final != 0, -2, "failed to decode UTF-8");
-  (*out_wide)[nchars_final] = 0;
-  return nchars_final;
-}
-#endif
-
 }  // namespace
 
 constexpr int SPOKK_MAX_VERTEX_COLORS = 4;
@@ -292,7 +279,7 @@ struct SourceAttribute {
   const void* values;
 };
 
-static void handleReadFileError(const std::string& errorString) { fprintf(stderr, "ERROR: %s\n", errorString.c_str()); }
+static void HandleReadFileError(const std::string& errorString) { fprintf(stderr, "ERROR: %s\n", errorString.c_str()); }
 
 int ConvertSceneToMesh(const std::string& input_scene_filename, const std::string& output_mesh_filename) {
   // Uncomment to enable importer logging (can be quite verbose!)
@@ -332,7 +319,7 @@ int ConvertSceneToMesh(const std::string& input_scene_filename, const std::strin
   // clang-format on
   // If the import failed, report it
   if (!scene) {
-    handleReadFileError(importer.GetErrorString());
+    HandleReadFileError(importer.GetErrorString());
     return -1;
   }
 
@@ -683,7 +670,7 @@ private:
   AssetManifest& operator=(const AssetManifest& rhs) = delete;
 
   // Converts a json_parse_error_e to a human-readable string
-  std::string JsonParseErrorStr(const json_parse_error_e error_code) const;
+  const char* JsonParseErrorStr(const json_parse_error_e error_code) const;
   // Returns a human-readable location of the specified json_value_s.
   // This assumes the manifest file was parsed with the
   // 'json_parse_flags_allow_location_information' flag enabled.
@@ -732,7 +719,8 @@ private:
   std::vector<ShaderAsset> shader_assets_;
 };
 
-AssetManifest::AssetManifest() : launch_dir_("."), manifest_dir_("."), manifest_filename_(""), output_root_("."), force_rebuild_(false) {}
+AssetManifest::AssetManifest()
+  : launch_dir_("."), manifest_dir_("."), manifest_filename_(""), output_root_("."), force_rebuild_(false) {}
 AssetManifest::~AssetManifest() {}
 
 int AssetManifest::Load(const std::string& json5_filename) {
@@ -773,7 +761,7 @@ int AssetManifest::Load(const std::string& json5_filename) {
   if (!manifest) {
     fprintf(stderr, "%s(%u): error %u at column %u (%s)\n", manifest_filename_.c_str(),
         (uint32_t)parse_result.error_line_no, (uint32_t)parse_result.error, (uint32_t)parse_result.error_row_no,
-        JsonParseErrorStr((json_parse_error_e)parse_result.error).c_str());
+        JsonParseErrorStr((json_parse_error_e)parse_result.error));
     return -5;
   }
   int parse_error = ParseRoot(manifest);
@@ -785,9 +773,7 @@ int AssetManifest::OverrideOutputRoot(const std::string& output_root_dir) {
   return CombineAbsDirAndPath(launch_dir_.c_str(), output_root_dir.c_str(), &output_root_);
 }
 
-void AssetManifest::SetForceRebuild(bool force_rebuild_all) {
-  force_rebuild_ = force_rebuild_all;
-}
+void AssetManifest::SetForceRebuild(bool force_rebuild_all) { force_rebuild_ = force_rebuild_all; }
 
 int AssetManifest::Build() {
   int process_error = 0;
@@ -812,7 +798,7 @@ int AssetManifest::Build() {
   return 0;
 }
 
-std::string AssetManifest::JsonParseErrorStr(const json_parse_error_e error_code) const {
+const char* AssetManifest::JsonParseErrorStr(const json_parse_error_e error_code) const {
   switch (error_code) {
   case json_parse_error_none:
     return "Success";
@@ -856,7 +842,7 @@ int AssetManifest::ParseRoot(const json_value_s* val) {
   json_object_s* root_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
   int parse_error = 0;
-  for (json_object_element_s *child_elem = root_obj->start; i_child < root_obj->length;
+  for (json_object_element_s* child_elem = root_obj->start; i_child < root_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "assets") == 0) {
       parse_error = ParseAssets(child_elem->value);
@@ -881,7 +867,7 @@ int AssetManifest::ParseDefaults(const json_value_s* val) {
   const json_object_s* defaults_obj = (const json_object_s*)(val->payload);
   size_t i_child = 0;
   int parse_error = 0;
-  for (json_object_element_s *child_elem = defaults_obj->start; i_child < defaults_obj->length;
+  for (json_object_element_s* child_elem = defaults_obj->start; i_child < defaults_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "output_root") == 0) {
       parse_error = ParseDefaultOutputRoot(child_elem->value);
@@ -915,7 +901,7 @@ int AssetManifest::ParseDefaultShaderIncludeDirs(const json_value_s* val) {
   const json_array_s* includes_array = (const json_array_s*)(val->payload);
   size_t i_child = 0;
   int parse_error = 0;
-  for (json_array_element_s *child_elem = includes_array->start; i_child < includes_array->length;
+  for (json_array_element_s* child_elem = includes_array->start; i_child < includes_array->length;
        ++i_child, child_elem = child_elem->next) {
     // parse array of shader includes. Combine each dir with the manifest dir and canonicalize
     if (child_elem->value->type != json_type_string) {
@@ -943,7 +929,7 @@ int AssetManifest::ParseAssets(const json_value_s* val) {
   const json_array_s* assets_array = (const json_array_s*)(val->payload);
   size_t i_child = 0;
   int parse_error = 0;
-  for (json_array_element_s *child_elem = assets_array->start; i_child < assets_array->length;
+  for (json_array_element_s* child_elem = assets_array->start; i_child < assets_array->length;
        ++i_child, child_elem = child_elem->next) {
     parse_error = ParseAsset(child_elem->value);
     if (parse_error) {
@@ -962,7 +948,7 @@ int AssetManifest::ParseAsset(const json_value_s* val) {
   // variant to call.
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
-  for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
+  for (json_object_element_s* child_elem = asset_obj->start; i_child < asset_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       if (child_elem->value->type != json_type_string) {
@@ -992,7 +978,7 @@ int AssetManifest::ParseImageAsset(const json_value_s* val) {
   const json_string_s* output_path = nullptr;
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
-  for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
+  for (json_object_element_s* child_elem = asset_obj->start; i_child < asset_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
@@ -1031,7 +1017,7 @@ int AssetManifest::ParseMeshAsset(const json_value_s* val) {
   const json_string_s* output_path = nullptr;
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
-  for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
+  for (json_object_element_s* child_elem = asset_obj->start; i_child < asset_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
@@ -1072,7 +1058,7 @@ int AssetManifest::ParseShaderAsset(const json_value_s* val) {
   const json_string_s* shader_stage = nullptr;
   json_object_s* asset_obj = (json_object_s*)(val->payload);
   size_t i_child = 0;
-  for (json_object_element_s *child_elem = asset_obj->start; i_child < asset_obj->length;
+  for (json_object_element_s* child_elem = asset_obj->start; i_child < asset_obj->length;
        ++i_child, child_elem = child_elem->next) {
     if (strcmp(child_elem->name->string, "class") == 0) {
       // Already handled by caller
@@ -1222,6 +1208,15 @@ int AssetManifest::ProcessImage(const ImageAsset& image) {
     return query_error;
   }
   if (build_output) {
+    // create missing subdirectories in abs_output_path if necessary.
+    // This should be a helper function.
+    std::string output_dir = abs_output_path;
+    int truncate_error = TruncatePathToDir(&output_dir[0]);
+    ZOMBO_ASSERT_RETURN(!truncate_error, -1, "TruncatePathToDir('%s') failed (%d)", output_dir.c_str(), truncate_error);
+    int create_dir_error = CreateDirectoryAndParents(output_dir.c_str());
+    ZOMBO_ASSERT_RETURN(
+        !create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)", output_dir.c_str(), create_dir_error);
+
     int copy_error = CopyAssetFile(image.input_path, abs_output_path.c_str());
     if (copy_error) {
       fprintf(stderr, "%s: error: CopyAssetFile() failed for image\n", image.json_location.c_str());
@@ -1245,6 +1240,15 @@ int AssetManifest::ProcessMesh(const MeshAsset& mesh) {
     return query_error;
   }
   if (build_output) {
+    // create missing subdirectories in abs_output_path if necessary.
+    // This should be a helper function.
+    std::string output_dir = abs_output_path;
+    int truncate_error = TruncatePathToDir(&output_dir[0]);
+    ZOMBO_ASSERT_RETURN(!truncate_error, -1, "TruncatePathToDir('%s') failed (%d)", output_dir.c_str(), truncate_error);
+    int create_dir_error = CreateDirectoryAndParents(output_dir.c_str());
+    ZOMBO_ASSERT_RETURN(
+        !create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)", output_dir.c_str(), create_dir_error);
+
     int process_error = ConvertSceneToMesh(mesh.input_path, abs_output_path.c_str());
     if (process_error) {
       return process_error;
@@ -1267,6 +1271,15 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
     return query_error;
   }
   if (build_output) {
+    // create missing subdirectories in abs_output_path if necessary.
+    // This should be a helper function.
+    std::string output_dir = abs_output_path;
+    int truncate_error = TruncatePathToDir(&output_dir[0]);
+    ZOMBO_ASSERT_RETURN(!truncate_error, -1, "TruncatePathToDir('%s') failed (%d)", output_dir.c_str(), truncate_error);
+    int create_dir_error = CreateDirectoryAndParents(output_dir.c_str());
+    ZOMBO_ASSERT_RETURN(
+        !create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)", output_dir.c_str(), create_dir_error);
+
     shaderc_shader_kind shader_kind = shaderc_glsl_infer_from_source;
     if (shader.shader_stage == "vert" || shader.shader_stage == "vertex") {
       shader_kind = shaderc_vertex_shader;

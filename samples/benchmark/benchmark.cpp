@@ -49,9 +49,9 @@ enum TimestampId {
 
 }  // namespace
 
-class CubeSwarmApp : public spokk::Application {
+class BenchmarkApp : public spokk::Application {
 public:
-  explicit CubeSwarmApp(Application::CreateInfo& ci) : Application(ci) {
+  explicit BenchmarkApp(Application::CreateInfo& ci) : Application(ci) {
     seconds_elapsed_ = 0;
 
     camera_ =
@@ -60,6 +60,7 @@ public:
     const glm::vec3 initial_camera_target(0, 5, 0);
     const glm::vec3 initial_camera_up(0, 1, 0);
     camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
+    SPOKK_VK_CHECK(device_.SetObjectName(render_pass_.handle, "main color pass"));
 
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
@@ -71,11 +72,13 @@ public:
     VkSamplerCreateInfo sampler_ci =
         GetSamplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     SPOKK_VK_CHECK(vkCreateSampler(device_, &sampler_ci, host_allocator_, &sampler_));
-    albedo_tex_.CreateFromFile(device_, graphics_and_present_queue_, "data/redf.ktx");
+    SPOKK_VK_CHECK(device_.SetObjectName(sampler_, "basic linear+repeat sampler"));
+    albedo_tex_.CreateFromFile(device_, graphics_and_present_queue_, "data/redf.ktx", VK_FALSE,
+        THSVS_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE_OR_UNIFORM_TEXEL_BUFFER);
 
     // Load shader pipelines
-    SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_, "data/rigid_mesh.vert.spv"));
-    SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_, "data/rigid_mesh.frag.spv"));
+    SPOKK_VK_CHECK(mesh_vs_.CreateAndLoadSpirvFile(device_, "data/benchmark/rigid_mesh.vert.spv"));
+    SPOKK_VK_CHECK(mesh_fs_.CreateAndLoadSpirvFile(device_, "data/benchmark/rigid_mesh.frag.spv"));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_vs_));
     SPOKK_VK_CHECK(mesh_shader_program_.AddShader(&mesh_fs_));
     SPOKK_VK_CHECK(mesh_shader_program_.Finalize(device_));
@@ -111,6 +114,7 @@ public:
 
     mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
     SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
+    SPOKK_VK_CHECK(device_.SetObjectName(mesh_pipeline_.handle, "mesh pipeline"));
 
     for (const auto& dset_layout_ci : mesh_shader_program_.dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
@@ -121,6 +125,9 @@ public:
       dsets_[pframe] = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
     }
     DescriptorSetWriter dset_writer(mesh_shader_program_.dset_layout_cis[0]);
+    dset_writer.BindImage(
+        albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mesh_fs_.GetDescriptorBindPoint("tex").binding);
+    dset_writer.BindSampler(sampler_, mesh_fs_.GetDescriptorBindPoint("samp").binding);
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
       dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
       dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
@@ -136,7 +143,7 @@ public:
     // Create swapchain-sized buffers
     CreateRenderBuffers(swapchain_extent_);
   }
-  virtual ~CubeSwarmApp() {
+  virtual ~BenchmarkApp() {
     if (device_ != VK_NULL_HANDLE) {
       vkDeviceWaitIdle(device_);
 
@@ -167,8 +174,8 @@ public:
     }
   }
 
-  CubeSwarmApp(const CubeSwarmApp&) = delete;
-  const CubeSwarmApp& operator=(const CubeSwarmApp&) = delete;
+  BenchmarkApp(const BenchmarkApp&) = delete;
+  const BenchmarkApp& operator=(const BenchmarkApp&) = delete;
 
   virtual void Update(double dt) override { seconds_elapsed_ += dt; }
 
@@ -202,7 +209,7 @@ public:
     }
     mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_);
 
-    // Write indirect draw commands
+    // Write indirect draw command parameters
     VkDrawIndexedIndirectCommand* indirect_draws =
         (VkDrawIndexedIndirectCommand*)indirect_draw_buffers_.Mapped(pframe_index_);
     memset(indirect_draws, 0, indirect_draw_buffers_.BytesPerPframe());
@@ -248,7 +255,8 @@ public:
 
     // Set up imgui overlay
     ImGui::SetNextWindowPos(ImVec2(10, 10));
-    if (ImGui::Begin("GPU Draw Time", NULL, ImVec2((float)swapchain_extent_.width, 100), 0.3f,
+    ImGui::SetNextWindowBgAlpha(0.3f);
+    if (ImGui::Begin("GPU Draw Time", nullptr,
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                 ImGuiWindowFlags_NoSavedSettings)) {
       ImGui::PushItemWidth(200.0f);
@@ -301,8 +309,6 @@ public:
 
 protected:
   void HandleWindowResize(VkExtent2D new_window_extent) override {
-    Application::HandleWindowResize(new_window_extent);
-
     // Destroy existing objects before re-creating them.
     for (auto fb : framebuffers_) {
       if (fb != VK_NULL_HANDLE) {
@@ -325,7 +331,8 @@ private:
     depth_image_ = {};
     SPOKK_VK_CHECK(depth_image_.Create(
         device_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
-
+    SPOKK_VK_CHECK(device_.SetObjectName(depth_image_.handle, "depth image"));
+    SPOKK_VK_CHECK(device_.SetObjectName(depth_image_.view, "depth image view"));
     // Create VkFramebuffers
     std::vector<VkImageView> attachment_views = {
         VK_NULL_HANDLE,  // filled in below
@@ -337,6 +344,8 @@ private:
     for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
       attachment_views[0] = swapchain_image_views_[i];
       SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
+      SPOKK_VK_CHECK(device_.SetObjectName(
+          framebuffers_[i], std::string("swapchain framebuffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
     }
   }
 
@@ -403,7 +412,7 @@ int main(int argc, char* argv[]) {
   Application::CreateInfo app_ci = {};
   app_ci.queue_family_requests = queue_requests;
   app_ci.pfn_set_device_features = EnableDeviceFeatures;
-  CubeSwarmApp app(app_ci);
+  BenchmarkApp app(app_ci);
   int run_error = app.Run();
 
   return run_error;

@@ -1,7 +1,10 @@
-#pragma once
+#if !defined(SPOKK_APPLICATION_H)
+#define SPOKK_APPLICATION_H
 
-#ifdef _MSC_VER
-#include <windows.h>
+#include "spokk_platform.h"
+
+#if defined(ZOMBO_PLATFORM_WINDOWS)
+#include <wingdi.h>
 #endif
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -54,14 +57,32 @@ public:
   struct CreateInfo {
     std::string app_name = "Spokk Application";
     uint32_t window_width = 1280, window_height = 720;
+    bool enable_fullscreen = false;
     bool enable_graphics = true;
-    VkDebugReportFlagsEXT debug_report_flags =
-#ifdef NDEBUG
-        0;
-#else
-        VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
-#endif
+    // clang-format off
+    VkDebugReportFlagsEXT debug_report_flags = 0
+      | VK_DEBUG_REPORT_ERROR_BIT_EXT
+      | VK_DEBUG_REPORT_WARNING_BIT_EXT
+      ;
+#if defined(VK_EXT_debug_utils)
+    VkDebugUtilsMessageSeverityFlagsEXT debug_utils_severity_flags = 0
+      | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+      ;
+    VkDebugUtilsMessageTypeFlagsEXT debug_utils_type_flags = 0
+      | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+      ;
+#endif  // defined(VK_EXT_debug_utils)
+
     std::vector<QueueFamilyRequest> queue_family_requests;
+    std::vector<const char*> required_instance_layer_names = {};
+    std::vector<const char*> required_instance_extension_names = {};
+    std::vector<const char*> required_device_extension_names = {};
+    std::vector<const char*> optional_instance_layer_names = {};
+    std::vector<const char*> optional_instance_extension_names = {};
+    std::vector<const char*> optional_device_extension_names = {};
     // If NULL, no device features are enabled. To easily enable all supported features,
     // pass EnableAllSupportedDeviceFeatures.
     SetDeviceFeaturesFunc pfn_set_device_features = nullptr;
@@ -87,19 +108,21 @@ public:
   virtual void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) = 0;
 
 protected:
-  // Overloads must call the base class resize method before performing their own work.
   // The first thing it does is call vkDeviceWaitIdle(), so subclasses can safely assume that
   // no resources are in use on the GPU and can be safely destroyed/recreated.
-  virtual void HandleWindowResize(VkExtent2D new_window_extent);
+  virtual void HandleWindowResize(VkExtent2D new_window_extent) { (void)new_window_extent; }
 
   const VkAllocationCallbacks* host_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
   VkDebugReportCallbackEXT debug_report_callback_ = VK_NULL_HANDLE;
+#if defined(VK_EXT_debug_utils)
+  VkDebugUtilsMessengerEXT debug_utils_msgr_ = VK_NULL_HANDLE;
+#endif // defined(VK_EXT_debug_utils)
   VkSurfaceKHR surface_ = VK_NULL_HANDLE;
 
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
   VkSurfaceFormatKHR swapchain_surface_format_ = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
-  VkExtent2D swapchain_extent_;
+  VkExtent2D swapchain_extent_ = {};
   std::vector<VkImage> swapchain_images_ = {};
   std::vector<VkImageView> swapchain_image_views_ = {};
   std::vector<uint64_t> swapchain_image_frames_ = {};  // frame index most recently rendered by each swapchain image
@@ -121,36 +144,35 @@ protected:
 private:
   // Initialize imgui. The provided render pass must be the one that will be active when
   // RenderImgui() will be called.
-  bool InitImgui(VkRenderPass ui_render_pass);
+  bool InitImgui(VkRenderPass ui_render_pass, uint32_t ui_subpass = 0);
   // If visible=true, the imgui will be rendered, the cursor will be visible, and any
   // keyboard/mouse consumed by imgui will be ignored by InputState.
   // If visible=false, imgui will not be rendered (but UI controls throughout the code will still
   // be processed, so if they're expensive, maybe make them conditional). The mouse cursor will
   // be hidden, and InputState will get updated keyboard/mouse input every frame.
   void ShowImgui(bool visible);
-  // Generate the commands to render the IMGUI elements created earlier in the frame.
-  // This function must only be called when the ui_render_pass passed to InitImgui() is active.
-  void RenderImgui(VkCommandBuffer cb) const;
   // Cleans up all IMGUI resources. This is automatically called during application shutdown, but
   // would need to be called manually to reinitialize the GUI subsystem at runtime (e,g. with a
   // different render pass).
   // Safe to call, even if IMGUI was not initialized or has already been destroyed.
   void DestroyImgui(void);
 
+  void HandleWindowResizeInternal(VkExtent2D new_window_extent);
+
   VkResult CreateSwapchain(VkExtent2D extent);
 
   bool init_successful_ = false;
+  bool is_graphics_app_ = false;
 
-  VkCommandPool primary_cpool_;
+  VkCommandPool primary_cpool_ = VK_NULL_HANDLE;
   std::array<VkCommandBuffer, PFRAME_COUNT> primary_command_buffers_;
-  VkSemaphore image_acquire_semaphore_;
-  VkSemaphore submit_complete_semaphore_;
-  std::array<VkFence, PFRAME_COUNT> submit_complete_fences_;
+  VkSemaphore image_acquire_semaphore_ = VK_NULL_HANDLE;
+  VkSemaphore submit_complete_semaphore_ = VK_NULL_HANDLE;
+  std::array<VkFence, PFRAME_COUNT> submit_complete_fences_ = {};
 
-  bool is_imgui_enabled_ = false;  // Used to avoid calling functions that will crash if the app does not enable imgui.
   bool is_imgui_visible_ = false;  // Tracks whether the UI is visible or not.
   RenderPass imgui_render_pass_ = {};
-  std::vector<VkFramebuffer> imgui_framebuffers_;
+  std::vector<VkFramebuffer> imgui_framebuffers_ = {};
 
   TimestampQueryPool timestamp_query_pool_;
 
@@ -174,3 +196,5 @@ private:
 };
 
 }  // namespace spokk
+
+#endif  // !defined(SPOKK_APPLICATION_H)

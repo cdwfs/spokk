@@ -1,8 +1,8 @@
 #pragma once
 
+#include <stdint.h>
 #include <array>
 #include <memory>
-#include <stdint.h>
 
 struct GLFWwindow;
 
@@ -27,6 +27,8 @@ public:
     DIGITAL_RPAD_DOWN = 7,
 
     DIGITAL_MENU = 8,
+
+    DIGITAL_ENTER_KEY = 9,
 
     DIGITAL_COUNT
   };

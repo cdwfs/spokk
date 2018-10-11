@@ -42,17 +42,23 @@ using namespace spokk;
     w = f.w;                   \
   }                            \
   operator glm::vec4() const { return glm::vec4(x, y, z, w); }
-#define IMGUI_VK_QUEUED_FRAMES spokk::PFRAME_COUNT;
 // clang-format off
-#include <imgui/imgui.h>
-#include "spokk_imgui_impl_glfw_vulkan.h"
+#include <imgui.h>
+#include "spokk_imgui_impl_glfw.h"
+#include "spokk_imgui_impl_vulkan.h"
 // clang-format on
+static_assert(spokk::PFRAME_COUNT == IMGUI_VK_QUEUED_FRAMES, "spokk and imgui must agree on queued frame count");
 
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4127)  // constant conditional expression
 #pragma warning(disable : 4100)  // unreferenced formal parameter
 #pragma warning(disable : 4189)  // initialized-but-unused local variable
+#endif
+#define VMA_ASSERT(expr) ZOMBO_ASSERT(expr, "Assert failed: %s", #expr)
+#if defined(_DEBUG)  // enable extra corruption detection in debug builds
+#define VMA_DEBUG_MARGIN 16
+#define VMA_DEBUG_DETECT_CORRUPTION 1
 #endif
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
@@ -63,6 +69,7 @@ using namespace spokk;
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <sstream>
 
 #define SPOKK__CLAMP(x, xmin, xmax) (((x) < (xmin)) ? (xmin) : (((x) > (xmax)) ? (xmax) : (x)))
 
@@ -108,6 +115,118 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkFlags msgFlags, Vk
 #endif
   free(output);
   return (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT) ? VK_TRUE : VK_FALSE;
+}
+
+static const char *StringMaybe(const char *str) { return str ? str : "???"; }
+static const char *ObjectTypeToString(VkObjectType obj_type) {
+  // clang-format off
+  switch(obj_type) {
+  case VK_OBJECT_TYPE_UNKNOWN: return "UNKNOWN";
+  case VK_OBJECT_TYPE_INSTANCE: return "VkInstance";
+  case VK_OBJECT_TYPE_PHYSICAL_DEVICE: return "VkPhysicalDevice";
+  case VK_OBJECT_TYPE_DEVICE: return "VkDevice";
+  case VK_OBJECT_TYPE_QUEUE: return "VkQueue";
+  case VK_OBJECT_TYPE_SEMAPHORE: return "VkSemaphore";
+  case VK_OBJECT_TYPE_COMMAND_BUFFER: return "VkCommandBuffer";
+  case VK_OBJECT_TYPE_FENCE: return "VkFence";
+  case VK_OBJECT_TYPE_DEVICE_MEMORY: return "VkDeviceMemory";
+  case VK_OBJECT_TYPE_BUFFER: return "VkBuffer";
+  case VK_OBJECT_TYPE_IMAGE: return "VkImage";
+  case VK_OBJECT_TYPE_EVENT: return "VkEvent";
+  case VK_OBJECT_TYPE_QUERY_POOL: return "VkQueryPool";
+  case VK_OBJECT_TYPE_BUFFER_VIEW: return "VkBufferView";
+  case VK_OBJECT_TYPE_IMAGE_VIEW: return "VkImageView";
+  case VK_OBJECT_TYPE_SHADER_MODULE: return "VkShaderModule";
+  case VK_OBJECT_TYPE_PIPELINE_CACHE: return "VkPipelineCache";
+  case VK_OBJECT_TYPE_PIPELINE_LAYOUT: return "VkPipelineLayout";
+  case VK_OBJECT_TYPE_RENDER_PASS: return "VkRenderPass";
+  case VK_OBJECT_TYPE_PIPELINE: return "VkPipeline";
+  case VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT: return "VkDescriptorSetLayout";
+  case VK_OBJECT_TYPE_SAMPLER: return "VkSampler";
+  case VK_OBJECT_TYPE_DESCRIPTOR_POOL: return "VkDescriptorPool";
+  case VK_OBJECT_TYPE_DESCRIPTOR_SET: return "VkDescriptorSet";
+  case VK_OBJECT_TYPE_FRAMEBUFFER: return "VkFramebuffer";
+  case VK_OBJECT_TYPE_COMMAND_POOL: return "VkCommandPool";
+  case VK_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION: return "VkSamplerYcbcrConversion";
+  case VK_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE: return "VkDescriptorUpdateTemplate";
+  case VK_OBJECT_TYPE_SURFACE_KHR: return "VkSurfaceKHR";
+  case VK_OBJECT_TYPE_SWAPCHAIN_KHR: return "VkSwapchainKHR";
+  case VK_OBJECT_TYPE_DISPLAY_KHR: return "VkDisplayKHR";
+  case VK_OBJECT_TYPE_DISPLAY_MODE_KHR: return "VkDisplayModeKHR";
+  case VK_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT: return "VkDebugReportCallbackEXT";
+  case VK_OBJECT_TYPE_OBJECT_TABLE_NVX: return "VkObjectTableNVX";
+  case VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NVX: return "VkIndirectCommandsLayoutNVX";
+  case VK_OBJECT_TYPE_DEBUG_UTILS_MESSENGER_EXT: return "VkDebugUtilsMessengerEXT";
+  case VK_OBJECT_TYPE_VALIDATION_CACHE_EXT: return "VkValidationCacheEXT";
+  default: return "???";
+  }
+  // clang-format on
+}
+static VkBool32 MyDebugUtilsCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+    void * /*pUserData*/) {
+  const char *severity_str = "???";
+  if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+    severity_str = "ERROR";
+  } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+    severity_str = "WARNING";
+  } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+    severity_str = "INFO";
+  } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
+    severity_str = "VERBOSE";
+  }
+
+  const char *type_str = "???";
+  if (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) {
+    type_str = "VALIDATION";
+  } else if (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) {
+    type_str = "PERFORMANCE";
+  } else if (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT) {
+    type_str = "GENERAL";
+  }
+
+  // This callback can be invoked from multiple threads, so let's make the output thread-safe
+  std::mutex callback_mutex;
+  {
+    std::lock_guard<std::mutex> callback_guard(callback_mutex);
+
+    std::stringstream sstream;
+    sstream << "[" << type_str << " " << severity_str << " " << StringMaybe(pCallbackData->pMessageIdName)
+            << "]: " << pCallbackData->pMessage << std::endl;
+    if (pCallbackData->queueLabelCount > 0) {
+      sstream << "  queues:" << std::endl;
+      for (uint32_t i = 0; i < pCallbackData->queueLabelCount; ++i) {
+        sstream << "  - " << StringMaybe(pCallbackData->pQueueLabels[i].pLabelName) << std::endl;
+      }
+    }
+    if (pCallbackData->cmdBufLabelCount > 0) {
+      sstream << "  command buffers:" << std::endl;
+      for (uint32_t i = 0; i < pCallbackData->cmdBufLabelCount; ++i) {
+        sstream << "  - " << StringMaybe(pCallbackData->pCmdBufLabels[i].pLabelName) << std::endl;
+      }
+    }
+    if (pCallbackData->objectCount > 0) {
+      sstream << "  objects:" << std::endl;
+      for (uint32_t i = 0; i < pCallbackData->objectCount; ++i) {
+        sstream << "  - [" << ObjectTypeToString(pCallbackData->pObjects[i].objectType) << " 0x";
+        sstream.width(16);
+        sstream.fill('0');
+        sstream << std::hex << pCallbackData->pObjects[i].objectHandle << std::dec << "]";
+        if (pCallbackData->pObjects[i].pObjectName) {
+          sstream << " \"" << pCallbackData->pObjects[i].pObjectName << "\"";
+        }
+        sstream << std::endl;
+      }
+    }
+
+#if 0  //_WIN32
+    MessageBoxA(NULL, sstream.c_str(), "Alert", MB_OK);
+#else
+    fprintf(stderr, "%s\n", sstream.str().c_str());
+    fflush(stdout);
+#endif
+  }
+  return VK_FALSE;  // application callbacks must always return VK_FALSE
 }
 
 VkResult FindPhysicalDevice(const std::vector<Application::QueueFamilyRequest> &qf_reqs, VkInstance instance,
@@ -236,8 +355,8 @@ void SpokkVmaFree(void *pUserData, const spokk::Device & /*device*/, spokk::Devi
 //
 // Application
 //
-Application::Application(const CreateInfo &ci) {
-  if (ci.enable_graphics) {
+Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_graphics) {
+  if (is_graphics_app_) {
     // Initialize GLFW
     glfwSetErrorCallback(MyGlfwErrorCallback);
     if (!glfwInit()) {
@@ -249,28 +368,44 @@ Application::Application(const CreateInfo &ci) {
       return;
     }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    window_ = std::shared_ptr<GLFWwindow>(
-        glfwCreateWindow(ci.window_width, ci.window_height, ci.app_name.c_str(), NULL, NULL),
-        [](GLFWwindow *w) { glfwDestroyWindow(w); });
+    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
+    if (ci.enable_fullscreen) {
+      GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+      const GLFWvidmode *vid_mode = glfwGetVideoMode(monitor);
+      glfwWindowHint(GLFW_RED_BITS, vid_mode->redBits);
+      glfwWindowHint(GLFW_GREEN_BITS, vid_mode->greenBits);
+      glfwWindowHint(GLFW_BLUE_BITS, vid_mode->blueBits);
+      glfwWindowHint(GLFW_REFRESH_RATE, vid_mode->refreshRate);
+      window_ = std::shared_ptr<GLFWwindow>(
+          glfwCreateWindow(vid_mode->width, vid_mode->height, ci.app_name.c_str(), monitor, NULL),
+          [](GLFWwindow *w) { glfwDestroyWindow(w); });
+    } else {
+      window_ = std::shared_ptr<GLFWwindow>(
+          glfwCreateWindow(ci.window_width, ci.window_height, ci.app_name.c_str(), NULL, NULL),
+          [](GLFWwindow *w) { glfwDestroyWindow(w); });
+    }
     glfwSetInputMode(window_.get(), GLFW_STICKY_KEYS, 1);
     glfwPollEvents();  // dummy poll for first loop iteration
-
-    input_state_.SetWindow(window_);
   }
 
   // Initialize Vulkan
   host_allocator_ = ci.host_allocator;
 
-  std::vector<const char *> required_instance_layer_names = {};
-  std::vector<const char *> optional_instance_layer_names = {
+  std::vector<const char *> required_instance_layer_names = ci.required_instance_layer_names;
+  std::vector<const char *> optional_instance_layer_names = ci.optional_instance_layer_names;
 #if defined(_DEBUG)
-    "VK_LAYER_LUNARG_monitor",
+  optional_instance_layer_names.push_back("VK_LAYER_LUNARG_monitor");
 #endif
-  };
-  if (ci.debug_report_flags != 0) {
+
+  if (ci.debug_report_flags != 0
+#if defined(VK_EXT_debug_utils)
+      || (ci.debug_utils_severity_flags != 0 && ci.debug_utils_type_flags != 0)
+#endif
+  ) {
 #if defined(_DEBUG)  // validation layers should only be enabled in debug builds
     optional_instance_layer_names.push_back("VK_LAYER_LUNARG_standard_validation");
-    optional_instance_layer_names.push_back("VK_LAYER_LUNARG_assistant_layer");
+    // workaround until an official SDK release with the NULL-pointer dereference fix in the assistant layer.
+    // optional_instance_layer_names.push_back("VK_LAYER_LUNARG_assistant_layer");
 #endif
   }
   std::vector<const char *> enabled_instance_layer_names = {};
@@ -278,15 +413,21 @@ Application::Application(const CreateInfo &ci) {
   SPOKK_VK_CHECK(GetSupportedInstanceLayers(required_instance_layer_names, optional_instance_layer_names,
       &enabled_instance_layer_properties, &enabled_instance_layer_names));
 
-  std::vector<const char *> required_instance_extension_names = {};
-  if (ci.enable_graphics) {
+  std::vector<const char *> required_instance_extension_names = ci.required_instance_extension_names;
+  if (is_graphics_app_) {
     required_instance_extension_names.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
     required_instance_extension_names.push_back(SPOKK_PLATFORM_SURFACE_EXTENSION_NAME);
   }
-  std::vector<const char *> optional_instance_extension_names = {};
+  std::vector<const char *> optional_instance_extension_names = ci.optional_instance_extension_names;
   if (ci.debug_report_flags != 0) {
-    optional_instance_extension_names.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+    optional_instance_extension_names.push_back(
+        VK_EXT_DEBUG_REPORT_EXTENSION_NAME);  // deprecate this once debug_utils is core
   }
+#if defined(VK_EXT_debug_utils)
+  if (ci.debug_utils_severity_flags != 0 && ci.debug_utils_type_flags != 0) {
+    optional_instance_extension_names.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+  }
+#endif  // defined(VK_EXT_debug_utils
   std::vector<const char *> enabled_instance_extension_names;
   std::vector<VkExtensionProperties> enabled_instance_extension_properties = {};
   SPOKK_VK_CHECK(GetSupportedInstanceExtensions(enabled_instance_layer_properties, required_instance_extension_names,
@@ -306,16 +447,55 @@ Application::Application(const CreateInfo &ci) {
   instance_ci.ppEnabledLayerNames = enabled_instance_layer_names.data();
   instance_ci.enabledExtensionCount = (uint32_t)enabled_instance_extension_names.size();
   instance_ci.ppEnabledExtensionNames = enabled_instance_extension_names.data();
+#if defined(VK_EXT_debug_utils)
+  // This struct is used to create a temporary debug utils messenger for instance creation.
+  VkDebugUtilsMessengerCreateInfoEXT instance_debug_utils_msgr_ci = {
+      VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+  instance_debug_utils_msgr_ci.pNext = instance_ci.pNext;
+  // clang-format off
+  instance_debug_utils_msgr_ci.messageSeverity = 0
+    | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+    | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
+    ;
+  instance_debug_utils_msgr_ci.messageType = 0
+    // | VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT // disable until annoying RenderDoc message at startup is fixed
+    | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+    | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+    ;
+  // clang-format on
+  instance_debug_utils_msgr_ci.pfnUserCallback = MyDebugUtilsCallback;
+  instance_debug_utils_msgr_ci.pUserData = nullptr;
+  instance_ci.pNext = &instance_debug_utils_msgr_ci;
+#endif  // defined(VK_EXT_debug_utils)
   SPOKK_VK_CHECK(vkCreateInstance(&instance_ci, host_allocator_, &instance_));
 
   bool is_debug_report_ext_enabled = false;
+  bool is_debug_utils_ext_enabled = false;
   for (const char *ext_name : enabled_instance_extension_names) {
     if (strcmp(ext_name, VK_EXT_DEBUG_REPORT_EXTENSION_NAME) == 0) {
       is_debug_report_ext_enabled = true;
-      break;
     }
+#if defined(VK_EXT_debug_utils)
+    else if (strcmp(ext_name, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
+      is_debug_utils_ext_enabled = true;
+    }
+#endif  // defined(VK_EXT_debug_utils)
   }
-  if (is_debug_report_ext_enabled && ci.debug_report_flags != 0) {
+
+#if defined(VK_EXT_debug_utils)
+  if (is_debug_utils_ext_enabled && ci.debug_utils_severity_flags != 0 && ci.debug_utils_type_flags != 0) {
+    VkDebugUtilsMessengerCreateInfoEXT debug_utils_msgr_ci = {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+    debug_utils_msgr_ci.pNext = nullptr;
+    debug_utils_msgr_ci.messageSeverity = ci.debug_utils_severity_flags;
+    debug_utils_msgr_ci.messageType = ci.debug_utils_type_flags;
+    debug_utils_msgr_ci.pfnUserCallback = MyDebugUtilsCallback;
+    debug_utils_msgr_ci.pUserData = nullptr;
+    auto create_debug_utils_msgr_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkCreateDebugUtilsMessengerEXT);
+    SPOKK_VK_CHECK(create_debug_utils_msgr_func(instance_, &debug_utils_msgr_ci, host_allocator_, &debug_utils_msgr_));
+    is_debug_report_ext_enabled = false;
+  } else
+#endif  // defined(VK_EXT_debug_utils)
+      if (is_debug_report_ext_enabled && ci.debug_report_flags != 0) {
     VkDebugReportCallbackCreateInfoEXT debug_report_callback_ci = {};
     debug_report_callback_ci.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
     debug_report_callback_ci.flags = ci.debug_report_flags;
@@ -326,7 +506,7 @@ Application::Application(const CreateInfo &ci) {
         create_debug_report_func(instance_, &debug_report_callback_ci, host_allocator_, &debug_report_callback_));
   }
 
-  if (ci.enable_graphics) {
+  if (is_graphics_app_) {
     SPOKK_VK_CHECK(glfwCreateWindowSurface(instance_, window_.get(), host_allocator_, &surface_));
   }
 
@@ -350,15 +530,12 @@ Application::Application(const CreateInfo &ci) {
   };
   ZOMBO_ASSERT(queue_priorities.size() == total_queue_count, "queue count mismatch");
 
-  std::vector<const char *> required_device_extension_names = {};
-  if (ci.enable_graphics) {
+  std::vector<const char *> required_device_extension_names = ci.required_device_extension_names;
+  if (is_graphics_app_) {
     required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-    required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
   }
-  std::vector<const char *> optional_device_extension_names = {
-      VK_EXT_DEBUG_MARKER_EXTENSION_NAME,  // TODO(cort): may want to hide this behind a flag, enabled in debug &
-                                           // profiling builds.
-  };
+  required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
+  std::vector<const char *> optional_device_extension_names = ci.optional_device_extension_names;
   std::vector<const char *> enabled_device_extension_names = {};
   std::vector<VkExtensionProperties> enabled_device_extension_properties = {};
   SPOKK_VK_CHECK(
@@ -433,10 +610,14 @@ Application::Application(const CreateInfo &ci) {
       enabled_device_features, enabled_instance_layer_properties, enabled_instance_extension_properties,
       enabled_device_extension_properties, host_allocator_, &device_allocator_);
 
-  graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
+  // Remaining work is for graphics apps only
+  if (is_graphics_app_) {
+    graphics_and_present_queue_ = device_.FindQueue(VK_QUEUE_GRAPHICS_BIT, surface_);
+    SPOKK_VK_CHECK(device_.SetObjectName(graphics_and_present_queue_->handle, "graphics/present queue"));
 
-  if (ci.enable_graphics) {
-    VkExtent2D default_extent = {ci.window_width, ci.window_height};
+    int fb_width = 0, fb_height = 0;
+    glfwGetFramebufferSize(window_.get(), &fb_width, &fb_height);
+    VkExtent2D default_extent = {(uint32_t)fb_width, (uint32_t)fb_height};
     CreateSwapchain(default_extent);
 
     // Create imgui render pass. This is an optional pass on the final swapchain image
@@ -457,12 +638,14 @@ Application::Application(const CreateInfo &ci) {
     imgui_render_pass_.subpass_dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
     imgui_render_pass_.subpass_dependencies[0].dstSubpass = 0;
     imgui_render_pass_.subpass_dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    imgui_render_pass_.subpass_dependencies[0].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    imgui_render_pass_.subpass_dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     imgui_render_pass_.subpass_dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     imgui_render_pass_.subpass_dependencies[0].dstAccessMask =
         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
     imgui_render_pass_.subpass_dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     SPOKK_VK_CHECK(imgui_render_pass_.Finalize(device_));
+    SPOKK_VK_CHECK(device_.SetObjectName(imgui_render_pass_.handle, "IMGUI render pass"));
+
     // Create framebuffers for imgui render pass
     VkFramebufferCreateInfo framebuffer_ci = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
     framebuffer_ci.renderPass = imgui_render_pass_.handle;
@@ -474,38 +657,50 @@ Application::Application(const CreateInfo &ci) {
     for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
       framebuffer_ci.pAttachments = &swapchain_image_views_[i];
       SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &imgui_framebuffers_[i]));
+      SPOKK_VK_CHECK(device_.SetObjectName(imgui_framebuffers_[i],
+          std::string("imgui framebuffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
     }
 
-    InitImgui(imgui_render_pass_.handle);
-    ShowImgui(false);
-  }
+    InitImgui(imgui_render_pass_.handle, 0);
+    // Don't initialize the input state until IMGUI is initialized
+    input_state_.SetWindow(window_);
 
-  // Allocate command buffers
-  VkCommandPoolCreateInfo cpool_ci = {};
-  cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-  cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-  cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
-  SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &primary_cpool_));
-  VkCommandBufferAllocateInfo cb_allocate_info = {};
-  cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  cb_allocate_info.commandPool = primary_cpool_;
-  cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  cb_allocate_info.commandBufferCount = (uint32_t)primary_command_buffers_.size();
-  SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, primary_command_buffers_.data()));
+    // Allocate primary command buffers for graphics apps
+    VkCommandPoolCreateInfo cpool_ci = {};
+    cpool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    cpool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    cpool_ci.queueFamilyIndex = graphics_and_present_queue_->family;
+    SPOKK_VK_CHECK(vkCreateCommandPool(device_, &cpool_ci, host_allocator_, &primary_cpool_));
+    SPOKK_VK_CHECK(device_.SetObjectName(primary_cpool_, "primary graphics command pool"));
+    VkCommandBufferAllocateInfo cb_allocate_info = {};
+    cb_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cb_allocate_info.commandPool = primary_cpool_;
+    cb_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cb_allocate_info.commandBufferCount = (uint32_t)primary_command_buffers_.size();
+    SPOKK_VK_CHECK(vkAllocateCommandBuffers(device_, &cb_allocate_info, primary_command_buffers_.data()));
+    for (uint32_t i = 0; i < primary_command_buffers_.size(); ++i) {
+      SPOKK_VK_CHECK(device_.SetObjectName(primary_command_buffers_[i],
+          std::string("primary graphics command buffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
+    }
+    // Create the semaphores used to synchronize access to swapchain images
+    VkSemaphoreCreateInfo semaphore_ci = {};
+    semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
+    SPOKK_VK_CHECK(device_.SetObjectName(image_acquire_semaphore_, "image acquire semaphore"));
+    SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
+    SPOKK_VK_CHECK(device_.SetObjectName(image_acquire_semaphore_, "submit complete semaphore"));
 
-  // Create the semaphores used to synchronize access to swapchain images
-  VkSemaphoreCreateInfo semaphore_ci = {};
-  semaphore_ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-  SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &image_acquire_semaphore_));
-  SPOKK_VK_CHECK(vkCreateSemaphore(device_, &semaphore_ci, host_allocator_, &submit_complete_semaphore_));
-
-  // Create the fences used to wait for each swapchain image's command buffer to be submitted.
-  // This prevents re-writing the command buffer contents before it's been submitted and processed.
-  VkFenceCreateInfo fence_ci = {};
-  fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-  fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-  for (auto &fence : submit_complete_fences_) {
-    SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
+    // Create the fences used to wait for each swapchain image's command buffer to be submitted.
+    // This prevents re-writing the command buffer contents before it's been submitted and processed.
+    VkFenceCreateInfo fence_ci = {};
+    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    for (size_t i = 0; i < submit_complete_fences_.size(); ++i) {
+      auto &fence = submit_complete_fences_[i];
+      SPOKK_VK_CHECK(vkCreateFence(device_, &fence_ci, host_allocator_, &fence));
+      SPOKK_VK_CHECK(device_.SetObjectName(fence,
+          std::string("submit complete fence ") + std::to_string(i)));  // TODO(cort): absl::StrCat
+    }
   }
 
   if (ci.enable_graphics) {
@@ -524,19 +719,28 @@ Application::~Application() {
     vkDeviceWaitIdle(device_);
 
     timestamp_query_pool_.Destroy(device_);
-
-    DestroyImgui();
-    for (auto fb : imgui_framebuffers_) {
-      vkDestroyFramebuffer(device_, fb, host_allocator_);
+    if (is_graphics_app_) {
+      DestroyImgui();
+      for (auto fb : imgui_framebuffers_) {
+        vkDestroyFramebuffer(device_, fb, host_allocator_);
+      }
+      imgui_render_pass_.Destroy(device_);
     }
-    imgui_render_pass_.Destroy(device_);
 
-    vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
-    vkDestroySemaphore(device_, submit_complete_semaphore_, host_allocator_);
+    if (image_acquire_semaphore_ != VK_NULL_HANDLE) {
+      vkDestroySemaphore(device_, image_acquire_semaphore_, host_allocator_);
+    }
+    if (submit_complete_semaphore_ != VK_NULL_HANDLE) {
+      vkDestroySemaphore(device_, submit_complete_semaphore_, host_allocator_);
+    }
     for (auto fence : submit_complete_fences_) {
-      vkDestroyFence(device_, fence, host_allocator_);
+      if (fence != VK_NULL_HANDLE) {
+        vkDestroyFence(device_, fence, host_allocator_);
+      }
     }
-    vkDestroyCommandPool(device_, primary_cpool_, host_allocator_);
+    if (primary_cpool_ != VK_NULL_HANDLE) {
+      vkDestroyCommandPool(device_, primary_cpool_, host_allocator_);
+    }
 
     if (swapchain_ != VK_NULL_HANDLE) {
       for (auto &view : swapchain_image_views_) {
@@ -556,6 +760,12 @@ Application::~Application() {
     auto destroy_debug_report_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkDestroyDebugReportCallbackEXT);
     destroy_debug_report_func(instance_, debug_report_callback_, host_allocator_);
   }
+#if defined(VK_EXT_debug_utils)
+  if (debug_utils_msgr_ != VK_NULL_HANDLE) {
+    auto destroy_debug_utils_msgr_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkDestroyDebugUtilsMessengerEXT);
+    destroy_debug_utils_msgr_func(instance_, debug_utils_msgr_, host_allocator_);
+  }
+#endif  // defined(VK_EXT_debug_utils)
   if (surface_ != VK_NULL_HANDLE) {
     vkDestroySurfaceKHR(instance_, surface_, host_allocator_);
     surface_ = VK_NULL_HANDLE;
@@ -580,20 +790,10 @@ int Application::Run() {
   frame_index_ = 0;
   pframe_index_ = 0;
   while (!force_exit_ && !glfwWindowShouldClose(window_.get())) {
-    // Check for window resize, and recreate the swapchain. Need to wait for an idle device first.
-    // Provide a hook for application subclasses to respond to resize events
-    {
-      int window_width = -1, window_height = -1;
-      glfwGetWindowSize(window_.get(), &window_width, &window_height);
-      if (window_width != (int)swapchain_extent_.width || window_height != (int)swapchain_extent_.height) {
-        VkExtent2D window_extent = {(uint32_t)window_width, (uint32_t)window_height};
-        HandleWindowResize(window_extent);
-      }
-    }
-
     uint64_t ticks_now = zomboClockTicks();
     const double dt = zomboTicksToSeconds(ticks_now - ticks_prev);
     ticks_prev = ticks_now;
+
     const uint32_t cpu_stats_frame_index = uint32_t(frame_index_ % STATS_FRAME_COUNT);
     float total_frame_time = 1000.0f * (float)dt;
     average_total_frame_time_ms_ +=
@@ -604,15 +804,35 @@ int Application::Run() {
     submit_wait_times_ms_[cpu_stats_frame_index] = 0.0f;
     present_wait_times_ms_[cpu_stats_frame_index] = 0.0f;
 
-    if (is_imgui_enabled_) {
-      ImGui_ImplGlfwVulkan_NewFrame();
-
-#if 0  // IMGUI demo window
-      if (is_imgui_visible_) {
-        ImGui::ShowTestWindow();
-      }
-#endif
+    // Iconified windows should just quietly spin in the background.
+    if (glfwGetWindowAttrib(window_.get(), GLFW_ICONIFIED) == GLFW_TRUE) {
+      zomboSleepMsec(17);
+      glfwPollEvents();
+      continue;
     }
+
+    // Check for window resize, and recreate the swapchain. Need to wait for an idle device first.
+    // Provide a hook for application subclasses to respond to resize events
+    {
+      int fb_width = -1, fb_height = -1;
+      glfwGetFramebufferSize(window_.get(), &fb_width, &fb_height);
+      if (fb_width == 0 && fb_height == 0) {
+        // window is likely iconfied; just early out & handle it properly next frame
+        continue;
+      } else if (fb_width != (int)swapchain_extent_.width || fb_height != (int)swapchain_extent_.height) {
+        VkExtent2D window_extent = {(uint32_t)fb_width, (uint32_t)fb_height};
+        HandleWindowResizeInternal(window_extent);
+      }
+    }
+
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+#if 0  // IMGUI demo window
+    if (is_imgui_visible_) {
+      ImGui::ShowDemoWindow();
+    }
+#endif
 
     ImGui::Begin("Present");
     const char *present_mode_combo_names = "IMMEDIATE\0MAILBOX\0FIFO\0FIFO_RELAXED\0\0";
@@ -628,6 +848,18 @@ int Application::Run() {
     Update(dt);
     if (force_exit_) {
       break;
+    }
+
+    // Press "V" to trigger a Vulkan validation error, to confirm that validation is active.
+    if (input_state_.IsPressed(InputState::DIGITAL_RPAD_UP)) {
+      VkFenceCreateInfo invalid_fence_ci = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+      VkFence invalid_fence = VK_NULL_HANDLE;
+      fprintf(stderr, "Attempting to create a VkFence with invalid sType...\n");
+      VkResult failure_result = vkCreateFence(device_, &invalid_fence_ci, host_allocator_, &invalid_fence);
+      if (failure_result == VK_SUCCESS) {
+        fprintf(stderr, "Invalid fence created successfully; validation is not active\n");
+        vkDestroyFence(device_, invalid_fence, host_allocator_);
+      }
     }
 
     // Wait for the command buffer previously used to generate this swapchain image to be submitted.
@@ -653,10 +885,14 @@ int Application::Run() {
     if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR || acquire_result == VK_SUBOPTIMAL_KHR) {
       // I've never actually seen these error codes returned, but if they were this is probably how they should be
       // handled.
-      int window_width = -1, window_height = -1;
-      glfwGetWindowSize(window_.get(), &window_width, &window_height);
-      VkExtent2D window_extent = {(uint32_t)window_width, (uint32_t)window_height};
-      HandleWindowResize(window_extent);
+      int fb_width = -1, fb_height = -1;
+      glfwGetFramebufferSize(window_.get(), &fb_width, &fb_height);
+      if (fb_width == 0 && fb_height == 0) {
+        // window is likely iconfied; just early out & handle it properly next frame
+        continue;
+      }
+      VkExtent2D window_extent = {(uint32_t)fb_width, (uint32_t)fb_width};
+      HandleWindowResizeInternal(window_extent);
     } else {
       SPOKK_VK_CHECK(acquire_result);
     }
@@ -715,9 +951,12 @@ int Application::Run() {
     // Reset this frame's range of the query pools
     timestamp_query_pool_.SetTargetFrame(cb, swapchain_image_index, frame_index_);
 
+    const float main_label_color[4] = {0, 0, 1, 1};
+    device_.DebugLabelBegin(cb, "Sample frame rendering", main_label_color);
     // Applications-specific render code
     timestamp_query_pool_.WriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, TIMESTAMP_ID_BEGIN_PRIMARY);
     Render(cb, swapchain_image_index);
+    device_.DebugLabelEnd(cb);
     if (force_exit_) {
       break;
     }
@@ -733,14 +972,16 @@ int Application::Run() {
 #endif
 
     // optional UI render pass
+    ImGui::Render();
     if (is_imgui_visible_) {
+      const float imgui_label_color[4] = {0, 1, 0, 1};
+      device_.DebugLabelBegin(cb, "IMGUI rendering", imgui_label_color);
       imgui_render_pass_.begin_info.framebuffer = imgui_framebuffers_[swapchain_image_index];
       imgui_render_pass_.begin_info.renderArea.extent = swapchain_extent_;
       vkCmdBeginRenderPass(cb, &imgui_render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
-      RenderImgui(cb);
+      ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cb);
       vkCmdEndRenderPass(cb);
-    } else if (is_imgui_enabled_ && !is_imgui_visible_) {
-      RenderImgui(cb);  // still needs to be called if the UI system is active, even if nothing is drawn.
+      device_.DebugLabelEnd(cb);
     }
     // This must happen outside the IMGUI NewFrame/Render pair, so may lag by a frame, but enh.
     if (input_state_.IsPressed(InputState::DIGITAL_MENU)) {
@@ -758,11 +999,13 @@ int Application::Run() {
     submit_info.pCommandBuffers = &cb;
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = &submit_complete_semaphore_;
+    device_.DebugLabelBegin(*graphics_and_present_queue_, "Primary Queue");
     uint64_t submit_wait_start_ticks = zomboClockTicks();
     SPOKK_VK_CHECK(
         vkQueueSubmit(*graphics_and_present_queue_, 1, &submit_info, submit_complete_fences_[pframe_index_]));
     submit_wait_times_ms_[cpu_stats_frame_index] =
         1000.0f * (float)zomboTicksToSeconds(zomboClockTicks() - submit_wait_start_ticks);
+    device_.DebugLabelEnd(*graphics_and_present_queue_);
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present_info.pNext = NULL;
@@ -776,12 +1019,15 @@ int Application::Run() {
     present_wait_times_ms_[cpu_stats_frame_index] =
         1000.0f * (float)zomboTicksToSeconds(zomboClockTicks() - present_wait_start_ticks);
     if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR) {
-      // I've never actually seen these error codes returned, but if they were this is probably how they should be
-      // handled.
-      int window_width = -1, window_height = -1;
-      glfwGetWindowSize(window_.get(), &window_width, &window_height);
-      VkExtent2D window_extent = {(uint32_t)window_width, (uint32_t)window_height};
-      HandleWindowResize(window_extent);
+      // This happens on a windowed <-> fullscreen transition
+      int fb_width = -1, fb_height = -1;
+      glfwGetFramebufferSize(window_.get(), &fb_width, &fb_height);
+      if (fb_width == 0 && fb_height == 0) {
+        // window is likely iconfied; just early out & handle it properly next frame
+        continue;
+      }
+      VkExtent2D window_extent = {(uint32_t)fb_width, (uint32_t)fb_height};
+      HandleWindowResizeInternal(window_extent);
     } else {
       SPOKK_VK_CHECK(present_result);
     }
@@ -793,7 +1039,7 @@ int Application::Run() {
   return 0;
 }
 
-void Application::HandleWindowResize(VkExtent2D new_window_extent) {
+void Application::HandleWindowResizeInternal(VkExtent2D new_window_extent) {
   SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
   SPOKK_VK_CHECK(CreateSwapchain(new_window_extent));
 
@@ -812,21 +1058,38 @@ void Application::HandleWindowResize(VkExtent2D new_window_extent) {
     framebuffer_ci.pAttachments = &swapchain_image_views_[i];
     SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &imgui_framebuffers_[i]));
   }
+
+  // Subclass-specific resize handling
+  HandleWindowResize(new_window_extent);
 }
 
-bool Application::InitImgui(VkRenderPass ui_render_pass) {
-  // Setup ImGui binding
-  ImGui_ImplGlfwVulkan_Init_Data init_data = {};
-  init_data.allocator = const_cast<VkAllocationCallbacks *>(device_.HostAllocator());
-  init_data.gpu = device_.Physical();
-  init_data.device = device_.Logical();
-  init_data.render_pass = ui_render_pass;
-  init_data.subpass = 0;
-  init_data.pipeline_cache = device_.PipelineCache();
-  init_data.check_vk_result = [](VkResult result) { SPOKK_VK_CHECK(result); };
+bool Application::InitImgui(VkRenderPass ui_render_pass, uint32_t ui_subpass) {
+  // Setup Dear ImGui binding
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+
+  // Setup GLFW binding
   bool install_glfw_input_callbacks = true;
-  bool init_success = ImGui_ImplGlfwVulkan_Init(window_.get(), install_glfw_input_callbacks, &init_data);
-  ZOMBO_ASSERT_RETURN(init_success, false, "IMGUI init failed");
+  bool imgui_glfw_init_success = ImGui_ImplGlfw_InitForVulkan(window_.get(), install_glfw_input_callbacks);
+  ZOMBO_ASSERT_RETURN(imgui_glfw_init_success, false, "ImGui GLFW init failed");
+
+  ImGui_ImplVulkan_InitInfo imgui_vk_init_info = {};
+  imgui_vk_init_info.Instance = instance_;
+  imgui_vk_init_info.PhysicalDevice = device_.Physical();
+  imgui_vk_init_info.Device = device_.Logical();
+  imgui_vk_init_info.QueueFamily = graphics_and_present_queue_->family;
+  imgui_vk_init_info.Queue = (VkQueue)*graphics_and_present_queue_;
+  imgui_vk_init_info.PipelineCache = device_.PipelineCache();
+  imgui_vk_init_info.Allocator = const_cast<VkAllocationCallbacks *>(device_.HostAllocator());
+  imgui_vk_init_info.CheckVkResultFn = [](VkResult result) { SPOKK_VK_CHECK(result); };
+
+  bool imgui_vk_init_success = ImGui_ImplVulkan_Init(&imgui_vk_init_info, ui_render_pass, ui_subpass);
+  ZOMBO_ASSERT_RETURN(imgui_vk_init_success, false, "ImGui VK init failed");
+
+  float content_scale_x = 1.0f, content_scale_y = 1.0f;
+  glfwGetWindowContentScale(window_.get(), &content_scale_x, &content_scale_y);
+  ImGui::GetStyle().ScaleAllSizes(content_scale_x);
+  ImGui::GetIO().FontGlobalScale = content_scale_x;
 
   // Load Fonts
   // (there is a default font, this is only if you want to change it. see extra_fonts/README.txt for more details)
@@ -856,7 +1119,7 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
   SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &begin_info));
-  bool font_create_success = ImGui_ImplGlfwVulkan_CreateFontsTexture(cb);
+  bool font_create_success = ImGui_ImplVulkan_CreateFontsTexture(cb);
   ZOMBO_ASSERT_RETURN(font_create_success, false, "IMGUI failed to create fonts");
   VkSubmitInfo end_info = {};
   end_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -865,11 +1128,12 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
   SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
   SPOKK_VK_CHECK(vkQueueSubmit(*(device_.FindQueue(VK_QUEUE_GRAPHICS_BIT)), 1, &end_info, VK_NULL_HANDLE));
   SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
-  ImGui_ImplGlfwVulkan_InvalidateFontUploadObjects();
+  ImGui_ImplVulkan_InvalidateFontUploadObjects();
   vkDestroyCommandPool(device_, cpool, device_.HostAllocator());
 
-  is_imgui_enabled_ = true;
-  ShowImgui(true);
+  // hide by default (which means is_imgui_visible must be true first, so we transition to false)
+  is_imgui_visible_ = true;
+  ShowImgui(false);
 
   return true;
 }
@@ -877,25 +1141,24 @@ bool Application::InitImgui(VkRenderPass ui_render_pass) {
 void Application::ShowImgui(bool visible) {
   if (visible && !is_imgui_visible_) {
     // invisible -> visible
-    ImGui_ImplGlfwVulkan_Show();
+    glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
   } else if (!visible && is_imgui_visible_) {
     // visible -> invisible
-    ImGui_ImplGlfwVulkan_Hide();
+    glfwSetInputMode(window_.get(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     input_state_.ClearHistory();
   }
   is_imgui_visible_ = visible;
 }
 
-void Application::RenderImgui(VkCommandBuffer cb) const { ImGui_ImplGlfwVulkan_Render(cb); }
-
 void Application::DestroyImgui(void) {
-  if (device_.Logical() != VK_NULL_HANDLE) {
-    vkDeviceWaitIdle(device_);
+  if (is_graphics_app_ && device_.Logical() != VK_NULL_HANDLE) {
+    SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
 
-    ImGui_ImplGlfwVulkan_Shutdown();
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
 
     ShowImgui(false);
-    is_imgui_enabled_ = false;
   }
 }
 
@@ -1030,11 +1293,16 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   image_view_ci.subresourceRange.baseArrayLayer = 0;
   image_view_ci.subresourceRange.layerCount = 1;
   swapchain_image_views_.reserve(swapchain_images_.size());
-  for (auto image : swapchain_images_) {
+  for (size_t i = 0; i < swapchain_images_.size(); ++i) {
+    auto image = swapchain_images_[i];
     image_view_ci.image = image;
     VkImageView view = VK_NULL_HANDLE;
     SPOKK_VK_CHECK(vkCreateImageView(device_, &image_view_ci, host_allocator_, &view));
     swapchain_image_views_.push_back(view);
+    SPOKK_VK_CHECK(device_.SetObjectName(image,
+        std::string("swapchain image ") + std::to_string(i)));  // TODO(cort): absl::StrCat
+    SPOKK_VK_CHECK(device_.SetObjectName(view,
+        std::string("swapchain image view ") + std::to_string(i)));  // TODO(cort): absl::StrCat
   }
   swapchain_image_frames_.resize(swapchain_images_.size(), 0);
   return VK_SUCCESS;

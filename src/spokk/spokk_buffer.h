@@ -1,7 +1,9 @@
 #pragma once
 
-#include <vector>
+#include "spokk_barrier.h"
 #include "spokk_memory.h"
+
+#include <vector>
 
 namespace spokk {
 
@@ -15,8 +17,8 @@ public:
   VkResult Create(const Device& device, uint32_t depth, const VkBufferCreateInfo& buffer_ci,
       VkMemoryPropertyFlags memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DeviceAllocationScope allocation_scope = DEVICE_ALLOCATION_SCOPE_DEVICE);
-  VkResult Load(const Device& device, uint32_t pframe, const void* src_data, size_t data_size, size_t src_offset = 0,
-      VkDeviceSize dst_offset = 0) const;
+  VkResult Load(const Device& device, uint32_t pframe, ThsvsAccessType src_access, ThsvsAccessType dst_access,
+      const void* src_data, size_t data_size, size_t src_offset = 0, VkDeviceSize dst_offset = 0) const;
   // View creation is optional; it's only necessary for texel buffers.
   VkResult CreateViews(const Device& device, VkFormat format);
   void Destroy(const Device& device);
@@ -36,7 +38,8 @@ public:
   // Invalidate the specified pframe's data in the host's caches, to
   // ensure GPU writes to its range are visible by the host.
   // If this allocation is not mapped, this function has no effect.
-  VkResult InvalidatePframeHostCache(const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const;
+  VkResult InvalidatePframeHostCache(
+      const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const;
   VkResult InvalidatePframeHostCache(const Device& device, uint32_t pframe) const {
     return InvalidatePframeHostCache(device, pframe, 0, bytes_per_pframe_);
   }
@@ -66,9 +69,9 @@ public:
       DeviceAllocationScope allocation_scope = DEVICE_ALLOCATION_SCOPE_DEVICE) {
     return PipelinedBuffer::Create(device, 1, buffer_ci, memory_properties, allocation_scope);
   }
-  VkResult Load(const Device& device, const void* src_data, size_t data_size, size_t src_offset = 0,
-      VkDeviceSize dst_offset = 0) const {
-    return PipelinedBuffer::Load(device, 0, src_data, data_size, src_offset, dst_offset);
+  VkResult Load(const Device& device, ThsvsAccessType src_access, ThsvsAccessType dst_access, const void* src_data,
+      size_t data_size, size_t src_offset = 0, VkDeviceSize dst_offset = 0) const {
+    return PipelinedBuffer::Load(device, 0, src_access, dst_access, src_data, data_size, src_offset, dst_offset);
   }
   // View creation is optional; it's only necessary for texel buffers.
   VkResult CreateView(const Device& device, VkFormat format) { return CreateViews(device, format); }
