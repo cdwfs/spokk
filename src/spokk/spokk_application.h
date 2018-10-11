@@ -15,6 +15,7 @@
 #include "spokk_input.h"
 #include "spokk_memory.h"
 #include "spokk_pipeline.h"
+#include "spokk_time.h"
 #include "spokk_utilities.h"
 #include "spokk_vertex.h"
 
@@ -124,7 +125,7 @@ protected:
   VkExtent2D swapchain_extent_ = {};
   std::vector<VkImage> swapchain_images_ = {};
   std::vector<VkImageView> swapchain_image_views_ = {};
-
+  std::vector<uint64_t> swapchain_image_frames_ = {};  // frame index most recently rendered by each swapchain image
   std::shared_ptr<GLFWwindow> window_ = nullptr;
 
   InputState input_state_;
@@ -173,6 +174,23 @@ private:
   bool is_imgui_visible_ = false;  // Tracks whether the UI is visible or not.
   RenderPass imgui_render_pass_ = {};
   std::vector<VkFramebuffer> imgui_framebuffers_ = {};
+
+  TimestampQueryPool timestamp_query_pool_;
+
+  // Changing this takes effect at the next HandleWindowResize().
+  VkPresentModeKHR swapchain_present_mode_ = VK_PRESENT_MODE_FIFO_KHR;
+
+  // Frame timing stats
+  static constexpr uint32_t STATS_FRAME_COUNT = 100;
+  std::array<float, STATS_FRAME_COUNT> total_frame_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> fence_wait_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> acquire_wait_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> submit_wait_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> present_wait_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> total_gpu_primary_times_ms_ = {};  // time to execute primary command buffer
+
+  float average_total_frame_time_ms_ = 0;
+  float average_total_gpu_primary_time_ms_ = 0;
 
   VmaAllocator_T* vma_allocator_ = nullptr;
   DeviceAllocationCallbacks device_allocator_ = {};

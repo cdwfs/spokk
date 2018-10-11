@@ -75,6 +75,13 @@ static_assert(spokk::PFRAME_COUNT == IMGUI_VK_QUEUED_FRAMES, "spokk and imgui mu
 
 namespace {
 
+enum TimestampId {
+  TIMESTAMP_ID_BEGIN_PRIMARY = 0,
+  TIMESTAMP_ID_END_PRIMARY = 1,
+
+  TIMESTAMP_ID_COUNT
+};
+
 void MyGlfwErrorCallback(int error, const char *description) {
   fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
@@ -696,12 +703,22 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
     }
   }
 
+  if (ci.enable_graphics) {
+    // Create timestamp query pool
+    TimestampQueryPool::CreateInfo tspool_ci = {};
+    tspool_ci.swapchain_image_count = (uint32_t)swapchain_images_.size();
+    tspool_ci.timestamp_id_count = TIMESTAMP_ID_COUNT;
+    tspool_ci.queue_family_index = graphics_and_present_queue_->family;
+    SPOKK_VK_CHECK(timestamp_query_pool_.Create(device_, tspool_ci));
+  }
+
   init_successful_ = true;
 }
 Application::~Application() {
   if (device_ != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(device_);
 
+    timestamp_query_pool_.Destroy(device_);
     if (is_graphics_app_) {
       DestroyImgui();
       for (auto fb : imgui_framebuffers_) {
@@ -777,6 +794,16 @@ int Application::Run() {
     const double dt = zomboTicksToSeconds(ticks_now - ticks_prev);
     ticks_prev = ticks_now;
 
+    const uint32_t cpu_stats_frame_index = uint32_t(frame_index_ % STATS_FRAME_COUNT);
+    float total_frame_time = 1000.0f * (float)dt;
+    average_total_frame_time_ms_ +=
+        (total_frame_time - total_frame_times_ms_[cpu_stats_frame_index]) / (float)STATS_FRAME_COUNT;
+    total_frame_times_ms_[cpu_stats_frame_index] = total_frame_time;
+    // Some counters don't get updated until after we've already drawn the stats display,
+    // so we zero them out initially. They'll get correct data for the long-term plots.
+    submit_wait_times_ms_[cpu_stats_frame_index] = 0.0f;
+    present_wait_times_ms_[cpu_stats_frame_index] = 0.0f;
+
     // Iconified windows should just quietly spin in the background.
     if (glfwGetWindowAttrib(window_.get(), GLFW_ICONIFIED) == GLFW_TRUE) {
       zomboSleepMsec(17);
@@ -807,6 +834,16 @@ int Application::Run() {
     }
 #endif
 
+    ImGui::Begin("Present");
+    const char *present_mode_combo_names = "IMMEDIATE\0MAILBOX\0FIFO\0FIFO_RELAXED\0\0";
+    VkPresentModeKHR new_present_mode = swapchain_present_mode_;
+    ImGui::Combo("Present Mode", (int *)&new_present_mode, present_mode_combo_names, 4);
+    if (new_present_mode != swapchain_present_mode_) {
+      swapchain_present_mode_ = new_present_mode;
+      HandleWindowResize(swapchain_extent_);
+    }
+    ImGui::End();
+
     input_state_.Update();
     Update(dt);
     if (force_exit_) {
@@ -826,7 +863,10 @@ int Application::Run() {
     }
 
     // Wait for the command buffer previously used to generate this swapchain image to be submitted.
+    uint64_t fence_wait_start_ticks = zomboClockTicks();
     vkWaitForFences(device_, 1, &submit_complete_fences_[pframe_index_], VK_TRUE, UINT64_MAX);
+    fence_wait_times_ms_[cpu_stats_frame_index] =
+        1000.0f * (float)zomboTicksToSeconds(zomboClockTicks() - fence_wait_start_ticks);
     vkResetFences(device_, 1, &submit_complete_fences_[pframe_index_]);
 
     // The host can now safely reset and rebuild this command buffer, even if the GPU hasn't finished presenting the
@@ -837,8 +877,11 @@ int Application::Run() {
     VkFence image_acquire_fence =
         VK_NULL_HANDLE;  // currently unused, but if you want the CPU to wait for an image to be acquired...
     uint32_t swapchain_image_index = 0;
+    uint64_t acquire_wait_start_ticks = zomboClockTicks();
     VkResult acquire_result = vkAcquireNextImageKHR(
         device_, swapchain_, UINT64_MAX, image_acquire_semaphore_, image_acquire_fence, &swapchain_image_index);
+    acquire_wait_times_ms_[cpu_stats_frame_index] =
+        1000.0f * (float)zomboTicksToSeconds(zomboClockTicks() - acquire_wait_start_ticks);
     if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR || acquire_result == VK_SUBOPTIMAL_KHR) {
       // I've never actually seen these error codes returned, but if they were this is probably how they should be
       // handled.
@@ -848,24 +891,76 @@ int Application::Run() {
         // window is likely iconfied; just early out & handle it properly next frame
         continue;
       }
-      VkExtent2D window_extent = { (uint32_t)fb_width, (uint32_t)fb_width };
+      VkExtent2D window_extent = {(uint32_t)fb_width, (uint32_t)fb_width};
       HandleWindowResizeInternal(window_extent);
     } else {
       SPOKK_VK_CHECK(acquire_result);
     }
 
+    // Retrieve timestamp values from the frame that just completed rendering.
+    // Note that these times correspond to a frame some distance in the past (in contrast to
+    // the CPU times, which are for the frame currently being prepared). Care must be taken:
+    // 1) ...to ensure we retrieve the correct set of timestamps. To be safe, we use swapchain
+    //    image index rather than pframe index to access the appropriate range of queries.
+    // 2) ...to match up a set of GPU times to the corresponding CPU times.
+    // 3) ...to not retrieve queries the first time a given swapchain image is being rendered
+    //    (or, at least, to ignore the resulting error in that case)
+    std::array<double, TIMESTAMP_ID_COUNT> timestamps_seconds;
+    std::array<bool, TIMESTAMP_ID_COUNT> timestamps_validity;
+    int64_t timestamps_frame_index = -1;
+    SPOKK_VK_CHECK(timestamp_query_pool_.GetResults(device_, swapchain_image_index, TIMESTAMP_ID_COUNT,
+        timestamps_seconds.data(), timestamps_validity.data(), &timestamps_frame_index));
+    if (timestamps_validity[TIMESTAMP_ID_BEGIN_PRIMARY] && timestamps_validity[TIMESTAMP_ID_END_PRIMARY]) {
+      float primary_time = 1000.0f *
+          (float)(timestamps_seconds[TIMESTAMP_ID_END_PRIMARY] - timestamps_seconds[TIMESTAMP_ID_BEGIN_PRIMARY]);
+      const uint32_t gpu_stats_frame_index = (uint32_t)(timestamps_frame_index % STATS_FRAME_COUNT);
+      average_total_gpu_primary_time_ms_ +=
+          (primary_time - total_gpu_primary_times_ms_[gpu_stats_frame_index]) / (float)STATS_FRAME_COUNT;
+      total_gpu_primary_times_ms_[gpu_stats_frame_index] = primary_time;
+    }
+    // Zero out the GPU times for the CPU's current frame, to indicate that we don't know them yet.
+    // total_gpu_primary_times_ms_[cpu_stats_frame_index] = 0.0f;
+
+    ImGui::Begin("Stats");
+    ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.6f, 0.6f, 0, 1));
+    ImGui::PushStyleColor(ImGuiCol_PlotLinesHovered, ImVec4(1, 0, 1, 1));
+    char average_total_frame_time_str[32];
+    sprintf(average_total_frame_time_str, "avg: %.3fms", average_total_frame_time_ms_);
+    ImGui::PlotLines("Frame Time (ms)", total_frame_times_ms_.data(), (int)total_frame_times_ms_.size(),
+        cpu_stats_frame_index, average_total_frame_time_str, 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    ImGui::PlotLines("Fence (ms)", fence_wait_times_ms_.data(), (int)fence_wait_times_ms_.size(), cpu_stats_frame_index,
+        nullptr, 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    ImGui::PlotLines("Acquire (ms)", acquire_wait_times_ms_.data(), (int)acquire_wait_times_ms_.size(),
+        cpu_stats_frame_index, "min: 0.0\nmax: 0.0", 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    ImGui::PlotLines("Submit (ms)", submit_wait_times_ms_.data(), (int)submit_wait_times_ms_.size(),
+        cpu_stats_frame_index, nullptr, 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    ImGui::PlotLines("Present (ms)", present_wait_times_ms_.data(), (int)present_wait_times_ms_.size(),
+        cpu_stats_frame_index, nullptr, 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    char average_total_gpu_primary_time_str[32];
+    sprintf(average_total_gpu_primary_time_str, "avg: %.3fms", average_total_gpu_primary_time_ms_);
+    ImGui::PlotLines("Primary CB (ms)", total_gpu_primary_times_ms_.data(), (int)total_gpu_primary_times_ms_.size(),
+        cpu_stats_frame_index, average_total_gpu_primary_time_str, 0.0f, FLT_MAX, ImVec2((float)STATS_FRAME_COUNT, 60));
+    ImGui::PopStyleColor(2);
+    ImGui::End();
+
     VkCommandBufferBeginInfo cb_begin_info = {};
     cb_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info));
+
+    // Reset this frame's range of the query pools
+    timestamp_query_pool_.SetTargetFrame(cb, swapchain_image_index, frame_index_);
+
     const float main_label_color[4] = {0, 0, 1, 1};
     device_.DebugLabelBegin(cb, "Sample frame rendering", main_label_color);
     // Applications-specific render code
+    timestamp_query_pool_.WriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, TIMESTAMP_ID_BEGIN_PRIMARY);
     Render(cb, swapchain_image_index);
     device_.DebugLabelEnd(cb);
     if (force_exit_) {
       break;
     }
+    timestamp_query_pool_.WriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, TIMESTAMP_ID_END_PRIMARY);
 
 #if 0
     VmaStats vma_stats = {};
@@ -879,7 +974,7 @@ int Application::Run() {
     // optional UI render pass
     ImGui::Render();
     if (is_imgui_visible_) {
-      const float imgui_label_color[4] = { 0, 1, 0, 1 };
+      const float imgui_label_color[4] = {0, 1, 0, 1};
       device_.DebugLabelBegin(cb, "IMGUI rendering", imgui_label_color);
       imgui_render_pass_.begin_info.framebuffer = imgui_framebuffers_[swapchain_image_index];
       imgui_render_pass_.begin_info.renderArea.extent = swapchain_extent_;
@@ -905,8 +1000,11 @@ int Application::Run() {
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = &submit_complete_semaphore_;
     device_.DebugLabelBegin(*graphics_and_present_queue_, "Primary Queue");
+    uint64_t submit_wait_start_ticks = zomboClockTicks();
     SPOKK_VK_CHECK(
         vkQueueSubmit(*graphics_and_present_queue_, 1, &submit_info, submit_complete_fences_[pframe_index_]));
+    submit_wait_times_ms_[cpu_stats_frame_index] =
+        1000.0f * (float)zomboTicksToSeconds(zomboClockTicks() - submit_wait_start_ticks);
     device_.DebugLabelEnd(*graphics_and_present_queue_);
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -916,7 +1014,10 @@ int Application::Run() {
     present_info.pImageIndices = &swapchain_image_index;
     present_info.waitSemaphoreCount = 1;
     present_info.pWaitSemaphores = &submit_complete_semaphore_;
+    uint64_t present_wait_start_ticks = zomboClockTicks();
     VkResult present_result = vkQueuePresentKHR(*graphics_and_present_queue_, &present_info);
+    present_wait_times_ms_[cpu_stats_frame_index] =
+        1000.0f * (float)zomboTicksToSeconds(zomboClockTicks() - present_wait_start_ticks);
     if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR) {
       // This happens on a windowed <-> fullscreen transition
       int fb_width = -1, fb_height = -1;
@@ -981,7 +1082,7 @@ bool Application::InitImgui(VkRenderPass ui_render_pass, uint32_t ui_subpass) {
   imgui_vk_init_info.PipelineCache = device_.PipelineCache();
   imgui_vk_init_info.Allocator = const_cast<VkAllocationCallbacks *>(device_.HostAllocator());
   imgui_vk_init_info.CheckVkResultFn = [](VkResult result) { SPOKK_VK_CHECK(result); };
-  
+
   bool imgui_vk_init_success = ImGui_ImplVulkan_Init(&imgui_vk_init_info, ui_render_pass, ui_subpass);
   ZOMBO_ASSERT_RETURN(imgui_vk_init_success, false, "ImGui VK init failed");
 
@@ -1117,26 +1218,20 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
           device_.Physical(), surface_, &device_present_mode_count, device_present_modes.data());
     }
   } while (result == VK_INCOMPLETE);
-  std::array<bool, VK_PRESENT_MODE_RANGE_SIZE_KHR> present_mode_supported = {};
+  std::array<bool, 4> present_mode_supported = {};
   for (auto mode : device_present_modes) {
     present_mode_supported[mode] = true;
   }
-  VkPresentModeKHR present_mode;
   // TODO(https://github.com/cdwfs/spokk/issues/12): Put this logic under application control
   // TODO(https://github.com/cdwfs/spokk/issues/30): Let this be tweaked at runtime through imgui
-#if 0
-  if (present_mode_supported[VK_PRESENT_MODE_IMMEDIATE_KHR]) {
-    present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
-  } else if (present_mode_supported[VK_PRESENT_MODE_MAILBOX_KHR]) {
-    present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
-  } else {
-    // FIFO support is required by the spec; its absence is a major problem.
-    ZOMBO_ASSERT(present_mode_supported[VK_PRESENT_MODE_FIFO_KHR], "FIFO present mode unsupported?!?");
-    present_mode = VK_PRESENT_MODE_FIFO_KHR;
+  if (swapchain_present_mode_ >= present_mode_supported.size()) {
+    fprintf(stderr, "ERROR: invalid present mode (%d); defaulting to FIFO\n", swapchain_present_mode_);
+    swapchain_present_mode_ = VK_PRESENT_MODE_FIFO_KHR;
+  } else if (!present_mode_supported[swapchain_present_mode_]) {
+    fprintf(stderr, "ERROR: unsupported present mode (%d); defaulting to FIFO\n", swapchain_present_mode_);
+    swapchain_present_mode_ = VK_PRESENT_MODE_FIFO_KHR;
   }
-#else
-  present_mode = VK_PRESENT_MODE_FIFO_KHR;
-#endif
+  ZOMBO_ASSERT(present_mode_supported[VK_PRESENT_MODE_FIFO_KHR], "FIFO present mode unsupported?!?");
 
   uint32_t desired_swapchain_image_count = surface_caps.minImageCount + 1;
   if (surface_caps.maxImageCount > 0 && desired_swapchain_image_count > surface_caps.maxImageCount) {
@@ -1165,7 +1260,7 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
   swapchain_ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
   swapchain_ci.preTransform = surface_transform;
   swapchain_ci.compositeAlpha = composite_alpha;
-  swapchain_ci.presentMode = present_mode;
+  swapchain_ci.presentMode = swapchain_present_mode_;
   swapchain_ci.clipped = VK_TRUE;
   swapchain_ci.oldSwapchain = old_swapchain;
   SPOKK_VK_CHECK(vkCreateSwapchainKHR(device_, &swapchain_ci, host_allocator_, &swapchain_));
@@ -1209,5 +1304,6 @@ VkResult Application::CreateSwapchain(VkExtent2D extent) {
     SPOKK_VK_CHECK(device_.SetObjectName(view,
         std::string("swapchain image view ") + std::to_string(i)));  // TODO(cort): absl::StrCat
   }
+  swapchain_image_frames_.resize(swapchain_images_.size(), 0);
   return VK_SUCCESS;
 }

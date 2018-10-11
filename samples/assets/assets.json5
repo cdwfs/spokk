@@ -44,6 +44,9 @@
         { class: "mesh", input: "teapot.obj", output: "teapot.mesh", },
 
         // Shaders
+        { class: "shader", input: "../benchmark/rigid_mesh.vert", output: "benchmark/rigid_mesh.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../benchmark/rigid_mesh.frag", output: "benchmark/rigid_mesh.frag.spv", stage: "frag", entry: "main", },
+
         { class: "shader", input: "../blending/dsb_mesh.vert", output: "blending/dsb_mesh.vert.spv", stage: "vert", entry: "main", },
         { class: "shader", input: "../blending/dsb_mesh.frag", output: "blending/dsb_mesh.frag.spv", stage: "frag", entry: "main", },
 
