@@ -840,7 +840,7 @@ int Application::Run() {
     ImGui::Combo("Present Mode", (int *)&new_present_mode, present_mode_combo_names, 4);
     if (new_present_mode != swapchain_present_mode_) {
       swapchain_present_mode_ = new_present_mode;
-      HandleWindowResize(swapchain_extent_);
+      HandleWindowResizeInternal(swapchain_extent_);
     }
     ImGui::End();
 
