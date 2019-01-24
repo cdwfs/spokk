@@ -103,15 +103,17 @@ SET(GLSLANG_TARGETS
 )
 SET(SPIRV_HEADERS_TARGETS
     install-headers
-    SPIRV-Headers-example
-    SPIRV-Headers-example-1.1
 )
 SET(SPIRV_TOOLS_TARGETS
+    core_tables
+    enum_string_mapping
+    extinst_tables
     spirv-as
     spirv-cfg
     spirv-dis
     spirv-link
     spirv-opt
+    spirv-reduce
     spirv-stats
     SPIRV-Tools
     SPIRV-Tools-link
@@ -127,6 +129,7 @@ SET(SPIRV_TOOLS_TARGETS
     spirv-tools-spv-amd-shader-trinary-minmax
     spirv-tools-vimsyntax
     SPIRV-Tools-opt
+    SPIRV-Tools-reduce
     SPIRV-Tools-shared
     spirv-val
 )
