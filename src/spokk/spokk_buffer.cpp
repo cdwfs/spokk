@@ -25,6 +25,17 @@ VkResult PipelinedBuffer::Create(const Device& device, uint32_t depth, const VkB
       // know the results will be the same.
       vkGetBufferMemoryRequirements(device, buf, &single_reqs);
     }
+    // For host-visible, non-coherent device memory, size & alignment must be rounded up to non-coherent atom size
+    // in order for flush/invalidate memory range to work properly.
+    // TODO(https://github.com/cdwfs/spokk/issues/33): move this into Device::DeviceAlloc(). Call DeviceAllocAndBindToBuffer() here instead.
+    bool isHostCoherent = (memory_properties & (VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+    bool isHostVisibleDeviceMem =
+        (memory_properties & (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+    if (!isHostCoherent && isHostVisibleDeviceMem) {
+      VkDeviceSize nonCoherentAtomSize = device.Properties().limits.nonCoherentAtomSize;
+      single_reqs.size = (single_reqs.size + (nonCoherentAtomSize - 1)) & ~(nonCoherentAtomSize - 1);
+      single_reqs.alignment = (single_reqs.alignment + (nonCoherentAtomSize - 1)) & ~(nonCoherentAtomSize - 1);
+    }
 
     bytes_per_pframe_ = (single_reqs.size + (single_reqs.alignment - 1)) & ~(single_reqs.alignment - 1);
     VkMemoryRequirements full_reqs = single_reqs;
