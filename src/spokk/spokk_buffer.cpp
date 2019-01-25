@@ -18,38 +18,25 @@ VkResult PipelinedBuffer::Create(const Device& device, uint32_t depth, const VkB
   depth_ = depth;
   if (depth > 0) {
     handles_.resize(depth);
-    VkMemoryRequirements single_reqs = {};
-    for (auto& buf : handles_) {
-      SPOKK_VK_CHECK(vkCreateBuffer(device, &buffer_ci, device.HostAllocator(), &buf));
-      // It's a validation error not to call this on every VkBuffer before binding its memory, even if you
-      // know the results will be the same.
-      vkGetBufferMemoryRequirements(device, buf, &single_reqs);
-    }
-    // For host-visible, non-coherent device memory, size & alignment must be rounded up to non-coherent atom size
-    // in order for flush/invalidate memory range to work properly.
-    // TODO(https://github.com/cdwfs/spokk/issues/33): move this into Device::DeviceAlloc(). Call DeviceAllocAndBindToBuffer() here instead.
-    bool isHostCoherent = (memory_properties & (VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
-    bool isHostVisibleDeviceMem =
-        (memory_properties & (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
-    if (!isHostCoherent && isHostVisibleDeviceMem) {
-      VkDeviceSize nonCoherentAtomSize = device.Properties().limits.nonCoherentAtomSize;
-      single_reqs.size = (single_reqs.size + (nonCoherentAtomSize - 1)) & ~(nonCoherentAtomSize - 1);
-      single_reqs.alignment = (single_reqs.alignment + (nonCoherentAtomSize - 1)) & ~(nonCoherentAtomSize - 1);
-    }
-
-    bytes_per_pframe_ = (single_reqs.size + (single_reqs.alignment - 1)) & ~(single_reqs.alignment - 1);
-    VkMemoryRequirements full_reqs = single_reqs;
-    full_reqs.size = bytes_per_pframe_ * depth;
-    VkResult result = device.DeviceAlloc(full_reqs, memory_properties, allocation_scope, &memory_);
-    if (result == VK_SUCCESS) {
-      for (size_t iBuf = 0; iBuf < handles_.size(); ++iBuf) {
-        SPOKK_VK_CHECK(vkBindBufferMemory(
-            device, handles_[iBuf], memory_.device_memory, memory_.offset + iBuf * bytes_per_pframe_));
+    allocations_.resize(depth);
+    VkMemoryRequirements mem_reqs = {};
+    VkResult result = VK_SUCCESS;
+    for (uint32_t pframe = 0; pframe < depth; ++pframe) {
+      result = vkCreateBuffer(device, &buffer_ci, device.HostAllocator(), &handles_[pframe]);
+      if (result != VK_SUCCESS) {
+        break;
       }
-    } else {
-      Destroy(device);
-      return result;
+      result = device.DeviceAllocAndBindToBuffer(
+          handles_[pframe], memory_properties, allocation_scope, &allocations_[pframe]);
+      if (result != VK_SUCCESS) {
+        break;
+      }
     }
+    if (result != VK_SUCCESS) {
+      Destroy(device);
+    }
+    bytes_per_pframe_ = allocations_[0].size;  // size should match for all allocations_[]
+    return result;
   }
   return VK_SUCCESS;
 }
@@ -60,12 +47,12 @@ VkResult PipelinedBuffer::Load(const Device& device, uint32_t pframe, ThsvsAcces
     return VK_ERROR_INITIALIZATION_FAILED;  // Call Create() first!
   }
   VkResult result = VK_SUCCESS;
-  if (memory_.Mapped()) {
+  if (allocations_[pframe].Mapped()) {
     VkMappedMemoryRange pframe_range = {};
     pframe_range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-    pframe_range.memory = memory_.device_memory;
-    pframe_range.offset = memory_.offset + pframe * bytes_per_pframe_;
-    pframe_range.size = bytes_per_pframe_;
+    pframe_range.memory = allocations_[pframe].device_memory;
+    pframe_range.offset = allocations_[pframe].offset;
+    pframe_range.size = allocations_[pframe].size;
     SPOKK_VK_CHECK(vkInvalidateMappedMemoryRanges(device, 1, &pframe_range));
     memcpy(reinterpret_cast<uint8_t*>(Mapped(pframe)) + dst_offset,
         reinterpret_cast<const uint8_t*>(src_data) + src_offset, data_size);
@@ -148,8 +135,10 @@ VkResult PipelinedBuffer::CreateViews(const Device& device, VkFormat format) {
   return VK_SUCCESS;
 }
 void PipelinedBuffer::Destroy(const Device& device) {
-  if (memory_.device_memory != VK_NULL_HANDLE) {
-    device.DeviceFree(memory_);
+  for (auto a : allocations_) {
+    if (a.device_memory != VK_NULL_HANDLE) {
+      device.DeviceFree(a);
+    }
   }
   for (auto view : views_) {
     if (view != VK_NULL_HANDLE) {
@@ -168,12 +157,12 @@ void PipelinedBuffer::Destroy(const Device& device) {
 
 VkResult PipelinedBuffer::InvalidatePframeHostCache(
     const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const {
-  return memory_.InvalidateHostCache(device, memory_.offset + pframe * bytes_per_pframe_ + offset, nbytes);
+  return allocations_[pframe].InvalidateHostCache(device, allocations_[pframe].offset + offset, nbytes);
 }
 
 VkResult PipelinedBuffer::FlushPframeHostCache(
     const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const {
-  return memory_.FlushHostCache(device, memory_.offset + pframe * bytes_per_pframe_ + offset, nbytes);
+  return allocations_[pframe].FlushHostCache(device, allocations_[pframe].offset + offset, nbytes);
 }
 
 }  // namespace spokk
