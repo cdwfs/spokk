@@ -280,3 +280,20 @@ SPOKK_ADD_SHADERS(spokk-shadertoy
 )
 SPOKK_ADD_EXECUTABLE(spokk-shadertoy)
 TARGET_LINK_LIBRARIES(spokk-shadertoy shaderc)
+
+# spokk-tv
+SPOKK_ADD_SOURCES(spokk-tv
+    samples/common/camera.cpp
+    samples/tv/tv.cpp
+)
+SPOKK_ADD_HEADERS(spokk-tv
+    samples/common/camera.h
+    samples/common/cube_mesh.h
+)
+SPOKK_ADD_SHADERS(spokk-tv
+    samples/tv/film.frag
+    samples/tv/fullscreen.vert
+    samples/tv/pillar.vert
+    samples/tv/pillar.frag
+)
+SPOKK_ADD_EXECUTABLE(spokk-tv)

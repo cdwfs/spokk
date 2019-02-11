@@ -64,5 +64,9 @@
         { class: "shader", input: "../pillars/pillar.frag", output: "pillars/pillar.frag.spv", stage: "frag", entry: "main", },
 
         { class: "shader", input: "../shadertoy/fullscreen.vert", output: "shadertoy/fullscreen.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../tv/film.frag", output: "tv/film.frag.spv", stage: "frag", entry: "main", },
+        { class: "shader", input: "../tv/fullscreen.vert", output: "tv/fullscreen.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../tv/pillar.vert", output: "tv/pillar.vert.spv", stage: "vert", entry: "main", },
+        { class: "shader", input: "../tv/pillar.frag", output: "tv/pillar.frag.spv", stage: "frag", entry: "main", },
     ],
 }
