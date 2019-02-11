@@ -27,34 +27,30 @@ public:
   VkBufferView View(uint32_t pframe) const { return views_.empty() ? VK_NULL_HANDLE : views_[pframe]; }
   // Mapped() returns the base address of the specified pframe's data.
   void* Mapped(uint32_t pframe) const {
-    return (pframe < depth_ && memory_.Mapped()) ? (void*)(intptr_t(memory_.Mapped()) + pframe * bytes_per_pframe_)
-                                                 : nullptr;
+    return (pframe < depth_) ? allocations_[pframe].Mapped() : nullptr;
   }
   uint32_t Depth() const { return depth_; }
   VkDeviceSize BytesPerPframe() const { return bytes_per_pframe_; }
-  // TODO(cort): this is dangerous, and should be revisited.
-  // - No indication whether the allocation is for one buffer or N.
-  const DeviceMemoryAllocation& Memory() const { return memory_; }
   // Invalidate the specified pframe's data in the host's caches, to
   // ensure GPU writes to its range are visible by the host.
   // If this allocation is not mapped, this function has no effect.
   VkResult InvalidatePframeHostCache(
       const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const;
   VkResult InvalidatePframeHostCache(const Device& device, uint32_t pframe) const {
-    return InvalidatePframeHostCache(device, pframe, 0, bytes_per_pframe_);
+    return InvalidatePframeHostCache(device, pframe, 0, allocations_[pframe].size);
   }
   // Flush the specified pframe's data from the host's caches, to
   // ensure host writes to its range are visible by the GPU.
   // If this allocation is not mapped, this function has no effect.
   VkResult FlushPframeHostCache(const Device& device, uint32_t pframe, VkDeviceSize offset, VkDeviceSize nbytes) const;
   VkResult FlushPframeHostCache(const Device& device, uint32_t pframe) const {
-    return FlushPframeHostCache(device, pframe, 0, bytes_per_pframe_);
+    return FlushPframeHostCache(device, pframe, 0, allocations_[pframe].size);
   }
 
 protected:
   std::vector<VkBuffer> handles_;
   std::vector<VkBufferView> views_;
-  DeviceMemoryAllocation memory_;
+  std::vector<DeviceMemoryAllocation> allocations_;
   uint32_t depth_;
   VkDeviceSize bytes_per_pframe_;
 };
@@ -78,7 +74,7 @@ public:
 
   VkBuffer Handle() const { return handles_.empty() ? VK_NULL_HANDLE : handles_[0]; }
   VkBufferView View() const { return views_.empty() ? VK_NULL_HANDLE : views_[0]; }
-  void* Mapped() const { return memory_.Mapped(); }
+  void* Mapped() const { return allocations_[0].Mapped(); }
   VkResult InvalidateHostCache(const Device& device) const { return InvalidatePframeHostCache(device, 0); }
   VkResult FlushHostCache(const Device& device) const { return FlushPframeHostCache(device, 0); }
 };

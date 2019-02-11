@@ -12,6 +12,11 @@ struct SpvReflectDescriptorBinding;  // from spirv_reflect.h
 
 namespace spokk {
 
+struct ShaderInputAttribute {
+  std::string name;
+  uint32_t location;
+  VkFormat format;
+};
 struct DescriptorBindPoint {
   uint32_t set;
   uint32_t binding;
@@ -40,10 +45,11 @@ struct Shader {
   void Destroy(const Device& device);
 
   VkShaderModule handle = VK_NULL_HANDLE;
-  std::vector<uint32_t> spirv = {};
+  std::vector<uint32_t> spirv = {};  // May be empty if UnloadSpirv() has been called after a successful load
   VkShaderStageFlagBits stage = (VkShaderStageFlagBits)0;
   std::string entry_point = "main";
   // Resources used by this shader:
+  std::vector<ShaderInputAttribute> input_attributes = {};
   std::vector<DescriptorSetLayoutInfo> dset_layout_infos = {};  // one per dset (including empty ones)
   VkPushConstantRange push_constant_range = {};  // range.size = 0 means this stage doesn't use push constants.
 private:
@@ -65,6 +71,8 @@ struct ShaderProgram {
   VkResult Finalize(const Device& device);
   void Destroy(const Device& device);
 
+  const std::vector<ShaderInputAttribute>* input_attributes =
+      nullptr;  // points to the vector in the appropriate Shader
   std::vector<VkDescriptorSetLayoutCreateInfo> dset_layout_cis =
       {};  // one per dset. Unused sets are padded with empty layouts.
   std::vector<DescriptorSetLayoutInfo> dset_layout_infos =

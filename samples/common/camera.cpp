@@ -210,7 +210,7 @@ vec3 Camera::worldToNdc( const vec3 &worldCoord ) const
 {
     vec4 eye = getViewMatrix() * vec4( worldCoord, 1 );
     vec4 unproj = getProjectionMatrix() * eye;
-	return vec3( unproj.x / unproj.w, unproj.y / unproj.w, unproj.z / unproj.w );
+    return vec3( unproj.x / unproj.w, unproj.y / unproj.w, unproj.z / unproj.w );
 }
 
 /*

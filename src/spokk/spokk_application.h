@@ -15,6 +15,7 @@
 #include "spokk_input.h"
 #include "spokk_memory.h"
 #include "spokk_pipeline.h"
+#include "spokk_time.h"
 #include "spokk_utilities.h"
 #include "spokk_vertex.h"
 
@@ -56,8 +57,8 @@ public:
   struct CreateInfo {
     std::string app_name = "Spokk Application";
     uint32_t window_width = 1280, window_height = 720;
+    bool enable_fullscreen = false;
     bool enable_graphics = true;
-
     // clang-format off
     VkDebugReportFlagsEXT debug_report_flags = 0
       | VK_DEBUG_REPORT_ERROR_BIT_EXT
@@ -107,10 +108,9 @@ public:
   virtual void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) = 0;
 
 protected:
-  // Overloads must call the base class resize method before performing their own work.
   // The first thing it does is call vkDeviceWaitIdle(), so subclasses can safely assume that
   // no resources are in use on the GPU and can be safely destroyed/recreated.
-  virtual void HandleWindowResize(VkExtent2D new_window_extent);
+  virtual void HandleWindowResize(VkExtent2D new_window_extent) { (void)new_window_extent; }
 
   const VkAllocationCallbacks* host_allocator_ = nullptr;
   VkInstance instance_ = VK_NULL_HANDLE;
@@ -125,7 +125,7 @@ protected:
   VkExtent2D swapchain_extent_ = {};
   std::vector<VkImage> swapchain_images_ = {};
   std::vector<VkImageView> swapchain_image_views_ = {};
-
+  std::vector<uint64_t> swapchain_image_frames_ = {};  // frame index most recently rendered by each swapchain image
   std::shared_ptr<GLFWwindow> window_ = nullptr;
 
   InputState input_state_;
@@ -141,28 +141,29 @@ protected:
 
   bool force_exit_ = false;  // Application can set this to true to exit at the next available chance.
 
-private:
-  // Initialize imgui. The provided render pass must be the one that will be active when
-  // RenderImgui() will be called.
-  bool InitImgui(VkRenderPass ui_render_pass);
   // If visible=true, the imgui will be rendered, the cursor will be visible, and any
   // keyboard/mouse consumed by imgui will be ignored by InputState.
   // If visible=false, imgui will not be rendered (but UI controls throughout the code will still
   // be processed, so if they're expensive, maybe make them conditional). The mouse cursor will
   // be hidden, and InputState will get updated keyboard/mouse input every frame.
   void ShowImgui(bool visible);
-  // Generate the commands to render the IMGUI elements created earlier in the frame.
-  // This function must only be called when the ui_render_pass passed to InitImgui() is active.
-  void RenderImgui(VkCommandBuffer cb) const;
+
+private:
+  // Initialize imgui. The provided render pass must be the one that will be active when
+  // RenderImgui() will be called.
+  bool InitImgui(VkRenderPass ui_render_pass, uint32_t ui_subpass = 0);
   // Cleans up all IMGUI resources. This is automatically called during application shutdown, but
   // would need to be called manually to reinitialize the GUI subsystem at runtime (e,g. with a
   // different render pass).
   // Safe to call, even if IMGUI was not initialized or has already been destroyed.
   void DestroyImgui(void);
 
+  void HandleWindowResizeInternal(VkExtent2D new_window_extent);
+
   VkResult CreateSwapchain(VkExtent2D extent);
 
   bool init_successful_ = false;
+  bool is_graphics_app_ = false;
 
   VkCommandPool primary_cpool_ = VK_NULL_HANDLE;
   std::array<VkCommandBuffer, PFRAME_COUNT> primary_command_buffers_;
@@ -173,6 +174,23 @@ private:
   bool is_imgui_visible_ = false;  // Tracks whether the UI is visible or not.
   RenderPass imgui_render_pass_ = {};
   std::vector<VkFramebuffer> imgui_framebuffers_ = {};
+
+  TimestampQueryPool timestamp_query_pool_;
+
+  // Changing this takes effect at the next HandleWindowResize().
+  VkPresentModeKHR swapchain_present_mode_ = VK_PRESENT_MODE_FIFO_KHR;
+
+  // Frame timing stats
+  static constexpr uint32_t STATS_FRAME_COUNT = 100;
+  std::array<float, STATS_FRAME_COUNT> total_frame_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> fence_wait_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> acquire_wait_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> submit_wait_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> present_wait_times_ms_ = {};
+  std::array<float, STATS_FRAME_COUNT> total_gpu_primary_times_ms_ = {};  // time to execute primary command buffer
+
+  float average_total_frame_time_ms_ = 0;
+  float average_total_gpu_primary_time_ms_ = 0;
 
   VmaAllocator_T* vma_allocator_ = nullptr;
   DeviceAllocationCallbacks device_allocator_ = {};

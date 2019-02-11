@@ -18,7 +18,7 @@ OPTION(USE_MSVC_RUNTIME_LIBRARY_DLL "Use MSVC runtime library DLL" ON)
 ADD_SUBDIRECTORY(glfw)
 
 # GLM
-# Nothing to do here if not building self-tests
+set(GLM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/glm PARENT_SCOPE)
 
 # assimp
 OPTION(ASSIMP_BUILD_ASSIMP_TOOLS "If the supplementary tools for Assimp are built in addition to the library." OFF)
@@ -44,12 +44,14 @@ ENDIF(${MSVC})
 SET_TARGET_PROPERTIES(${ASSIMP_TARGETS} PROPERTIES FOLDER "assimp")
 
 # dear imgui
+set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui PARENT_SCOPE)
 SET(IMGUI_SOURCE_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui.h
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_demo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_draw.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_internal.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_widgets.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imconfig.h
     PARENT_SCOPE
 )
@@ -64,13 +66,17 @@ set(SIMPLE_VULKAN_SYNCHRONIZATION_DIR
 )
 
 # SPIRV-Reflect
+SET(SPIRV_REFLECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/SPIRV-Reflect PARENT_SCOPE)
 SET(SPIRV_REFLECT_SOURCE_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/SPIRV-Reflect/spirv_reflect.c
     ${CMAKE_CURRENT_SOURCE_DIR}/SPIRV-Reflect/spirv_reflect.h
     PARENT_SCOPE
 )
 
-# Nothing to configure
+# stb
+# Nothing to configure, but eventually it would be nice to specify the include directory,
+# now that it doesn't conflict with imgui's copy, and avoid including third_party/ everywhere.
+SET(STB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/stb PARENT_SCOPE)
 
 # shaderc
 SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
@@ -97,15 +103,17 @@ SET(GLSLANG_TARGETS
 )
 SET(SPIRV_HEADERS_TARGETS
     install-headers
-    SPIRV-Headers-example
-    SPIRV-Headers-example-1.1
 )
 SET(SPIRV_TOOLS_TARGETS
+    core_tables
+    enum_string_mapping
+    extinst_tables
     spirv-as
     spirv-cfg
     spirv-dis
     spirv-link
     spirv-opt
+    spirv-reduce
     spirv-stats
     SPIRV-Tools
     SPIRV-Tools-link
@@ -121,6 +129,7 @@ SET(SPIRV_TOOLS_TARGETS
     spirv-tools-spv-amd-shader-trinary-minmax
     spirv-tools-vimsyntax
     SPIRV-Tools-opt
+    SPIRV-Tools-reduce
     SPIRV-Tools-shared
     spirv-val
 )

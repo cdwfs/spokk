@@ -15,7 +15,7 @@
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"  // L1, L2 are set but unused in debug builds
 #endif
 #define STB_RECT_PACK_IMPLEMENTATION
-#include <stb/stb_rect_pack.h>
+#include <stb_rect_pack.h>
 #if defined(ZOMBO_COMPILER_CLANG)
 #pragma clang diagnostic pop
 #elif defined(ZOMBO_COMPILER_GNU)
@@ -23,7 +23,7 @@
 #endif
 
 #define STB_TRUETYPE_IMPLEMENTATION
-#include <stb/stb_truetype.h>
+#include <stb_truetype.h>
 
 #include <stdarg.h>
 #include <algorithm>
@@ -350,7 +350,6 @@ const MeshFormat &FontAtlas::GetQuadFormat() {
         {0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
         {1, 0, VK_FORMAT_R32G32_SFLOAT, 8},
     };
-    fmt.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
   }
   return fmt;
 }

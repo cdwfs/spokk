@@ -10,7 +10,7 @@
 #include <vector>
 
 // TODO(cort): Forward declarations to avoid putting stb_truetype.h in the header
-#include <stb/stb_truetype.h>
+#include <stb_truetype.h>
 
 namespace spokk {
 
