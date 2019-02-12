@@ -68,7 +68,9 @@ layout (set = 0, binding = 5) uniform TvUniforms {
   vec4 film_params;  // x: noiseIntensity, y: scanlineIntensity, z: sCount, w: output_grayscale
   vec4 snow_params;  // x: snowAmount, y: snowSize, zw: unused
 } tv_consts;
-layout (input_attachment_index = 0, set = 0, binding = 6) uniform subpassInput inputColor;
+layout(set = 0, binding = 6) uniform texture2D fbColor;
+layout(set = 0, binding = 7) uniform texture2D fbDepth;
+layout(set = 0, binding = 8) uniform sampler fbSamp;
 
 float snow_rand(vec2 co) {
   return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
@@ -85,7 +87,7 @@ void main() {
   float snowSize = tv_consts.snow_params.y;
 
   // sample the source
-  vec4 cTextureScreen = subpassLoad(inputColor);
+  vec4 cTextureScreen = texture(sampler2D(fbColor, fbSamp), texcoord);
   
   // make some noise
   float x = texcoord.x * texcoord.y * time *  1000.0;

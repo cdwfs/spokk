@@ -54,9 +54,12 @@ private:
 
   Image depth_image_;
   Image color_target_;
+  const VkFormat color_target_format_ = VK_FORMAT_R16G16B16A16_SFLOAT;
 
-  RenderPass render_pass_;
-  std::vector<VkFramebuffer> framebuffers_;
+  RenderPass scene_render_pass_;
+  VkFramebuffer scene_framebuffer_;
+  RenderPass post_render_pass_;
+  std::vector<VkFramebuffer> post_framebuffers_;
 
   Image albedo_tex_;
   VkSampler sampler_;
@@ -100,12 +103,15 @@ TvApp::TvApp(Application::CreateInfo& ci) : Application(ci) {
   drone_->SetBounds(glm::vec3(VISIBLE_RADIUS, 1, VISIBLE_RADIUS),
       glm::vec3(HEIGHTFIELD_DIMX - VISIBLE_RADIUS - 1, 30, HEIGHTFIELD_DIMY - VISIBLE_RADIUS - 1));
 
-  // Create render pass
-  render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH_POST, swapchain_surface_format_.format);
-  SPOKK_VK_CHECK(render_pass_.Finalize(device_));
-  SPOKK_VK_CHECK(device_.SetObjectName(render_pass_.handle, "main color/depth pass"));
-  render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
-  render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
+  // Create render passes
+  scene_render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH_OFFSCREEN, color_target_format_);
+  SPOKK_VK_CHECK(scene_render_pass_.Finalize(device_));
+  SPOKK_VK_CHECK(device_.SetObjectName(scene_render_pass_.handle, "main offscreen color/depth pass"));
+  scene_render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
+  scene_render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
+  post_render_pass_.InitFromPreset(RenderPass::Preset::POST, swapchain_surface_format_.format);
+  SPOKK_VK_CHECK(post_render_pass_.Finalize(device_));
+  SPOKK_VK_CHECK(device_.SetObjectName(post_render_pass_.handle, "post-processing pass"));
 
   // Load textures and samplers
   VkSamplerCreateInfo sampler_ci =
@@ -188,10 +194,10 @@ TvApp::TvApp(Application::CreateInfo& ci) : Application(ci) {
       device_, THSVS_ACCESS_NONE, THSVS_ACCESS_VERTEX_BUFFER, final_mesh_vertices.data(), vertex_buffer_ci.size));
 
   // Create graphics pipelines
-  pillar_pipeline_.Init(&(mesh_.mesh_format), &pillar_shader_program_, &render_pass_, 0);
+  pillar_pipeline_.Init(&(mesh_.mesh_format), &pillar_shader_program_, &scene_render_pass_, 0);
   SPOKK_VK_CHECK(pillar_pipeline_.Finalize(device_));
   SPOKK_VK_CHECK(device_.SetObjectName(pillar_pipeline_.handle, "pillar pipeline"));
-  tv_pipeline_.Init(&empty_mesh_format_, &film_shader_program_, &render_pass_, 1);
+  tv_pipeline_.Init(&empty_mesh_format_, &film_shader_program_, &post_render_pass_, 0);
   SPOKK_VK_CHECK(tv_pipeline_.Finalize(device_));
   SPOKK_VK_CHECK(device_.SetObjectName(tv_pipeline_.handle, "TV pipeline"));
 
@@ -250,8 +256,11 @@ TvApp::TvApp(Application::CreateInfo& ci) : Application(ci) {
   dset_writer.BindImage(
       albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, pillar_fs_.GetDescriptorBindPoint("tex").binding);
   dset_writer.BindSampler(sampler_, pillar_fs_.GetDescriptorBindPoint("samp").binding);
-  dset_writer.BindImage(
-      color_target_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, film_fs_.GetDescriptorBindPoint("inputColor").binding);
+  dset_writer.BindImage(color_target_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      film_fs_.GetDescriptorBindPoint("fbColor").binding);
+  dset_writer.BindImage(depth_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      film_fs_.GetDescriptorBindPoint("fbDepth").binding);
+  dset_writer.BindSampler(sampler_, film_fs_.GetDescriptorBindPoint("fbSamp").binding);
   for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
     // TODO(cort): allocate_pipelined_set()?
     dsets_[pframe] = dpool_.AllocateSet(device_, pillar_shader_program_.dset_layouts[0]);
@@ -292,10 +301,13 @@ TvApp::~TvApp() {
     vkDestroySampler(device_, sampler_, host_allocator_);
     albedo_tex_.Destroy(device_);
 
-    for (const auto fb : framebuffers_) {
+    vkDestroyFramebuffer(device_, scene_framebuffer_, host_allocator_);
+    scene_render_pass_.Destroy(device_);
+
+    for (const auto fb : post_framebuffers_) {
       vkDestroyFramebuffer(device_, fb, host_allocator_);
     }
-    render_pass_.Destroy(device_);
+    post_render_pass_.Destroy(device_);
 
     depth_image_.Destroy(device_);
     color_target_.Destroy(device_);
@@ -350,18 +362,14 @@ void TvApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
   scene_uniforms_.FlushPframeHostCache(device_, pframe_index_);
 
   TvUniforms* tv_consts = (TvUniforms*)tv_uniforms_.Mapped(pframe_index_);
-  tv_consts->film_params = glm::vec4(
-    0.4f, // noise intensity
-    0.9f, // scanline intensity
-    800.0f, // scanline count,
-    0.0f   // convert to grayscale?
+  tv_consts->film_params = glm::vec4(0.4f,  // noise intensity
+      0.9f,  // scanline intensity
+      800.0f,  // scanline count,
+      0.0f  // convert to grayscale?
   );
-  tv_consts->snow_params = glm::vec4(
-    0.1f, // snow amount
-    4.0f, // snow size
-    0,
-    0
-  );
+  tv_consts->snow_params = glm::vec4(0.1f,  // snow amount
+      4.0f,  // snow size
+      0, 0);
   tv_uniforms_.FlushPframeHostCache(device_, pframe_index_);
 
   memcpy(visible_cells_buffer_.Mapped(pframe_index_), visible_cells_.data(), visible_cells_.size() * sizeof(int32_t));
@@ -370,33 +378,50 @@ void TvApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
   SPOKK_VK_CHECK(heightfield_buffer_.FlushPframeHostCache(device_, pframe_index_));
 
   // Write command buffer
-  VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
-  render_pass_.begin_info.framebuffer = framebuffer;
-  render_pass_.begin_info.renderArea.extent = swapchain_extent_;
-  vkCmdBeginRenderPass(primary_cb, &render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
-  vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pillar_pipeline_.handle);
-  VkRect2D scissor_rect = render_pass_.begin_info.renderArea;
-  VkViewport viewport = Rect2DToViewport(scissor_rect);
-  vkCmdSetViewport(primary_cb, 0, 1, &viewport);
-  vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
-  vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pillar_pipeline_.shader_program->pipeline_layout,
-      0, 1, &dsets_[pframe_index_], 0, nullptr);
-  mesh_.BindBuffers(primary_cb);
-  vkCmdDrawIndexed(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size(), 0, 0, 0);
-  vkCmdNextSubpass(primary_cb, VK_SUBPASS_CONTENTS_INLINE);
-  vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, tv_pipeline_.handle);
-  vkCmdDraw(primary_cb, 3, 1, 0, 0);
-  vkCmdEndRenderPass(primary_cb);
+
+  // offscreen pass
+  {
+    scene_render_pass_.begin_info.framebuffer = scene_framebuffer_;
+    scene_render_pass_.begin_info.renderArea.extent = swapchain_extent_;
+    vkCmdBeginRenderPass(primary_cb, &scene_render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pillar_pipeline_.handle);
+    VkRect2D scissor_rect = scene_render_pass_.begin_info.renderArea;
+    VkViewport viewport = Rect2DToViewport(scissor_rect);
+    vkCmdSetViewport(primary_cb, 0, 1, &viewport);
+    vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
+    vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
+        pillar_pipeline_.shader_program->pipeline_layout, 0, 1, &dsets_[pframe_index_], 0, nullptr);
+    mesh_.BindBuffers(primary_cb);
+    vkCmdDrawIndexed(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size(), 0, 0, 0);
+    vkCmdEndRenderPass(primary_cb);
+  }
+
+  // post-processing pass
+  {
+    post_render_pass_.begin_info.framebuffer = post_framebuffers_[swapchain_image_index];
+    post_render_pass_.begin_info.renderArea.extent = swapchain_extent_;
+    vkCmdBeginRenderPass(primary_cb, &post_render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, tv_pipeline_.handle);
+    VkRect2D scissor_rect = post_render_pass_.begin_info.renderArea;
+    VkViewport viewport = Rect2DToViewport(scissor_rect);
+    vkCmdSetViewport(primary_cb, 0, 1, &viewport);
+    vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
+    vkCmdDraw(primary_cb, 3, 1, 0, 0);
+    vkCmdEndRenderPass(primary_cb);
+  }
 }
 
 void TvApp::HandleWindowResize(VkExtent2D new_window_extent) {
   // Destroy existing objects before re-creating them.
-  for (auto fb : framebuffers_) {
+  if (scene_framebuffer_ == VK_NULL_HANDLE) {
+    vkDestroyFramebuffer(device_, scene_framebuffer_, host_allocator_);
+  }
+  for (auto fb : post_framebuffers_) {
     if (fb != VK_NULL_HANDLE) {
       vkDestroyFramebuffer(device_, fb, host_allocator_);
     }
   }
-  framebuffers_.clear();
+  post_framebuffers_.clear();
   depth_image_.Destroy(device_);
   color_target_.Destroy(device_);
 
@@ -408,7 +433,9 @@ void TvApp::HandleWindowResize(VkExtent2D new_window_extent) {
 
 void TvApp::CreateRenderBuffers(VkExtent2D extent) {
   // Create color targets
-  VkImageCreateInfo color_target_image_ci = render_pass_.GetAttachmentImageCreateInfo(0, extent);
+  VkImageCreateInfo color_target_image_ci = scene_render_pass_.GetAttachmentImageCreateInfo(0, extent);
+  // TODO(https://github.com/cdwfs/spokk/issues/34): Combine usage from multiple render passes
+  color_target_image_ci.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
   color_target_ = {};
   SPOKK_VK_CHECK(color_target_.Create(
       device_, color_target_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
@@ -416,7 +443,9 @@ void TvApp::CreateRenderBuffers(VkExtent2D extent) {
   SPOKK_VK_CHECK(device_.SetObjectName(color_target_.view, "color target image view"));
 
   // Create depth buffer
-  VkImageCreateInfo depth_image_ci = render_pass_.GetAttachmentImageCreateInfo(1, extent);
+  VkImageCreateInfo depth_image_ci = scene_render_pass_.GetAttachmentImageCreateInfo(1, extent);
+  // TODO(https://github.com/cdwfs/spokk/issues/34): Combine usage from multiple render passes
+  depth_image_ci.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
   depth_image_ = {};
   SPOKK_VK_CHECK(depth_image_.Create(
       device_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
@@ -424,19 +453,26 @@ void TvApp::CreateRenderBuffers(VkExtent2D extent) {
   SPOKK_VK_CHECK(device_.SetObjectName(depth_image_.view, "depth image view"));
 
   // Create VkFramebuffers
-  std::vector<VkImageView> attachment_views = {
+  std::vector<VkImageView> scene_attachment_views = {
       color_target_.view,
       depth_image_.view,
+  };
+  VkFramebufferCreateInfo scene_framebuffer_ci = scene_render_pass_.GetFramebufferCreateInfo(extent);
+  scene_framebuffer_ci.pAttachments = scene_attachment_views.data();
+  SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &scene_framebuffer_ci, host_allocator_, &scene_framebuffer_));
+  SPOKK_VK_CHECK(device_.SetObjectName(scene_framebuffer_, std::string("scene framebuffer")));
+
+  std::vector<VkImageView> post_attachment_views = {
       VK_NULL_HANDLE,  // filled in below
   };
-  VkFramebufferCreateInfo framebuffer_ci = render_pass_.GetFramebufferCreateInfo(extent);
-  framebuffer_ci.pAttachments = attachment_views.data();
-  framebuffers_.resize(swapchain_image_views_.size());
+  VkFramebufferCreateInfo post_framebuffer_ci = post_render_pass_.GetFramebufferCreateInfo(extent);
+  post_framebuffer_ci.pAttachments = post_attachment_views.data();
+  post_framebuffers_.resize(swapchain_image_views_.size());
   for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
-    attachment_views.at(2) = swapchain_image_views_[i];
-    SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &framebuffer_ci, host_allocator_, &framebuffers_[i]));
-    SPOKK_VK_CHECK(device_.SetObjectName(
-        framebuffers_[i], std::string("swapchain framebuffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
+    post_attachment_views.at(0) = swapchain_image_views_[i];
+    SPOKK_VK_CHECK(vkCreateFramebuffer(device_, &post_framebuffer_ci, host_allocator_, &post_framebuffers_[i]));
+    SPOKK_VK_CHECK(device_.SetObjectName(post_framebuffers_[i],
+        std::string("swapchain framebuffer ") + std::to_string(i)));  // TODO(cort): absl::StrCat
   }
 }
 
