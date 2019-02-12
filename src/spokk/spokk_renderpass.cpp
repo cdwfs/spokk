@@ -9,7 +9,19 @@ namespace spokk {
 // RenderPass
 //
 void RenderPass::InitFromPreset(Preset preset, VkFormat output_color_format) {
-  if (preset == Preset::COLOR) {
+  if (preset == Preset::POST) {
+    attachment_descs.resize(1);
+    attachment_descs[0].format = output_color_format;
+    attachment_descs[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment_descs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    subpass_attachments.resize(1);
+    subpass_attachments[0].color_refs.push_back({0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+  } else if (preset == Preset::COLOR) {
     attachment_descs.resize(1);
     attachment_descs[0].format = output_color_format;
     attachment_descs[0].samples = VK_SAMPLE_COUNT_1_BIT;
@@ -111,6 +123,39 @@ void RenderPass::InitFromPreset(Preset preset, VkFormat output_color_format) {
     subpass_dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     subpass_dependencies[0].dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
     subpass_dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+  } else if (preset == Preset::COLOR_OFFSCREEN) {
+    attachment_descs.resize(1);
+    attachment_descs[0].format = output_color_format;
+    attachment_descs[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment_descs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    subpass_attachments.resize(1);
+    subpass_attachments[0].color_refs.push_back({0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+  } else if (preset == Preset::COLOR_DEPTH_OFFSCREEN) {
+    attachment_descs.resize(2);
+    attachment_descs[0].format = output_color_format;
+    attachment_descs[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment_descs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    attachment_descs[1].format = VK_FORMAT_D32_SFLOAT;
+    attachment_descs[1].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_descs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment_descs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_descs[1].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    subpass_attachments.resize(1);
+    subpass_attachments[0].color_refs.push_back({0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+    subpass_attachments[0].depth_stencil_refs.push_back({1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL});
   }
 }
 

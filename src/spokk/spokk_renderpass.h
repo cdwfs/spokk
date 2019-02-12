@@ -25,10 +25,13 @@ struct RenderPass {
   // sample counts, a way to decouple framebuffer and target image creation from renderpass configuration, etc.
   // Maybe a RenderPass can generate its own FramebufferCreateInfos and VkImageCreateInfos
   enum Preset {
-    COLOR = 1,  // 1 subpass; color (clear -> store)
-    COLOR_DEPTH = 2,  // 1 subpass; color (clear -> store), depth (clear -> dontcare)
-    COLOR_POST = 3,  // 2 subpass; color (clear -> dontcare); final color (dontcare -> store)
-    COLOR_DEPTH_POST = 4,  // 2 subpass; color (clear -> store), depth (clear -> dontcare); color (dontcare -> store)
+    COLOR = 1,  // 1 subpass; color (clear -> store, layout=PRESENT)
+    COLOR_DEPTH = 2,  // 1 subpass; color (clear -> store, layout=PRESENT), depth (clear -> dontcare)
+    POST = 3,  // 1 subpass; color (dontcare -> store, layout=PRESENT)
+    COLOR_POST = 4,  // 2 subpass; color (clear -> dontcare); final color (dontcare -> store)
+    COLOR_DEPTH_POST = 5,  // 2 subpass; color (clear -> store), depth (clear -> dontcare); color (dontcare -> store)
+    COLOR_OFFSCREEN = 6,  // 1 subpass; color (clear -> store, layout=SHADER_READ_ONLY)
+    COLOR_DEPTH_OFFSCREEN = 7,  // 1 subpass; color (clear -> store, layout=SHADER_READ_ONLY), depth (clear -> store, layout=SHADER_READ_ONLY)
   };
   void InitFromPreset(Preset preset, VkFormat output_color_format);
   // ...and call this after populating the previous vectors.
