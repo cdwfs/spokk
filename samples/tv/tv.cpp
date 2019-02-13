@@ -4,6 +4,8 @@ using namespace spokk;
 #include <common/camera.h>
 #include <common/cube_mesh.h>
 
+#include <imgui.h>
+
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -345,6 +347,38 @@ TvApp::~TvApp() {
 void TvApp::Update(double dt) {
   seconds_elapsed_ += dt;
   drone_->Update(input_state_, (float)dt);
+
+  // Tweakable Bad TV effects settings
+  const ImGuiColorEditFlags default_color_edit_flags = ImGuiColorEditFlags_Float | ImGuiColorEditFlags_PickerHueWheel;
+  if (ImGui::TreeNode("Bad TV")) {
+    ImGui::Text("Distortion:");
+    ImGui::SliderFloat("Coarse##Distortion", &tv_params_.distort_params.x, 0.0f, 20.0f);
+    ImGui::SliderFloat("Fine##Distortion", &tv_params_.distort_params.y, 0.0f, 20.0f);
+    ImGui::SliderFloat("Distortion Speed##Distortion", &tv_params_.distort_params.z, 0.0f, 1.0f);
+    ImGui::SliderFloat("Roll Speed##Distortion", &tv_params_.distort_params.w, 0.0f, 1.0f);
+
+    ImGui::Separator();
+    ImGui::Text("RGB Shift:");
+    ImGui::SliderFloat("Amount##RgbShift", &tv_params_.rgb_shift_params.x, 0.0f, 1.0f);
+    ImGui::SliderAngle("Angle##RgbShift", &tv_params_.rgb_shift_params.y, 0, 360.0f, "%.2f deg");
+
+    int scanline_count = (int)tv_params_.film_params.z;
+    bool enable_grayscale = tv_params_.film_params.w != 0.0f;
+    ImGui::Separator();
+    ImGui::Text("Scanlines:");
+    ImGui::SliderFloat("Noise Intensity##Scanlines", &tv_params_.film_params.x, 0.0f, 2.0f);
+    ImGui::SliderFloat("Scanline Intensity##Scanlines", &tv_params_.film_params.y, 0.0f, 2.0f);
+    ImGui::SliderInt("Scanline Count##Scanlines", &scanline_count, 50, 1000);
+    ImGui::Checkbox("Convert to B+W?", &enable_grayscale);
+    tv_params_.film_params.z = (float)scanline_count;
+    tv_params_.film_params.w = enable_grayscale ? 1.0f : 0.0f;
+
+    ImGui::Separator();
+    ImGui::Text("Snow:");
+    ImGui::SliderFloat("Amount##Snow", &tv_params_.snow_params.x, 0.0f, 1.0f);
+    ImGui::SliderFloat("Size##Snow", &tv_params_.snow_params.y, 0.0f, 100.0f);
+    ImGui::TreePop();
+  }
 
   // Update visible cells
   // - Add a cell as visible the first time it gets within N units of the camera.
