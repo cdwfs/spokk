@@ -19,6 +19,8 @@ struct SceneUniforms {
 struct TvUniforms {
   glm::vec4 film_params;  // x: noiseIntensity, y: scanlineIntensity, z: sCount, w: output_grayscale
   glm::vec4 snow_params;  // x: snowAmount, y: snowSize, zw: unused
+  glm::vec4 rgb_shift_params;  // x: rgbShiftAmount, y: rgbShiftAngle, zw: unused
+  glm::vec4 distort_params;  // x: distortionCoarse, y: distortionFine, z: distortionSpeed, w: rollSpeed
 };
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
@@ -81,6 +83,8 @@ private:
   PipelinedBuffer tv_uniforms_;
   PipelinedBuffer heightfield_buffer_;
   PipelinedBuffer visible_cells_buffer_;
+
+  TvUniforms tv_params_;
 
   MeshFormat empty_mesh_format_;
 
@@ -219,6 +223,30 @@ TvApp::TvApp(Application::CreateInfo& ci) : Application(ci) {
   tv_uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(tv_uniforms_.Create(device_, PFRAME_COUNT, tv_uniform_buffer_ci, uniform_buffer_memory_flags));
 
+  // Default TV settings
+  // clang-format off
+  tv_params_.film_params = glm::vec4(
+    0.4f,  // noise intensity
+    0.9f,  // scanline intensity
+    800.0f,  // scanline count,
+    0.0f);  // convert to grayscale?
+  tv_params_.snow_params = glm::vec4(
+    0.1f,  // snow amount
+    4.0f,  // snow size
+    0,
+    0);
+  tv_params_.rgb_shift_params = glm::vec4(
+    0.0067f,  // rgb shift amount
+    (float)M_PI,  // rgb shift angle
+    0,
+    0);
+  tv_params_.distort_params = glm::vec4(
+    3.0f,  // distortionCoarse
+    5.0f,  // distortionFine
+    0.2f,  // distortionSpeed
+    0.1f);  // rollSpeed
+  // clang-format on
+
   // Create buffer of per-cell "height" values
   VkBufferCreateInfo heightfield_buffer_ci = {};
   heightfield_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -256,10 +284,10 @@ TvApp::TvApp(Application::CreateInfo& ci) : Application(ci) {
   dset_writer.BindImage(
       albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, pillar_fs_.GetDescriptorBindPoint("tex").binding);
   dset_writer.BindSampler(sampler_, pillar_fs_.GetDescriptorBindPoint("samp").binding);
-  dset_writer.BindImage(color_target_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-      film_fs_.GetDescriptorBindPoint("fbColor").binding);
-  dset_writer.BindImage(depth_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-      film_fs_.GetDescriptorBindPoint("fbDepth").binding);
+  dset_writer.BindImage(
+      color_target_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, film_fs_.GetDescriptorBindPoint("fbColor").binding);
+  dset_writer.BindImage(
+      depth_image_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, film_fs_.GetDescriptorBindPoint("fbDepth").binding);
   dset_writer.BindSampler(sampler_, film_fs_.GetDescriptorBindPoint("fbSamp").binding);
   for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
     // TODO(cort): allocate_pipelined_set()?
@@ -362,14 +390,7 @@ void TvApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
   scene_uniforms_.FlushPframeHostCache(device_, pframe_index_);
 
   TvUniforms* tv_consts = (TvUniforms*)tv_uniforms_.Mapped(pframe_index_);
-  tv_consts->film_params = glm::vec4(0.4f,  // noise intensity
-      0.9f,  // scanline intensity
-      800.0f,  // scanline count,
-      0.0f  // convert to grayscale?
-  );
-  tv_consts->snow_params = glm::vec4(0.1f,  // snow amount
-      4.0f,  // snow size
-      0, 0);
+  *tv_consts = tv_params_;
   tv_uniforms_.FlushPframeHostCache(device_, pframe_index_);
 
   memcpy(visible_cells_buffer_.Mapped(pframe_index_), visible_cells_.data(), visible_cells_.size() * sizeof(int32_t));
