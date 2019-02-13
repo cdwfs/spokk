@@ -284,11 +284,13 @@ TARGET_LINK_LIBRARIES(spokk-shadertoy shaderc)
 # spokk-tv
 SPOKK_ADD_SOURCES(spokk-tv
     samples/common/camera.cpp
+    samples/tv/midi.cpp
     samples/tv/tv.cpp
 )
 SPOKK_ADD_HEADERS(spokk-tv
     samples/common/camera.h
     samples/common/cube_mesh.h
+    samples/tv/midi.h
 )
 SPOKK_ADD_SHADERS(spokk-tv
     samples/tv/film.frag
@@ -297,3 +299,4 @@ SPOKK_ADD_SHADERS(spokk-tv
     samples/tv/pillar.frag
 )
 SPOKK_ADD_EXECUTABLE(spokk-tv)
+TARGET_LINK_LIBRARIES(spokk-tv winmm) # TODO: windows only!

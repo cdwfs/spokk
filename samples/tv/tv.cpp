@@ -1,3 +1,5 @@
+#include "midi.h"
+
 #include <spokk.h>
 using namespace spokk;
 
@@ -348,6 +350,46 @@ void TvApp::Update(double dt) {
   seconds_elapsed_ += dt;
   drone_->Update(input_state_, (float)dt);
 
+  // Process MIDI messages for this "frame"
+  do {
+    uint64_t msg = MidiJackDequeueIncomingData();
+    if (msg == 0) {
+      break;  // no more data to dequeue
+    }
+    // process msg here
+    // uint32_t source = (uint32_t)((msg >> 0) & 0xFFFFFFFF);
+    uint8_t status = (uint8_t)((msg >> 32) & 0xFF);
+    uint8_t data1 = (uint8_t)((msg >> 40) & 0xFF);
+    uint8_t data2 = (uint8_t)((msg >> 48) & 0xFF);
+    if (status == 0xB0) {
+      uint8_t channel = data1;
+      float value01 = (float)data2 / 127.0f;
+      if (channel == 0x00) {
+        tv_params_.rgb_shift_params.x = value01;
+      } else if (channel == 0x10) {
+        tv_params_.rgb_shift_params.y = value01;
+      } else if (channel == 0x20) {
+        tv_params_.film_params.w = value01;
+      }
+
+      if (channel == 0x01) {
+        tv_params_.distort_params.x = 20.0f * value01;
+      } else if (channel == 0x11) {
+        tv_params_.distort_params.y = 20.0f * value01;
+      } else if (channel == 0x12) {
+        tv_params_.distort_params.z = (float)(2.0 * M_PI * value01);
+      } else if (channel == 0x13) {
+        tv_params_.distort_params.w = value01;
+      }
+
+      if (channel == 0x02) {
+        tv_params_.film_params.x = 2.0f * value01;
+      } else if (channel == 0x03) {
+        tv_params_.film_params.y = 2.0f * value01;
+      }
+    }
+  } while (true);
+
   // Tweakable Bad TV effects settings
   const ImGuiColorEditFlags default_color_edit_flags = ImGuiColorEditFlags_Float | ImGuiColorEditFlags_PickerHueWheel;
   if (ImGui::TreeNode("Bad TV")) {
@@ -534,6 +576,15 @@ void TvApp::CreateRenderBuffers(VkExtent2D extent) {
 int main(int argc, char* argv[]) {
   (void)argc;
   (void)argv;
+
+  MidiJackRefreshEndpoints();
+  int endpointCount = MidiJackCountEndpoints();
+  printf("Detected %d endpoints:\n", endpointCount);
+  for (int i = 0; i < endpointCount; ++i) {
+    uint32_t id = MidiJackGetEndpointIDAtIndex(i);
+    const std::string name = MidiJackGetEndpointName(id);
+    printf("- %3d: 0x%016X %s\n", i, id, name.c_str());
+  }
 
   std::vector<Application::QueueFamilyRequest> queue_requests = {
       {(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT), true, 1, 0.0f}};
