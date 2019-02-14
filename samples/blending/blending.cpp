@@ -12,7 +12,7 @@ using namespace spokk;
 
 namespace {
 struct SceneUniforms {
-  glm::vec4 time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
+  glm::vec4 res_and_time;  // xy: viewport resolution in pixels, z: unused, w: elapsed seconds
   glm::vec4 eye;  // xyz: eye position
   glm::mat4 viewproj;
 };
@@ -165,8 +165,8 @@ public:
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
     // Update uniforms
     SceneUniforms* scene_uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
-    scene_uniforms->time_and_res =
-        glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+    scene_uniforms->res_and_time =
+        glm::vec4((float)swapchain_extent_.width, (float)swapchain_extent_.height, 0, (float)seconds_elapsed_);
     scene_uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
     glm::mat4 w2v = camera_->getViewMatrix();
     const glm::mat4 proj = camera_->getProjectionMatrix();
