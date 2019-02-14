@@ -531,8 +531,7 @@ void TvApp::HandleWindowResize(VkExtent2D new_window_extent) {
 void TvApp::CreateRenderBuffers(VkExtent2D extent) {
   // Create color targets
   VkImageCreateInfo color_target_image_ci = scene_render_pass_.GetAttachmentImageCreateInfo(0, extent);
-  // TODO(https://github.com/cdwfs/spokk/issues/34): Combine usage from multiple render passes
-  color_target_image_ci.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+  color_target_image_ci.usage |= VK_IMAGE_USAGE_SAMPLED_BIT; // This image will be sampled by post_render_pass_
   color_target_ = {};
   SPOKK_VK_CHECK(color_target_.Create(
       device_, color_target_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
@@ -541,8 +540,7 @@ void TvApp::CreateRenderBuffers(VkExtent2D extent) {
 
   // Create depth buffer
   VkImageCreateInfo depth_image_ci = scene_render_pass_.GetAttachmentImageCreateInfo(1, extent);
-  // TODO(https://github.com/cdwfs/spokk/issues/34): Combine usage from multiple render passes
-  depth_image_ci.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+  depth_image_ci.usage |= VK_IMAGE_USAGE_SAMPLED_BIT; // This image will be sampled by post_render_pass_
   depth_image_ = {};
   SPOKK_VK_CHECK(depth_image_.Create(
       device_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
