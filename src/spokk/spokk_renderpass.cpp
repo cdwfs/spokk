@@ -241,19 +241,6 @@ VkImageCreateInfo RenderPass::GetAttachmentImageCreateInfo(uint32_t attachment_i
   }
   return ci;
 }
-VkImageViewCreateInfo RenderPass::GetAttachmentImageViewCreateInfo(uint32_t attachment_index, VkImage image) const {
-  VkImageViewCreateInfo ci = {};
-  if (handle != VK_NULL_HANDLE && attachment_index < (uint32_t)attachment_descs.size()) {
-    ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    ci.image = image;
-    ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    ci.format = attachment_descs[attachment_index].format;
-    ci.components = {VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
-        VK_COMPONENT_SWIZZLE_IDENTITY};
-    ci.subresourceRange.aspectMask = GetImageAspectFlags(ci.format);
-  }
-  return ci;
-}
 VkFramebufferCreateInfo RenderPass::GetFramebufferCreateInfo(VkExtent2D render_area) const {
   VkFramebufferCreateInfo ci = {};
   if (handle != VK_NULL_HANDLE) {

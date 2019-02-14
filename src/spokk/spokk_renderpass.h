@@ -39,7 +39,6 @@ struct RenderPass {
   operator VkRenderPass() const { return handle; }
 
   VkImageCreateInfo GetAttachmentImageCreateInfo(uint32_t attachment_index, VkExtent2D render_area) const;
-  VkImageViewCreateInfo GetAttachmentImageViewCreateInfo(uint32_t attachment_index, VkImage image) const;
   VkFramebufferCreateInfo GetFramebufferCreateInfo(VkExtent2D render_area) const;
 
   void Destroy(const Device& device);
