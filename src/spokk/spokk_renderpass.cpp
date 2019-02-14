@@ -241,6 +241,21 @@ VkImageCreateInfo RenderPass::GetAttachmentImageCreateInfo(uint32_t attachment_i
   }
   return ci;
 }
+bool RenderPass::ExtendAttachmentImageCreateInfo(VkImageCreateInfo* image_ci, uint32_t attachment_index) const {
+  VkExtent2D extent = {image_ci->extent.width, image_ci->extent.height};
+  VkImageCreateInfo new_ci = GetAttachmentImageCreateInfo(attachment_index, extent);
+  if (image_ci->format != new_ci.format) {
+    return false;
+  } else if (image_ci->extent.width != new_ci.extent.width || image_ci->extent.height != new_ci.extent.height ||
+      image_ci->extent.depth != new_ci.extent.depth) {
+    return false;
+  } else if (image_ci->samples != new_ci.samples) {
+    return false;
+  }
+  image_ci->usage |= new_ci.usage;
+  return true;
+}
+
 VkFramebufferCreateInfo RenderPass::GetFramebufferCreateInfo(VkExtent2D render_area) const {
   VkFramebufferCreateInfo ci = {};
   if (handle != VK_NULL_HANDLE) {
