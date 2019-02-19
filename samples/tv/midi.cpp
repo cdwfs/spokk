@@ -78,24 +78,22 @@ namespace
     std::stack<DeviceHandle> handles_to_close;
 
     // Mutex for resources
-    std::recursive_mutex resource_lock;
+    std::mutex resource_lock;
 
     // MIDI input callback
     static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR /*dwInstance*/, DWORD_PTR dwParam1, DWORD_PTR /*dwParam2*/)
     {
         if (wMsg == MIM_DATA)
         {
+            std::lock_guard<std::mutex> guard(resource_lock);
             DeviceID id = DeviceHandleToID(hMidiIn);
             uint32_t raw = static_cast<uint32_t>(dwParam1);
-            resource_lock.lock();
             message_queue.push(MidiMessage(id, raw));
-            resource_lock.unlock();
         }
         else if (wMsg == MIM_CLOSE)
         {
-            resource_lock.lock();
+            std::lock_guard<std::mutex> guard(resource_lock);
             handles_to_close.push(hMidiIn);
-            resource_lock.unlock();
         }
     }
 
@@ -120,9 +118,8 @@ namespace
         {
             if (midiInStart(handle) == MMSYSERR_NOERROR)
             {
-                resource_lock.lock();
+                std::lock_guard<std::mutex> guard(resource_lock);
                 active_handles.push_back(handle);
-                resource_lock.unlock();
             }
             else
             {
@@ -134,25 +131,29 @@ namespace
     // Close a given handler.
     void CloseDevice(DeviceHandle handle)
     {
+        midiInStop(handle);
+        midiInReset(handle);
         midiInClose(handle);
 
-        resource_lock.lock();
-        active_handles.remove(handle);
-        resource_lock.unlock();
+        {
+            std::lock_guard<std::mutex> guard(resource_lock);
+            active_handles.remove(handle);
+        }
     }
 
     // Open the all devices.
     void OpenAllDevices()
     {
         int device_count = midiInGetNumDevs();
-        for (int i = 0; i < device_count; i++) OpenDevice(i);
+        for (int i = 0; i < device_count; i++)
+        {
+            OpenDevice(i);
+        }
     }
 
     // Refresh device handlers
     void RefreshDevices()
     {
-        resource_lock.lock();
-
         // Close disconnected handlers.
         while (!handles_to_close.empty()) {
             CloseDevice(handles_to_close.top());
@@ -161,17 +162,13 @@ namespace
 
         // Try open all devices to detect newly connected ones.
         OpenAllDevices();
-
-        resource_lock.unlock();
     }
 
     // Close the all devices.
     void CloseAllDevices()
     {
-        resource_lock.lock();
         while (!active_handles.empty())
             CloseDevice(active_handles.front());
-        resource_lock.unlock();
     }
 }
 
@@ -210,12 +207,19 @@ uint64_t MidiJackDequeueIncomingData()
     if (active_handles.empty()) {
         RefreshDevices();
     }
-    if (message_queue.empty()) return 0;
+    if (message_queue.empty()) {
+      return 0;
+    }
 
-    resource_lock.lock();
-    auto msg = message_queue.front();
-    message_queue.pop();
-    resource_lock.unlock();
+    {
+        std::lock_guard<std::mutex> guard(resource_lock);
+        auto msg = message_queue.front();
+        message_queue.pop();
+        return msg.Encode64Bit();
+    }
+}
 
-    return msg.Encode64Bit();
+void MidiJackShutdown()
+{
+  CloseAllDevices();
 }

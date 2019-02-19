@@ -361,6 +361,7 @@ void TvApp::Update(double dt) {
     uint8_t status = (uint8_t)((msg >> 32) & 0xFF);
     uint8_t data1 = (uint8_t)((msg >> 40) & 0xFF);
     uint8_t data2 = (uint8_t)((msg >> 48) & 0xFF);
+    //printf("%02X %02X %02X\n", status, data1, data2);
     if (status == 0xB0) {
       uint8_t channel = data1;
       float value01 = (float)data2 / 127.0f;
@@ -592,6 +593,8 @@ int main(int argc, char* argv[]) {
 
   TvApp app(app_ci);
   int run_error = app.Run();
+
+  MidiJackShutdown();
 
   return run_error;
 }

@@ -10,3 +10,5 @@ const char* MidiJackGetEndpointName(uint32_t id);
 uint64_t MidiJackDequeueIncomingData();
 // refesh endpoint devices
 void MidiJackRefreshEndpoints();
+// shut 'er down
+void MidiJackShutdown();
