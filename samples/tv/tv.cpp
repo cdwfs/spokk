@@ -346,9 +346,146 @@ TvApp::~TvApp() {
   }
 }
 
+struct MidiDeviceInfo {
+  uint32_t id;
+  std::string name;
+};
+struct MidiMessageLog {
+  ImGuiTextBuffer Buf;
+  ImGuiTextFilter Filter;
+  ImVector<int> LineOffsets;  // Index to lines offset. We maintain this with AddLog() calls, allowing us to have a
+                              // random access on lines
+  bool ScrollToBottom;
+
+  void Clear() {
+    Buf.clear();
+    LineOffsets.clear();
+    LineOffsets.push_back(0);
+  }
+
+  void AddLog(const char* fmt, ...) IM_FMTARGS(2) {
+    int old_size = Buf.size();
+    va_list args;
+    va_start(args, fmt);
+    Buf.appendfv(fmt, args);
+    va_end(args);
+    for (int new_size = Buf.size(); old_size < new_size; old_size++)
+      if (Buf[old_size] == '\n') LineOffsets.push_back(old_size + 1);
+    ScrollToBottom = true;
+  }
+
+  void Draw() {
+    if (ImGui::Button("Clear")) Clear();
+    ImGui::SameLine();
+    bool copy = ImGui::Button("Copy");
+    ImGui::SameLine();
+    Filter.Draw("Filter", -100.0f);
+    ImGui::Separator();
+    ImGui::BeginChild("scrolling", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+    if (copy) ImGui::LogToClipboard();
+
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+    const char* buf = Buf.begin();
+    const char* buf_end = Buf.end();
+    if (Filter.IsActive()) {
+      for (int line_no = 0; line_no < LineOffsets.Size; line_no++) {
+        const char* line_start = buf + LineOffsets[line_no];
+        const char* line_end = (line_no + 1 < LineOffsets.Size) ? (buf + LineOffsets[line_no + 1] - 1) : buf_end;
+        if (Filter.PassFilter(line_start, line_end)) ImGui::TextUnformatted(line_start, line_end);
+      }
+    } else {
+      ImGuiListClipper clipper;
+      clipper.Begin(LineOffsets.Size);
+      while (clipper.Step()) {
+        for (int line_no = clipper.DisplayStart; line_no < clipper.DisplayEnd; line_no++) {
+          const char* line_start = buf + LineOffsets[line_no];
+          const char* line_end = (line_no + 1 < LineOffsets.Size) ? (buf + LineOffsets[line_no + 1] - 1) : buf_end;
+          ImGui::TextUnformatted(line_start, line_end);
+        }
+      }
+      clipper.End();
+    }
+    ImGui::PopStyleVar();
+
+    if (ScrollToBottom) ImGui::SetScrollHereY(1.0f);
+    ScrollToBottom = false;
+    ImGui::EndChild();
+  }
+};
+
+struct MidiTweakable {
+  std::string name;
+  int channel;
+  uint8_t raw_value;
+};
+
 void TvApp::Update(double dt) {
   seconds_elapsed_ += dt;
   drone_->Update(input_state_, (float)dt);
+
+  ImGui::Begin("MIDI");
+  static bool first_Time = true;
+  static std::vector<MidiDeviceInfo> midi_device_info;
+  static std::vector<MidiTweakable> midi_tweakables = {
+      {"Coarse Distortion", 0, 0},
+      {"Fine Distortion", 0, 0},
+      {"Distortion Speed", 0, 0},
+      {"Roll Speed", 0, 0},
+      {"RGB Shift Amount", 0, 0},
+  };
+  static MidiTweakable* detecting_tweakable = nullptr;
+  static MidiMessageLog midi_log;
+
+  if (ImGui::TreeNode("Devices")) {
+    for (const auto& device : midi_device_info) {
+      ImGui::Text("%08X: %s", device.id, device.name.c_str());
+    }
+    if (ImGui::Button("Refresh")) {
+      MidiJackRefreshEndpoints();
+      int midi_device_count = MidiJackCountEndpoints();
+      midi_device_info.resize(midi_device_count);
+      for (int i_device = 0; i_device < midi_device_count; ++i_device) {
+        uint32_t device_id = MidiJackGetEndpointIDAtIndex(i_device);
+        midi_device_info[i_device].id = device_id;
+        midi_device_info[i_device].name = MidiJackGetEndpointName(device_id);
+      }
+    }
+    ImGui::TreePop();
+  }
+  if (ImGui::TreeNode("Messages")) {
+    midi_log.Draw();
+    ImGui::TreePop();
+  }
+  if (ImGui::TreeNode("Channel Map")) {
+    for (auto& tweakable : midi_tweakables) {
+      ImGui::Text(tweakable.name.c_str());
+      ImGui::SameLine();
+      ImGui::PushItemWidth(200);
+      ImGui::InputInt("Channel", &tweakable.channel);
+      ImGui::PopItemWidth();
+      ImGui::SameLine();
+      if (detecting_tweakable != nullptr) {
+        if (detecting_tweakable == &tweakable) {
+          // In detecting mode; change the "Detect" button to "Cancel" to escape
+          if (ImGui::Button("Cancel")) {
+            detecting_tweakable = nullptr;
+          }
+        } else {
+          // Disable detect of other items while something is already being detected
+          ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+          ImGui::Button((std::string("Detect##") + tweakable.name).c_str());
+          ImGui::PopStyleVar();
+        }
+      } else {
+        if (ImGui::Button((std::string("Detect##") + tweakable.name).c_str())) {
+          ZOMBO_ASSERT(detecting_tweakable == nullptr, "Something's already being detected");
+          detecting_tweakable = &tweakable;
+        }
+      }
+    }
+    ImGui::TreePop();
+  }
+  ImGui::End();
 
   // Process MIDI messages for this "frame"
   do {
@@ -357,15 +494,20 @@ void TvApp::Update(double dt) {
       break;  // no more data to dequeue
     }
     // process msg here
-    // uint32_t source = (uint32_t)((msg >> 0) & 0xFFFFFFFF);
+    uint32_t source = (uint32_t)((msg >> 0) & 0xFFFFFFFF);
     uint8_t status = (uint8_t)((msg >> 32) & 0xFF);
     uint8_t data1 = (uint8_t)((msg >> 40) & 0xFF);
     uint8_t data2 = (uint8_t)((msg >> 48) & 0xFF);
-    //printf("%02X %02X %02X\n", status, data1, data2);
+    midi_log.AddLog("%08X: %02X %02X %02X\n", source, status, data1, data2);
     if (status == 0xB0) {
       uint8_t channel = data1;
+      if (detecting_tweakable) {
+        detecting_tweakable->channel = channel;
+        detecting_tweakable = nullptr;
+      }
+
       float value01 = (float)data2 / 127.0f;
-      if (channel == 0x00) {
+      if (channel == midi_tweakables[4].channel) {
         tv_params_.rgb_shift_params.x = value01;
       } else if (channel == 0x10) {
         tv_params_.rgb_shift_params.y = value01;
@@ -373,13 +515,13 @@ void TvApp::Update(double dt) {
         tv_params_.film_params.w = value01;
       }
 
-      if (channel == 0x01) {
+      if (channel == midi_tweakables[0].channel) {
         tv_params_.distort_params.x = 20.0f * value01;
-      } else if (channel == 0x11) {
+      } else if (channel == midi_tweakables[1].channel) {
         tv_params_.distort_params.y = 20.0f * value01;
-      } else if (channel == 0x12) {
+      } else if (channel == midi_tweakables[2].channel) {
         tv_params_.distort_params.z = (float)(2.0 * M_PI * value01);
-      } else if (channel == 0x13) {
+      } else if (channel == midi_tweakables[3].channel) {
         tv_params_.distort_params.w = value01;
       }
 
@@ -459,7 +601,7 @@ void TvApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
   // Update uniforms
   SceneUniforms* scene_consts = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
   scene_consts->res_and_time =
-    glm::vec4((float)swapchain_extent_.width, (float)swapchain_extent_.height, 0, (float)seconds_elapsed_);
+      glm::vec4((float)swapchain_extent_.width, (float)swapchain_extent_.height, 0, (float)seconds_elapsed_);
   scene_consts->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
   glm::mat4 w2v = camera_->getViewMatrix();
   const glm::mat4 proj = camera_->getProjectionMatrix();
@@ -532,7 +674,7 @@ void TvApp::HandleWindowResize(VkExtent2D new_window_extent) {
 void TvApp::CreateRenderBuffers(VkExtent2D extent) {
   // Create color targets
   VkImageCreateInfo color_target_image_ci = scene_render_pass_.GetAttachmentImageCreateInfo(0, extent);
-  color_target_image_ci.usage |= VK_IMAGE_USAGE_SAMPLED_BIT; // This image will be sampled by post_render_pass_
+  color_target_image_ci.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;  // This image will be sampled by post_render_pass_
   color_target_ = {};
   SPOKK_VK_CHECK(color_target_.Create(
       device_, color_target_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
@@ -541,7 +683,7 @@ void TvApp::CreateRenderBuffers(VkExtent2D extent) {
 
   // Create depth buffer
   VkImageCreateInfo depth_image_ci = scene_render_pass_.GetAttachmentImageCreateInfo(1, extent);
-  depth_image_ci.usage |= VK_IMAGE_USAGE_SAMPLED_BIT; // This image will be sampled by post_render_pass_
+  depth_image_ci.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;  // This image will be sampled by post_render_pass_
   depth_image_ = {};
   SPOKK_VK_CHECK(depth_image_.Create(
       device_, depth_image_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE));
