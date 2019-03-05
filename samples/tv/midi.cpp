@@ -16,11 +16,19 @@ namespace {
 // Basic type aliases
 using DeviceHandle = HMIDIIN;
 using DeviceID = uint32_t;
+const DeviceHandle INVALID_DEVICE_HANDLE = (DeviceHandle)0;
 
 // Utility functions for Win32/64 compatibility
 #ifdef _WIN64
+std::map<DeviceID, DeviceHandle> device_id_to_handle;
 DeviceID DeviceHandleToID(DeviceHandle handle) { return static_cast<DeviceID>(reinterpret_cast<uint64_t>(handle)); }
-DeviceHandle DeviceIDToHandle(DeviceID id) { return reinterpret_cast<DeviceHandle>(static_cast<uint64_t>(id)); }
+DeviceHandle DeviceIDToHandle(DeviceID id) {
+  auto itor = device_id_to_handle.find(id);
+  if (itor == device_id_to_handle.end()) {
+    return INVALID_DEVICE_HANDLE;
+  }
+  return itor->second;
+}
 #else
 DeviceID DeviceHandleToID(DeviceHandle handle) { return reinterpret_cast<DeviceID>(handle); }
 DeviceHandle DeviceIDToHandle(DeviceID id) { return reinterpret_cast<DeviceHandle>(id); }
@@ -95,6 +103,8 @@ void OpenDevice(unsigned int index) {
     if (midiInStart(handle) == MMSYSERR_NOERROR) {
       std::lock_guard<std::mutex> guard(resource_lock);
       active_handles.push_back(handle);
+      DeviceID device_id = DeviceHandleToID(handle);
+      device_id_to_handle[device_id] = handle;
     } else {
       midiInClose(handle);
     }
@@ -109,6 +119,8 @@ void CloseDevice(DeviceHandle handle) {
 
   {
     std::lock_guard<std::mutex> guard(resource_lock);
+    DeviceID device_id = DeviceHandleToID(handle);
+    device_id_to_handle.erase(device_id);
     active_handles.remove(handle);
   }
 }
