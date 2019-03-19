@@ -60,13 +60,13 @@ public:
     const glm::vec3 initial_camera_target(0, 5, 0);
     const glm::vec3 initial_camera_up(0, 1, 0);
     camera_->lookAt(initial_camera_pos, initial_camera_target, initial_camera_up);
-    SPOKK_VK_CHECK(device_.SetObjectName(render_pass_.handle, "main color pass"));
 
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR_DEPTH, swapchain_surface_format_.format);
     SPOKK_VK_CHECK(render_pass_.Finalize(device_));
     render_pass_.clear_values[0] = CreateColorClearValue(0.2f, 0.2f, 0.3f);
     render_pass_.clear_values[1] = CreateDepthClearValue(1.0f, 0);
+    SPOKK_VK_CHECK(device_.SetObjectName(render_pass_.handle, "main color pass"));
 
     // Load textures and samplers
     VkSamplerCreateInfo sampler_ci =
