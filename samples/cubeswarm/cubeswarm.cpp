@@ -50,11 +50,15 @@ private:
   GraphicsPipeline mesh_pipeline_;
 
   DescriptorPool dpool_;
-  std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
+
+  struct FrameData {
+    VkDescriptorSet dset;
+    Buffer mesh_ubo;
+    Buffer scene_ubo;
+  };
+  std::array<FrameData, PFRAME_COUNT> frame_data_;
 
   Mesh mesh_;
-  PipelinedBuffer mesh_uniforms_;
-  PipelinedBuffer scene_uniforms_;
 
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDrone> drone_;
@@ -88,26 +92,6 @@ CubeSwarmApp::CubeSwarmApp(Application::CreateInfo& ci) : Application(ci) {
   int mesh_load_error = mesh_.CreateFromFile(device_, "data/teapot.mesh");
   ZOMBO_ASSERT(!mesh_load_error, "load error: %d", mesh_load_error);
 
-  // Look up the appropriate memory flags for uniform buffers on this platform
-  VkMemoryPropertyFlags uniform_buffer_memory_flags =
-      device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
-
-  // Create pipelined buffer of per-mesh object-to-world matrices.
-  VkBufferCreateInfo o2w_buffer_ci = {};
-  o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(glm::mat4);
-  o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-  o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(mesh_uniforms_.Create(device_, PFRAME_COUNT, o2w_buffer_ci, uniform_buffer_memory_flags));
-
-  // Create pipelined buffer of shader uniforms
-  VkBufferCreateInfo scene_uniforms_ci = {};
-  scene_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  scene_uniforms_ci.size = sizeof(SceneUniforms);
-  scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-  scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, uniform_buffer_memory_flags));
-
   mesh_pipeline_.Init(&mesh_.mesh_format, &mesh_shader_program_, &render_pass_, 0);
   SPOKK_VK_CHECK(mesh_pipeline_.Finalize(device_));
   SPOKK_VK_CHECK(device_.SetObjectName(mesh_pipeline_.handle, "rigid mesh pipeline"));
@@ -116,15 +100,33 @@ CubeSwarmApp::CubeSwarmApp(Application::CreateInfo& ci) : Application(ci) {
     dpool_.Add(dset_layout_ci, PFRAME_COUNT);
   }
   SPOKK_VK_CHECK(dpool_.Finalize(device_));
-  for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-    // TODO(cort): allocate_pipelined_set()?
-    dsets_[pframe] = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
-  }
+
+  // Look up the appropriate memory flags for uniform buffers on this platform
+  VkMemoryPropertyFlags uniform_buffer_memory_flags =
+      device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
+
   DescriptorSetWriter dset_writer(mesh_shader_program_.dset_layout_cis[0]);
-  for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-    dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
-    dset_writer.BindBuffer(mesh_uniforms_.Handle(pframe), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
-    dset_writer.WriteAll(device_, dsets_[pframe]);
+  for (auto& frame_data : frame_data_) {
+    // Create per-pframe buffer of per-mesh object-to-world matrices.
+    VkBufferCreateInfo o2w_buffer_ci = {};
+    o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    o2w_buffer_ci.size = MESH_INSTANCE_COUNT * sizeof(glm::mat4);
+    o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(frame_data.mesh_ubo.Create(device_, o2w_buffer_ci, uniform_buffer_memory_flags));
+    dset_writer.BindBuffer(frame_data.mesh_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
+
+    // Create per-pframe buffer of shader uniforms
+    VkBufferCreateInfo scene_uniforms_ci = {};
+    scene_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    scene_uniforms_ci.size = sizeof(SceneUniforms);
+    scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(frame_data.scene_ubo.Create(device_, scene_uniforms_ci, uniform_buffer_memory_flags));
+    dset_writer.BindBuffer(frame_data.scene_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
+
+    frame_data.dset = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
+    dset_writer.WriteAll(device_, frame_data.dset);
   }
 
   // Create swapchain-sized buffers
@@ -136,8 +138,10 @@ CubeSwarmApp::~CubeSwarmApp() {
 
     dpool_.Destroy(device_);
 
-    mesh_uniforms_.Destroy(device_);
-    scene_uniforms_.Destroy(device_);
+    for (auto& frame_data : frame_data_) {
+      frame_data.mesh_ubo.Destroy(device_);
+      frame_data.scene_ubo.Destroy(device_);
+    }
 
     mesh_.Destroy(device_);
 
@@ -162,18 +166,18 @@ void CubeSwarmApp::Update(double dt) {
 
 void CubeSwarmApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
   // Update uniforms
-  SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
+  SceneUniforms* uniforms = (SceneUniforms*)frame_data_[pframe_index_].scene_ubo.Mapped();
   uniforms->res_and_time =
       glm::vec4((float)swapchain_extent_.width, (float)swapchain_extent_.height, 0, (float)seconds_elapsed_);
   uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
   glm::mat4 w2v = camera_->getViewMatrix();
   const glm::mat4 proj = camera_->getProjectionMatrix();
   uniforms->viewproj = proj * w2v;
-  SPOKK_VK_CHECK(scene_uniforms_.FlushPframeHostCache(device_, pframe_index_));
+  SPOKK_VK_CHECK(frame_data_[pframe_index_].scene_ubo.FlushHostCache(device_));
 
   // Update object-to-world matrices.
   const float secs = (float)seconds_elapsed_;
-  MeshUniforms* mesh_uniforms = (MeshUniforms*)mesh_uniforms_.Mapped(pframe_index_);
+  MeshUniforms* mesh_uniforms = (MeshUniforms*)frame_data_[pframe_index_].mesh_ubo.Mapped();
   const glm::vec3 swarm_center(0, 0, -2);
   for (uint32_t iMesh = 0; iMesh < MESH_INSTANCE_COUNT; ++iMesh) {
     // clang-format off
@@ -188,7 +192,7 @@ void CubeSwarmApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_i
         3.0f);
     // clang-format on
   }
-  SPOKK_VK_CHECK(mesh_uniforms_.FlushPframeHostCache(device_, pframe_index_));
+  SPOKK_VK_CHECK(frame_data_[pframe_index_].mesh_ubo.FlushHostCache(device_));
 
   // Write command buffer
   VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
@@ -202,7 +206,7 @@ void CubeSwarmApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_i
   vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
   device_.DebugLabelInsert(primary_cb, "draw teapots");
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
-      0, 1, &dsets_[pframe_index_], 0, nullptr);
+      0, 1, &(frame_data_[pframe_index_].dset), 0, nullptr);
   mesh_.BindBuffers(primary_cb);
   vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0, 0, 0);
   vkCmdEndRenderPass(primary_cb);
