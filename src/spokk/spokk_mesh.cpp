@@ -12,30 +12,12 @@ namespace spokk {
 //
 // MeshFormat
 //
-MeshFormat::MeshFormat()
-  : vertex_buffer_bindings{}, vertex_attributes{}, vertex_input_state_ci{}, input_assembly_state_ci{} {}
+MeshFormat::MeshFormat() : vertex_buffer_bindings{}, vertex_attributes{} {}
 MeshFormat::MeshFormat(const MeshFormat& rhs) { *this = rhs; }
 MeshFormat& MeshFormat::operator=(const MeshFormat& rhs) {
   vertex_buffer_bindings = rhs.vertex_buffer_bindings;
   vertex_attributes = rhs.vertex_attributes;
-  vertex_input_state_ci = rhs.vertex_input_state_ci;
-  vertex_input_state_ci.pVertexAttributeDescriptions = vertex_attributes.data();
-  vertex_input_state_ci.pVertexBindingDescriptions = vertex_buffer_bindings.data();
-  input_assembly_state_ci = rhs.input_assembly_state_ci;
   return *this;
-}
-
-void MeshFormat::Finalize(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart) {
-  vertex_input_state_ci = {};
-  vertex_input_state_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-  vertex_input_state_ci.vertexBindingDescriptionCount = (uint32_t)vertex_buffer_bindings.size();
-  vertex_input_state_ci.pVertexBindingDescriptions = vertex_buffer_bindings.data();
-  vertex_input_state_ci.vertexAttributeDescriptionCount = (uint32_t)vertex_attributes.size();
-  vertex_input_state_ci.pVertexAttributeDescriptions = vertex_attributes.data();
-  input_assembly_state_ci = {};
-  input_assembly_state_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-  input_assembly_state_ci.topology = topology;
-  input_assembly_state_ci.primitiveRestartEnable = enable_primitive_restart;
 }
 
 //
@@ -87,7 +69,7 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
   ZOMBO_ASSERT(read_count == mesh_header.index_count, "I/O error while reading %s", mesh_filename);
   fclose(mesh_file);
 
-  mesh_format.Finalize(mesh_header.topology);
+  topology = mesh_header.topology;
   if (mesh_header.bytes_per_index == 2) {
     index_type = VK_INDEX_TYPE_UINT16;
   } else if (mesh_header.bytes_per_index == 4) {
@@ -104,8 +86,9 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
   index_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
   index_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(index_buffer.Create(device, index_buffer_ci));
-  SPOKK_VK_CHECK(index_buffer.Load(device, indices.data(), indices.size()));
   SPOKK_VK_CHECK(device.SetObjectName(index_buffer.Handle(), std::string(mesh_filename) + " index buffer"));
+  SPOKK_VK_CHECK(
+      index_buffer.Load(device, THSVS_ACCESS_NONE, THSVS_ACCESS_INDEX_BUFFER, indices.data(), indices.size()));
   vertex_buffers.resize(mesh_header.vertex_buffer_count, {});
   for (uint32_t iVB = 0; iVB < mesh_header.vertex_buffer_count; ++iVB) {
     VkBufferCreateInfo vertex_buffer_ci = {};
@@ -114,9 +97,10 @@ int Mesh::CreateFromFile(const Device& device, const char* mesh_filename) {
     vertex_buffer_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     vertex_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(vertex_buffers[iVB].Create(device, vertex_buffer_ci));
-    SPOKK_VK_CHECK(vertex_buffers[iVB].Load(device, vertices.data(), vertices.size()));
     SPOKK_VK_CHECK(device.SetObjectName(vertex_buffers[iVB].Handle(),
         std::string(mesh_filename) + " vertex buffer " + std::to_string(iVB)));  // TODO(cort): absl::StrCat
+    SPOKK_VK_CHECK(vertex_buffers[iVB].Load(
+        device, THSVS_ACCESS_NONE, THSVS_ACCESS_VERTEX_BUFFER, vertices.data(), vertices.size()));
   }
 
   // Populate buffer offsets
@@ -139,10 +123,7 @@ void Mesh::Destroy(const Device& device) {
 }
 
 void Mesh::BindBuffers(VkCommandBuffer cb) const {
-  ZOMBO_ASSERT((uint32_t)vertex_buffers.size() == mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount,
-      "Mesh's vertex buffer count (%u) does not match count in MeshFormat (%u)", (uint32_t)vertex_buffers.size(),
-      mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount);
-  for (uint32_t i = 0; i < mesh_format.vertex_input_state_ci.vertexBindingDescriptionCount; ++i) {
+  for (uint32_t i = 0; i < mesh_format.vertex_buffer_bindings.size(); ++i) {
     VkBuffer handle = vertex_buffers[i].Handle();
     vkCmdBindVertexBuffers(
         cb, mesh_format.vertex_buffer_bindings[i].binding, 1, &handle, &vertex_buffer_byte_offsets[i]);
@@ -170,7 +151,7 @@ void GenerateMeshBox(const Device& device, Mesh* out_mesh, const float min_exten
   out_mesh->mesh_format.vertex_buffer_bindings[0].binding = 0;
   out_mesh->mesh_format.vertex_buffer_bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
   out_mesh->mesh_format.vertex_buffer_bindings[0].stride = sizeof(DebugMeshVertex);
-  out_mesh->mesh_format.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+  out_mesh->topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
   const std::vector<DebugMeshVertex> vertices = {
       // clang-format off
@@ -206,7 +187,8 @@ void GenerateMeshBox(const Device& device, Mesh* out_mesh, const float min_exten
   vb_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   out_mesh->vertex_buffers.resize(1);
   SPOKK_VK_CHECK(out_mesh->vertex_buffers[0].Create(device, vb_ci));
-  SPOKK_VK_CHECK(out_mesh->vertex_buffers[0].Load(device, vertices.data(), vb_ci.size));
+  SPOKK_VK_CHECK(out_mesh->vertex_buffers[0].Load(
+      device, THSVS_ACCESS_NONE, THSVS_ACCESS_VERTEX_BUFFER, vertices.data(), vb_ci.size));
   out_mesh->vertex_buffer_byte_offsets = {0};
   out_mesh->vertex_count = (uint32_t)vertices.size();
 
@@ -225,7 +207,7 @@ void GenerateMeshBox(const Device& device, Mesh* out_mesh, const float min_exten
   ib_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
   ib_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   SPOKK_VK_CHECK(out_mesh->index_buffer.Create(device, ib_ci));
-  SPOKK_VK_CHECK(out_mesh->index_buffer.Load(device, indices.data(), ib_ci.size));
+  SPOKK_VK_CHECK(out_mesh->index_buffer.Load(device, THSVS_ACCESS_NONE, THSVS_ACCESS_INDEX_BUFFER, indices.data(), ib_ci.size));
   out_mesh->index_buffer_byte_offset = 0;
   out_mesh->index_count = (uint32_t)indices.size();
   out_mesh->index_type = VK_INDEX_TYPE_UINT16;

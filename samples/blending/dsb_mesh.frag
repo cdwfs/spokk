@@ -7,10 +7,15 @@ layout (location = 0, index = 0) out vec4 out_fragColorA;
 layout (location = 0, index = 1) out vec4 out_fragColorB;
 
 layout (set = 0, binding = 0) uniform SceneUniforms {
-  vec4 time_and_res;
+  vec4 res_and_time;
   vec4 eye;
   mat4 viewproj;
 } scene_consts;
+layout(set = 0, binding = 1) uniform MeshUniforms {
+  mat4 o2w;
+  vec4 albedo; // xyz=color, w=opacity
+  vec4 spec_params;  // x=exponent, y=intensity
+} mesh_consts;
 
 struct Material {
   vec3 albedo_color;
@@ -28,11 +33,11 @@ struct PointLight {
 
 void main() {
     Material mat;
-    mat.albedo_color = vec3(1.0, 0.5, 0.2);  // demi-orange
+    mat.albedo_color = mesh_consts.albedo.xyz;
     mat.normal_wsn = normalize(norm_ws);
     mat.spec_color = vec3(1,1,1);
-    mat.spec_intensity = 1.0;
-    mat.spec_exp = 100.0;
+    mat.spec_exp = mesh_consts.spec_params.x;
+    mat.spec_intensity = mesh_consts.spec_params.y;
 
     PointLight light;
     light.pos_ws = vec3(0.0, 0.0, 5.0);
@@ -56,8 +61,11 @@ void main() {
       spec_color += light.color.rgb * pow(n_dot_h, mat.spec_exp) * mat.spec_intensity;
     }
 
+    float opacity = mesh_consts.albedo.w;
+    vec4 final_dif_color = vec4(dif_color * mat.albedo_color * attenuation, 1.0);
+    vec4 final_spec_color = vec4(spec_color * mat.spec_color * attenuation, 1.0);
     // This color will be applied additively
-    out_fragColorA = vec4(spec_color * mat.spec_color * attenuation, 1.0);
+    out_fragColorA = opacity * final_dif_color + final_spec_color;
     // This color will be multiplied by the existing framebuffer color
-    out_fragColorB = vec4(dif_color * mat.albedo_color * attenuation, 1.0);
+    out_fragColorB = (1 - opacity) * final_dif_color;
 }

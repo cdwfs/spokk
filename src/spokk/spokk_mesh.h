@@ -16,12 +16,6 @@ struct MeshFormat {
   // Fill in these arrays manually...
   std::vector<VkVertexInputBindingDescription> vertex_buffer_bindings;
   std::vector<VkVertexInputAttributeDescription> vertex_attributes;
-  // ...and all me after filling in attributes and bindings.
-  void Finalize(VkPrimitiveTopology topology, VkBool32 enable_primitive_restart = VK_FALSE);
-
-  // These are filled in during Finalize(), and should not be modified manually.
-  VkPipelineVertexInputStateCreateInfo vertex_input_state_ci;  // used for graphics pipeline creation
-  VkPipelineInputAssemblyStateCreateInfo input_assembly_state_ci;  // used for graphics pipeline creation
 };
 
 struct Mesh {
@@ -38,6 +32,7 @@ struct Mesh {
   uint32_t vertex_count;
   uint32_t index_count;
   VkIndexType index_type;
+  VkPrimitiveTopology topology;
 
   // Handy arrays of buffer offsets, to avoid allocating them for every bind call
   std::vector<VkDeviceSize> vertex_buffer_byte_offsets;

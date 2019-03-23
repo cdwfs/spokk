@@ -1,7 +1,7 @@
 #pragma shader_stage(vertex)
 
 cbuffer SceneUniforms : register(b0) {
-  float4 time_and_res;
+  float4 res_and_time;
   float4 eye;
   float4x4 viewproj;
 };

@@ -10,7 +10,7 @@ IF(${MSVC})
     SET(CMAKE_CXX_FLAGS "/MP /GS- /GR- /W4 /WX /wd4201 /we4003 /EHsc /D _HAS_EXCEPTIONS=0" CACHE TYPE STRING FORCE)
     SET(CMAKE_CXX_FLAGS_RELEASE "/MD /O2 /Ob1 /Oi /fp:fast /D NDEBUG" CACHE TYPE STRING FORCE)
     SET(CMAKE_CXX_FLAGS_DEBUG   "/MDd /MP /Od /Ob0 /GS- /Zi /D _DEBUG" CACHE TYPE STRING FORCE)
-    SET(CMAKE_C_FLAGS "/MP /GS- /GR- /W4 /WX  /wd4201 /we4003" CACHE TYPE STRING FORCE)
+    SET(CMAKE_C_FLAGS "/MP /GS- /GR- /W4 /WX /wd4201 /we4003" CACHE TYPE STRING FORCE)
     SET(CMAKE_C_FLAGS_RELEASE "/MD /O2 /Ob1 /Oi /fp:fast /D NDEBUG" CACHE TYPE STRING FORCE)
     SET(CMAKE_C_FLAGS_DEBUG   "/MDd /MP /Od /Ob0 /GS- /Zi /D _DEBUG" CACHE TYPE STRING FORCE)
     ADD_DEFINITIONS(-D_UNICODE -DUNICODE -D_CRT_SECURE_NO_WARNINGS -DWIN32_LEAN_AND_MEAN -DNOMINMAX)
@@ -25,7 +25,7 @@ ELSEIF(${UNIX})
     SET(CMAKE_EXE_LINKER_FLAGS  "-pthread" CACHE TYPE STRING FORCE)
     LIST(APPEND libs m)
 ENDIF()
-ADD_DEFINITIONS(-DGLM_FORCE_ALIGNED=1 -DGLM_FORCE_AVX2=1)
+ADD_DEFINITIONS(-DGLM_FORCE_DEFAULT_ALIGNED_GENTYPES -DGLM_FORCE_SILENT_WARNINGS -DGLM_FORCE_AVX2)
 
 # spokkle
 SET(SPOKKLE_SOURCES
@@ -52,6 +52,7 @@ TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     ${CMAKE_BINARY_DIR}/third_party/assimp/include # for config.h
     ${CMAKE_SOURCE_DIR}/third_party/assimp/include # for everything else
     ${VULKAN_INCLUDE_DIR}
+    ${SIMPLE_VULKAN_SYNCHRONIZATION_DIR}
     src/spokk
     ${JSON_H_DIR}
 )
@@ -81,11 +82,13 @@ SET(SPOKK_HEADERS
     src/spokk/image_file.h
     src/spokk/spokk.h
     src/spokk/spokk_application.h
+    src/spokk/spokk_barrier.h
     src/spokk/spokk_buffer.h
     src/spokk/spokk_debug.h
     src/spokk/spokk_device.h
     src/spokk/spokk_image.h
-    src/spokk/spokk_imgui_impl_glfw_vulkan.h
+    src/spokk/spokk_imgui_impl_glfw.h
+    src/spokk/spokk_imgui_impl_vulkan.h
     src/spokk/spokk_input.h
     src/spokk/spokk_math.h
     src/spokk/spokk_memory.h
@@ -95,16 +98,19 @@ SET(SPOKK_HEADERS
     src/spokk/spokk_renderpass.h
     src/spokk/spokk_shader.h
     src/spokk/spokk_shader_interface.h
+    src/spokk/spokk_time.h
     src/spokk/spokk_utilities.h
     src/spokk/spokk_vertex.h
 )
 SET(SPOKK_SOURCES
     src/spokk/image_file.c
     src/spokk/spokk_application.cpp
+    src/spokk/spokk_barrier.cpp
     src/spokk/spokk_buffer.cpp
     src/spokk/spokk_device.cpp
     src/spokk/spokk_image.cpp
-    src/spokk/spokk_imgui_impl_glfw_vulkan.cpp
+    src/spokk/spokk_imgui_impl_glfw.cpp
+    src/spokk/spokk_imgui_impl_vulkan.cpp
     src/spokk/spokk_input.cpp
     src/spokk/spokk_math.cpp
     src/spokk/spokk_memory.cpp
@@ -113,6 +119,7 @@ SET(SPOKK_SOURCES
     src/spokk/spokk_platform.c
     src/spokk/spokk_renderpass.cpp
     src/spokk/spokk_shader.cpp
+    src/spokk/spokk_time.cpp    
     src/spokk/spokk_utilities.cpp
     src/spokk/spokk_vertex.cpp
 )
@@ -132,10 +139,13 @@ TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME}
     ${VULKAN_LIBRARY}
 )
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
-    "third_party/glm"
-    "third_party/imgui"
+    ${GLM_DIR}
+    ${IMGUI_DIR}
+    ${SIMPLE_VULKAN_SYNCHRONIZATION_DIR}
+    ${SPIRV_REFLECT_DIR}
+    ${STB_DIR}
+    ${SPIRV-Headers_SOURCE_DIR}/include/spirv/unified1
     ${VULKAN_MEMORY_ALLOCATOR_DIR}
-    "third_party"
     ${VULKAN_INCLUDE_DIR}
     "src/spokk"
 )
@@ -177,6 +187,21 @@ FUNCTION (SPOKK_ADD_EXECUTABLE APP_TARGET)
     ADD_DEPENDENCIES(${APP_TARGET} build-assets)
 ENDFUNCTION(SPOKK_ADD_EXECUTABLE APP_TARGET)
 
+# spokk-benchmark
+SPOKK_ADD_SOURCES(spokk-benchmark
+    samples/common/camera.cpp
+    samples/common/cube_mesh.h
+    samples/benchmark/benchmark.cpp
+)
+SPOKK_ADD_HEADERS(spokk-benchmark
+    samples/common/camera.h
+)
+SPOKK_ADD_SHADERS(spokk-benchmark
+    samples/benchmark/rigid_mesh.vert
+    samples/benchmark/rigid_mesh.frag
+)
+SPOKK_ADD_EXECUTABLE(spokk-benchmark)
+
 # spokk-blending
 SPOKK_ADD_SOURCES(spokk-blending
     samples/common/camera.cpp
@@ -186,12 +211,15 @@ SPOKK_ADD_HEADERS(spokk-blending
     samples/common/camera.h
 )
 SPOKK_ADD_SHADERS(spokk-blending
-    samples/blending/opaque_mesh.vert
-    samples/blending/opaque_mesh.frag
     samples/blending/dsb_mesh.vert
     samples/blending/dsb_mesh.frag
 )
 SPOKK_ADD_EXECUTABLE(spokk-blending)
+
+# spokk-compute
+SPOKK_ADD_SOURCES(spokk-compute samples/compute/compute.cpp)
+SPOKK_ADD_SHADERS(spokk-compute samples/compute/double_ints.comp)
+SPOKK_ADD_EXECUTABLE(spokk-compute)
 
 # spokk-cubeswarm
 SPOKK_ADD_SOURCES(spokk-cubeswarm
@@ -206,11 +234,6 @@ SPOKK_ADD_SHADERS(spokk-cubeswarm
     samples/cubeswarm/rigid_mesh.frag
 )
 SPOKK_ADD_EXECUTABLE(spokk-cubeswarm)
-
-# spokk-compute
-SPOKK_ADD_SOURCES(spokk-compute samples/compute/compute.cpp)
-SPOKK_ADD_SHADERS(spokk-compute samples/compute/double_ints.comp)
-SPOKK_ADD_EXECUTABLE(spokk-compute)
 
 # spokk-lights
 SPOKK_ADD_SOURCES(spokk-lights

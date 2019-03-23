@@ -1,5 +1,6 @@
 #pragma once
 
+#include "spokk_barrier.h"
 #include "spokk_buffer.h"
 #include "spokk_device.h"
 #include "spokk_memory.h"
@@ -23,13 +24,12 @@ struct Image {
 
   // synchronous. Returns 0 on success, non-zero on failure.
   int CreateFromFile(const Device& device, const DeviceQueue* queue, const std::string& filename,
-      VkBool32 generate_mipmaps = VK_TRUE, VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-      VkAccessFlags final_access_flags = VK_ACCESS_SHADER_READ_BIT);
+      VkBool32 generate_mipmaps = VK_TRUE,
+      ThsvsAccessType final_access = THSVS_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE_OR_UNIFORM_TEXEL_BUFFER);
   int LoadSubresourceFromMemory(const Device& device, const DeviceQueue* queue, const void* src_data, size_t src_nbytes,
       uint32_t src_row_nbytes, uint32_t src_layer_height, const VkImageSubresource& dst_subresource,
-      VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-      VkAccessFlags final_access_flags = VK_ACCESS_SHADER_READ_BIT);
-  int GenerateMipmaps(const Device& device, const DeviceQueue* queue, const VkImageMemoryBarrier& barrier,
+      ThsvsAccessType final_access = THSVS_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE_OR_UNIFORM_TEXEL_BUFFER);
+  int GenerateMipmaps(const Device& device, const DeviceQueue* queue, const ThsvsImageBarrier& barrier,
       uint32_t layer, uint32_t src_mip_level, uint32_t mips_to_gen = VK_REMAINING_MIP_LEVELS);
   // TODO(cort): asynchronous variants of these functions, that take a VkEvent to set when the operation is complete.
 
@@ -45,7 +45,9 @@ private:
   // - cb is in a recordable state
   // - dst_image is owned by the queue family that cb will be submitted on.
   //   No queue family ownership transfers take place in this code.
-  int GenerateMipmapsImpl(VkCommandBuffer cb, const VkImageMemoryBarrier& dst_barrier, uint32_t layer,
+  // - dst_barrier should contain the old & new access types, and is used to generate intermediate
+  //   barriers with the appropriate endpoints.
+  int GenerateMipmapsImpl(VkCommandBuffer cb, const ThsvsImageBarrier& dst_barrier, uint32_t layer,
       uint32_t src_mip_level, uint32_t mips_to_gen = VK_REMAINING_MIP_LEVELS);
 };
 

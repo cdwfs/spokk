@@ -212,16 +212,28 @@ VkMemoryPropertyFlags Device::MemoryFlagsForAccessPattern(DeviceMemoryAccessPatt
 
 VkResult Device::DeviceAlloc(const VkMemoryRequirements& mem_reqs, VkMemoryPropertyFlags memory_properties_mask,
     DeviceAllocationScope scope, DeviceMemoryAllocation* out_allocation) const {
+  // For host-visible, non-coherent device memory, size & alignment must be rounded up to non-coherent atom size
+  // in order for flush/invalidate memory range to work properly.
+  bool isHostCoherent = (memory_properties_mask & (VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+  bool isHostVisibleDeviceMem =
+      (memory_properties_mask & (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+  VkMemoryRequirements mem_reqs_padded = mem_reqs;
+  if (!isHostCoherent && isHostVisibleDeviceMem) {
+    VkDeviceSize nonCoherentAtomSize = Properties().limits.nonCoherentAtomSize;
+    mem_reqs_padded.size = (mem_reqs_padded.size + (nonCoherentAtomSize - 1)) & ~(nonCoherentAtomSize - 1);
+    mem_reqs_padded.alignment = (mem_reqs_padded.alignment + (nonCoherentAtomSize - 1)) & ~(nonCoherentAtomSize - 1);
+  }
+
   if (device_allocator_ != nullptr) {
     return device_allocator_->pfnAllocation(
-        device_allocator_->pUserData, *this, mem_reqs, memory_properties_mask, scope, out_allocation);
+        device_allocator_->pUserData, *this, mem_reqs_padded, memory_properties_mask, scope, out_allocation);
   } else {
     // Default device allocator
     *out_allocation = {};
     VkMemoryAllocateInfo alloc_info = {};
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc_info.allocationSize = mem_reqs.size;
-    alloc_info.memoryTypeIndex = FindMemoryTypeIndex(mem_reqs, memory_properties_mask);
+    alloc_info.allocationSize = mem_reqs_padded.size;
+    alloc_info.memoryTypeIndex = FindMemoryTypeIndex(mem_reqs_padded, memory_properties_mask);
     if (alloc_info.memoryTypeIndex >= VK_MAX_MEMORY_TYPES) {
       return VK_ERROR_INITIALIZATION_FAILED;
     }
@@ -453,6 +465,7 @@ SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkPipeline, PIPELINE)
 SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkDescriptorSetLayout, DESCRIPTOR_SET_LAYOUT)
 SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkSampler, SAMPLER)
 SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkDescriptorPool, DESCRIPTOR_POOL)
+SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkDescriptorSet, DESCRIPTOR_SET)
 SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkFramebuffer, FRAMEBUFFER)
 SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkCommandPool, COMMAND_POOL)
 SPECIALIZE_SET_OBJECT_NAME_AND_TAG(VkSurfaceKHR, SURFACE_KHR)

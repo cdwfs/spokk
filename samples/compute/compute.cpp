@@ -45,7 +45,8 @@ public:
     Buffer in_buffer = {}, out_buffer = {};
     SPOKK_VK_CHECK(in_buffer.Create(device_, buffer_ci, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
     SPOKK_VK_CHECK(device_.SetObjectName(in_buffer.Handle(), "input buffer"));
-    SPOKK_VK_CHECK(in_buffer.Load(device_, in_data.data(), buffer_ci.size));
+    SPOKK_VK_CHECK(in_buffer.Load(
+        device_, THSVS_ACCESS_NONE, THSVS_ACCESS_COMPUTE_SHADER_READ_OTHER, in_data.data(), buffer_ci.size));
     buffer_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     // TODO(cort): until I have buffer.unload, the output buffer must be host-visible.
     SPOKK_VK_CHECK(out_buffer.Create(device_, buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
@@ -84,37 +85,31 @@ public:
     cb_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     SPOKK_VK_CHECK(vkBeginCommandBuffer(cb, &cb_begin_info));
 
-    VkBufferMemoryBarrier buffer_barriers[2] = {};
-    buffer_barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    buffer_barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-    buffer_barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    buffer_barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barriers[0].buffer = in_buffer.Handle();
-    buffer_barriers[0].offset = 0;
-    buffer_barriers[0].size = VK_WHOLE_SIZE;
-    buffer_barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    buffer_barriers[1].srcAccessMask = 0;
-    buffer_barriers[1].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    buffer_barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barriers[1].buffer = out_buffer.Handle();
-    buffer_barriers[1].offset = 0;
-    buffer_barriers[1].size = VK_WHOLE_SIZE;
-    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 2,
-        buffer_barriers, 0, nullptr);
+    // These barriers are *probably* unnecessary; spec section 6.9 guarantees host write ordering across a call to
+    // vkQueueSubmit(). But, enh.
+    VkMemoryBarrier barriers[2] = {};
+    VkPipelineStageFlags barrier_src_stages = 0, barrier_dst_stages = 0;
+    // barrier for input buffer
+    spokk::BuildVkMemoryBarrier(THSVS_ACCESS_HOST_WRITE, THSVS_ACCESS_COMPUTE_SHADER_READ_OTHER, &barrier_src_stages,
+        &barrier_dst_stages, &barriers[0]);
+    // barrier for output buffer
+    spokk::BuildVkMemoryBarrier(
+        THSVS_ACCESS_NONE, THSVS_ACCESS_COMPUTE_SHADER_WRITE, &barrier_src_stages, &barrier_dst_stages, &barriers[1]);
+    vkCmdPipelineBarrier(cb, barrier_src_stages, barrier_dst_stages, 0, 2, barriers, 0, nullptr, 0, nullptr);
 
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline.handle);
     vkCmdBindDescriptorSets(
         cb, VK_PIPELINE_BIND_POINT_COMPUTE, compute_shader_program.pipeline_layout, 0, 1, &dset, 0, nullptr);
-    const float dispatch_label_color[4] = { 1,1,0,1 };
+    const float dispatch_label_color[4] = {1, 1, 0, 1};
     device_.DebugLabelInsert(cb, "double those ints!", dispatch_label_color);
     vkCmdDispatch(cb, BUXEL_COUNT, 1, 1);
 
-    buffer_barriers[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    buffer_barriers[1].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1,
-        &buffer_barriers[1], 0, nullptr);
+    // barrier to read from output buffer. This barrier *is necessary; see the notes for vkWaitForFences() in the spec.
+    barrier_src_stages = 0;
+    barrier_dst_stages = 0;
+    spokk::BuildVkMemoryBarrier(THSVS_ACCESS_COMPUTE_SHADER_WRITE, THSVS_ACCESS_HOST_READ, &barrier_src_stages,
+        &barrier_dst_stages, &barriers[1]);
+    vkCmdPipelineBarrier(cb, barrier_src_stages, barrier_dst_stages, 0, 1, &barriers[1], 0, nullptr, 0, nullptr);
 
     SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
     VkSubmitInfo submit_info = {};

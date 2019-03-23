@@ -53,6 +53,12 @@ struct GraphicsPipeline {
   VkPipelineColorBlendStateCreateInfo color_blend_state_ci;
   std::vector<VkPipelineColorBlendAttachmentState> color_blend_attachment_states;
   VkPipelineDynamicStateCreateInfo dynamic_state_ci;
+  VkPipelineInputAssemblyStateCreateInfo input_assembly_state_ci;
+
+  // Filtered from the union of MeshFormat + ShaderProgram
+  std::vector<VkVertexInputBindingDescription> vertex_buffer_bindings;
+  std::vector<VkVertexInputAttributeDescription> vertex_attributes;
+  VkPipelineVertexInputStateCreateInfo vertex_input_state_ci;
 };
 
 }  // namespace spokk

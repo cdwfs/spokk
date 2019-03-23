@@ -88,7 +88,7 @@ using namespace spokk;
 
 namespace {
 struct SceneUniforms {
-  glm::vec4 time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
+  glm::vec4 res_and_time;  // xy: viewport resolution in pixels, z: unused, w: elapsed seconds
   glm::vec4 eye;  // xyz: eye position
   glm::mat4 viewproj;
   glm::ivec4 trail_params;  // x: MAX_PARTICLE_LENGTH, yzw: unused
@@ -138,21 +138,21 @@ private:
   GraphicsPipeline particle_pipeline_;
 
   DescriptorPool dpool_;
-  std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
+  struct FrameData {
+    Buffer scene_ubo;
+    Buffer particle_vbo;
+    Buffer trail_lengths_buffer;
+    Buffer trail_age_offsets_buffer;
+    Buffer trail_positions_buffer;
+    Buffer indirect_draw_commands_buffer;
+    VkDescriptorSet dset;
+  };
+  std::array<FrameData, PFRAME_COUNT> frame_data_;
 
   std::vector<glm::vec3> host_particle_positions_;
   std::vector<glm::vec3> host_particle_velocities_;
   std::vector<int32_t> host_trail_ends_;
   std::vector<int32_t> host_trail_lengths_;
-
-  PipelinedBuffer scene_uniforms_;
-
-  PipelinedBuffer particle_vb_;
-  PipelinedBuffer trail_lengths_;
-  PipelinedBuffer trail_age_offsets_;
-  PipelinedBuffer trail_positions_;
-
-  PipelinedBuffer indirect_draw_commands_;
 
   std::unique_ptr<CameraPersp> camera_;
   std::unique_ptr<CameraDrone> drone_;
@@ -197,16 +197,6 @@ TrailsApp::TrailsApp(Application::CreateInfo& ci) : Application(ci) {
   SPOKK_VK_CHECK(
       ShaderProgram::ForceCompatibleLayoutsAndFinalize(device_, {&particle_shader_program_, &trail_shader_program_}));
 
-  // Look up the appropriate memory flags for cpu/gpu dynamic buffers on this platform
-  VkMemoryPropertyFlags cpu_to_gpu_dynamic_memflags =
-      device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
-
-  // Create pipelined buffer of scene uniforms
-  VkBufferCreateInfo scene_uniforms_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-  scene_uniforms_ci.size = sizeof(SceneUniforms);
-  scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-  SPOKK_VK_CHECK(scene_uniforms_.Create(device_, PFRAME_COUNT, scene_uniforms_ci, cpu_to_gpu_dynamic_memflags));
-
   // Particle attributes, used for host-side simulation.
   host_particle_positions_.resize(MAX_PARTICLE_COUNT, glm::vec3(0, 0, 0));
   host_particle_velocities_.resize(MAX_PARTICLE_COUNT, glm::vec3(0, 0, 0));
@@ -226,57 +216,23 @@ TrailsApp::TrailsApp(Application::CreateInfo& ci) : Application(ci) {
   particle_mesh_format_.vertex_attributes = {
       {SPOKK_VERTEX_ATTRIBUTE_LOCATION_POSITION, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
   };
-  particle_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
-  // Create pipelined particle vertex buffer.
-  VkBufferCreateInfo particle_vb_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-  particle_vb_ci.size = MAX_PARTICLE_COUNT * particle_mesh_format_.vertex_buffer_bindings[0].stride;
-  particle_vb_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-  SPOKK_VK_CHECK(particle_vb_.Create(device_, PFRAME_COUNT, particle_vb_ci, cpu_to_gpu_dynamic_memflags));
-  SPOKK_VK_CHECK(particle_vb_.CreateViews(device_, particle_mesh_format_.vertex_attributes[0].format));
-
-  // Create pipelined trail lengths buffer
-  VkBufferCreateInfo trail_lengths_buffer_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-  trail_lengths_buffer_ci.size = MAX_PARTICLE_COUNT * sizeof(int32_t);
-  trail_lengths_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-  SPOKK_VK_CHECK(trail_lengths_.Create(device_, PFRAME_COUNT, trail_lengths_buffer_ci, cpu_to_gpu_dynamic_memflags));
-  SPOKK_VK_CHECK(trail_lengths_.CreateViews(device_, VK_FORMAT_R32_SINT));
-
-  // Create pipelined trail age offsets buffer
-  VkBufferCreateInfo trail_age_offsets_buffer_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-  trail_age_offsets_buffer_ci.size = MAX_PARTICLE_COUNT * sizeof(int32_t);
-  trail_age_offsets_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-  SPOKK_VK_CHECK(
-      trail_age_offsets_.Create(device_, PFRAME_COUNT, trail_age_offsets_buffer_ci, cpu_to_gpu_dynamic_memflags));
-  SPOKK_VK_CHECK(trail_age_offsets_.CreateViews(device_, VK_FORMAT_R32_SINT));
-
-  // Create pipelined trail positions buffer.
-  VkBufferCreateInfo trail_positions_buffer_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-  trail_positions_buffer_ci.size = MAX_PARTICLE_COUNT * MAX_PARTICLE_LENGTH * sizeof(glm::vec4);
-  trail_positions_buffer_ci.usage = VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-  SPOKK_VK_CHECK(
-      trail_positions_.Create(device_, PFRAME_COUNT, trail_positions_buffer_ci, cpu_to_gpu_dynamic_memflags));
-  SPOKK_VK_CHECK(trail_positions_.CreateViews(device_, VK_FORMAT_R32G32B32A32_SFLOAT));
-
-  // Create pipelined buffer of VkDrawIndrectCommand
-  VkBufferCreateInfo indirect_draw_buffer_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-  indirect_draw_buffer_ci.size = MAX_PARTICLE_COUNT * sizeof(VkDrawIndirectCommand);
-  indirect_draw_buffer_ci.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-  SPOKK_VK_CHECK(
-      indirect_draw_commands_.Create(device_, PFRAME_COUNT, indirect_draw_buffer_ci, cpu_to_gpu_dynamic_memflags));
-
-  // We need empty mesh format for the trail pipeline
-  trail_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_LINE_STRIP);
 
   // Create graphics pipelines
   // particle_pipeline_.Init(&particle_mesh_format_, &particle_shader_program_, &render_pass_, 0);
+  // particle_pipeline_.input_assembly_state_ci.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
   // SPOKK_VK_CHECK(particle_pipeline_.Finalize(device_));
   trail_pipeline_.Init(&trail_mesh_format_, &trail_shader_program_, &render_pass_, 0);
+  trail_pipeline_.input_assembly_state_ci.topology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
   trail_pipeline_.rasterization_state_ci.lineWidth = 3.0f;
   trail_pipeline_.color_blend_attachment_states[0].blendEnable = VK_TRUE;
   trail_pipeline_.color_blend_attachment_states[0].colorBlendOp = VK_BLEND_OP_ADD;
   trail_pipeline_.color_blend_attachment_states[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
   trail_pipeline_.color_blend_attachment_states[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
   SPOKK_VK_CHECK(trail_pipeline_.Finalize(device_));
+
+  // Look up the appropriate memory flags for cpu/gpu dynamic buffers on this platform
+  VkMemoryPropertyFlags cpu_to_gpu_dynamic_memflags =
+      device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
 
   // Create and populate descriptor sets.
   // All pipelines in this app share a common dset layout, so we only need to add
@@ -285,19 +241,83 @@ TrailsApp::TrailsApp(Application::CreateInfo& ci) : Application(ci) {
     dpool_.Add(dset_layout_ci, PFRAME_COUNT);
   }
   SPOKK_VK_CHECK(dpool_.Finalize(device_));
-  for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-    // TODO(cort): allocate_pipelined_set()?
-    dsets_[pframe] = dpool_.AllocateSet(device_, trail_shader_program_.dset_layouts[0]);
-  }
+
   DescriptorSetWriter dset_writer(trail_shader_program_.dset_layout_cis[0]);
   for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-    dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), trail_vs_.GetDescriptorBindPoint("scene_consts").binding);
-    dset_writer.BindTexelBuffer(trail_lengths_.View(pframe), trail_vs_.GetDescriptorBindPoint("trail_lengths").binding);
+    auto& frame_data = frame_data_[pframe];
+
+    // Create pipelined buffer of scene uniforms
+    VkBufferCreateInfo scene_uniforms_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    scene_uniforms_ci.size = sizeof(SceneUniforms);
+    scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    SPOKK_VK_CHECK(frame_data.scene_ubo.Create(device_, scene_uniforms_ci, cpu_to_gpu_dynamic_memflags));
+    SPOKK_VK_CHECK(device_.SetObjectName(frame_data.scene_ubo.Handle(), "scene ubo " + std::to_string(pframe)));
+    dset_writer.BindBuffer(frame_data.scene_ubo.Handle(), trail_vs_.GetDescriptorBindPoint("scene_consts").binding);
+
+    // Create pipelined particle vertex buffer.
+    VkBufferCreateInfo particle_vb_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    particle_vb_ci.size = MAX_PARTICLE_COUNT * particle_mesh_format_.vertex_buffer_bindings[0].stride;
+    particle_vb_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    SPOKK_VK_CHECK(frame_data.particle_vbo.Create(device_, particle_vb_ci, cpu_to_gpu_dynamic_memflags));
+    SPOKK_VK_CHECK(frame_data.particle_vbo.CreateView(device_, particle_mesh_format_.vertex_attributes[0].format));
+    SPOKK_VK_CHECK(device_.SetObjectName(frame_data.particle_vbo.Handle(), "particle vbo " + std::to_string(pframe)));
+    SPOKK_VK_CHECK(
+        device_.SetObjectName(frame_data.particle_vbo.View(), "particle vbo view " + std::to_string(pframe)));
+
+    // Create pipelined trail lengths buffer
+    VkBufferCreateInfo trail_lengths_buffer_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    trail_lengths_buffer_ci.size = MAX_PARTICLE_COUNT * sizeof(int32_t);
+    trail_lengths_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+    SPOKK_VK_CHECK(
+        frame_data.trail_lengths_buffer.Create(device_, trail_lengths_buffer_ci, cpu_to_gpu_dynamic_memflags));
+    SPOKK_VK_CHECK(frame_data.trail_lengths_buffer.CreateView(device_, VK_FORMAT_R32_SINT));
+    SPOKK_VK_CHECK(device_.SetObjectName(
+        frame_data.trail_lengths_buffer.Handle(), "trail lengths buffer " + std::to_string(pframe)));
+    SPOKK_VK_CHECK(device_.SetObjectName(
+        frame_data.trail_lengths_buffer.View(), "trail lengths buffer view " + std::to_string(pframe)));
     dset_writer.BindTexelBuffer(
-        trail_age_offsets_.View(pframe), trail_vs_.GetDescriptorBindPoint("trail_age_offsets").binding);
+        frame_data.trail_lengths_buffer.View(), trail_vs_.GetDescriptorBindPoint("trail_lengths").binding);
+
+    // Create pipelined trail age offsets buffer
+    VkBufferCreateInfo trail_age_offsets_buffer_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    trail_age_offsets_buffer_ci.size = MAX_PARTICLE_COUNT * sizeof(int32_t);
+    trail_age_offsets_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+    SPOKK_VK_CHECK(
+        frame_data.trail_age_offsets_buffer.Create(device_, trail_age_offsets_buffer_ci, cpu_to_gpu_dynamic_memflags));
+    SPOKK_VK_CHECK(frame_data.trail_age_offsets_buffer.CreateView(device_, VK_FORMAT_R32_SINT));
+    SPOKK_VK_CHECK(device_.SetObjectName(
+        frame_data.trail_age_offsets_buffer.Handle(), "trail age offsets buffer " + std::to_string(pframe)));
+    SPOKK_VK_CHECK(device_.SetObjectName(
+        frame_data.trail_age_offsets_buffer.View(), "trail age offsets buffer view " + std::to_string(pframe)));
     dset_writer.BindTexelBuffer(
-        trail_positions_.View(pframe), trail_vs_.GetDescriptorBindPoint("trail_positions").binding);
-    dset_writer.WriteAll(device_, dsets_[pframe]);
+        frame_data.trail_age_offsets_buffer.View(), trail_vs_.GetDescriptorBindPoint("trail_age_offsets").binding);
+
+    // Create pipelined trail positions buffer.
+    VkBufferCreateInfo trail_positions_buffer_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    trail_positions_buffer_ci.size = MAX_PARTICLE_COUNT * MAX_PARTICLE_LENGTH * sizeof(glm::vec4);
+    trail_positions_buffer_ci.usage =
+        VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+    SPOKK_VK_CHECK(
+        frame_data.trail_positions_buffer.Create(device_, trail_positions_buffer_ci, cpu_to_gpu_dynamic_memflags));
+    SPOKK_VK_CHECK(frame_data.trail_positions_buffer.CreateView(device_, VK_FORMAT_R32G32B32A32_SFLOAT));
+    SPOKK_VK_CHECK(device_.SetObjectName(
+        frame_data.trail_positions_buffer.Handle(), "trail positions buffer " + std::to_string(pframe)));
+    SPOKK_VK_CHECK(device_.SetObjectName(
+        frame_data.trail_positions_buffer.View(), "trail positions buffer view " + std::to_string(pframe)));
+    dset_writer.BindTexelBuffer(
+        frame_data.trail_positions_buffer.View(), trail_vs_.GetDescriptorBindPoint("trail_positions").binding);
+
+    // Create pipelined buffer of VkDrawIndrectCommand
+    VkBufferCreateInfo indirect_draw_buffer_ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    indirect_draw_buffer_ci.size = MAX_PARTICLE_COUNT * sizeof(VkDrawIndirectCommand);
+    indirect_draw_buffer_ci.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    SPOKK_VK_CHECK(
+        frame_data.indirect_draw_commands_buffer.Create(device_, indirect_draw_buffer_ci, cpu_to_gpu_dynamic_memflags));
+    SPOKK_VK_CHECK(device_.SetObjectName(
+        frame_data.indirect_draw_commands_buffer.Handle(), "indirect draw commands buffer " + std::to_string(pframe)));
+
+    frame_data.dset = dpool_.AllocateSet(device_, trail_shader_program_.dset_layouts[0]);
+    dset_writer.WriteAll(device_, frame_data.dset);
   }
 
   // Create swapchain-sized buffers
@@ -309,14 +329,14 @@ TrailsApp::~TrailsApp() {
 
     dpool_.Destroy(device_);
 
-    scene_uniforms_.Destroy(device_);
-
-    particle_vb_.Destroy(device_);
-    trail_lengths_.Destroy(device_);
-    trail_age_offsets_.Destroy(device_);
-    trail_positions_.Destroy(device_);
-
-    indirect_draw_commands_.Destroy(device_);
+    for (auto& frame_data : frame_data_) {
+      frame_data.scene_ubo.Destroy(device_);
+      frame_data.particle_vbo.Destroy(device_);
+      frame_data.trail_lengths_buffer.Destroy(device_);
+      frame_data.trail_age_offsets_buffer.Destroy(device_);
+      frame_data.trail_positions_buffer.Destroy(device_);
+      frame_data.indirect_draw_commands_buffer.Destroy(device_);
+    }
 
     particle_vs_.Destroy(device_);
     particle_fs_.Destroy(device_);
@@ -355,39 +375,46 @@ void TrailsApp::Update(double dt) {
 }
 
 void TrailsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
+  const auto& frame_data = frame_data_[pframe_index_];
   // Update uniforms
-  SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
-  uniforms->time_and_res =
-      glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+  SceneUniforms* uniforms = (SceneUniforms*)frame_data.scene_ubo.Mapped();
+  uniforms->res_and_time =
+      glm::vec4((float)swapchain_extent_.width, (float)swapchain_extent_.height, 0, (float)seconds_elapsed_);
   uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
   glm::mat4 w2v = camera_->getViewMatrix();
   const glm::mat4 proj = camera_->getProjectionMatrix();
   uniforms->viewproj = proj * w2v;
   uniforms->trail_params.x = MAX_PARTICLE_LENGTH;
-  SPOKK_VK_CHECK(scene_uniforms_.FlushPframeHostCache(device_, pframe_index_));
+  SPOKK_VK_CHECK(frame_data.scene_ubo.FlushHostCache(device_));
 
   // Update particle attribute buffers
-  glm::vec3* dst_particle_positions = (glm::vec3*)particle_vb_.Mapped(pframe_index_);
-  memcpy(dst_particle_positions, host_particle_positions_.data(), particle_vb_.BytesPerPframe());
-  SPOKK_VK_CHECK(particle_vb_.FlushPframeHostCache(device_, pframe_index_));
+  glm::vec3* dst_particle_positions = (glm::vec3*)frame_data.particle_vbo.Mapped();
+  memcpy(dst_particle_positions, host_particle_positions_.data(),
+      host_particle_positions_.size() * sizeof(host_particle_positions_[0]));
+  SPOKK_VK_CHECK(frame_data.particle_vbo.FlushHostCache(device_));
 
-  glm::vec4* src_trail_positions = (glm::vec4*)trail_positions_.Mapped(1 - pframe_index_);
-  glm::vec4* dst_trail_positions = (glm::vec4*)trail_positions_.Mapped(pframe_index_);
-  memcpy(dst_trail_positions, src_trail_positions, trail_positions_.BytesPerPframe());  // waaaaaste
+  // Copy the previous frame's trail positions, and overwrite the least recent position
+  // of each trail with its particle's current position.
+  // TODO(cort): this is super wasteful, the buffer is not changing that much.
+  uint32_t prev_pframe_index = std::max(0U, (pframe_index_ - 1) % PFRAME_COUNT);
+  const auto& prev_frame_data = frame_data_[prev_pframe_index];
+  glm::vec4* src_trail_positions = (glm::vec4*)prev_frame_data.trail_positions_buffer.Mapped();
+  glm::vec4* dst_trail_positions = (glm::vec4*)frame_data.trail_positions_buffer.Mapped();
+  memcpy(dst_trail_positions, src_trail_positions, frame_data.trail_positions_buffer.Size());  // waaaaaste
   for (int32_t i_part = 0; i_part < MAX_PARTICLE_COUNT; ++i_part) {
     glm::vec4 out_pos(host_particle_positions_[i_part], 1.0f);
     dst_trail_positions[i_part * MAX_PARTICLE_LENGTH + (host_trail_ends_[i_part] % MAX_PARTICLE_LENGTH)] = out_pos;
     host_trail_ends_[i_part] += 1;
   }
-  SPOKK_VK_CHECK(trail_positions_.FlushPframeHostCache(device_, pframe_index_));
+  SPOKK_VK_CHECK(frame_data.trail_positions_buffer.FlushHostCache(device_));
 
-  float* dst_trail_lengths = (float*)trail_lengths_.Mapped(pframe_index_);
-  memcpy(dst_trail_lengths, host_trail_lengths_.data(), trail_lengths_.BytesPerPframe());
-  SPOKK_VK_CHECK(trail_lengths_.FlushPframeHostCache(device_, pframe_index_));
+  float* dst_trail_lengths = (float*)frame_data.trail_lengths_buffer.Mapped();
+  memcpy(dst_trail_lengths, host_trail_lengths_.data(), host_trail_lengths_.size() * sizeof(host_trail_lengths_[0]));
+  SPOKK_VK_CHECK(frame_data.trail_lengths_buffer.FlushHostCache(device_));
 
   // Update indirect draw commands
   uint32_t draw_count = 0;
-  VkDrawIndirectCommand* draw_cmds = (VkDrawIndirectCommand*)indirect_draw_commands_.Mapped(pframe_index_);
+  VkDrawIndirectCommand* draw_cmds = (VkDrawIndirectCommand*)frame_data.indirect_draw_commands_buffer.Mapped();
   for (int32_t i_part = 0; i_part < MAX_PARTICLE_COUNT; ++i_part) {
     int32_t trail_start = host_trail_ends_[i_part] - host_trail_lengths_[i_part];
     draw_cmds[draw_count].vertexCount = host_trail_lengths_[i_part];
@@ -396,7 +423,7 @@ void TrailsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_inde
     draw_cmds[draw_count].firstInstance = i_part;  // gl_BaseInstance
     ++draw_count;
   }
-  SPOKK_VK_CHECK(indirect_draw_commands_.FlushPframeHostCache(device_, pframe_index_));
+  SPOKK_VK_CHECK(frame_data.indirect_draw_commands_buffer.FlushHostCache(device_));
 
   // Write command buffer
   VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
@@ -409,15 +436,13 @@ void TrailsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_inde
   vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
   vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, trail_pipeline_.handle);
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, trail_pipeline_.shader_program->pipeline_layout,
-      0, 1, &dsets_[pframe_index_], 0, nullptr);
+      0, 1, &frame_data.dset, 0, nullptr);
   vkCmdDrawIndirect(
-      primary_cb, indirect_draw_commands_.Handle(pframe_index_), 0, draw_count, sizeof(VkDrawIndirectCommand));
+      primary_cb, frame_data.indirect_draw_commands_buffer.Handle(), 0, draw_count, sizeof(VkDrawIndirectCommand));
   vkCmdEndRenderPass(primary_cb);
 }
 
 void TrailsApp::HandleWindowResize(VkExtent2D new_window_extent) {
-  Application::HandleWindowResize(new_window_extent);
-
   // Destroy existing objects before re-creating them.
   for (auto fb : framebuffers_) {
     if (fb != VK_NULL_HANDLE) {

@@ -93,8 +93,6 @@ public:
     mouse_pos_ = glm::vec2(0, 0);
     glfwSetMouseButtonCallback(window_.get(), MyGlfwMouseButtonCallback);
 
-    empty_mesh_format_.Finalize(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
     // Create render pass
     render_pass_.InitFromPreset(RenderPass::Preset::COLOR, swapchain_surface_format_.format);
     // Customize
@@ -113,13 +111,17 @@ public:
     for (size_t i = 0; i < textures_.size(); ++i) {
       char filename[17];
       zomboSnprintf(filename, 17, "data/tex%02u.ktx", (uint32_t)i);
-      ZOMBO_ASSERT(0 == textures_[i].CreateFromFile(device_, graphics_and_present_queue_, filename, VK_FALSE),
+      ZOMBO_ASSERT(0 ==
+              textures_[i].CreateFromFile(device_, graphics_and_present_queue_, filename, VK_FALSE,
+                  THSVS_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE_OR_UNIFORM_TEXEL_BUFFER),
           "Failed to load %s", filename);
     }
     for (size_t i = 0; i < cubemaps_.size(); ++i) {
       char filename[18];
       zomboSnprintf(filename, 18, "data/cube%02u.ktx", (uint32_t)i);
-      ZOMBO_ASSERT(0 == cubemaps_[i].CreateFromFile(device_, graphics_and_present_queue_, filename, VK_FALSE),
+      ZOMBO_ASSERT(0 ==
+              cubemaps_[i].CreateFromFile(device_, graphics_and_present_queue_, filename, VK_FALSE,
+                  THSVS_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE_OR_UNIFORM_TEXEL_BUFFER),
           "Failed to load %s", filename);
     }
     active_images_[0] = &textures_[15];
@@ -134,25 +136,14 @@ public:
     ReloadShader();  // force a reload of of the shadertoy shader into slot 1
     active_pipeline_index_ = 1 - active_pipeline_index_;
 
-    // Look up the appropriate memory flags for uniform buffers on this platform
-    VkMemoryPropertyFlags uniform_buffer_memory_flags =
-        device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
-
-    // Create uniform buffer
-    VkBufferCreateInfo uniform_buffer_ci = {};
-    uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    uniform_buffer_ci.size = sizeof(ShaderToyUniforms);
-    uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    SPOKK_VK_CHECK(uniform_buffer_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, uniform_buffer_memory_flags));
-
     for (const auto& dset_layout_ci : shader_programs_[active_pipeline_index_].dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
     SPOKK_VK_CHECK(dpool_.Finalize(device_));
 
-    // Create swapchain-sized resources.
-    CreateRenderBuffers(swapchain_extent_);
+    // Look up the appropriate memory flags for uniform buffers on this platform
+    VkMemoryPropertyFlags uniform_buffer_memory_flags =
+        device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
 
     DescriptorSetWriter dset_writer(shader_programs_[active_pipeline_index_].dset_layout_cis[0]);
     for (size_t iTex = 0; iTex < active_images_.size(); ++iTex) {
@@ -160,10 +151,26 @@ public:
           active_images_[iTex]->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], (uint32_t)iTex);
     }
     for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-      dsets_[pframe] = dpool_.AllocateSet(device_, shader_programs_[active_pipeline_index_].dset_layouts[0]);
-      dset_writer.BindBuffer(uniform_buffer_.Handle(pframe), 4);
-      dset_writer.WriteAll(device_, dsets_[pframe]);
+      auto& frame_data = frame_data_[pframe];
+      // Create uniform buffer
+      VkBufferCreateInfo uniform_buffer_ci = {};
+      uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+      uniform_buffer_ci.size = sizeof(ShaderToyUniforms);
+      uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+      uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      SPOKK_VK_CHECK(frame_data.ubo.Create(device_, uniform_buffer_ci, uniform_buffer_memory_flags));
+      SPOKK_VK_CHECK(device_.SetObjectName(frame_data.ubo.Handle(),
+          "uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
+      dset_writer.BindBuffer(frame_data.ubo.Handle(), 4);
+
+      frame_data.dset = dpool_.AllocateSet(device_, shader_programs_[active_pipeline_index_].dset_layouts[0]);
+      SPOKK_VK_CHECK(device_.SetObjectName(frame_data.dset,
+          "frame dset " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
+      dset_writer.WriteAll(device_, frame_data.dset);
     }
+
+    // Create swapchain-sized resources.
+    CreateRenderBuffers(swapchain_extent_);
 
     // Spawn the shader-watcher thread, to set a shared bool whenever the contents of the shader
     // directory change.
@@ -173,14 +180,16 @@ public:
   }
   virtual ~ShaderToyApp() {
     if (device_) {
-      // TODO(https://github.com/cdwfs/spokk/issues/15) Getting occasional crahes here; graceful exit?
+      // TODO(https://github.com/cdwfs/spokk/issues/15) Getting occasional crashes here; graceful exit?
       shader_reloader_thread_.detach();
 
       vkDeviceWaitIdle(device_);
 
       dpool_.Destroy(device_);
 
-      uniform_buffer_.Destroy(device_);
+      for (auto& frame_data : frame_data_) {
+        frame_data.ubo.Destroy(device_);
+      }
 
       pipelines_[0].Destroy(device_);
       pipelines_[1].Destroy(device_);
@@ -217,6 +226,7 @@ public:
   }
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
+    const auto& frame_data = frame_data_[pframe_index_];
     // Reload shaders, if necessary
     bool reload = false;
     swap_shader_.compare_exchange_strong(reload, false);
@@ -247,7 +257,7 @@ public:
     viewport_.y = 0.0f;
     viewport_.height *= -1;
     scissor_rect_ = ExtentToRect2D(swapchain_extent_);
-    ShaderToyUniforms* uniforms = (ShaderToyUniforms*)uniform_buffer_.Mapped(pframe_index_);
+    ShaderToyUniforms* uniforms = (ShaderToyUniforms*)frame_data.ubo.Mapped();
     uniforms->iResolution = glm::vec4(viewport_.width, viewport_.height, 1.0f, 0.0f);
     uniforms->iChannelTime[0] = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);  // TODO(cort): audio/video channels are TBI
     uniforms->iChannelTime[1] = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
@@ -267,7 +277,7 @@ public:
     uniforms->iMouse = glm::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
     uniforms->iDate = glm::vec4(year, month, mday, dsec);
     uniforms->iSampleRate = 44100.0f;
-    SPOKK_VK_CHECK(uniform_buffer_.FlushPframeHostCache(device_, pframe_index_));
+    SPOKK_VK_CHECK(frame_data.ubo.FlushHostCache(device_));
 
     // Write command buffer
     VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
@@ -278,15 +288,13 @@ public:
     vkCmdSetViewport(primary_cb, 0, 1, &viewport_);
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect_);
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        pipelines_[active_pipeline_index_].shader_program->pipeline_layout, 0, 1, &dsets_[pframe_index_], 0, nullptr);
+        pipelines_[active_pipeline_index_].shader_program->pipeline_layout, 0, 1, &frame_data.dset, 0, nullptr);
     vkCmdDraw(primary_cb, 3, 1, 0, 0);
     vkCmdEndRenderPass(primary_cb);
   }
 
 protected:
   void HandleWindowResize(VkExtent2D new_window_extent) override {
-    Application::HandleWindowResize(new_window_extent);
-
     for (auto fb : framebuffers_) {
       if (fb != VK_NULL_HANDLE) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
@@ -451,10 +459,13 @@ private:
   VkRect2D scissor_rect_;
 
   DescriptorPool dpool_;
-  std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
+  struct FrameData {
+    VkDescriptorSet dset;
+    Buffer ubo;
+  };
+  std::array<FrameData, PFRAME_COUNT> frame_data_;
 
   glm::vec2 mouse_pos_;
-  PipelinedBuffer uniform_buffer_;
 };
 
 int main(int argc, char* argv[]) {

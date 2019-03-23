@@ -9,7 +9,7 @@ layout (location = 0) out vec3 pos_ws;
 layout (location = 1) out vec3 norm_ws;
 
 layout (set = 0, binding = 0) uniform SceneUniforms {
-  vec4 time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
+  vec4 res_and_time;  // xy: viewport resolution in pixels, z: unused, w: elapsed seconds
   vec4 eye_pos_ws;    // xyz: world-space eye position
   vec4 eye_dir_wsn;   // xyz: world-space eye direction (normalized)
   mat4 viewproj;
