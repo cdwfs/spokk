@@ -83,7 +83,8 @@ public:
         device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
 
     DescriptorSetWriter dset_writer(mesh_shader_program_.dset_layout_cis[0]);
-    for (auto& frame_data : frame_data_) {
+    for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
+      auto& frame_data = frame_data_[pframe];
       // Create per-pframe buffer of shader uniforms
       VkBufferCreateInfo scene_uniforms_ci = {};
       scene_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -91,6 +92,8 @@ public:
       scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
       scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
       SPOKK_VK_CHECK(frame_data.scene_ubo.Create(device_, scene_uniforms_ci, uniform_buffer_memory_flags));
+      SPOKK_VK_CHECK(device_.SetObjectName(frame_data.scene_ubo.Handle(),
+          "scene uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.BindBuffer(frame_data.scene_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
 
       // Create per-pframe buffer of per-mesh uniforms
@@ -101,9 +104,17 @@ public:
       o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
       SPOKK_VK_CHECK(frame_data.bg_mesh_ubo.Create(device_, o2w_buffer_ci, uniform_buffer_memory_flags));
       SPOKK_VK_CHECK(frame_data.fg_mesh_ubo.Create(device_, o2w_buffer_ci, uniform_buffer_memory_flags));
+      SPOKK_VK_CHECK(device_.SetObjectName(frame_data.bg_mesh_ubo.Handle(),
+          "bg mesh uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
+      SPOKK_VK_CHECK(device_.SetObjectName(frame_data.fg_mesh_ubo.Handle(),
+          "fg mesh uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
 
       frame_data.bg_dset = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
       frame_data.fg_dset = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
+      SPOKK_VK_CHECK(device_.SetObjectName(
+          frame_data.bg_dset, "bg frame dset " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
+      SPOKK_VK_CHECK(device_.SetObjectName(
+          frame_data.fg_dset, "fg frame dset " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
 
       dset_writer.BindBuffer(frame_data.bg_mesh_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
       dset_writer.WriteAll(device_, frame_data.bg_dset);

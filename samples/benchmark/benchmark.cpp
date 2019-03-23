@@ -100,7 +100,8 @@ public:
     dset_writer.BindImage(
         albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mesh_fs_.GetDescriptorBindPoint("tex").binding);
     dset_writer.BindSampler(sampler_, mesh_fs_.GetDescriptorBindPoint("samp").binding);
-    for (auto& frame_data : frame_data_) {
+    for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
+      auto& frame_data = frame_data_[pframe];
       // Create per-pframe buffer of per-mesh object-to-world matrices.
       VkBufferCreateInfo o2w_buffer_ci = {};
       o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -108,6 +109,8 @@ public:
       o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
       o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
       SPOKK_VK_CHECK(frame_data.mesh_ubo.Create(device_, o2w_buffer_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+      SPOKK_VK_CHECK(device_.SetObjectName(
+          frame_data.mesh_ubo.Handle(), "mesh uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.BindBuffer(frame_data.mesh_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
 
       // Create per-pframe buffer of shader uniforms
@@ -117,6 +120,8 @@ public:
       scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
       scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
       SPOKK_VK_CHECK(frame_data.scene_ubo.Create(device_, scene_uniforms_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+      SPOKK_VK_CHECK(device_.SetObjectName(frame_data.scene_ubo.Handle(),
+          "scene uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.BindBuffer(frame_data.scene_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
 
       // Create indirect draw parameter buffer
@@ -126,8 +131,12 @@ public:
       indirect_draw_buffers_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
       SPOKK_VK_CHECK(frame_data.indirect_draw_buffer.Create(
           device_, indirect_draw_buffers_ci, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+      SPOKK_VK_CHECK(device_.SetObjectName(frame_data.indirect_draw_buffer.Handle(),
+          "indirect draw buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
 
       frame_data.dset = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
+      SPOKK_VK_CHECK(device_.SetObjectName(
+          frame_data.dset, "frame data dset " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.WriteAll(device_, frame_data.dset);
     }
 

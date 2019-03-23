@@ -106,7 +106,8 @@ CubeSwarmApp::CubeSwarmApp(Application::CreateInfo& ci) : Application(ci) {
       device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
 
   DescriptorSetWriter dset_writer(mesh_shader_program_.dset_layout_cis[0]);
-  for (auto& frame_data : frame_data_) {
+  for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
+    auto& frame_data = frame_data_[pframe];
     // Create per-pframe buffer of per-mesh object-to-world matrices.
     VkBufferCreateInfo o2w_buffer_ci = {};
     o2w_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -114,6 +115,8 @@ CubeSwarmApp::CubeSwarmApp(Application::CreateInfo& ci) : Application(ci) {
     o2w_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     o2w_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(frame_data.mesh_ubo.Create(device_, o2w_buffer_ci, uniform_buffer_memory_flags));
+    SPOKK_VK_CHECK(device_.SetObjectName(
+        frame_data.mesh_ubo.Handle(), "mesh uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
     dset_writer.BindBuffer(frame_data.mesh_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
 
     // Create per-pframe buffer of shader uniforms
@@ -123,9 +126,13 @@ CubeSwarmApp::CubeSwarmApp(Application::CreateInfo& ci) : Application(ci) {
     scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(frame_data.scene_ubo.Create(device_, scene_uniforms_ci, uniform_buffer_memory_flags));
+    SPOKK_VK_CHECK(device_.SetObjectName(
+        frame_data.scene_ubo.Handle(), "scene uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
     dset_writer.BindBuffer(frame_data.scene_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
 
     frame_data.dset = dpool_.AllocateSet(device_, mesh_shader_program_.dset_layouts[0]);
+    SPOKK_VK_CHECK(
+        device_.SetObjectName(frame_data.dset, "frame dset " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
     dset_writer.WriteAll(device_, frame_data.dset);
   }
 
@@ -165,19 +172,20 @@ void CubeSwarmApp::Update(double dt) {
 }
 
 void CubeSwarmApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
+  const auto& frame_data = frame_data_[pframe_index_];
   // Update uniforms
-  SceneUniforms* uniforms = (SceneUniforms*)frame_data_[pframe_index_].scene_ubo.Mapped();
+  SceneUniforms* uniforms = (SceneUniforms*)frame_data.scene_ubo.Mapped();
   uniforms->res_and_time =
       glm::vec4((float)swapchain_extent_.width, (float)swapchain_extent_.height, 0, (float)seconds_elapsed_);
   uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
   glm::mat4 w2v = camera_->getViewMatrix();
   const glm::mat4 proj = camera_->getProjectionMatrix();
   uniforms->viewproj = proj * w2v;
-  SPOKK_VK_CHECK(frame_data_[pframe_index_].scene_ubo.FlushHostCache(device_));
+  SPOKK_VK_CHECK(frame_data.scene_ubo.FlushHostCache(device_));
 
   // Update object-to-world matrices.
   const float secs = (float)seconds_elapsed_;
-  MeshUniforms* mesh_uniforms = (MeshUniforms*)frame_data_[pframe_index_].mesh_ubo.Mapped();
+  MeshUniforms* mesh_uniforms = (MeshUniforms*)frame_data.mesh_ubo.Mapped();
   const glm::vec3 swarm_center(0, 0, -2);
   for (uint32_t iMesh = 0; iMesh < MESH_INSTANCE_COUNT; ++iMesh) {
     // clang-format off
@@ -192,7 +200,7 @@ void CubeSwarmApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_i
         3.0f);
     // clang-format on
   }
-  SPOKK_VK_CHECK(frame_data_[pframe_index_].mesh_ubo.FlushHostCache(device_));
+  SPOKK_VK_CHECK(frame_data.mesh_ubo.FlushHostCache(device_));
 
   // Write command buffer
   VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
@@ -206,7 +214,7 @@ void CubeSwarmApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_i
   vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
   device_.DebugLabelInsert(primary_cb, "draw teapots");
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_.shader_program->pipeline_layout,
-      0, 1, &(frame_data_[pframe_index_].dset), 0, nullptr);
+      0, 1, &(frame_data.dset), 0, nullptr);
   mesh_.BindBuffers(primary_cb);
   vkCmdDrawIndexed(primary_cb, mesh_.index_count, MESH_INSTANCE_COUNT, 0, 0, 0);
   vkCmdEndRenderPass(primary_cb);

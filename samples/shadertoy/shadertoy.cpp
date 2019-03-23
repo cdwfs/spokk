@@ -150,9 +150,8 @@ public:
       dset_writer.BindCombinedImageSampler(
           active_images_[iTex]->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], (uint32_t)iTex);
     }
-    for (auto& frame_data : frame_data_) {
-      frame_data.dset = dpool_.AllocateSet(device_, shader_programs_[active_pipeline_index_].dset_layouts[0]);
-
+    for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
+      auto& frame_data = frame_data_[pframe];
       // Create uniform buffer
       VkBufferCreateInfo uniform_buffer_ci = {};
       uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -160,8 +159,13 @@ public:
       uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
       uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
       SPOKK_VK_CHECK(frame_data.ubo.Create(device_, uniform_buffer_ci, uniform_buffer_memory_flags));
+      SPOKK_VK_CHECK(device_.SetObjectName(frame_data.ubo.Handle(),
+          "uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.BindBuffer(frame_data.ubo.Handle(), 4);
 
+      frame_data.dset = dpool_.AllocateSet(device_, shader_programs_[active_pipeline_index_].dset_layouts[0]);
+      SPOKK_VK_CHECK(device_.SetObjectName(frame_data.dset,
+          "frame dset " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.WriteAll(device_, frame_data.dset);
     }
 
@@ -176,7 +180,7 @@ public:
   }
   virtual ~ShaderToyApp() {
     if (device_) {
-      // TODO(https://github.com/cdwfs/spokk/issues/15) Getting occasional crahes here; graceful exit?
+      // TODO(https://github.com/cdwfs/spokk/issues/15) Getting occasional crashes here; graceful exit?
       shader_reloader_thread_.detach();
 
       vkDeviceWaitIdle(device_);

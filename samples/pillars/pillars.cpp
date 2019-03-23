@@ -188,7 +188,8 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   dset_writer.BindImage(
       albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, pillar_fs_.GetDescriptorBindPoint("tex").binding);
   dset_writer.BindSampler(sampler_, pillar_fs_.GetDescriptorBindPoint("samp").binding);
-  for (auto& frame_data : frame_data_) {
+  for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
+    auto& frame_data = frame_data_[pframe];
     // Create per-pframe buffer of shader uniforms
     VkBufferCreateInfo uniform_buffer_ci = {};
     uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -196,6 +197,8 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
     uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(frame_data.scene_ubo.Create(device_, uniform_buffer_ci, uniform_buffer_memory_flags));
+    SPOKK_VK_CHECK(device_.SetObjectName(
+        frame_data.scene_ubo.Handle(), "scene uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
     dset_writer.BindBuffer(frame_data.scene_ubo.Handle(), pillar_vs_.GetDescriptorBindPoint("scene_consts").binding);
 
     // Create per-pframe buffer of per-cell "height" values
@@ -205,14 +208,18 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
     heightfield_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
     heightfield_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(frame_data.heightfield_buffer.Create(device_, heightfield_buffer_ci, uniform_buffer_memory_flags));
+    SPOKK_VK_CHECK(device_.SetObjectName(frame_data.heightfield_buffer.Handle(),
+        "heightfield buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
     SPOKK_VK_CHECK(frame_data.heightfield_buffer.CreateView(device_, VK_FORMAT_R32_SFLOAT));
+    SPOKK_VK_CHECK(device_.SetObjectName(frame_data.heightfield_buffer.View(),
+        "heightfield buffer view " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
     for (int32_t iY = 0; iY < HEIGHTFIELD_DIMY; ++iY) {
       for (int32_t iX = 0; iX < HEIGHTFIELD_DIMX; ++iX) {
         heightfield_.at(XY_TO_CELL(iX, iY)) = -1.0f;  // non-visible cells have negative heights
       }
     }
     dset_writer.BindTexelBuffer(
-      frame_data.heightfield_buffer.View(), pillar_vs_.GetDescriptorBindPoint("cell_heights").binding);
+        frame_data.heightfield_buffer.View(), pillar_vs_.GetDescriptorBindPoint("cell_heights").binding);
 
     VkBufferCreateInfo visible_cells_buffer_ci = {};
     visible_cells_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -221,11 +228,17 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
     visible_cells_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     SPOKK_VK_CHECK(
         frame_data.visible_cells_buffer.Create(device_, visible_cells_buffer_ci, uniform_buffer_memory_flags));
+    SPOKK_VK_CHECK(device_.SetObjectName(frame_data.visible_cells_buffer.Handle(),
+        "visible cells buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
     SPOKK_VK_CHECK(frame_data.visible_cells_buffer.CreateView(device_, VK_FORMAT_R32_SINT));
+    SPOKK_VK_CHECK(device_.SetObjectName(frame_data.visible_cells_buffer.View(),
+        "visible cells buffer view " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
     dset_writer.BindTexelBuffer(
-      frame_data.visible_cells_buffer.View(), pillar_vs_.GetDescriptorBindPoint("visible_cells").binding);
+        frame_data.visible_cells_buffer.View(), pillar_vs_.GetDescriptorBindPoint("visible_cells").binding);
 
     frame_data.dset = dpool_.AllocateSet(device_, pillar_shader_program_.dset_layouts[0]);
+    SPOKK_VK_CHECK(
+        device_.SetObjectName(frame_data.dset, "frame dset " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
     dset_writer.WriteAll(device_, frame_data.dset);
   }
 

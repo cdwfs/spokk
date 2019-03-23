@@ -131,9 +131,10 @@ public:
 
     DescriptorSetWriter dset_writer(skybox_shader_program_.dset_layout_cis[0]);
     dset_writer.BindImage(skybox_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-      skybox_fs_.GetDescriptorBindPoint("skybox_tex").binding);
+        skybox_fs_.GetDescriptorBindPoint("skybox_tex").binding);
     dset_writer.BindSampler(sampler_, skybox_fs_.GetDescriptorBindPoint("skybox_samp").binding);
-    for (auto& frame_data : frame_data_) {
+    for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
+      auto& frame_data = frame_data_[pframe];
       // Create per-pframe buffer of light uniforms
       VkBufferCreateInfo light_uniforms_ci = {};
       light_uniforms_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -141,6 +142,8 @@ public:
       light_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
       light_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
       SPOKK_VK_CHECK(frame_data.light_ubo.Create(device_, light_uniforms_ci, uniform_buffer_memory_flags));
+      SPOKK_VK_CHECK(device_.SetObjectName(frame_data.light_ubo.Handle(),
+          "light uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.BindBuffer(frame_data.light_ubo.Handle(), mesh_fs_.GetDescriptorBindPoint("light_consts").binding);
 
       // Create pipelined buffer of light uniforms
@@ -150,6 +153,8 @@ public:
       material_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
       material_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
       SPOKK_VK_CHECK(frame_data.material_ubo.Create(device_, material_uniforms_ci, uniform_buffer_memory_flags));
+      SPOKK_VK_CHECK(device_.SetObjectName(frame_data.material_ubo.Handle(),
+          "material uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.BindBuffer(frame_data.material_ubo.Handle(), mesh_fs_.GetDescriptorBindPoint("mat_consts").binding);
 
       // Create pipelined buffer of mesh uniforms
@@ -159,6 +164,8 @@ public:
       mesh_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
       mesh_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
       SPOKK_VK_CHECK(frame_data.mesh_ubo.Create(device_, mesh_uniforms_ci, uniform_buffer_memory_flags));
+      SPOKK_VK_CHECK(device_.SetObjectName(
+          frame_data.mesh_ubo.Handle(), "mesh uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.BindBuffer(frame_data.mesh_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("mesh_consts").binding);
 
       // Create pipelined buffer of shader uniforms
@@ -168,9 +175,13 @@ public:
       scene_uniforms_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
       scene_uniforms_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
       SPOKK_VK_CHECK(frame_data.scene_ubo.Create(device_, scene_uniforms_ci, uniform_buffer_memory_flags));
+      SPOKK_VK_CHECK(device_.SetObjectName(frame_data.scene_ubo.Handle(),
+          "scene uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.BindBuffer(frame_data.scene_ubo.Handle(), mesh_vs_.GetDescriptorBindPoint("scene_consts").binding);
 
       frame_data.dset = dpool_.AllocateSet(device_, skybox_shader_program_.dset_layouts[0]);
+      SPOKK_VK_CHECK(
+          device_.SetObjectName(frame_data.dset, "frame dset " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.WriteAll(device_, frame_data.dset);
     }
 
