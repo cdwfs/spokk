@@ -12,7 +12,7 @@ using namespace spokk;
 
 namespace {
 struct SceneUniforms {
-  glm::vec4 time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
+  glm::vec4 res_and_time;  // xy: viewport resolution in pixels, z: unused, w: elapsed seconds
   glm::vec4 eye;  // xyz: eye position
   glm::mat4 viewproj;
 };
@@ -61,12 +61,15 @@ private:
   GraphicsPipeline pillar_pipeline_;
 
   DescriptorPool dpool_;
-  std::array<VkDescriptorSet, PFRAME_COUNT> dsets_;
+  struct FrameData {
+    VkDescriptorSet dset;
+    Buffer scene_ubo;
+    Buffer heightfield_buffer;
+    Buffer visible_cells_buffer;
+  };
+  std::array<FrameData, PFRAME_COUNT> frame_data_;
 
   Mesh mesh_;
-  PipelinedBuffer scene_uniforms_;
-  PipelinedBuffer heightfield_buffer_;
-  PipelinedBuffer visible_cells_buffer_;
 
   std::vector<int32_t> visible_cells_;
   std::array<float, HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY> heightfield_;
@@ -169,64 +172,67 @@ PillarsApp::PillarsApp(Application::CreateInfo& ci) : Application(ci) {
   SPOKK_VK_CHECK(pillar_pipeline_.Finalize(device_));
   SPOKK_VK_CHECK(device_.SetObjectName(pillar_pipeline_.handle, "pillar pipeline"));
 
-  // Look up the appropriate memory flags for uniform buffers on this platform
-  VkMemoryPropertyFlags uniform_buffer_memory_flags =
-      device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
-
-  // Create pipelined buffer of shader uniforms
-  VkBufferCreateInfo uniform_buffer_ci = {};
-  uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  uniform_buffer_ci.size = sizeof(SceneUniforms);
-  uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-  uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(scene_uniforms_.Create(device_, PFRAME_COUNT, uniform_buffer_ci, uniform_buffer_memory_flags));
-
-  // Create buffer of per-cell "height" values
-  VkBufferCreateInfo heightfield_buffer_ci = {};
-  heightfield_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  heightfield_buffer_ci.size = HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY * sizeof(float);
-  heightfield_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-  heightfield_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(heightfield_buffer_.Create(device_, PFRAME_COUNT, heightfield_buffer_ci, uniform_buffer_memory_flags));
-  SPOKK_VK_CHECK(heightfield_buffer_.CreateViews(device_, VK_FORMAT_R32_SFLOAT));
-  for (int32_t iY = 0; iY < HEIGHTFIELD_DIMY; ++iY) {
-    for (int32_t iX = 0; iX < HEIGHTFIELD_DIMX; ++iX) {
-      heightfield_.at(XY_TO_CELL(iX, iY)) = -1.0f;  // non-visible cells have negative heights
-    }
-  }
-
-  // Create lookup table from instance index [0..visible_cell_count_] to cell index.
-  visible_cells_.reserve(HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY);
-  VkBufferCreateInfo visible_cells_buffer_ci = {};
-  visible_cells_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  visible_cells_buffer_ci.size = HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY * sizeof(uint32_t);
-  visible_cells_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-  visible_cells_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  SPOKK_VK_CHECK(
-      visible_cells_buffer_.Create(device_, PFRAME_COUNT, visible_cells_buffer_ci, uniform_buffer_memory_flags));
-  SPOKK_VK_CHECK(visible_cells_buffer_.CreateViews(device_, VK_FORMAT_R32_SINT));
-
   for (const auto& dset_layout_ci : pillar_shader_program_.dset_layout_cis) {
     dpool_.Add(dset_layout_ci, PFRAME_COUNT);
   }
   SPOKK_VK_CHECK(dpool_.Finalize(device_));
 
-  // Create swapchain-sized buffers
-  CreateRenderBuffers(swapchain_extent_);
+  // Create lookup table from instance index [0..visible_cell_count_] to cell index.
+  visible_cells_.reserve(HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY);
+
+  // Look up the appropriate memory flags for uniform buffers on this platform
+  VkMemoryPropertyFlags uniform_buffer_memory_flags =
+      device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
 
   DescriptorSetWriter dset_writer(pillar_shader_program_.dset_layout_cis[0]);
   dset_writer.BindImage(
       albedo_tex_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, pillar_fs_.GetDescriptorBindPoint("tex").binding);
   dset_writer.BindSampler(sampler_, pillar_fs_.GetDescriptorBindPoint("samp").binding);
+  for (auto& frame_data : frame_data_) {
+    // Create per-pframe buffer of shader uniforms
+    VkBufferCreateInfo uniform_buffer_ci = {};
+    uniform_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    uniform_buffer_ci.size = sizeof(SceneUniforms);
+    uniform_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    uniform_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(frame_data.scene_ubo.Create(device_, uniform_buffer_ci, uniform_buffer_memory_flags));
+    dset_writer.BindBuffer(frame_data.scene_ubo.Handle(), pillar_vs_.GetDescriptorBindPoint("scene_consts").binding);
+
+    // Create per-pframe buffer of per-cell "height" values
+    VkBufferCreateInfo heightfield_buffer_ci = {};
+    heightfield_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    heightfield_buffer_ci.size = HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY * sizeof(float);
+    heightfield_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+    heightfield_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(frame_data.heightfield_buffer.Create(device_, heightfield_buffer_ci, uniform_buffer_memory_flags));
+    SPOKK_VK_CHECK(frame_data.heightfield_buffer.CreateView(device_, VK_FORMAT_R32_SFLOAT));
+    for (int32_t iY = 0; iY < HEIGHTFIELD_DIMY; ++iY) {
+      for (int32_t iX = 0; iX < HEIGHTFIELD_DIMX; ++iX) {
+        heightfield_.at(XY_TO_CELL(iX, iY)) = -1.0f;  // non-visible cells have negative heights
+      }
+    }
+    dset_writer.BindTexelBuffer(
+      frame_data.heightfield_buffer.View(), pillar_vs_.GetDescriptorBindPoint("cell_heights").binding);
+
+    VkBufferCreateInfo visible_cells_buffer_ci = {};
+    visible_cells_buffer_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    visible_cells_buffer_ci.size = HEIGHTFIELD_DIMX * HEIGHTFIELD_DIMY * sizeof(uint32_t);
+    visible_cells_buffer_ci.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    visible_cells_buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    SPOKK_VK_CHECK(
+        frame_data.visible_cells_buffer.Create(device_, visible_cells_buffer_ci, uniform_buffer_memory_flags));
+    SPOKK_VK_CHECK(frame_data.visible_cells_buffer.CreateView(device_, VK_FORMAT_R32_SINT));
+    dset_writer.BindTexelBuffer(
+      frame_data.visible_cells_buffer.View(), pillar_vs_.GetDescriptorBindPoint("visible_cells").binding);
+
+    frame_data.dset = dpool_.AllocateSet(device_, pillar_shader_program_.dset_layouts[0]);
+    dset_writer.WriteAll(device_, frame_data.dset);
+  }
+
+  // Create swapchain-sized buffers
+  CreateRenderBuffers(swapchain_extent_);
+
   for (uint32_t pframe = 0; pframe < PFRAME_COUNT; ++pframe) {
-    // TODO(cort): allocate_pipelined_set()?
-    dsets_[pframe] = dpool_.AllocateSet(device_, pillar_shader_program_.dset_layouts[0]);
-    dset_writer.BindBuffer(scene_uniforms_.Handle(pframe), pillar_vs_.GetDescriptorBindPoint("scene_consts").binding);
-    dset_writer.BindTexelBuffer(
-        visible_cells_buffer_.View(pframe), pillar_vs_.GetDescriptorBindPoint("visible_cells").binding);
-    dset_writer.BindTexelBuffer(
-        heightfield_buffer_.View(pframe), pillar_vs_.GetDescriptorBindPoint("cell_heights").binding);
-    dset_writer.WriteAll(device_, dsets_[pframe]);
   }
 }
 
@@ -236,9 +242,11 @@ PillarsApp::~PillarsApp() {
 
     dpool_.Destroy(device_);
 
-    scene_uniforms_.Destroy(device_);
-    visible_cells_buffer_.Destroy(device_);
-    heightfield_buffer_.Destroy(device_);
+    for (auto& frame_data : frame_data_) {
+      frame_data.scene_ubo.Destroy(device_);
+      frame_data.visible_cells_buffer.Destroy(device_);
+      frame_data.heightfield_buffer.Destroy(device_);
+    }
 
     mesh_.Destroy(device_);
 
@@ -296,20 +304,21 @@ void PillarsApp::Update(double dt) {
 }
 
 void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) {
+  const auto& frame_data = frame_data_[pframe_index_];
   // Update uniforms
-  SceneUniforms* uniforms = (SceneUniforms*)scene_uniforms_.Mapped(pframe_index_);
-  uniforms->time_and_res =
-      glm::vec4((float)seconds_elapsed_, (float)swapchain_extent_.width, (float)swapchain_extent_.height, 0);
+  SceneUniforms* uniforms = (SceneUniforms*)frame_data.scene_ubo.Mapped();
+  uniforms->res_and_time =
+      glm::vec4((float)swapchain_extent_.width, (float)swapchain_extent_.height, 0, (float)seconds_elapsed_);
   uniforms->eye = glm::vec4(camera_->getEyePoint(), 1.0f);
   glm::mat4 w2v = camera_->getViewMatrix();
   const glm::mat4 proj = camera_->getProjectionMatrix();
   uniforms->viewproj = proj * w2v;
-  scene_uniforms_.FlushPframeHostCache(device_, pframe_index_);
+  SPOKK_VK_CHECK(frame_data.scene_ubo.FlushHostCache(device_));
 
-  memcpy(visible_cells_buffer_.Mapped(pframe_index_), visible_cells_.data(), visible_cells_.size() * sizeof(int32_t));
-  SPOKK_VK_CHECK(visible_cells_buffer_.FlushPframeHostCache(device_, pframe_index_));
-  memcpy(heightfield_buffer_.Mapped(pframe_index_), heightfield_.data(), heightfield_.size() * sizeof(float));
-  SPOKK_VK_CHECK(heightfield_buffer_.FlushPframeHostCache(device_, pframe_index_));
+  memcpy(frame_data.visible_cells_buffer.Mapped(), visible_cells_.data(), visible_cells_.size() * sizeof(int32_t));
+  SPOKK_VK_CHECK(frame_data.visible_cells_buffer.FlushHostCache(device_));
+  memcpy(frame_data.heightfield_buffer.Mapped(), heightfield_.data(), heightfield_.size() * sizeof(float));
+  SPOKK_VK_CHECK(frame_data.heightfield_buffer.FlushHostCache(device_));
 
   // Write command buffer
   VkFramebuffer framebuffer = framebuffers_[swapchain_image_index];
@@ -322,7 +331,7 @@ void PillarsApp::Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_ind
   vkCmdSetViewport(primary_cb, 0, 1, &viewport);
   vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect);
   vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pillar_pipeline_.shader_program->pipeline_layout,
-      0, 1, &dsets_[pframe_index_], 0, nullptr);
+      0, 1, &frame_data.dset, 0, nullptr);
   mesh_.BindBuffers(primary_cb);
   vkCmdDrawIndexed(primary_cb, mesh_.index_count, (uint32_t)visible_cells_.size(), 0, 0, 0);
   vkCmdEndRenderPass(primary_cb);

@@ -17,11 +17,6 @@ T my_clamp(T x, T xmin, T xmax) {
 uint16_t F32toU16N(float f) { return (uint16_t)(my_clamp(f, 0.0f, 1.0f) * (float)UINT16_MAX + 0.5f); }
 int16_t F32toS16(float f) { return (int16_t)my_clamp(f, (float)INT16_MIN, (float)INT16_MAX); }
 
-struct SceneUniforms {
-  glm::vec4 time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
-  glm::vec4 eye;  // xyz: eye position
-  glm::mat4 viewproj;
-};
 constexpr float FOV_DEGREES = 45.0f;
 constexpr float Z_NEAR = 0.01f;
 constexpr float Z_FAR = 100.0f;

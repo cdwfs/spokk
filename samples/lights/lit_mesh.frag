@@ -6,7 +6,7 @@ layout (location = 0) out vec4 out_fragColor;
 in vec4 gl_FragCoord;
 
 layout (set = 0, binding = 0) uniform SceneUniforms {
-  vec4 time_and_res;  // x: elapsed seconds, yz: viewport resolution in pixels
+  vec4 res_and_time;  // xy: viewport resolution in pixels, z: unused, w: elapsed seconds
   vec4 eye_pos_ws;    // xyz: world-space eye position
   vec4 eye_dir_wsn;   // xyz: world-space eye direction (normalized)
   // truncated; this should really be in a header file

@@ -8,7 +8,7 @@ layout (location = 1) out vec3 norm;
 layout (location = 2) out vec3 fromEye;
 
 layout (set = 0, binding = 0) uniform SceneUniforms {
-  vec4 time_and_res;
+  vec4 res_and_time;  // xy: viewport resolution in pixels, z: unused, w: elapsed seconds
   vec4 eye;
   mat4 viewproj;
 } scene_consts;

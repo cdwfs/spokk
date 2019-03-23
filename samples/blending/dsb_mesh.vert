@@ -9,7 +9,7 @@ layout (location = 0) out vec3 pos_ws;
 layout (location = 1) out vec3 norm_ws;
 
 layout (set = 0, binding = 0) uniform SceneUniforms {
-  vec4 time_and_res;
+  vec4 res_and_time;
   vec4 eye;
   mat4 viewproj;
 } scene_consts;

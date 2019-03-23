@@ -156,13 +156,18 @@ private:
   Shader vertex_shader_ = {}, fragment_shader_ = {};
   ShaderProgram program_ = {};
   DescriptorPool dpool_ = {};
-  Buffer quad_index_buffer_ = {};
-  PipelinedBuffer vertex_buffers_ = {};
-  PipelinedBuffer uniform_buffers_ = {};
-  std::vector<VkDescriptorSet> uniform_dsets_ = {};  // one per pframe
+  Buffer quad_index_buffer_ = {};  // static buffer used to render each set of 4 verts as a quad
 
-  std::vector<const FontAtlas*> font_atlases_ = {};
-  std::vector<VkDescriptorSet> font_atlas_dsets_ = {};  // one per atlas. Used to bind the atlas image to the shader.
+  // One entry per FontAtlas
+  std::vector<const FontAtlas*> font_atlases_;
+  std::vector<VkDescriptorSet> font_atlas_dsets_;
+
+  struct FrameData {
+    VkDescriptorSet dset;
+    Buffer vbo;
+    Buffer ubo;
+  };
+  std::vector<FrameData> frame_data_;  // one per pframe
 };
 
 }  // namespace spokk

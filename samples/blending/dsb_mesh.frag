@@ -7,7 +7,7 @@ layout (location = 0, index = 0) out vec4 out_fragColorA;
 layout (location = 0, index = 1) out vec4 out_fragColorB;
 
 layout (set = 0, binding = 0) uniform SceneUniforms {
-  vec4 time_and_res;
+  vec4 res_and_time;
   vec4 eye;
   mat4 viewproj;
 } scene_consts;

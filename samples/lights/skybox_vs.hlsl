@@ -17,7 +17,7 @@ const uint indices[6*6] = {
 };
 
 cbuffer SceneUniforms : register(b0) {
-  float4 time_and_res;
+  float4 res_and_time;  // xy: viewport resolution in pixels, z: unused, w: elapsed seconds
   float4 eye;
   float4x4 viewproj;
   float4x4 view;

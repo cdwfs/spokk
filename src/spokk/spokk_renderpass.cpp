@@ -241,19 +241,21 @@ VkImageCreateInfo RenderPass::GetAttachmentImageCreateInfo(uint32_t attachment_i
   }
   return ci;
 }
-VkImageViewCreateInfo RenderPass::GetAttachmentImageViewCreateInfo(uint32_t attachment_index, VkImage image) const {
-  VkImageViewCreateInfo ci = {};
-  if (handle != VK_NULL_HANDLE && attachment_index < (uint32_t)attachment_descs.size()) {
-    ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    ci.image = image;
-    ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    ci.format = attachment_descs[attachment_index].format;
-    ci.components = {VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
-        VK_COMPONENT_SWIZZLE_IDENTITY};
-    ci.subresourceRange.aspectMask = GetImageAspectFlags(ci.format);
+bool RenderPass::ExtendAttachmentImageCreateInfo(VkImageCreateInfo* image_ci, uint32_t attachment_index) const {
+  VkExtent2D extent = {image_ci->extent.width, image_ci->extent.height};
+  VkImageCreateInfo new_ci = GetAttachmentImageCreateInfo(attachment_index, extent);
+  if (image_ci->format != new_ci.format) {
+    return false;
+  } else if (image_ci->extent.width != new_ci.extent.width || image_ci->extent.height != new_ci.extent.height ||
+      image_ci->extent.depth != new_ci.extent.depth) {
+    return false;
+  } else if (image_ci->samples != new_ci.samples) {
+    return false;
   }
-  return ci;
+  image_ci->usage |= new_ci.usage;
+  return true;
 }
+
 VkFramebufferCreateInfo RenderPass::GetFramebufferCreateInfo(VkExtent2D render_area) const {
   VkFramebufferCreateInfo ci = {};
   if (handle != VK_NULL_HANDLE) {
