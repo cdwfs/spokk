@@ -22,8 +22,8 @@ VkResult Buffer::Create(const Device& device, const VkBufferCreateInfo& buffer_c
   // know the results will be the same.
   vkGetBufferMemoryRequirements(device, handle_, &mem_reqs);
 
-  nbytes_ = mem_reqs.size;
   VkResult result = device.DeviceAlloc(mem_reqs, memory_properties, allocation_scope, &memory_);
+  nbytes_ = memory_.size;
   if (result == VK_SUCCESS) {
     return vkBindBufferMemory(device, handle_, memory_.device_memory, memory_.offset);
   } else {
