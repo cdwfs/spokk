@@ -3,6 +3,7 @@
 #include "spokk_memory.h"
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace spokk {

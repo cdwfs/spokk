@@ -9,6 +9,9 @@ ELSEIF(${UNIX})
     SET_PROPERTY(DIRECTORY APPEND PROPERTY COMPILE_OPTIONS -w)
 ENDIF()
 
+# Vulkan
+find_package(Vulkan REQUIRED)
+
 # GLFW
 OPTION(GLFW_BUILD_EXAMPLES "Build the GLFW example programs" OFF)
 OPTION(GLFW_BUILD_TESTS "Build the GLFW test programs" OFF)

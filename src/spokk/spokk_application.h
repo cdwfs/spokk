@@ -6,7 +6,7 @@
 #if defined(ZOMBO_PLATFORM_WINDOWS)
 #include <wingdi.h>
 #endif
-#define GLFW_INCLUDE_VULKAN
+#include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
 
 #include "spokk_buffer.h"
