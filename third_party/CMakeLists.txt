@@ -11,6 +11,10 @@ ENDIF()
 
 # Vulkan
 find_package(Vulkan REQUIRED)
+# The case of these variables changed at some point...define the all-caps variants for compatibility
+SET(VULKAN_FOUND Vulkan_FOUND)
+SET(VULKAN_INCLUDE_DIR Vulkan_INCLUDE_DIR)
+SET(VULKAN_LIBRARY Vulkan_LIBRARY)
 
 # GLFW
 OPTION(GLFW_BUILD_EXAMPLES "Build the GLFW example programs" OFF)

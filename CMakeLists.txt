@@ -46,12 +46,12 @@ ADD_EXECUTABLE(spokkle
 TARGET_LINK_LIBRARIES(spokkle
     assimp
     shaderc
-    ${VULKAN_LIBRARY}
+    ${Vulkan_LIBRARY}
 )
 TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     ${CMAKE_BINARY_DIR}/third_party/assimp/include # for config.h
     ${CMAKE_SOURCE_DIR}/third_party/assimp/include # for everything else
-    ${VULKAN_INCLUDE_DIR}
+    ${Vulkan_INCLUDE_DIR}
     ${SIMPLE_VULKAN_SYNCHRONIZATION_DIR}
     src/spokk
     ${JSON_H_DIR}
@@ -136,7 +136,7 @@ ADD_LIBRARY(${SPOKK_LIB_NAME} STATIC
 TARGET_LINK_LIBRARIES(${SPOKK_LIB_NAME}
     glfw ${GLFW_LIBRARIES}
     ${libs}
-    ${VULKAN_LIBRARY}
+    ${Vulkan_LIBRARY}
 )
 TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
     ${GLM_DIR}
@@ -146,7 +146,7 @@ TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
     ${STB_DIR}
     ${SPIRV-Headers_SOURCE_DIR}/include/spirv/unified1
     ${VULKAN_MEMORY_ALLOCATOR_DIR}
-    ${VULKAN_INCLUDE_DIR}
+    ${Vulkan_INCLUDE_DIR}
     "src/spokk"
 )
 
