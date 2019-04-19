@@ -3,9 +3,6 @@
 
 #include "spokk_platform.h"
 
-#if defined(ZOMBO_PLATFORM_WINDOWS)
-#include <wingdi.h>
-#endif
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
 
