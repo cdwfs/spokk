@@ -1,4 +1,5 @@
 #include "spokk_device.h"
+
 #include "spokk_platform.h"
 #include "spokk_utilities.h"
 
@@ -95,7 +96,8 @@ void Device::Create(VkDevice logical_device, VkPhysicalDevice physical_device, V
     pfnVkCmdInsertDebugUtilsLabelEXT_ = SPOKK_VK_GET_DEVICE_PROC_ADDR(logical_device_, vkCmdInsertDebugUtilsLabelEXT);
     pfnVkQueueBeginDebugUtilsLabelEXT_ = SPOKK_VK_GET_DEVICE_PROC_ADDR(logical_device_, vkQueueBeginDebugUtilsLabelEXT);
     pfnVkQueueEndDebugUtilsLabelEXT_ = SPOKK_VK_GET_DEVICE_PROC_ADDR(logical_device_, vkQueueEndDebugUtilsLabelEXT);
-    pfnVkQueueInsertDebugUtilsLabelEXT_ = SPOKK_VK_GET_DEVICE_PROC_ADDR(logical_device_, vkQueueInsertDebugUtilsLabelEXT);
+    pfnVkQueueInsertDebugUtilsLabelEXT_ =
+        SPOKK_VK_GET_DEVICE_PROC_ADDR(logical_device_, vkQueueInsertDebugUtilsLabelEXT);
     pfnVkSetDebugUtilsObjectNameEXT_ = SPOKK_VK_GET_DEVICE_PROC_ADDR(logical_device_, vkSetDebugUtilsObjectNameEXT);
     pfnVkSetDebugUtilsObjectTagEXT_ = SPOKK_VK_GET_DEVICE_PROC_ADDR(logical_device_, vkSetDebugUtilsObjectTagEXT);
   }

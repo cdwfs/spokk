@@ -2,7 +2,6 @@
 using namespace spokk;
 
 #include <common/camera.h>
-
 #include <imgui.h>
 
 #include <array>

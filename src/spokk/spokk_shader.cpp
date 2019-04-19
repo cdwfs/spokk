@@ -1,4 +1,5 @@
 #include "spokk_shader.h"
+
 #include "spokk_platform.h"
 
 #include <spirv_reflect.h>

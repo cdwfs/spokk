@@ -1,4 +1,5 @@
 #include "spokk_utilities.h"
+
 #include "spokk_debug.h"
 
 #include <algorithm>

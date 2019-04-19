@@ -41,9 +41,9 @@ struct RenderPass {
   VkFramebufferCreateInfo GetFramebufferCreateInfo(VkExtent2D render_area) const;
   VkImageCreateInfo GetAttachmentImageCreateInfo(uint32_t attachment_index, VkExtent2D render_area) const;
   // If an attachment image is used by multiple render passes, call GetAttachmentImageCreateInfo() for the first pass,
-  // then call ExtendAttachmentImageCreateInfo for subsequent passes to ensure the resulting image has all the appropriate
-  // usage bits set. If the attachments are not compatible, this function will return false.
-  bool ExtendAttachmentImageCreateInfo(VkImageCreateInfo *image_ci, uint32_t attachment_index) const;
+  // then call ExtendAttachmentImageCreateInfo for subsequent passes to ensure the resulting image has all the
+  // appropriate usage bits set. If the attachments are not compatible, this function will return false.
+  bool ExtendAttachmentImageCreateInfo(VkImageCreateInfo* image_ci, uint32_t attachment_index) const;
 
   void Destroy(const Device& device);
 

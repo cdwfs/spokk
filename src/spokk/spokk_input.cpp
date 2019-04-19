@@ -1,4 +1,5 @@
 #include "spokk_input.h"
+
 #include "spokk_platform.h"
 using namespace spokk;
 

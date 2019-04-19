@@ -1,4 +1,5 @@
 #include "spokk_pipeline.h"
+
 #include "spokk_platform.h"
 
 #include <cassert>

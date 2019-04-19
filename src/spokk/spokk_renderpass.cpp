@@ -1,4 +1,5 @@
 #include "spokk_renderpass.h"
+
 #include "spokk_utilities.h"
 
 #include <cassert>

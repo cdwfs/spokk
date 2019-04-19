@@ -1,20 +1,19 @@
 #if !defined(SPOKK_APPLICATION_H)
 #define SPOKK_APPLICATION_H
 
-#include "spokk_platform.h"
-
-#include <vulkan/vulkan.h>
-#include <GLFW/glfw3.h>
-
 #include "spokk_buffer.h"
 #include "spokk_device.h"
 #include "spokk_image.h"
 #include "spokk_input.h"
 #include "spokk_memory.h"
 #include "spokk_pipeline.h"
+#include "spokk_platform.h"
 #include "spokk_time.h"
 #include "spokk_utilities.h"
 #include "spokk_vertex.h"
+
+#include <GLFW/glfw3.h>
+#include <vulkan/vulkan.h>
 
 #include <array>
 #include <cassert>
@@ -196,3 +195,4 @@ private:
 }  // namespace spokk
 
 #endif  // !defined(SPOKK_APPLICATION_H)
+

@@ -1,11 +1,11 @@
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
+#include <json.h>
 #include <spokk_mesh.h>  // for MeshHeader
 #include <spokk_platform.h>
 #include <spokk_shader_interface.h>
 #include <spokk_vertex.h>
 
-#include <assimp/postprocess.h>
-#include <assimp/scene.h>
-#include <json.h>
 #include <assimp/DefaultLogger.hpp>
 #include <assimp/Importer.hpp>
 #include <shaderc/shaderc.hpp>
@@ -20,6 +20,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <array>
 #include <map>
 #include <memory>

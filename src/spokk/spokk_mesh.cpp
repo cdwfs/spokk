@@ -1,4 +1,5 @@
 #include "spokk_mesh.h"
+
 #include "spokk_debug.h"
 #include "spokk_device.h"
 #include "spokk_platform.h"

@@ -247,4 +247,4 @@ ZOMBO_DEF FILE *zomboFopen(const char *path, const char *mode);
 #endif
 // clang-format on
 
-#endif // !defined(SPOKK_PLATFORM_H)
+#endif  // !defined(SPOKK_PLATFORM_H)

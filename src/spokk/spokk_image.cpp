@@ -1,14 +1,14 @@
 #include "spokk_image.h"
 
+#include "image_file.h"
 #include "spokk_barrier.h"
 #include "spokk_debug.h"
 #include "spokk_utilities.h"
 
-#include "image_file.h"
-
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <array>
 
 namespace {

@@ -1,3 +1,5 @@
+// This file was adapted from Cinder, and the original formatting has been preserved.
+// clang-format off
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -685,11 +687,12 @@ void CameraStereo::calcProjection() const
     mProjectionCached = true;
 }
 
+// clang-format on
 ////////////////////
 
 #include <spokk_input.h>
 
-void CameraDrone::Update(const spokk::InputState& input_state, float dt) {
+void CameraDrone::Update(const spokk::InputState &input_state, float dt) {
   // Update camera
   glm::vec3 camera_accel_dir(0, 0, 0);
   const float CAMERA_ACCEL_MAG = 100.0f, CAMERA_TURN_SPEED = 0.001f;
@@ -716,12 +719,12 @@ void CameraDrone::Update(const spokk::InputState& input_state, float dt) {
     camera_accel_dir += viewUp;
   }
   glm::vec3 camera_accel =
-    (glm::length2(camera_accel_dir) > 0) ? glm::normalize(camera_accel_dir) * CAMERA_ACCEL_MAG : glm::vec3(0, 0, 0);
+      (glm::length2(camera_accel_dir) > 0) ? glm::normalize(camera_accel_dir) * CAMERA_ACCEL_MAG : glm::vec3(0, 0, 0);
 
   // Update camera based on acceleration vector and mouse delta
   glm::vec3 camera_eulers = camera_.getEulersYPR() +
-    glm::vec3(-CAMERA_TURN_SPEED * input_state.GetAnalogDelta(spokk::InputState::ANALOG_MOUSE_Y),
-      -CAMERA_TURN_SPEED * input_state.GetAnalogDelta(spokk::InputState::ANALOG_MOUSE_X), 0);
+      glm::vec3(-CAMERA_TURN_SPEED * input_state.GetAnalogDelta(spokk::InputState::ANALOG_MOUSE_Y),
+          -CAMERA_TURN_SPEED * input_state.GetAnalogDelta(spokk::InputState::ANALOG_MOUSE_X), 0);
   if (camera_eulers[0] >= float(M_PI_2 - 0.01f)) {
     camera_eulers[0] = float(M_PI_2 - 0.01f);
   } else if (camera_eulers[0] <= float(-M_PI_2 + 0.01f)) {
@@ -729,7 +732,7 @@ void CameraDrone::Update(const spokk::InputState& input_state, float dt) {
   }
   camera_eulers[2] = 0;  // disallow roll
 
-  glm::vec3 vel_dir = (glm::length2(velocity_) > 0) ? glm::normalize(velocity_) : glm::vec3(0,0,0);
+  glm::vec3 vel_dir = (glm::length2(velocity_) > 0) ? glm::normalize(velocity_) : glm::vec3(0, 0, 0);
   // TODO(cort): would love to define drag in terms of something intuitive like max_velocity
   glm::vec3 drag = drag_coeff_ * glm::length2(velocity_) * -vel_dir;
   glm::vec3 accel_final = camera_accel + drag;
@@ -751,11 +754,10 @@ void CameraDrone::Update(const spokk::InputState& input_state, float dt) {
   float speed = glm::length(velocity_);
   if (glm::length2(camera_accel) == 0 && speed > 0) {
     const float idle_decel = -8.0f;
-    float new_speed = std::max(speed + idle_decel*dt, 0.0f);
+    float new_speed = std::max(speed + idle_decel * dt, 0.0f);
     velocity_ *= new_speed / speed;
   }
   if (glm::length2(velocity_) < 0.001f) {
-    velocity_ = glm::vec3(0,0,0);
+    velocity_ = glm::vec3(0, 0, 0);
   }
 }
-

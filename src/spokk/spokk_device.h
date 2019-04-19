@@ -84,17 +84,17 @@ public:
 
   // VK_EXT_debug_utils wrappers
   // If the extension is unavailable, these calls will be no-ops.
-  void DebugLabelBegin(VkCommandBuffer cb, const std::string& label_name, const float label_color[4] = nullptr) const;
-  void DebugLabelBegin(VkQueue queue, const std::string& label_name, const float label_color[4] = nullptr) const;
+  void DebugLabelBegin(VkCommandBuffer cb, const std::string &label_name, const float label_color[4] = nullptr) const;
+  void DebugLabelBegin(VkQueue queue, const std::string &label_name, const float label_color[4] = nullptr) const;
   void DebugLabelEnd(VkCommandBuffer cb) const;
   void DebugLabelEnd(VkQueue queue) const;
-  void DebugLabelInsert(VkCommandBuffer cb, const std::string& label_name, const float label_color[4] = nullptr) const;
-  void DebugLabelInsert(VkQueue queue, const std::string& label_name, const float label_color[4] = nullptr) const;
+  void DebugLabelInsert(VkCommandBuffer cb, const std::string &label_name, const float label_color[4] = nullptr) const;
+  void DebugLabelInsert(VkQueue queue, const std::string &label_name, const float label_color[4] = nullptr) const;
   // Specializations provided for all relevant Vulkan handle types.
   template <typename VK_HANDLE_T>
   VkResult SetObjectTag(VK_HANDLE_T handle, uint64_t tag_name, size_t tag_size, const void *tag) const;
   template <typename VK_HANDLE_T>
-  VkResult SetObjectName(VK_HANDLE_T handle, const std::string& label_name) const;
+  VkResult SetObjectName(VK_HANDLE_T handle, const std::string &label_name) const;
 
 private:
   VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;

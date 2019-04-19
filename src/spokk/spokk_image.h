@@ -29,8 +29,8 @@ struct Image {
   int LoadSubresourceFromMemory(const Device& device, const DeviceQueue* queue, const void* src_data, size_t src_nbytes,
       uint32_t src_row_nbytes, uint32_t src_layer_height, const VkImageSubresource& dst_subresource,
       ThsvsAccessType final_access = THSVS_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE_OR_UNIFORM_TEXEL_BUFFER);
-  int GenerateMipmaps(const Device& device, const DeviceQueue* queue, const ThsvsImageBarrier& barrier,
-      uint32_t layer, uint32_t src_mip_level, uint32_t mips_to_gen = VK_REMAINING_MIP_LEVELS);
+  int GenerateMipmaps(const Device& device, const DeviceQueue* queue, const ThsvsImageBarrier& barrier, uint32_t layer,
+      uint32_t src_mip_level, uint32_t mips_to_gen = VK_REMAINING_MIP_LEVELS);
   // TODO(cort): asynchronous variants of these functions, that take a VkEvent to set when the operation is complete.
 
   void Destroy(const Device& device);

@@ -12,4 +12,4 @@ namespace spokk {
 void BuildVkMemoryBarrier(ThsvsAccessType src_access_type, ThsvsAccessType dst_access_type,
     VkPipelineStageFlags* out_src_stages, VkPipelineStageFlags* out_dst_stages, VkMemoryBarrier* out_memory_barrier);
 
-}
+}  // namespace spokk
