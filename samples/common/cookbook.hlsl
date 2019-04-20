@@ -64,7 +64,7 @@ float3 ApplyPointLight(float3 pos_ws, float3 eye_pos_ws, Material mat, PointLigh
     }
 
     float attenuation = 1.0 - saturate(to_light_len * light.inverse_range);
-    attentuation *= attenuation;
+    attenuation *= attenuation;
 
     return (dif_color + spec_color) * attenuation;
 }
