@@ -16,7 +16,7 @@ class Device;
 struct DeviceMemoryAllocation;
 
 struct Image {
-  Image() : handle(VK_NULL_HANDLE), view(VK_NULL_HANDLE), memory{} {}
+  Image() : handle(VK_NULL_HANDLE), image_ci{}, view(VK_NULL_HANDLE), memory{} {}
 
   VkResult Create(const Device& device, const VkImageCreateInfo& image_ci,
       VkMemoryPropertyFlags memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -52,3 +52,4 @@ private:
 };
 
 }  // namespace spokk
+

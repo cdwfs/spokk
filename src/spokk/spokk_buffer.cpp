@@ -10,7 +10,7 @@
 
 namespace spokk {
 
-Buffer::Buffer() : handle_{}, view_{} {}
+  Buffer::Buffer() : handle_{}, view_{}, memory_{}, nbytes_{0} {}
 Buffer::~Buffer() {}
 VkResult Buffer::Create(const Device& device, const VkBufferCreateInfo& buffer_ci,
     VkMemoryPropertyFlags memory_properties, DeviceAllocationScope allocation_scope) {
