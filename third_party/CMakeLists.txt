@@ -121,19 +121,13 @@ SET(SPIRV_TOOLS_TARGETS
     spirv-link
     spirv-opt
     spirv-reduce
-    spirv-stats
     SPIRV-Tools
     SPIRV-Tools-link
     spirv-tools-build-version
     spirv-tools-cpp-example
-    spirv-tools-debuginfo
     spirv-tools-header-DebugInfo
     spirv-tools-pkg-config
     spirv-tools-shared-pkg-config
-    spirv-tools-spv-amd-gcn-shader
-    spirv-tools-spv-amd-shader-ballot
-    spirv-tools-spv-amd-shader-explicit-vertex-parameter
-    spirv-tools-spv-amd-shader-trinary-minmax
     spirv-tools-vimsyntax
     SPIRV-Tools-opt
     SPIRV-Tools-reduce
@@ -147,8 +141,11 @@ SET(SHADERC_TARGETS
     glslc
     glslc_exe
     shaderc
+    shaderc-pkg-config
     shaderc_combined_genfile
+    shaderc_combined-pkg-config
     shaderc_shared
+    shaderc_static-pkg-config
     shaderc_util
     shaderc-online-compile
     testdata
