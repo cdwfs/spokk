@@ -403,7 +403,7 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
 #endif
   ) {
 #if defined(_DEBUG)  // validation layers should only be enabled in debug builds
-    optional_instance_layer_names.push_back("VK_LAYER_LUNARG_standard_validation");
+    optional_instance_layer_names.push_back("VK_LAYER_KHRONOS_validation");
     // workaround until an official SDK release with the NULL-pointer dereference fix in the assistant layer.
     // optional_instance_layer_names.push_back("VK_LAYER_LUNARG_assistant_layer");
 #endif
