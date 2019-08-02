@@ -133,6 +133,11 @@ SET(SPIRV_TOOLS_TARGETS
     SPIRV-Tools-reduce
     SPIRV-Tools-shared
     spirv-val
+    spv-tools-debuginfo
+    spv-tools-spv-amd-gs
+    spv-tools-spv-amd-sb
+    spv-tools-spv-amd-sevp
+    spv-tools-spv-amd-stm
 )
 SET(SHADERC_TARGETS
     add-copyright

@@ -301,8 +301,8 @@ int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const 
       copy_region.imageSubresource.mipLevel = i_mip;
       copy_region.imageSubresource.baseArrayLayer = i_layer;
       copy_region.imageSubresource.layerCount = 1;  // TODO(cort): copy all layers from a single mip in one go?
-      copy_region.imageExtent.width = AlignTo(GetMipDimension(image_file.width, i_mip), texel_block_width);
-      copy_region.imageExtent.height = AlignTo(GetMipDimension(image_file.height, i_mip), texel_block_height);
+      copy_region.imageExtent.width = GetMipDimension(image_file.width, i_mip);
+      copy_region.imageExtent.height = GetMipDimension(image_file.height, i_mip);
       copy_region.imageExtent.depth = GetMipDimension(image_file.depth, i_mip);
       vkCmdCopyBufferToImage(
           cb, staging_buffer.Handle(), handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
