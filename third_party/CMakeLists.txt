@@ -88,8 +88,16 @@ SET(STB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/stb PARENT_SCOPE)
 # shaderc
 SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
 SET(SHADERC_THIRD_PARTY_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH "Root location of shaderc third-party projets" FORCE)
+OPTION(ENABLE_AMD_EXTENSIONS "Enable AMD shader extensions" OFF)
+OPTION(BUILD_TESTING "Skip building shaderc tests" OFF)
+OPTION(ENABLE_SPVREMAPPER "Enable building SPVRemapper tool" OFF)
 OPTION(SHADERC_SKIP_TESTS "Skip building tests" ON)
 OPTION(SHADERC_ENABLE_SHARED_CRT "Use the shared CRT instead of the static CRT" ON)
+OPTION(SHADERC_SKIP_INSTALL "Skip shaderc installation" ON)
+OPTION(SKIP_GLSLANG_INSTALL "Skip glslang installation" ON)
+OPTION(SKIP_SPIRV_TOOLS_INSTALL "Skip SPIRV-Tools installation" ON)
+OPTION(SPIRV_CHECK_CONTEXT "Enable expensive SPIRV IR tests" OFF)
+OPTION(SPIRV_SKIP_EXECUTABLES "Skip building SPIRV-Tools executables" ON)
 ADD_SUBDIRECTORY(shaderc)
 # shaderc pulls in a gajillion targets. Let's organize them a bit.
 SET(GLSLANG_TARGETS
@@ -101,12 +109,6 @@ SET(GLSLANG_TARGETS
     OSDependent
     SPIRV
     spirv-remap
-    SPVRemapper
-    Continuous
-    Experimental
-    Nightly
-    NightlyMemoryCheck
-
 )
 SET(SPIRV_HEADERS_TARGETS
     install-headers
@@ -115,16 +117,9 @@ SET(SPIRV_TOOLS_TARGETS
     core_tables
     enum_string_mapping
     extinst_tables
-    spirv-as
-    spirv-cfg
-    spirv-dis
-    spirv-link
-    spirv-opt
-    spirv-reduce
     SPIRV-Tools
     SPIRV-Tools-link
     spirv-tools-build-version
-    spirv-tools-cpp-example
     spirv-tools-header-DebugInfo
     spirv-tools-pkg-config
     spirv-tools-shared-pkg-config
@@ -132,7 +127,6 @@ SET(SPIRV_TOOLS_TARGETS
     SPIRV-Tools-opt
     SPIRV-Tools-reduce
     SPIRV-Tools-shared
-    spirv-val
     spv-tools-debuginfo
     spv-tools-spv-amd-gs
     spv-tools-spv-amd-sb
