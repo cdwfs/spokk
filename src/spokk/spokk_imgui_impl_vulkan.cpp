@@ -964,7 +964,7 @@ void ImGui_ImplVulkanH_CreateWindowDataSwapChainAndFramebuffer(VkPhysicalDevice 
         VkSwapchainCreateInfoKHR info = {};
         info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         info.surface = wd->Surface;
-		info.minImageCount = min_image_count;
+        info.minImageCount = min_image_count;
         info.imageFormat = wd->SurfaceFormat.format;
         info.imageColorSpace = wd->SurfaceFormat.colorSpace;
         info.imageArrayLayers = 1;
@@ -979,9 +979,9 @@ void ImGui_ImplVulkanH_CreateWindowDataSwapChainAndFramebuffer(VkPhysicalDevice 
         err = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, wd->Surface, &cap);
         check_vk_result(err);
         if (info.minImageCount < cap.minImageCount)
-			info.minImageCount = cap.minImageCount;
-		else if (cap.maxImageCount != 0 && info.minImageCount > cap.maxImageCount)
-			info.minImageCount = cap.maxImageCount;
+          info.minImageCount = cap.minImageCount;
+        else if (cap.maxImageCount != 0 && info.minImageCount > cap.maxImageCount)
+          info.minImageCount = cap.maxImageCount;
 
         if (cap.currentExtent.width == 0xffffffff)
         {
