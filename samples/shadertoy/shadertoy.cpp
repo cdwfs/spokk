@@ -40,13 +40,14 @@ layout (set = 0, binding = 0) uniform sampler%s iChannel0;
 layout (set = 0, binding = 1) uniform sampler%s iChannel1;
 layout (set = 0, binding = 2) uniform sampler%s iChannel2;
 layout (set = 0, binding = 3) uniform sampler%s iChannel3;
+// input uniforms. NOTE: declaraction order is different from shadertoy due to packing rules
 layout (set = 0, binding = 4) uniform ShaderToyUniforms {
   vec3      iResolution;           // viewport resolution (in pixels)
   float     iChannelTime[4];       // channel playback time (in seconds)
   vec3      iChannelResolution[4]; // channel resolution (in pixels)
   vec4      iMouse;                // mouse pixel coords. xy: current (if MLB down), zw: click
   vec4      iDate;                 // (year, month, day, time in seconds)
-  float     iGlobalTime;           // shader playback time (in seconds)
+  float     iTime;                 // shader playback time (in seconds)
   float     iTimeDelta;            // render time (in seconds)
   int       iFrame;                // shader playback frame
   float     iSampleRate;           // sound sample rate (i.e., 44100)
@@ -62,13 +63,14 @@ void main() {
 
 )glsl";
 
+// NOTE: declaraction order is different from shadertoy due to packing rules
 struct ShaderToyUniforms {
   glm::vec4 iResolution;  // xyz: viewport resolution (in pixels), w: unused
   glm::vec4 iChannelTime[4];  // x: channel playback time (in seconds), yzw: unused
   glm::vec4 iChannelResolution[4];  // xyz: channel resolution (in pixels)
   glm::vec4 iMouse;  // mouse pixel coords. xy: current (if MLB down), zw: click
   glm::vec4 iDate;  // (year, month, day, time in seconds)
-  float iGlobalTime;  // shader playback time (in seconds)
+  float iTime;  // shader playback time (in seconds)
   float iTimeDelta;  // render time (in seconds)
   int iFrame;  // shader playback frame
   float iSampleRate;  // sound sample rate (i.e., 44100
@@ -271,7 +273,7 @@ public:
         (float)active_images_[2]->image_ci.extent.height, (float)active_images_[2]->image_ci.extent.depth, 0.0f);
     uniforms->iChannelResolution[3] = glm::vec4((float)active_images_[3]->image_ci.extent.width,
         (float)active_images_[3]->image_ci.extent.height, (float)active_images_[3]->image_ci.extent.depth, 0.0f);
-    uniforms->iGlobalTime = (float)seconds_elapsed_;
+    uniforms->iTime = (float)seconds_elapsed_;
     uniforms->iTimeDelta = current_dt_;
     uniforms->iFrame = (int)frame_index_;
     uniforms->iMouse = glm::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
