@@ -55,7 +55,8 @@ layout (set = 0, binding = 4) uniform ShaderToyUniforms {
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord);
 void main() {
-  mainImage(out_fragColor, gl_FragCoord.xy);
+  // Need to manually flip the fragcoord to a lower-left origin
+  mainImage(out_fragColor, vec2(gl_FragCoord.x, iResolution.y - gl_FragCoord.y));
   out_fragColor.w = 1.0;
 }
 
@@ -242,7 +243,8 @@ public:
       swap_shader_.store(false);
     }
 
-    // Update uniforms
+    // Update uniforms.
+    // Shadertoy's origin is in the lower left.
     double mouse_x = 0, mouse_y = 0;
     glfwGetCursorPos(window_.get(), &mouse_x, &mouse_y);
     if (glfwGetMouseButton(window_.get(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
@@ -260,7 +262,7 @@ public:
     viewport_.height *= -1;
     scissor_rect_ = ExtentToRect2D(swapchain_extent_);
     ShaderToyUniforms* uniforms = (ShaderToyUniforms*)frame_data.ubo.Mapped();
-    uniforms->iResolution = glm::vec4(viewport_.width, viewport_.height, 1.0f, 0.0f);
+    uniforms->iResolution = glm::vec4(abs(viewport_.width), abs(viewport_.height), 1.0f, 0.0f);
     uniforms->iChannelTime[0] = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);  // TODO(cort): audio/video channels are TBI
     uniforms->iChannelTime[1] = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
     uniforms->iChannelTime[2] = glm::vec4(2.0f, 0.0f, 0.0f, 0.0f);
@@ -276,7 +278,9 @@ public:
     uniforms->iTime = (float)seconds_elapsed_;
     uniforms->iTimeDelta = current_dt_;
     uniforms->iFrame = (int)frame_index_;
-    uniforms->iMouse = glm::vec4(mouse_pos_.x, mouse_pos_.y, click_pos.x, click_pos.y);
+    // GLFW mouse coord origin is in the upper left; convert to shadertoy's lower-left origin.
+    uniforms->iMouse = glm::vec4(mouse_pos_.x, abs(viewport_.height) - mouse_pos_.y,
+      click_pos.x, abs(viewport_.height) - click_pos.y);
     uniforms->iDate = glm::vec4(year, month, mday, dsec);
     uniforms->iSampleRate = 44100.0f;
     SPOKK_VK_CHECK(frame_data.ubo.FlushHostCache(device_));
