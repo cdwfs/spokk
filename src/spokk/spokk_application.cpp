@@ -854,10 +854,10 @@ int Application::Run() {
     if (input_state_.IsPressed(InputState::DIGITAL_RPAD_UP)) {
       VkFenceCreateInfo invalid_fence_ci = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
       VkFence invalid_fence = VK_NULL_HANDLE;
-      fprintf(stderr, "Attempting to create a VkFence with invalid sType...\n");
-      VkResult failure_result = vkCreateFence(device_, &invalid_fence_ci, host_allocator_, &invalid_fence);
-      if (failure_result == VK_SUCCESS) {
-        fprintf(stderr, "Invalid fence created successfully; validation is not active\n");
+      fprintf(stderr, "Attempting to create a VkFence with invalid sType. This should trigger a validation error\n");
+      VkResult create_result = vkCreateFence(device_, &invalid_fence_ci, host_allocator_, &invalid_fence);
+      // TODO(cort): Detect whether validation error was emitted & report success/failure
+      if (create_result == VK_SUCCESS) {
         vkDestroyFence(device_, invalid_fence, host_allocator_);
       }
     }
