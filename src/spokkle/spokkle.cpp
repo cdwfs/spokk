@@ -1,6 +1,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <json.h>
+#include <nph_process.h>
 #include <spokk_mesh.h>  // for MeshHeader
 #include <spokk_platform.h>
 #include <spokk_shader_interface.h>
@@ -8,10 +9,6 @@
 
 #include <assimp/DefaultLogger.hpp>
 #include <assimp/Importer.hpp>
-
-#include <nph_process.h>
-
-#include <shaderc/shaderc.hpp>
 
 #if defined(ZOMBO_PLATFORM_WINDOWS)
 #include <Shlwapi.h>  // for Path*() functions
@@ -531,132 +528,6 @@ struct ShaderAsset {
   std::string output_path;
   std::string entry_point;
   std::string shader_stage;
-};
-
-class ShaderFileIncluder : public shaderc::CompileOptions::IncluderInterface {
-public:
-  ShaderFileIncluder(const std::string& manifest_dir, std::vector<std::string>& dirs)
-    : manifest_dir_(manifest_dir), include_dirs_(dirs) {}
-  ~ShaderFileIncluder() {
-    for (auto itor : include_results_) {
-      delete itor.second;
-    }
-    for (auto result : failed_include_results_) {
-      delete result;
-    }
-  }
-
-  // Handles shaderc_include_resolver_fn callbacks.
-  shaderc_include_result* GetInclude(const char* requested_source, shaderc_include_type type,
-      const char* requesting_source, size_t /*include_depth*/) override {
-    // Acquire lock
-    std::lock_guard<std::mutex> results_lock(mutex_);
-    FILE* included_file = nullptr;
-    std::string abs_header_path;
-    if (type == shaderc_include_type_relative) {
-      // combine manifest dir + requesting source to get absolute shader path
-      std::string abs_shader_path;
-      int path_error = CombineAbsDirAndPath(manifest_dir_.c_str(), requesting_source, &abs_shader_path);
-      ZOMBO_ASSERT(!path_error, "dir+path combine error");
-      // remove shader filename to get shader dir
-      std::string abs_shader_dir = abs_shader_path;
-      path_error = TruncatePathToDir(&abs_shader_dir[0]);
-      ZOMBO_ASSERT(!path_error, "dir+path combine error");
-      // combine shader dir with requested_source to get absolute header path
-      path_error = CombineAbsDirAndPath(abs_shader_dir.c_str(), requested_source, &abs_header_path);
-      ZOMBO_ASSERT(!path_error, "dir+path combine error");
-      // If it's in the hash table, return its result.
-      auto itor = include_results_.find(abs_header_path);
-      if (itor != include_results_.end()) {
-        return &(itor->second->result);
-      }
-      included_file = zomboFopen(abs_header_path.c_str(), "rb");
-    } else {
-      // Search for header in include path
-      for (const auto& dir : include_dirs_) {
-        // - combine dir with requested_source to get absolute_header_path
-        int path_error = CombineAbsDirAndPath(dir.c_str(), requested_source, &abs_header_path);
-        ZOMBO_ASSERT(!path_error, "dir+path combine error");
-        // - If it's in the hash table, return its result.
-        auto itor = include_results_.find(abs_header_path);
-        if (itor != include_results_.end()) {
-          return &(itor->second->result);
-        }
-        included_file = zomboFopen(abs_header_path.c_str(), "rb");
-        if (included_file) {
-          break;
-        }
-      }
-    }
-    if (!included_file) {
-      // header not found. Craft an appropriate include_result and cache it somewhere
-      // until it's released.
-      IncludeResult* failure = new IncludeResult;
-      failure->source_name = "";
-      failure->content = "Could not find " + std::string(requested_source);
-      failure->result.source_name = failure->source_name.c_str();
-      failure->result.source_name_length = strlen(failure->result.source_name);
-      failure->result.content = failure->content.c_str();
-      failure->result.content_length = strlen(failure->content.c_str());
-      failure->result.user_data = nullptr;
-      failed_include_results_.push_back(failure);
-      return &(failure->result);
-    }
-    // Load file's contents and add it to the hash table.
-    fseek(included_file, 0, SEEK_END);
-    size_t included_file_nbytes = ftell(included_file);
-    fseek(included_file, 0, SEEK_SET);
-    std::vector<char> content(included_file_nbytes + 1);
-    size_t read_nbytes = fread(content.data(), 1, included_file_nbytes, included_file);
-    content[included_file_nbytes] = '\0';
-    fclose(included_file);
-    if (read_nbytes != included_file_nbytes) {
-      // I/O error; craft a failure result.
-      IncludeResult* failure = new IncludeResult;
-      failure->source_name = "";
-      failure->content = "Error reading from " + std::string(requested_source);
-      failure->result.source_name = failure->source_name.c_str();
-      failure->result.source_name_length = strlen(failure->result.source_name);
-      failure->result.content = failure->content.c_str();
-      failure->result.content_length = strlen(failure->content.c_str());
-      failure->result.user_data = nullptr;
-      failed_include_results_.push_back(failure);
-      return &(failure->result);
-    }
-    IncludeResult* result_data = new IncludeResult;
-    result_data->source_name = abs_header_path;
-    result_data->content = content.data();
-    result_data->result.source_name_length = strlen(abs_header_path.c_str());
-    result_data->result.source_name = result_data->source_name.c_str();
-    result_data->result.content_length = included_file_nbytes;
-    result_data->result.content = result_data->content.c_str();
-    result_data->result.user_data = nullptr;
-    // TODO(https://github.com/cdwfs/spokk/issues/27): this would be a great place to
-    // add the header source path to a list of files whose modification times should be checked.
-
-    include_results_[abs_header_path] = result_data;
-    return &(result_data->result);
-  }
-
-  // Handles shaderc_include_result_release_fn callbacks.
-  void ReleaseInclude(shaderc_include_result* /*data*/) override {
-    // Just delete everything in the destructor
-  }
-
-private:
-  ShaderFileIncluder(const ShaderFileIncluder& rhs) = delete;
-  ShaderFileIncluder& operator=(const ShaderFileIncluder& rhs) = delete;
-
-  std::string manifest_dir_;  // prepended to relative requester_source paths
-  std::vector<std::string> include_dirs_;
-  struct IncludeResult {
-    std::string source_name;
-    std::string content;
-    shaderc_include_result result;  // char* members refer to source_name and content std::strings
-  };
-  std::mutex mutex_;  // Protects access to include_results_ and failed_include_results_
-  std::map<std::string, IncludeResult*> include_results_;
-  std::vector<IncludeResult*> failed_include_results_;
 };
 
 class AssetManifest {
@@ -1284,67 +1155,81 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
     ZOMBO_ASSERT_RETURN(
         !create_dir_error, -1, "CreateDirectoryAndParents('%s') failed (%d)", output_dir.c_str(), create_dir_error);
 
-    shaderc_shader_kind shader_kind = shaderc_glsl_infer_from_source;
+    // TODO(cort): move to init, this lookup can happen once
+    const char* vulkan_sdk_dir = zomboGetEnv("VULKAN_SDK");
+    std::string abs_glslc_path;
+    int glslc_path_error = CombineAbsDirAndPath(vulkan_sdk_dir, "bin/glslc", &abs_glslc_path);
+    ZOMBO_ASSERT(!glslc_path_error, "dir+path combine error");
+
+    std::vector<const char*> glslc_args = {
+        // clang-format off
+      abs_glslc_path.c_str(),
+      //"-O",
+      "--target-env=vulkan1.1",
+      "-o",
+      abs_output_path.c_str()
+        // clang-format on
+    };
     if (shader.shader_stage == "vert" || shader.shader_stage == "vertex") {
-      shader_kind = shaderc_vertex_shader;
+      glslc_args.push_back("-fshader-stage=vert");
     } else if (shader.shader_stage == "frag" || shader.shader_stage == "fragment") {
-      shader_kind = shaderc_fragment_shader;
+      glslc_args.push_back("-fshader-stage=frag");
     } else if (shader.shader_stage == "geom" || shader.shader_stage == "geometry") {
-      shader_kind = shaderc_geometry_shader;
+      glslc_args.push_back("-fshader-stage=geom");
     } else if (shader.shader_stage == "tese" || shader.shader_stage == "tesseval") {
-      shader_kind = shaderc_tess_evaluation_shader;
+      glslc_args.push_back("-fshader-stage=tess");
     } else if (shader.shader_stage == "comp" || shader.shader_stage == "compute") {
-      shader_kind = shaderc_compute_shader;
+      glslc_args.push_back("-fshader-stage=comp");
     } else {
       fprintf(stderr, "%s: error: Unrecognized shader stage '%s'\n", shader.json_location.c_str(),
           shader.shader_stage.c_str());
       return -3;
     }
-    FILE* source_file = zomboFopen(shader.input_path.c_str(), "rb");
-    if (!source_file) {
-      fprintf(stderr, "%s: error: could not open '%s' for reading\n", shader.json_location.c_str(),
-          shader.input_path.c_str());
+    for (auto& dir : shader_include_dirs_) {
+      glslc_args.push_back("-I");
+      glslc_args.push_back(dir.c_str());
+    }
+    glslc_args.push_back(shader.input_path.c_str());
+    glslc_args.push_back(nullptr);
+    struct process_s glslc_process;
+    int process_options = process_option_combined_stdout_stderr;
+    int process_create_error = process_create(glslc_args.data(), process_options, &glslc_process);
+    if (process_create_error != 0) {
+      fprintf(stderr, "%s: Error creating glslc subprocess '", shader.json_location.c_str());
+      for (const char* arg : glslc_args) {
+        fprintf(stderr, "%s", arg);
+      }
+      fprintf(stderr, "'\n");
       return -4;
     }
-    fseek(source_file, 0, SEEK_END);
-    size_t source_nbytes = ftell(source_file);
-    fseek(source_file, 0, SEEK_SET);
-    std::vector<char> source_contents(source_nbytes + 1);
-    size_t read_nbytes = fread(source_contents.data(), 1, source_nbytes, source_file);
-    source_contents[source_nbytes] = '\0';
-    fclose(source_file);
-    if (read_nbytes != source_nbytes) {
-      fprintf(stderr, "%s: error: file I/O error while loading %s\n", shader.json_location.c_str(),
-          shader.input_path.c_str());
-      return -5;
-    }
 
-    shaderc::CompileOptions options;
-    std::unique_ptr<ShaderFileIncluder> includer =
-        my_make_unique<ShaderFileIncluder>(manifest_dir_, shader_include_dirs_);
-    options.SetIncluder(std::move(includer));
-    shaderc::Compiler compiler;
-    shaderc::SpvCompilationResult compile_result = compiler.CompileGlslToSpv(
-        source_contents.data(), shader_kind, shader.input_path.c_str(), shader.entry_point.c_str(), options);
-    if (compile_result.GetCompilationStatus() != shaderc_compilation_status_success) {
-      fprintf(stderr, "%s\n", compile_result.GetErrorMessage().c_str());
-      return compile_result.GetCompilationStatus();
-    }
+    int glslc_return_code = 0;
+    int process_join_error = process_join(&glslc_process, &glslc_return_code);
+    ZOMBO_ASSERT_RETURN(process_join_error == 0, -5, "%s: shader compiler exited unexpectedly (process join error %d)",
+        shader.json_location.c_str(), process_join_error);
 
-    size_t spv_dword_count = static_cast<size_t>(compile_result.cend() - compile_result.cbegin());
-    FILE* spv_file = zomboFopen(abs_output_path.c_str(), "wb");
-    if (!spv_file) {
-      fprintf(stderr, "%s: error: could not open '%s' for writing\n", shader.json_location.c_str(),
-          abs_output_path.c_str());
-      return -7;
+    FILE* glslc_output = process_stdout(&glslc_process);
+    char glslc_output_buffer[128];
+#if 1
+    while (fgets(glslc_output_buffer, 128, glslc_output)) {
+      fprintf(stderr, "%s", glslc_output_buffer);
     }
-    size_t write_ndwords = fwrite(compile_result.cbegin(), sizeof(uint32_t), spv_dword_count, spv_file);
-    fclose(spv_file);
-    if (spv_dword_count != write_ndwords) {
-      fprintf(stderr, "%s: error: file I/O error while writing %s\n", shader.json_location.c_str(),
-          abs_output_path.c_str());
-      return -8;
+#else
+    while (!feof(glslc_output) && !ferror(glslc_output)) {
+      const char* str = fgets(glslc_output_buffer, 127, glslc_output);
+      int eof = feof(glslc_output);
+      int err = ferror(glslc_output);
+      if (str && !eof && !err) fprintf(stderr, "%s", glslc_output_buffer);
     }
+#endif
+    int process_destroy_error = process_destroy(&glslc_process);
+    ZOMBO_ASSERT_RETURN(process_destroy_error == 0, -6,
+        "%s: shader compiler exited unexpectedly (process destroy error %d)", shader.json_location.c_str(),
+        process_destroy_error);
+    ZOMBO_ASSERT_RETURN(glslc_return_code == 0, -7,
+        "%s: shader compilation failed with error code %d; see compiler output for details\n",
+        shader.json_location.c_str(), glslc_return_code);
+
     printf("%s -> %s\n", shader.input_path.c_str(), abs_output_path.c_str());
   } else {
     // printf("Skipped %s (%s is up to date)\n", shader.input_path.c_str(), abs_output_path.c_str());
@@ -1356,8 +1241,10 @@ void PrintUsage(const char* argv0) {
   printf(R"usage(\
 Usage: %s [options] manifest.json5
 Options:
-  -h, --help:       Prints this message
-  -o <root>         Override output root in manifest with the specified directory.
+  -h, --help:            Prints this message.
+  -f, --force-rebuild    Force all assets to rebuild.
+  -o <root>              Override output root in manifest with the specified
+                         directory.
 )usage",
       argv0);
 }
