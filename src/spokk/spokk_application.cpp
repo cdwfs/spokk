@@ -439,7 +439,7 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
   application_info.applicationVersion = 0x1000;
   application_info.pEngineName = "Spokk";
   application_info.engineVersion = 0x1001;
-  application_info.apiVersion = VK_MAKE_VERSION(1, 0, 37);
+  application_info.apiVersion = VK_MAKE_VERSION(1, 1, 121);
   VkInstanceCreateInfo instance_ci = {};
   instance_ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   instance_ci.pApplicationInfo = &application_info;
