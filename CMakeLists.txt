@@ -272,14 +272,10 @@ SPOKK_ADD_EXECUTABLE(spokk-pillars)
 # spokk-shadertoy
 SPOKK_ADD_SOURCES(spokk-shadertoy
     samples/shadertoy/shadertoy.cpp
-    samples/common/shader_compiler.cpp
-)
-SPOKK_ADD_HEADERS(spokk-shadertoy
-    samples/common/shader_compiler.h
 )
 SPOKK_ADD_SHADERS(spokk-shadertoy
     samples/shadertoy/fullscreen.vert
-    samples/shadertoy/shadertoy.frag # this shader is special; it's loaded at runtime, not built offline.
+    samples/shadertoy/shadertoy.frag
 )
 SPOKK_ADD_EXECUTABLE(spokk-shadertoy)
 TARGET_LINK_LIBRARIES(spokk-shadertoy shaderc)
