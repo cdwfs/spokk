@@ -47,7 +47,6 @@ ADD_EXECUTABLE(spokkle
 )
 TARGET_LINK_LIBRARIES(spokkle
     assimp
-    shaderc
     ${Vulkan_LIBRARY}
 )
 TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
@@ -278,4 +277,3 @@ SPOKK_ADD_SHADERS(spokk-shadertoy
     samples/shadertoy/shadertoy.frag
 )
 SPOKK_ADD_EXECUTABLE(spokk-shadertoy)
-TARGET_LINK_LIBRARIES(spokk-shadertoy shaderc)
