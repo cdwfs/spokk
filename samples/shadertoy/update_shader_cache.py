@@ -185,9 +185,10 @@ def write_shader_info(shader_info, local_info_dir):
     return True
 
 if __name__ == "__main__":
-    local_media_dir = "cache/media"
-    local_source_dir = "cache/shaders"
-    local_info_dir = "cache/info"
+    local_cache_dir = "../../build/samples/shadertoy/cache"
+    local_media_dir = os.path.join(local_cache_dir, "media")
+    local_source_dir = os.path.join(local_cache_dir, "shaders")
+    local_info_dir = os.path.join(local_cache_dir, "info")
     # TODO(cort): argparse
     shader_id = sys.argv[1]
     api_key = sys.argv[2]
