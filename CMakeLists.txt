@@ -14,7 +14,9 @@ IF(${MSVC})
     SET(CMAKE_C_FLAGS_RELEASE "/MD /O2 /Ob1 /Oi /fp:fast /D NDEBUG" CACHE STRING "C compiler options (release builds)" FORCE)
     SET(CMAKE_C_FLAGS_DEBUG   "/MDd /MP /Od /Ob0 /GS- /Zi /D _DEBUG" CACHE STRING "C compiler options (debug builds)" FORCE)
     ADD_DEFINITIONS(-D_UNICODE -DUNICODE -D_CRT_SECURE_NO_WARNINGS -DWIN32_LEAN_AND_MEAN -DNOMINMAX)
-    LIST(APPEND libs)
+    LIST(APPEND libs
+      shlwapi # path manipulation functions
+    )
 ELSEIF(${UNIX})
     SET(CMAKE_CXX_FLAGS "-Wall -Werror -march=native -msse4.1 -D_POSIX_C_SOURCE=199309L -DM_PI=3.141592653 -std=c++11 -Wno-unused-function" CACHE STRING "C++ compiler options (shared)" FORCE)
     SET(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "C++ compiler options (release builds)" FORCE)
@@ -30,6 +32,7 @@ ADD_DEFINITIONS(-DGLM_FORCE_DEFAULT_ALIGNED_GENTYPES -DGLM_FORCE_SILENT_WARNINGS
 # spokkle
 SET(SPOKKLE_SOURCES
     src/spokkle/spokkle.cpp
+    src/spokk/spokk_filesystem.cpp
     src/spokk/spokk_platform.c
     src/spokk/spokk_vertex.cpp
 )
@@ -47,6 +50,7 @@ ADD_EXECUTABLE(spokkle
 )
 TARGET_LINK_LIBRARIES(spokkle
     assimp
+    ${libs}
     ${Vulkan_LIBRARY}
 )
 TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
@@ -58,10 +62,6 @@ TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     ${JSON_H_DIR}
     ${PROCESS_H_DIR}
 )
-IF(${MSVC})
-    # Windows puts some path-manipulation APIs in an optional library
-    TARGET_LINK_LIBRARIES(spokkle shlwapi)
-ENDIF(${MSVC})
 
 # Certain source files from third_party are included directly
 # in spokk targets, but must still be exempt from the -Wall -Werror
@@ -88,6 +88,7 @@ SET(SPOKK_HEADERS
     src/spokk/spokk_buffer.h
     src/spokk/spokk_debug.h
     src/spokk/spokk_device.h
+    src/spokk/spokk_filesystem.h
     src/spokk/spokk_image.h
     src/spokk/spokk_imgui_impl_glfw.h
     src/spokk/spokk_imgui_impl_vulkan.h
@@ -110,6 +111,7 @@ SET(SPOKK_SOURCES
     src/spokk/spokk_barrier.cpp
     src/spokk/spokk_buffer.cpp
     src/spokk/spokk_device.cpp
+    src/spokk/spokk_filesystem.cpp
     src/spokk/spokk_image.cpp
     src/spokk/spokk_imgui_impl_glfw.cpp
     src/spokk/spokk_imgui_impl_vulkan.cpp
