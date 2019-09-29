@@ -136,9 +136,7 @@ def write_shader_source(shader_info, local_source_dir):
         code = shader_header + renderpass['code']
         # Write shader source code to file
         source_filename = os.path.join(local_source_dir, "%s_%d.frag" % (shader_id, i))        
-        spv_filename = source_filename + ".spv"
         renderpass['spokk_local_code'] = source_filename
-        renderpass['spokk_local_spv'] = spv_filename
         # Skip writing source / compiling if file exists and hashes match
         skip_write_source = False
         if os.path.exists(source_filename):
@@ -154,15 +152,24 @@ def write_shader_source(shader_info, local_source_dir):
                 source_file.write(code)
             print("Saved %s" % source_filename)
         # Compile shader
-        # TODO(cort): Conditional compilation. Compare timestamp of source and spv?
-        glslc_args = [glslc_path, "-fshader-stage=frag", "-O", "--target-env=vulkan1.1", "-o", spv_filename, source_filename]
-        completed = subprocess.run(glslc_args)
-        try:
-            completed.check_returncode()
-        except subprocess.CalledProcessError as e:
-            print(e) # TODO(cort): better error message here
-            return False
-        print("Compiled %s -> %s" % (source_filename, spv_filename))
+        spv_filename = source_filename + ".spv"
+        skip_compile = False
+        if os.path.exists(spv_filename):
+            source_mtime = os.path.getmtime(source_filename)
+            spv_mtime = os.path.getmtime(spv_filename)
+            if source_mtime < spv_mtime:
+                print("%s exists and is newer; skipping compilation" % spv_filename)
+                skip_compile = True # SPV is newer than source
+        if not skip_compile:
+            glslc_args = [glslc_path, "-fshader-stage=frag", "-O", "--target-env=vulkan1.1", "-o", spv_filename, source_filename]
+            completed = subprocess.run(glslc_args)
+            try:
+                completed.check_returncode()
+            except subprocess.CalledProcessError as e:
+                print(e) # TODO(cort): better error message here
+                return False
+            renderpass['spokk_local_spv'] = spv_filename
+            print("Compiled %s -> %s" % (source_filename, spv_filename))
     return True
 
 def write_shader_info(shader_info, local_info_dir):
