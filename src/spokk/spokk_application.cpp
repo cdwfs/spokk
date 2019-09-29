@@ -391,6 +391,17 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
   // Initialize Vulkan
   host_allocator_ = ci.host_allocator;
 
+  VkApplicationInfo application_info = {};
+  application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+  application_info.pApplicationName = ci.app_name.c_str();
+  application_info.applicationVersion = 0x1000;
+  application_info.pEngineName = "Spokk";
+  application_info.engineVersion = 0x1001;
+  application_info.apiVersion = VK_MAKE_VERSION(1, 0, 37);
+  VkInstanceCreateInfo instance_ci = {};
+  instance_ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+  instance_ci.pApplicationInfo = &application_info;
+
   std::vector<const char *> required_instance_layer_names = ci.required_instance_layer_names;
   std::vector<const char *> optional_instance_layer_names = ci.optional_instance_layer_names;
 #if defined(_DEBUG)
@@ -404,8 +415,6 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
   ) {
 #if defined(_DEBUG)  // validation layers should only be enabled in debug builds
     optional_instance_layer_names.push_back("VK_LAYER_KHRONOS_validation");
-    // workaround until an official SDK release with the NULL-pointer dereference fix in the assistant layer.
-    // optional_instance_layer_names.push_back("VK_LAYER_LUNARG_assistant_layer");
 #endif
   }
   std::vector<const char *> enabled_instance_layer_names = {};
@@ -419,6 +428,21 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
     required_instance_extension_names.push_back(SPOKK_PLATFORM_SURFACE_EXTENSION_NAME);
   }
   std::vector<const char *> optional_instance_extension_names = ci.optional_instance_extension_names;
+#if defined(VK_EXT_validation_features)
+  optional_instance_extension_names.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
+  std::vector<VkValidationFeatureEnableEXT> enabled_validation_features = {
+      VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,
+  };
+  std::vector<VkValidationFeatureDisableEXT> disabled_validation_features = {};
+  VkValidationFeaturesEXT validation_features = {};
+  validation_features.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
+  validation_features.enabledValidationFeatureCount = (uint32_t)enabled_validation_features.size();
+  validation_features.pEnabledValidationFeatures = enabled_validation_features.data();
+  validation_features.disabledValidationFeatureCount = (uint32_t)disabled_validation_features.size();
+  validation_features.pDisabledValidationFeatures = disabled_validation_features.data();
+  validation_features.pNext = instance_ci.pNext;
+  instance_ci.pNext = &validation_features;
+#endif
   if (ci.debug_report_flags != 0) {
     optional_instance_extension_names.push_back(
         VK_EXT_DEBUG_REPORT_EXTENSION_NAME);  // deprecate this once debug_utils is core
@@ -427,31 +451,9 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
   if (ci.debug_utils_severity_flags != 0 && ci.debug_utils_type_flags != 0) {
     optional_instance_extension_names.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
   }
-#endif  // defined(VK_EXT_debug_utils
-  std::vector<const char *> enabled_instance_extension_names;
-  std::vector<VkExtensionProperties> enabled_instance_extension_properties = {};
-  SPOKK_VK_CHECK(GetSupportedInstanceExtensions(enabled_instance_layer_properties, required_instance_extension_names,
-      optional_instance_extension_names, &enabled_instance_extension_properties, &enabled_instance_extension_names));
-
-  VkApplicationInfo application_info = {};
-  application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-  application_info.pApplicationName = ci.app_name.c_str();
-  application_info.applicationVersion = 0x1000;
-  application_info.pEngineName = "Spokk";
-  application_info.engineVersion = 0x1001;
-  application_info.apiVersion = VK_MAKE_VERSION(1, 0, 37);
-  VkInstanceCreateInfo instance_ci = {};
-  instance_ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-  instance_ci.pApplicationInfo = &application_info;
-  instance_ci.enabledLayerCount = (uint32_t)enabled_instance_layer_names.size();
-  instance_ci.ppEnabledLayerNames = enabled_instance_layer_names.data();
-  instance_ci.enabledExtensionCount = (uint32_t)enabled_instance_extension_names.size();
-  instance_ci.ppEnabledExtensionNames = enabled_instance_extension_names.data();
-#if defined(VK_EXT_debug_utils)
   // This struct is used to create a temporary debug utils messenger for instance creation.
   VkDebugUtilsMessengerCreateInfoEXT instance_debug_utils_msgr_ci = {
       VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
-  instance_debug_utils_msgr_ci.pNext = instance_ci.pNext;
   // clang-format off
   instance_debug_utils_msgr_ci.messageSeverity = 0
     | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
@@ -465,8 +467,18 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
   // clang-format on
   instance_debug_utils_msgr_ci.pfnUserCallback = MyDebugUtilsCallback;
   instance_debug_utils_msgr_ci.pUserData = nullptr;
+  instance_debug_utils_msgr_ci.pNext = instance_ci.pNext;
   instance_ci.pNext = &instance_debug_utils_msgr_ci;
 #endif  // defined(VK_EXT_debug_utils)
+  std::vector<const char *> enabled_instance_extension_names;
+  std::vector<VkExtensionProperties> enabled_instance_extension_properties = {};
+  SPOKK_VK_CHECK(GetSupportedInstanceExtensions(enabled_instance_layer_properties, required_instance_extension_names,
+      optional_instance_extension_names, &enabled_instance_extension_properties, &enabled_instance_extension_names));
+
+  instance_ci.enabledLayerCount = (uint32_t)enabled_instance_layer_names.size();
+  instance_ci.ppEnabledLayerNames = enabled_instance_layer_names.data();
+  instance_ci.enabledExtensionCount = (uint32_t)enabled_instance_extension_names.size();
+  instance_ci.ppEnabledExtensionNames = enabled_instance_extension_names.data();
   SPOKK_VK_CHECK(vkCreateInstance(&instance_ci, host_allocator_, &instance_));
 
   bool is_debug_report_ext_enabled = false;
