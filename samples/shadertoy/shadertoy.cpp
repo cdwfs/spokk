@@ -1,6 +1,8 @@
 #include <spokk.h>
 using namespace spokk;
 
+#include "shadertoyinfo.h"
+
 #include <glm/glm.hpp>
 
 #include <array>
@@ -287,6 +289,9 @@ private:
 int main(int argc, char* argv[]) {
   (void)argc;
   (void)argv;
+
+  ShadertoyInfo shader_info;
+  ZOMBO_ASSERT_RETURN(shader_info.Load("samples/shadertoy/cache/info/3lsSzf.json") == 0, 1, "Failed to load shader");
 
   std::vector<Application::QueueFamilyRequest> queue_requests = {
       {(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT), true, 1, 0.0f}};

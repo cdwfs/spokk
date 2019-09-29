@@ -270,9 +270,16 @@ SPOKK_ADD_EXECUTABLE(spokk-pillars)
 # spokk-shadertoy
 SPOKK_ADD_SOURCES(spokk-shadertoy
     samples/shadertoy/shadertoy.cpp
+    samples/shadertoy/shadertoyinfo.cpp
+    samples/shadertoy/shadertoyinfo.h
+    ${JSON_H_DIR}/json.c
+    ${JSON_H_DIR}/json.h
 )
 SPOKK_ADD_SHADERS(spokk-shadertoy
     samples/shadertoy/fullscreen.vert
     samples/shadertoy/shadertoy.frag
 )
 SPOKK_ADD_EXECUTABLE(spokk-shadertoy)
+TARGET_INCLUDE_DIRECTORIES(spokk-shadertoy PRIVATE
+    ${JSON_H_DIR}
+)
