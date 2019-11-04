@@ -241,6 +241,7 @@ ZOMBO_DEF int zomboProcessId(void);
 ZOMBO_DEF int zomboThreadId(void);
 ZOMBO_DEF void zomboSleepMsec(uint32_t msec);
 ZOMBO_DEF FILE *zomboFopen(const char *path, const char *mode);
+ZOMBO_DEF char* zomboGetEnv(const char *varname);
 
 #ifdef __cplusplus
 }

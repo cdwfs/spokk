@@ -121,3 +121,13 @@ FILE *zomboFopen(const char *path, const char *mode)
     return fopen(path, mode);
 #endif
 }
+
+// zomboGetEnv()
+char* zomboGetEnv(const char* varname)
+{
+#if   defined(ZOMBO_PLATFORM_WINDOWS)
+    return getenv(varname);
+#elif defined(ZOMBO_PLATFORM_APPLE) || defined(ZOMBO_PLATFORM_POSIX)
+    return getenv(varname);
+#endif
+}

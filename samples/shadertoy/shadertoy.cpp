@@ -1,68 +1,13 @@
 #include <spokk.h>
 using namespace spokk;
 
-#include <common/shader_compiler.h>
-
 #include <glm/glm.hpp>
 
-#if defined(ZOMBO_PLATFORM_WINDOWS)
-#include <WinBase.h>
-#include <fileapi.h>
-#include <synchapi.h>
-#include <sysinfoapi.h>
-#elif defined(ZOMBO_PLATFORM_POSIX)
-#include <limits.h>
-#include <sys/inotify.h>
-#endif
-
 #include <array>
-#include <atomic>
 #include <cstdio>
 #include <ctime>
-#include <memory>
-#include <thread>
 
 namespace {
-
-// TODO(cort): This path back to the source dir is clumsy. I should pass a list of directories to
-// search.
-const std::string frag_shader_path = "../samples/shadertoy/shadertoy.frag";
-
-// This block of code is inserted in front of every shadertoy fragment shader; it defines the
-// uniform variables and invokes the shader's mainImage() function on every pixel.
-const std::string frag_shader_preamble = R"glsl(#version 450
-#pragma shader_stage(fragment)
-layout (location = 0) out vec4 out_fragColor;
-in vec4 gl_FragCoord;
-
-// input channel.
-layout (set = 0, binding = 0) uniform sampler%s iChannel0;
-layout (set = 0, binding = 1) uniform sampler%s iChannel1;
-layout (set = 0, binding = 2) uniform sampler%s iChannel2;
-layout (set = 0, binding = 3) uniform sampler%s iChannel3;
-// input uniforms. NOTE: declaraction order is different from shadertoy due to packing rules
-layout (set = 0, binding = 4) uniform ShaderToyUniforms {
-  vec3      iResolution;           // viewport resolution (in pixels)
-  float     iChannelTime[4];       // channel playback time (in seconds)
-  vec3      iChannelResolution[4]; // channel resolution (in pixels)
-  vec4      iMouse;                // mouse pixel coords. xy: current (if MLB down), zw: click
-  vec4      iDate;                 // (year, month, day, time in seconds)
-  float     iTime;                 // shader playback time (in seconds)
-  float     iTimeDelta;            // render time (in seconds)
-  int       iFrame;                // shader playback frame
-  float     iSampleRate;           // sound sample rate (i.e., 44100)
-};
-
-void mainImage(out vec4 fragColor, in vec2 fragCoord);
-void main() {
-  // Need to manually flip the fragcoord to a lower-left origin
-  mainImage(out_fragColor, vec2(gl_FragCoord.x, iResolution.y - gl_FragCoord.y));
-  out_fragColor.w = 1.0;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-)glsl";
 
 // NOTE: declaraction order is different from shadertoy due to packing rules
 struct ShaderToyUniforms {
@@ -134,12 +79,16 @@ public:
 
     // Load shader pipelines
     SPOKK_VK_CHECK(fullscreen_tri_vs_.CreateAndLoadSpirvFile(device_, "data/shadertoy/fullscreen.vert.spv"));
+    SPOKK_VK_CHECK(fragment_shader_.CreateAndLoadSpirvFile(device_, "data/shadertoy/shadertoy.frag.spv"));
+    SPOKK_VK_CHECK(shader_program_.AddShader(&fullscreen_tri_vs_));
+    SPOKK_VK_CHECK(shader_program_.AddShader(&fragment_shader_));
+    SPOKK_VK_CHECK(shader_program_.Finalize(device_));
 
-    active_pipeline_index_ = 0;
-    ReloadShader();  // force a reload of of the shadertoy shader into slot 1
-    active_pipeline_index_ = 1 - active_pipeline_index_;
+    pipeline_.Init(&empty_mesh_format_, &shader_program_, &render_pass_, 0);
+    SPOKK_VK_CHECK(pipeline_.Finalize(device_));
+    SPOKK_VK_CHECK(device_.SetObjectName(pipeline_.handle, "Shadertoy pipeline"));
 
-    for (const auto& dset_layout_ci : shader_programs_[active_pipeline_index_].dset_layout_cis) {
+    for (const auto& dset_layout_ci : shader_program_.dset_layout_cis) {
       dpool_.Add(dset_layout_ci, PFRAME_COUNT);
     }
     SPOKK_VK_CHECK(dpool_.Finalize(device_));
@@ -148,7 +97,7 @@ public:
     VkMemoryPropertyFlags uniform_buffer_memory_flags =
         device_.MemoryFlagsForAccessPattern(DEVICE_MEMORY_ACCESS_PATTERN_CPU_TO_GPU_DYNAMIC);
 
-    DescriptorSetWriter dset_writer(shader_programs_[active_pipeline_index_].dset_layout_cis[0]);
+    DescriptorSetWriter dset_writer(shader_program_.dset_layout_cis[0]);
     for (size_t iTex = 0; iTex < active_images_.size(); ++iTex) {
       dset_writer.BindCombinedImageSampler(
           active_images_[iTex]->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, samplers_[iTex], (uint32_t)iTex);
@@ -166,7 +115,7 @@ public:
           "uniform buffer " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.BindBuffer(frame_data.ubo.Handle(), 4);
 
-      frame_data.dset = dpool_.AllocateSet(device_, shader_programs_[active_pipeline_index_].dset_layouts[0]);
+      frame_data.dset = dpool_.AllocateSet(device_, shader_program_.dset_layouts[0]);
       SPOKK_VK_CHECK(device_.SetObjectName(frame_data.dset,
           "frame dset " + std::to_string(pframe)));  // TODO(cort): absl::StrCat
       dset_writer.WriteAll(device_, frame_data.dset);
@@ -174,18 +123,9 @@ public:
 
     // Create swapchain-sized resources.
     CreateRenderBuffers(swapchain_extent_);
-
-    // Spawn the shader-watcher thread, to set a shared bool whenever the contents of the shader
-    // directory change.
-    swap_shader_.store(false);
-
-    shader_reloader_thread_ = std::thread(&ShaderToyApp::WatchShaderDir, this, "../samples/shadertoy");
   }
   virtual ~ShaderToyApp() {
     if (device_) {
-      // TODO(https://github.com/cdwfs/spokk/issues/15) Getting occasional crashes here; graceful exit?
-      shader_reloader_thread_.detach();
-
       vkDeviceWaitIdle(device_);
 
       dpool_.Destroy(device_);
@@ -194,14 +134,11 @@ public:
         frame_data.ubo.Destroy(device_);
       }
 
-      pipelines_[0].Destroy(device_);
-      pipelines_[1].Destroy(device_);
+      pipeline_.Destroy(device_);
 
-      shader_programs_[0].Destroy(device_);
-      shader_programs_[1].Destroy(device_);
+      shader_program_.Destroy(device_);
       fullscreen_tri_vs_.Destroy(device_);
-      fragment_shaders_[0].Destroy(device_);
-      fragment_shaders_[1].Destroy(device_);
+      fragment_shader_.Destroy(device_);
 
       for (const auto fb : framebuffers_) {
         vkDestroyFramebuffer(device_, fb, host_allocator_);
@@ -230,19 +167,6 @@ public:
 
   void Render(VkCommandBuffer primary_cb, uint32_t swapchain_image_index) override {
     const auto& frame_data = frame_data_[pframe_index_];
-    // Reload shaders, if necessary
-    bool reload = false;
-    swap_shader_.compare_exchange_strong(reload, false);
-    if (reload) {
-      // If we get this far, it's time to replace the existing pipeline
-      vkDeviceWaitIdle(device_);
-      pipelines_[active_pipeline_index_].Destroy(device_);
-      shader_programs_[active_pipeline_index_].Destroy(device_);
-      fragment_shaders_[active_pipeline_index_].Destroy(device_);
-      active_pipeline_index_ = 1 - active_pipeline_index_;
-      swap_shader_.store(false);
-    }
-
     // Update uniforms.
     // Shadertoy's origin is in the lower left.
     double mouse_x = 0, mouse_y = 0;
@@ -290,11 +214,11 @@ public:
     render_pass_.begin_info.framebuffer = framebuffer;
     render_pass_.begin_info.renderArea.extent = swapchain_extent_;
     vkCmdBeginRenderPass(primary_cb, &render_pass_.begin_info, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_[active_pipeline_index_].handle);
+    vkCmdBindPipeline(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_.handle);
     vkCmdSetViewport(primary_cb, 0, 1, &viewport_);
     vkCmdSetScissor(primary_cb, 0, 1, &scissor_rect_);
     vkCmdBindDescriptorSets(primary_cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        pipelines_[active_pipeline_index_].shader_program->pipeline_layout, 0, 1, &frame_data.dset, 0, nullptr);
+        pipeline_.shader_program->pipeline_layout, 0, 1, &frame_data.dset, 0, nullptr);
     vkCmdDraw(primary_cb, 3, 1, 0, 0);
     vkCmdEndRenderPass(primary_cb);
   }
@@ -328,120 +252,8 @@ private:
     }
   }
 
-  void ReloadShader() {
-    const char* image_types[4] = {
-        (active_images_[0]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
-        (active_images_[1]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
-        (active_images_[2]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
-        (active_images_[3]->image_ci.arrayLayers == 1) ? "2D" : "Cube",
-    };
-    int preamble_len = snprintf(
-        nullptr, 0, frag_shader_preamble.c_str(), image_types[0], image_types[1], image_types[2], image_types[3]);
-    FILE* frag_file = zomboFopen(frag_shader_path.c_str(), "rb");
-    if (!frag_file) {
-      // Load failed -- try again in a moment?
-      zomboSleepMsec(1);
-      return;
-    }
-    fseek(frag_file, 0, SEEK_END);
-    size_t frag_file_bytes = ftell(frag_file);
-    // TODO(https://github.com/cdwfs/spokk/issues/15): potential race condition here, if the file is modified between
-    // ftell and fread()
-    std::vector<char> final_frag_source(preamble_len + frag_file_bytes);
-    zomboSnprintf(final_frag_source.data(), preamble_len, frag_shader_preamble.c_str(), image_types[0], image_types[1],
-        image_types[2], image_types[3]);
-    fseek(frag_file, 0, SEEK_SET);
-    size_t bytes_read = fread(final_frag_source.data() + preamble_len - 1, 1, frag_file_bytes, frag_file);
-    fclose(frag_file);
-    if (bytes_read != frag_file_bytes) {
-      // let's assume this means the file has changed
-      printf("Shader file changed in mid-reload; save again to be safe.\n");
-      return;
-    }
-    final_frag_source[final_frag_source.size() - 1] = 0;
-    shaderc::SpvCompilationResult compile_result = shader_compiler_.CompileGlslString(
-        final_frag_source.data(), frag_shader_path, "main", VK_SHADER_STAGE_FRAGMENT_BIT);
-    if (compile_result.GetCompilationStatus() == shaderc_compilation_status_success) {
-      Shader& new_fs = fragment_shaders_[1 - active_pipeline_index_];
-      SPOKK_VK_CHECK(new_fs.CreateAndLoadSpirvMem(device_, compile_result.cbegin(),
-          static_cast<int>((compile_result.cend() - compile_result.cbegin()) * sizeof(uint32_t))));
-      ShaderProgram& new_shader_program = shader_programs_[1 - active_pipeline_index_];
-      SPOKK_VK_CHECK(new_shader_program.AddShader(&fullscreen_tri_vs_));
-      SPOKK_VK_CHECK(new_shader_program.AddShader(&new_fs));
-      SPOKK_VK_CHECK(new_shader_program.Finalize(device_));
-      GraphicsPipeline& new_pipeline = pipelines_[1 - active_pipeline_index_];
-      new_pipeline.Init(&empty_mesh_format_, &new_shader_program, &render_pass_, 0);
-      SPOKK_VK_CHECK(new_pipeline.Finalize(device_));
-      SPOKK_VK_CHECK(device_.SetObjectName(new_pipeline.handle, "shadertoy pipeline"));
-      swap_shader_.store(true);
-    } else {
-      printf("%s\n", compile_result.GetErrorMessage().c_str());
-    }
-  }
-  void WatchShaderDir(const std::string dir_path) {
-#ifdef _MSC_VER  // Detect changes using Windows change notification API
-    std::wstring wpath(dir_path.begin(), dir_path.end());  // only works for ASCII input, but I'm okay with that.
-    HANDLE dwChangeHandle = FindFirstChangeNotification(wpath.c_str(), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE);
-    ZOMBO_ASSERT(dwChangeHandle != INVALID_HANDLE_VALUE, "FindFirstChangeNotification() returned invalid handle");
-    int lastUpdateSeconds = -1;
-    for (;;) {
-      DWORD dwWaitStatus = WaitForSingleObject(dwChangeHandle, INFINITE);
-      SYSTEMTIME localTime;
-      GetLocalTime(&localTime);
-      // Only reload at most once per second
-      if (!swap_shader_ && dwWaitStatus == WAIT_OBJECT_0 && localTime.wSecond != lastUpdateSeconds) {
-        zomboSleepMsec(
-            20);  // Reloading immediately doesn't work; fopen() fails. Give it a little bit to resolve itself.
-        // Attempt to rebuild the shader and pipeline first
-        ReloadShader();
-        // Don't reload more than once a second
-        lastUpdateSeconds = localTime.wSecond;
-      }
-      FindNextChangeNotification(dwChangeHandle);
-    }
-#elif defined(__linux__)  // Detect changes using inotify
-    int fd = inotify_init();
-    ZOMBO_ASSERT(fd != -1, "inotify_init() failed (errno=%d)", errno);
-    int wd = inotify_add_watch(fd, dir_path.c_str(), IN_MODIFY | IN_MOVED_TO);
-    ZOMBO_ASSERT(wd != -1, "inotify_add_watch() failed (errno=%d)", errno);
-    for (;;) {
-      // TODO(https://github.com/cdwfs/spokk/issues/15): Potential race condition here.
-      // Many text editors will "modify" a file as a write to a temp file (IN_MODIFY), followed by
-      // a rename to the original file (IN_MOVED_TO). We shouldn't reload a shader until the rename. This
-      // is currently handled by the sleep() below, but that's a total hack.
-      uint8_t event_buffer[sizeof(inotify_event) + NAME_MAX + 1] = {};
-      ssize_t event_bytes = read(fd, event_buffer, sizeof(inotify_event) + NAME_MAX + 1);
-      ZOMBO_ASSERT(event_bytes >= (ssize_t)sizeof(inotify_event), "inotify event read failed (errno=%d)", errno);
-      int32_t event_offset = 0;
-      while (event_offset < event_bytes) {
-        inotify_event* event = reinterpret_cast<inotify_event*>(event_buffer + event_offset);
-        if (event->wd != wd) {
-          continue;
-        }
-        // printf("%s: 0x%08X\n", event->name, event->mask);
-        if ((event->mask & IN_MODIFY) != 0) {
-          sleep(1);  // serves two purposes: only process one reload per second, and delay reload until after a rename
-          ReloadShader();
-        } else if ((event->mask & (IN_IGNORED | IN_UNMOUNT | IN_Q_OVERFLOW)) != 0) {
-          ZOMBO_ERROR("inotify event mask (0x%08X) indicates something awful is afoot!", event->mask);
-        }
-        event_offset += sizeof(inotify_event) + event->len;
-      }
-    }
-    inotify_rm_watch(fd, wd);
-    close(fd);
-#else
-#error Unsupported platform! Find the equivalent of inotify on your platform!
-#endif
-  }
-
   double seconds_elapsed_;
   float current_dt_;
-
-  std::atomic_bool swap_shader_;
-  std::thread shader_reloader_thread_;
-  ShaderCompiler shader_compiler_;
-  shaderc::CompileOptions compiler_options_;
 
   std::array<Image, 16> textures_;
   std::array<Image, 6> cubemaps_;
@@ -455,11 +267,9 @@ private:
 
   Shader fullscreen_tri_vs_;
 
-  // Two copies of all this stuff, so we can ping-pong between them during reloads.
-  uint32_t active_pipeline_index_;
-  std::array<Shader, 2> fragment_shaders_;
-  std::array<ShaderProgram, 2> shader_programs_;
-  std::array<GraphicsPipeline, 2> pipelines_;
+  Shader fragment_shader_;
+  ShaderProgram shader_program_;
+  GraphicsPipeline pipeline_;
 
   VkViewport viewport_;
   VkRect2D scissor_rect_;

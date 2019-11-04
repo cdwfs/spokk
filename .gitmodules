@@ -1,18 +1,6 @@
 [submodule "third_party/glfw"]
 	path = third_party/glfw
 	url = https://github.com/glfw/glfw.git
-[submodule "third_party/shaderc"]
-	path = third_party/shaderc
-	url = https://github.com/google/shaderc.git
-[submodule "third_party/glslang"]
-	path = third_party/glslang
-	url = https://github.com/KhronosGroup/glslang.git
-[submodule "third_party/spirv-tools"]
-	path = third_party/spirv-tools
-	url = https://github.com/KhronosGroup/SPIRV-Tools.git
-[submodule "third_party/spirv-headers"]
-	path = third_party/spirv-headers
-	url = https://github.com/KhronosGroup/SPIRV-Headers.git
 [submodule "third_party/stb"]
 	path = third_party/stb
 	url = https://github.com/nothings/stb
@@ -37,3 +25,6 @@
 [submodule "third_party/simple_vulkan_synchronization"]
 	path = third_party/simple_vulkan_synchronization
 	url = https://github.com/Tobski/simple_vulkan_synchronization.git
+[submodule "third_party/process.h"]
+	path = third_party/process.h
+	url = https://github.com/sheredom/process.h.git

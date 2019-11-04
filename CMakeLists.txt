@@ -37,15 +37,16 @@ SET(SPOKKLE_HEADERS
 )
 SOURCE_GROUP("" FILES ${SPOKKLE_HEADERS} ${SPOKKLE_SOURCES})
 SOURCE_GROUP("json.h" REGULAR_EXPRESSION "json.[ch]$")
+SOURCE_GROUP("process.h" REGULAR_EXPRESSION "process.[ch]$")
 ADD_EXECUTABLE(spokkle
     ${SPOKKLE_SOURCES}
     ${SPOKKLE_HEADERS}
     ${JSON_H_DIR}/json.c
     ${JSON_H_DIR}/json.h
+    ${PROCESS_H_DIR}/nph_process.h
 )
 TARGET_LINK_LIBRARIES(spokkle
     assimp
-    shaderc
     ${Vulkan_LIBRARY}
 )
 TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
@@ -55,6 +56,7 @@ TARGET_INCLUDE_DIRECTORIES(spokkle PRIVATE
     ${SIMPLE_VULKAN_SYNCHRONIZATION_DIR}
     src/spokk
     ${JSON_H_DIR}
+    ${PROCESS_H_DIR}
 )
 IF(${MSVC})
     # Windows puts some path-manipulation APIs in an optional library
@@ -144,10 +146,9 @@ TARGET_INCLUDE_DIRECTORIES(${SPOKK_LIB_NAME} PUBLIC
     ${SIMPLE_VULKAN_SYNCHRONIZATION_DIR}
     ${SPIRV_REFLECT_DIR}
     ${STB_DIR}
-    ${SPIRV-Headers_SOURCE_DIR}/include/spirv/unified1
     ${VULKAN_MEMORY_ALLOCATOR_DIR}
     ${Vulkan_INCLUDE_DIR}
-    "src/spokk"
+    ${CMAKE_SOURCE_DIR}/src/spokk
 )
 
 # custom target to build/copy sample assets
@@ -269,14 +270,9 @@ SPOKK_ADD_EXECUTABLE(spokk-pillars)
 # spokk-shadertoy
 SPOKK_ADD_SOURCES(spokk-shadertoy
     samples/shadertoy/shadertoy.cpp
-    samples/common/shader_compiler.cpp
-)
-SPOKK_ADD_HEADERS(spokk-shadertoy
-    samples/common/shader_compiler.h
 )
 SPOKK_ADD_SHADERS(spokk-shadertoy
     samples/shadertoy/fullscreen.vert
-    samples/shadertoy/shadertoy.frag # this shader is special; it's loaded at runtime, not built offline.
+    samples/shadertoy/shadertoy.frag
 )
 SPOKK_ADD_EXECUTABLE(spokk-shadertoy)
-TARGET_LINK_LIBRARIES(spokk-shadertoy shaderc)

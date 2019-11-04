@@ -66,6 +66,15 @@ SET(IMGUI_SOURCE_FILES
 # json.h
 set(JSON_H_DIR ${CMAKE_CURRENT_SOURCE_DIR}/json.h PARENT_SCOPE)
 
+# process.h
+set(PROCESS_H_DIR ${CMAKE_CURRENT_BINARY_DIR}/process.h/include)
+# Copy the process.h header into the build directory with a new name
+# (workaround for https://github.com/sheredom/process.h/issues/4)
+file(MAKE_DIRECTORY ${PROCESS_H_DIR})
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/process.h/process.h DESTINATION ${PROCESS_H_DIR})
+file(RENAME ${PROCESS_H_DIR}/process.h ${PROCESS_H_DIR}/nph_process.h)
+set(PROCESS_H_DIR ${PROCESS_H_DIR} PARENT_SCOPE)
+
 # simple_vulkan_synchronization
 set(SIMPLE_VULKAN_SYNCHRONIZATION_DIR
     ${CMAKE_CURRENT_SOURCE_DIR}/simple_vulkan_synchronization
@@ -81,90 +90,13 @@ SET(SPIRV_REFLECT_SOURCE_FILES
 )
 
 # stb
-# Nothing to configure, but eventually it would be nice to specify the include directory,
-# now that it doesn't conflict with imgui's copy, and avoid including third_party/ everywhere.
 SET(STB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/stb PARENT_SCOPE)
-
-# shaderc
-SET(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/spirv-headers" CACHE PATH "Location of SPIRV-Headers project" FORCE)
-SET(SHADERC_THIRD_PARTY_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH "Root location of shaderc third-party projets" FORCE)
-OPTION(ENABLE_AMD_EXTENSIONS "Enable AMD shader extensions" OFF)
-OPTION(BUILD_TESTING "Skip building shaderc tests" OFF)
-OPTION(ENABLE_SPVREMAPPER "Enable building SPVRemapper tool" OFF)
-OPTION(SHADERC_SKIP_TESTS "Skip building tests" ON)
-OPTION(SHADERC_ENABLE_SHARED_CRT "Use the shared CRT instead of the static CRT" ON)
-OPTION(SHADERC_SKIP_INSTALL "Skip shaderc installation" ON)
-OPTION(SKIP_GLSLANG_INSTALL "Skip glslang installation" ON)
-OPTION(SKIP_SPIRV_TOOLS_INSTALL "Skip SPIRV-Tools installation" ON)
-OPTION(SPIRV_CHECK_CONTEXT "Enable expensive SPIRV IR tests" OFF)
-OPTION(SPIRV_SKIP_EXECUTABLES "Skip building SPIRV-Tools executables" ON)
-ADD_SUBDIRECTORY(shaderc)
-# shaderc pulls in a gajillion targets. Let's organize them a bit.
-SET(GLSLANG_TARGETS
-    glslang
-    glslang-default-resource-limits
-    glslangValidator
-    HLSL
-    OGLCompiler
-    OSDependent
-    SPIRV
-    spirv-remap
-)
-SET(SPIRV_HEADERS_TARGETS
-    install-headers
-)
-SET(SPIRV_TOOLS_TARGETS
-    core_tables
-    enum_string_mapping
-    extinst_tables
-    SPIRV-Tools
-    SPIRV-Tools-link
-    spirv-tools-build-version
-    spirv-tools-header-DebugInfo
-    spirv-tools-pkg-config
-    spirv-tools-shared-pkg-config
-    spirv-tools-vimsyntax
-    SPIRV-Tools-opt
-    SPIRV-Tools-reduce
-    SPIRV-Tools-shared
-    spv-tools-debuginfo
-    spv-tools-spv-amd-gs
-    spv-tools-spv-amd-sb
-    spv-tools-spv-amd-sevp
-    spv-tools-spv-amd-stm
-)
-SET(SHADERC_TARGETS
-    add-copyright
-    build-version
-    check-copyright
-    glslc
-    glslc_exe
-    shaderc
-    shaderc-pkg-config
-    shaderc_combined_genfile
-    shaderc_combined-pkg-config
-    shaderc_shared
-    shaderc_static-pkg-config
-    shaderc_util
-    shaderc-online-compile
-    testdata
-)
-# This target is only created if asciidoctor happens to be installed. If so, it should
-# be grouped with the shaderc targets as well.
-IF(TARGET glslc_doc_README)
-    LIST(APPEND SHADERC_TARGETS glslc_doc_README)
-ENDIF(TARGET glslc_doc_README)
-SET_TARGET_PROPERTIES(${GLSLANG_TARGETS} PROPERTIES FOLDER "shaderc/glslang")
-SET_TARGET_PROPERTIES(${SPIRV_HEADERS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-headers")
-SET_TARGET_PROPERTIES(${SPIRV_TOOLS_TARGETS} PROPERTIES FOLDER "shaderc/spirv-tools")
-SET_TARGET_PROPERTIES(${SHADERC_TARGETS} PROPERTIES FOLDER "shaderc")
 
 # Skip executable targets; we only care about the library anyway.
 FOREACH(SHADERC_TARGET IN LISTS
         GLSLANG_TARGETS
         SPIRV_HEADERS_TARGETS
-        SPIRV_TOOLS_TARGETS
-        SHADERC_TARGETS)
+        SPIRV_TOOLS_TARGETS)
     GET_TARGET_PROPERTY(TARGET_TYPE ${SHADERC_TARGET} TYPE)
     IF(${TARGET_TYPE} STREQUAL EXECUTABLE)
         SET_TARGET_PROPERTIES(${SHADERC_TARGET} PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD TRUE)
