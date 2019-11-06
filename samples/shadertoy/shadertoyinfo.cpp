@@ -1,7 +1,9 @@
 #include "shadertoyinfo.h"
 
+#include <spokk.h>
+using namespace spokk;
+
 #include <json.h>
-#include <spokk_platform.h>
 
 #include <cstdio>
 #include <vector>
@@ -363,7 +365,8 @@ int ShadertoyInfo::ParseRoot(const json_value_s* val) {
   return parse_error;
 }
 
-int ShadertoyInfo::Load(const std::string& json5_filename) {
+int ShadertoyInfo::Load(const std::string& json5_filename, const Device& device, const Shader* vertex_shader,
+    const RenderPass* render_pass, int32_t subpass) {
   // Load JSON file contents
   FILE* shader_info_file = zomboFopen(json5_filename.c_str(), "rb");
   if (!shader_info_file) {
@@ -394,5 +397,16 @@ int ShadertoyInfo::Load(const std::string& json5_filename) {
   info_filename_ = json5_filename;
   int parse_error = ParseRoot(shader_info_json);
   free(shader_info_json);
-  return parse_error;
+  if (parse_error) {
+    return parse_error;
+  }
+
+  // Create Vulkan objects
+  for (auto pass : renderpasses_) {
+    if (pass == nullptr) {
+      continue;
+    }
+    pass->frag_shader = new Shader;
+    pass->frag_shader->CreateAndLoadSpirvFile(device, 
+  }
 }

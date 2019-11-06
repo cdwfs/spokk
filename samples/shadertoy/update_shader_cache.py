@@ -53,7 +53,8 @@ def fetch_resource_from_url(url, local_filename):
             print("%s: saved" % local_filename)
     return True
 
-def fetch_shader_inputs(shader_info, local_media_dir):
+def fetch_shader_inputs(shader_info, local_cache_dir):
+    local_media_dir = os.path.join(local_cache_dir, "media")
     os.makedirs(local_media_dir, exist_ok=True)
     for renderpass in shader_info['Shader']['renderpass']:
         for input in renderpass['inputs']:
@@ -69,14 +70,14 @@ def fetch_shader_inputs(shader_info, local_media_dir):
                     url = "https://www.shadertoy.com" + remote_dirname + "/" + remote_face_filename
                     if not fetch_resource_from_url(url, local_face_filename):
                         return False
-                    local_srcs.append(local_face_filename)
+                    local_srcs.append(os.path.relpath(local_face_filename, start=local_cache_dir))
                 input['spokk_local_src'] = local_srcs
             else:
                 local_filename = os.path.join(local_media_dir, remote_filename)
                 url = "https://www.shadertoy.com" + input['src']
                 if not fetch_resource_from_url(url, local_filename):
                     return False
-                input['spokk_local_src'] = local_filename
+                input['spokk_local_src'] = os.path.relpath(local_filename, start=local_cache_dir)
     return True
 
 shader_header_template = R"""#version 450
@@ -113,7 +114,8 @@ void main() {
 
 """
 
-def write_shader_source(shader_info, local_source_dir):
+def write_shader_source(shader_info, local_cache_dir):
+    local_shaders_dir = os.path.join(local_cache_dir, "shaders")
     vulkan_sdk_dir = os.getenv("VULKAN_SDK")
     assert vulkan_sdk_dir, "VULKAN_SDK not set in environment"
     glslc_path = os.path.normpath(os.path.join(vulkan_sdk_dir, "bin/glslc"))
@@ -136,7 +138,7 @@ def write_shader_source(shader_info, local_source_dir):
         code = shader_header + renderpass['code']
         # Write shader source code to file
         source_filename = os.path.join(local_source_dir, "%s_%d.frag" % (shader_id, i))        
-        renderpass['spokk_local_code'] = source_filename
+        renderpass['spokk_local_code'] = os.path.relpath(source_filename, start=local_cache_dir)
         # Skip writing source / compiling if file exists and hashes match
         skip_write_source = False
         if os.path.exists(source_filename):
@@ -168,14 +170,14 @@ def write_shader_source(shader_info, local_source_dir):
             except subprocess.CalledProcessError as e:
                 print(e) # TODO(cort): better error message here
                 return False
-            renderpass['spokk_local_spv'] = spv_filename
+            renderpass['spokk_local_spv'] = os.path.relpath(spv_filename, start=local_cache_dir)
             print("Compiled %s -> %s" % (source_filename, spv_filename))
     return True
 
-def write_shader_info(shader_info, local_info_dir):
-    os.makedirs(local_info_dir, exist_ok=True)
+def write_shader_info(shader_info, local_cache_dir):
+    os.makedirs(local_cache_dir, exist_ok=True)
     shader_id = shader_info['Shader']['info']['id']
-    local_filename = os.path.join(local_info_dir, shader_id + ".json")
+    local_filename = os.path.join(local_cache_dir, shader_id + ".json")
     new_json = json.dumps(shader_info, indent=2)
     # Skip writing source / compiling if file exists and hashes match
     if os.path.exists(local_filename):
@@ -193,17 +195,14 @@ def write_shader_info(shader_info, local_info_dir):
 
 if __name__ == "__main__":
     local_cache_dir = "../../build/samples/shadertoy/cache"
-    local_media_dir = os.path.join(local_cache_dir, "media")
-    local_source_dir = os.path.join(local_cache_dir, "shaders")
-    local_info_dir = os.path.join(local_cache_dir, "info")
     # TODO(cort): argparse
     shader_id = sys.argv[1]
     api_key = sys.argv[2]
     shader_info = fetch_shader_info(shader_id, api_key)
     validate_shader_info(shader_info)
-    if not fetch_shader_inputs(shader_info, local_media_dir):
+    if not fetch_shader_inputs(shader_info, local_cache_dir):
         sys.exit(1)
-    if not write_shader_source(shader_info, local_source_dir):
+    if not write_shader_source(shader_info, local_cache_dir):
         sys.exit(2)
-    if not write_shader_info(shader_info, local_info_dir):
+    if not write_shader_info(shader_info, local_cache_dir):
         sys.exit(3)

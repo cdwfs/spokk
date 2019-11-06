@@ -290,8 +290,10 @@ int main(int argc, char* argv[]) {
   (void)argc;
   (void)argv;
 
+  const std::string cache_dir = "samples/shadertoy/cache/";
+  // TODO(cort): pushdir to cache dir. Naaah, I really need path utilities.
   ShadertoyInfo shader_info;
-  ZOMBO_ASSERT_RETURN(shader_info.Load("samples/shadertoy/cache/info/3lsSzf.json") == 0, 1, "Failed to load shader");
+  ZOMBO_ASSERT_RETURN(shader_info.Load("3lsSzf.json") == 0, 1, "Failed to load shader");
 
   std::vector<Application::QueueFamilyRequest> queue_requests = {
       {(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT), true, 1, 0.0f}};

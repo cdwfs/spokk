@@ -1,6 +1,14 @@
 #if !defined(SHADERTOYINFO_H)
 #define SHADERTOYINFO_H
 
+namespace spokk {
+class Device;
+struct GraphicsPipeline;
+struct RenderPass;
+struct Shader;
+struct ShaderProgram;
+}  // namespace spokk
+
 #include <array>
 #include <map>
 #include <string>
@@ -48,7 +56,12 @@ typedef struct ShadertoyRenderPass {
 
   ShadertoyRenderPassType pass_type;
   std::string spv_filename;
+
   std::map<int, ShadertoyInput*> inputs;
+
+  spokk::Shader* frag_shader;
+  spokk::ShaderProgram* shader_program;
+  spokk::GraphicsPipeline* pipeline;
 } ShadertoyRenderPass;
 
 class ShadertoyInfo {
@@ -56,7 +69,8 @@ public:
   ShadertoyInfo();
   ~ShadertoyInfo();
 
-  int Load(const std::string& json5_filename);
+  int Load(const std::string& json5_filename, const spokk::Device& device, const spokk::Shader* vertex_shader,
+      const spokk::RenderPass* render_pass, int32_t subpass);
 
 private:
   std::string JsonValueLocationStr(const json_value_s* val) const;
