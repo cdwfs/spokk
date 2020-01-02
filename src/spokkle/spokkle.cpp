@@ -1,7 +1,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <json.h>
-#include <nph_process.h>
+#include <subprocess.h>
 #include <spokk_mesh.h>  // for MeshHeader
 #include <spokk_platform.h>
 #include <spokk_shader_interface.h>
@@ -1191,10 +1191,10 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
     }
     glslc_args.push_back(shader.input_path.c_str());
     glslc_args.push_back(nullptr);
-    struct process_s glslc_process;
-    int process_options = process_option_combined_stdout_stderr;
-    int process_create_error = process_create(glslc_args.data(), process_options, &glslc_process);
-    if (process_create_error != 0) {
+    struct subprocess_s glslc_process;
+    int subprocess_options = subprocess_option_combined_stdout_stderr;
+    int subprocess_create_error = subprocess_create(glslc_args.data(), subprocess_options, &glslc_process);
+    if (subprocess_create_error != 0) {
       fprintf(stderr, "%s: Error creating glslc subprocess '", shader.json_location.c_str());
       for (const char* arg : glslc_args) {
         fprintf(stderr, "%s", arg);
@@ -1204,11 +1204,11 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
     }
 
     int glslc_return_code = 0;
-    int process_join_error = process_join(&glslc_process, &glslc_return_code);
-    ZOMBO_ASSERT_RETURN(process_join_error == 0, -5, "%s: shader compiler exited unexpectedly (process join error %d)",
-        shader.json_location.c_str(), process_join_error);
+    int subprocess_join_error = subprocess_join(&glslc_process, &glslc_return_code);
+    ZOMBO_ASSERT_RETURN(subprocess_join_error == 0, -5, "%s: shader compiler exited unexpectedly (process join error %d)",
+        shader.json_location.c_str(), subprocess_join_error);
 
-    FILE* glslc_output = process_stdout(&glslc_process);
+    FILE* glslc_output = subprocess_stdout(&glslc_process);
     char glslc_output_buffer[128];
 #if 1
     while (fgets(glslc_output_buffer, 128, glslc_output)) {
@@ -1222,10 +1222,10 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
       if (str && !eof && !err) fprintf(stderr, "%s", glslc_output_buffer);
     }
 #endif
-    int process_destroy_error = process_destroy(&glslc_process);
-    ZOMBO_ASSERT_RETURN(process_destroy_error == 0, -6,
+    int subprocess_destroy_error = subprocess_destroy(&glslc_process);
+    ZOMBO_ASSERT_RETURN(subprocess_destroy_error == 0, -6,
         "%s: shader compiler exited unexpectedly (process destroy error %d)", shader.json_location.c_str(),
-        process_destroy_error);
+        subprocess_destroy_error);
     ZOMBO_ASSERT_RETURN(glslc_return_code == 0, -7,
         "%s: shader compilation failed with error code %d; see compiler output for details\n",
         shader.json_location.c_str(), glslc_return_code);

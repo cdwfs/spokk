@@ -37,13 +37,13 @@ SET(SPOKKLE_HEADERS
 )
 SOURCE_GROUP("" FILES ${SPOKKLE_HEADERS} ${SPOKKLE_SOURCES})
 SOURCE_GROUP("json.h" REGULAR_EXPRESSION "json.[ch]$")
-SOURCE_GROUP("process.h" REGULAR_EXPRESSION "process.[ch]$")
+SOURCE_GROUP("process.h" REGULAR_EXPRESSION "subprocess.[ch]$")
 ADD_EXECUTABLE(spokkle
     ${SPOKKLE_SOURCES}
     ${SPOKKLE_HEADERS}
     ${JSON_H_DIR}/json.c
     ${JSON_H_DIR}/json.h
-    ${PROCESS_H_DIR}/nph_process.h
+    ${PROCESS_H_DIR}/subprocess.h
 )
 TARGET_LINK_LIBRARIES(spokkle
     assimp

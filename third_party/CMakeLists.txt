@@ -67,13 +67,7 @@ SET(IMGUI_SOURCE_FILES
 set(JSON_H_DIR ${CMAKE_CURRENT_SOURCE_DIR}/json.h PARENT_SCOPE)
 
 # process.h
-set(PROCESS_H_DIR ${CMAKE_CURRENT_BINARY_DIR}/process.h/include)
-# Copy the process.h header into the build directory with a new name
-# (workaround for https://github.com/sheredom/process.h/issues/4)
-file(MAKE_DIRECTORY ${PROCESS_H_DIR})
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/process.h/process.h DESTINATION ${PROCESS_H_DIR})
-file(RENAME ${PROCESS_H_DIR}/process.h ${PROCESS_H_DIR}/nph_process.h)
-set(PROCESS_H_DIR ${PROCESS_H_DIR} PARENT_SCOPE)
+set(PROCESS_H_DIR ${CMAKE_CURRENT_SOURCE_DIR}/process.h PARENT_SCOPE)
 
 # simple_vulkan_synchronization
 set(SIMPLE_VULKAN_SYNCHRONIZATION_DIR
