@@ -218,6 +218,7 @@ int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const 
   }
   // TODO(cort): caller passes in memory properties and scope?
   SPOKK_VK_CHECK(vkCreateImage(device, &image_ci, device.HostAllocator(), &handle));
+  SPOKK_VK_CHECK(device.SetObjectName(handle, filename));
   SPOKK_VK_CHECK(device.DeviceAllocAndBindToImage(
       handle, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DEVICE_ALLOCATION_SCOPE_DEVICE, &memory));
 
@@ -340,9 +341,6 @@ int Image::CreateFromFile(const Device& device, const DeviceQueue* queue, const 
     return -1;
   }
 
-  if (result == VK_SUCCESS) {
-    result = device.SetObjectName(handle, filename);
-  }
   if (result == VK_SUCCESS) {
     result = device.SetObjectName(view, filename + " view");
   }
