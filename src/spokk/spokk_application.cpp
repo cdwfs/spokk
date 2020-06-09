@@ -54,6 +54,7 @@ static_assert(spokk::PFRAME_COUNT == IMGUI_VK_QUEUED_FRAMES, "spokk and imgui mu
 #pragma warning(disable : 4127)  // constant conditional expression
 #pragma warning(disable : 4100)  // unreferenced formal parameter
 #pragma warning(disable : 4189)  // initialized-but-unused local variable
+#pragma warning(disable : 4324)  // structure was padded due to alignment specifier
 #endif
 #define VMA_ASSERT(expr) ZOMBO_ASSERT(expr, "Assert failed: %s", #expr)
 #if defined(_DEBUG)  // enable extra corruption detection in debug builds
