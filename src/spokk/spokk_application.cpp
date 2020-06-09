@@ -155,8 +155,6 @@ static const char *ObjectTypeToString(VkObjectType obj_type) {
   case VK_OBJECT_TYPE_DISPLAY_KHR: return "VkDisplayKHR";
   case VK_OBJECT_TYPE_DISPLAY_MODE_KHR: return "VkDisplayModeKHR";
   case VK_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT: return "VkDebugReportCallbackEXT";
-  case VK_OBJECT_TYPE_OBJECT_TABLE_NVX: return "VkObjectTableNVX";
-  case VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NVX: return "VkIndirectCommandsLayoutNVX";
   case VK_OBJECT_TYPE_DEBUG_UTILS_MESSENGER_EXT: return "VkDebugUtilsMessengerEXT";
   case VK_OBJECT_TYPE_VALIDATION_CACHE_EXT: return "VkValidationCacheEXT";
   default: return "???";

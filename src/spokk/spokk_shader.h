@@ -122,7 +122,7 @@ struct DescriptorPool {
 
   VkDescriptorPool handle = VK_NULL_HANDLE;
   VkDescriptorPoolCreateInfo ci = {};
-  std::array<VkDescriptorPoolSize, VK_DESCRIPTOR_TYPE_RANGE_SIZE> pool_sizes = {};
+  std::vector<VkDescriptorPoolSize> pool_sizes = {};
 };
 
 struct DescriptorSetWriter {

@@ -92,6 +92,7 @@ extern "C"
 #   define ZOMBO_ASSERT(cond,msg,...) \
         __pragma(warning(push)) \
         __pragma(warning(disable:4127)) \
+        __pragma(warning(disable:6319)) \
         do { \
             if (!(cond)) { \
                 char *zombo_assert_msg_buffer = (char*)malloc(1024); \
@@ -108,6 +109,7 @@ extern "C"
 #   define ZOMBO_ASSERT_RETURN(cond,retval,msg,...) \
         __pragma(warning(push)) \
         __pragma(warning(disable:4127)) \
+        __pragma(warning(disable:6319)) \
         do { \
             if (!(cond)) { \
                 char *zombo_assert_msg_buffer = (char*)malloc(1024); \

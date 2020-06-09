@@ -481,12 +481,29 @@ int ShaderProgram::MergeLayouts(const std::vector<DescriptorSetLayoutInfo>& new_
 //
 // DescriptorPool
 //
+
+typedef enum SpokkVkDescriptorType {
+  SPOKK_VK_DESCRIPTOR_TYPE_SAMPLER = 0,
+  SPOKK_VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER = 1,
+  SPOKK_VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE = 2,
+  SPOKK_VK_DESCRIPTOR_TYPE_STORAGE_IMAGE = 3,
+  SPOKK_VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER = 4,
+  SPOKK_VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER = 5,
+  SPOKK_VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER = 6,
+  SPOKK_VK_DESCRIPTOR_TYPE_STORAGE_BUFFER = 7,
+  SPOKK_VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC = 8,
+  SPOKK_VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC = 9,
+  SPOKK_VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT = 10,
+  SPOKK_VK_DESCRIPTOR_TYPE_RANGE_SIZE
+} SpokkVkDescriptorType;
+
 DescriptorPool::DescriptorPool() {
+  pool_sizes.resize(SPOKK_VK_DESCRIPTOR_TYPE_RANGE_SIZE);
   ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
   ci.flags = 0;  // overriden in finalize()
   ci.poolSizeCount = (uint32_t)pool_sizes.size();
   ci.pPoolSizes = pool_sizes.data();
-  for (size_t i = 0; i < VK_DESCRIPTOR_TYPE_RANGE_SIZE; ++i) {
+  for (size_t i = 0; i < SPOKK_VK_DESCRIPTOR_TYPE_RANGE_SIZE; ++i) {
     pool_sizes[i].type = (VkDescriptorType)i;
     pool_sizes[i].descriptorCount = 0;
   }
@@ -502,6 +519,9 @@ void DescriptorPool::Add(
 void DescriptorPool::Add(const VkDescriptorSetLayoutCreateInfo& dset_layout, uint32_t dset_count) {
   for (uint32_t iBinding = 0; iBinding < dset_layout.bindingCount; ++iBinding) {
     const VkDescriptorSetLayoutBinding& binding = dset_layout.pBindings[iBinding];
+    ZOMBO_ASSERT(binding.descriptorType >= 0 && binding.descriptorType < SPOKK_VK_DESCRIPTOR_TYPE_RANGE_SIZE,
+        "binding descriptor type (%d) is out of range [0..%d]", binding.descriptorType,
+        SPOKK_VK_DESCRIPTOR_TYPE_RANGE_SIZE - 1);
     pool_sizes[binding.descriptorType].descriptorCount += binding.descriptorCount * dset_count;
   }
   ci.maxSets += dset_count;
