@@ -87,37 +87,6 @@ void MyGlfwErrorCallback(int error, const char *description) {
   fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkFlags msgFlags, VkDebugReportObjectTypeEXT /*objType*/,
-    uint64_t /*srcObject*/, size_t /*location*/, int32_t msgCode, const char *pLayerPrefix, const char *pMsg,
-    void * /*pUserData*/) {
-  const char *message_type = "????";
-  if (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT) {
-    message_type = "ERROR";
-  } else if (msgFlags & VK_DEBUG_REPORT_WARNING_BIT_EXT) {
-    message_type = "WARNING";
-  } else if (msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT) {
-    message_type = "INFO";
-  } else if (msgFlags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) {
-    message_type = "PERFORMANCE_WARNING";
-  } else if (msgFlags & VK_DEBUG_REPORT_DEBUG_BIT_EXT) {
-    message_type = "DEBUG";
-  } else {
-    ZOMBO_ERROR_RETURN(VK_FALSE, "Unrecognized msgFlags: %d", msgFlags);
-  }
-
-  int nchars = zomboSnprintf(nullptr, 0, "[%s %s 0x%08X]: %s", message_type, pLayerPrefix, msgCode, pMsg);
-  char *output = (char *)malloc(nchars + 1);
-  zomboSnprintf(output, nchars + 1, "[%s %s 0x%08X]: %s", message_type, pLayerPrefix, msgCode, pMsg);
-#if 0  //_WIN32
-  MessageBoxA(NULL, output, "Alert", MB_OK);
-#else
-  fprintf(stderr, "%s\n", output);
-  fflush(stdout);
-#endif
-  free(output);
-  return (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT) ? VK_TRUE : VK_FALSE;
-}
-
 static const char *StringMaybe(const char *str) { return str ? str : "???"; }
 static const char *ObjectTypeToString(VkObjectType obj_type) {
   // clang-format off
@@ -154,7 +123,6 @@ static const char *ObjectTypeToString(VkObjectType obj_type) {
   case VK_OBJECT_TYPE_SWAPCHAIN_KHR: return "VkSwapchainKHR";
   case VK_OBJECT_TYPE_DISPLAY_KHR: return "VkDisplayKHR";
   case VK_OBJECT_TYPE_DISPLAY_MODE_KHR: return "VkDisplayModeKHR";
-  case VK_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT: return "VkDebugReportCallbackEXT";
   case VK_OBJECT_TYPE_DEBUG_UTILS_MESSENGER_EXT: return "VkDebugUtilsMessengerEXT";
   case VK_OBJECT_TYPE_VALIDATION_CACHE_EXT: return "VkValidationCacheEXT";
   default: return "???";
@@ -442,10 +410,6 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
   validation_features.pNext = instance_ci.pNext;
   instance_ci.pNext = &validation_features;
 #endif
-  if (ci.debug_report_flags != 0) {
-    optional_instance_extension_names.push_back(
-        VK_EXT_DEBUG_REPORT_EXTENSION_NAME);  // deprecate this once debug_utils is core
-  }
 #if defined(VK_EXT_debug_utils)
   if (ci.debug_utils_severity_flags != 0 && ci.debug_utils_type_flags != 0) {
     optional_instance_extension_names.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -480,18 +444,14 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
   instance_ci.ppEnabledExtensionNames = enabled_instance_extension_names.data();
   SPOKK_VK_CHECK(vkCreateInstance(&instance_ci, host_allocator_, &instance_));
 
-  bool is_debug_report_ext_enabled = false;
   bool is_debug_utils_ext_enabled = false;
-  for (const char *ext_name : enabled_instance_extension_names) {
-    if (strcmp(ext_name, VK_EXT_DEBUG_REPORT_EXTENSION_NAME) == 0) {
-      is_debug_report_ext_enabled = true;
-    }
 #if defined(VK_EXT_debug_utils)
-    else if (strcmp(ext_name, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
+  for (const char *ext_name : enabled_instance_extension_names) {
+    if (strcmp(ext_name, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
       is_debug_utils_ext_enabled = true;
     }
-#endif  // defined(VK_EXT_debug_utils)
   }
+#endif  // defined(VK_EXT_debug_utils)
 
 #if defined(VK_EXT_debug_utils)
   if (is_debug_utils_ext_enabled && ci.debug_utils_severity_flags != 0 && ci.debug_utils_type_flags != 0) {
@@ -503,19 +463,8 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
     debug_utils_msgr_ci.pUserData = nullptr;
     auto create_debug_utils_msgr_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkCreateDebugUtilsMessengerEXT);
     SPOKK_VK_CHECK(create_debug_utils_msgr_func(instance_, &debug_utils_msgr_ci, host_allocator_, &debug_utils_msgr_));
-    is_debug_report_ext_enabled = false;
-  } else
-#endif  // defined(VK_EXT_debug_utils)
-      if (is_debug_report_ext_enabled && ci.debug_report_flags != 0) {
-    VkDebugReportCallbackCreateInfoEXT debug_report_callback_ci = {};
-    debug_report_callback_ci.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
-    debug_report_callback_ci.flags = ci.debug_report_flags;
-    debug_report_callback_ci.pfnCallback = MyDebugReportCallback;
-    debug_report_callback_ci.pUserData = nullptr;
-    auto create_debug_report_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkCreateDebugReportCallbackEXT);
-    SPOKK_VK_CHECK(
-        create_debug_report_func(instance_, &debug_report_callback_ci, host_allocator_, &debug_report_callback_));
   }
+#endif  // defined(VK_EXT_debug_utils)
 
   if (is_graphics_app_) {
     SPOKK_VK_CHECK(glfwCreateWindowSurface(instance_, window_.get(), host_allocator_, &surface_));
@@ -767,10 +716,6 @@ Application::~Application() {
     vma_allocator_ = VK_NULL_HANDLE;
   }
   device_.Destroy();
-  if (debug_report_callback_ != VK_NULL_HANDLE) {
-    auto destroy_debug_report_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkDestroyDebugReportCallbackEXT);
-    destroy_debug_report_func(instance_, debug_report_callback_, host_allocator_);
-  }
 #if defined(VK_EXT_debug_utils)
   if (debug_utils_msgr_ != VK_NULL_HANDLE) {
     auto destroy_debug_utils_msgr_func = SPOKK_VK_GET_INSTANCE_PROC_ADDR(instance_, vkDestroyDebugUtilsMessengerEXT);
