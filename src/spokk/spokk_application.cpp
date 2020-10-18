@@ -132,6 +132,29 @@ static const char *ObjectTypeToString(VkObjectType obj_type) {
 static VkBool32 MyDebugUtilsCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
     void * /*pUserData*/) {
+  // Suppress certain messages
+  int32_t messageId = pCallbackData->messageIdNumber;
+  if (0
+      // clang-format off
+    || messageId == 0x8728e724 // UNASSIGNED-BestPractices-vkCreateCommandPool-command-buffer-reset
+                               // TODO(https://github.com/cdwfs/spokk/issues/36): To avoid this warning,
+                               // there should be one command pool per pframe, and the current pframe's
+                               // pool should be reset en masse at the beginning of the frame.
+    || messageId == 0xdc18ad6b // UNASSIGNED-BestPractices-vkAllocateMemory-small-allocation
+                               // TODO(https://github.com/cdwfs/spokk/issues/35): To avoid this warning,
+                               // imgui needs to take DeviceAllocationCallbacks and use them instead
+                               // of direct vkAllocateMemory(), to service multiple VRAM allocations
+                               // from the same device allocation.
+    || messageId == 0xb3d4346b // UNASSIGNED-BestPractices-vkBindMemory-small-dedicated-allocation
+                               // TODO(https://github.com/cdwfs/spokk/issues/35): To avoid this warning,
+                               // imgui needs to take DeviceAllocationCallbacks and use them instead
+                               // of direct vkAllocateMemory(), to service multiple VRAM allocations
+                               // from the same device allocation.
+      // clang-format on
+  ) {
+    return VK_FALSE;
+  }
+
   const char *severity_str = "???";
   if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
     severity_str = "ERROR";
