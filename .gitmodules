@@ -24,7 +24,7 @@
 	url = https://github.com/chaoticbob/SPIRV-Reflect.git
 [submodule "third_party/simple_vulkan_synchronization"]
 	path = third_party/simple_vulkan_synchronization
-	url = https://github.com/cdwfs/simple_vulkan_synchronization.git
+	url = https://github.com/Tobski/simple_vulkan_synchronization.git
 [submodule "third_party/process.h"]
 	path = third_party/process.h
 	url = https://github.com/sheredom/process.h.git
