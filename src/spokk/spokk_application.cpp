@@ -387,7 +387,7 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
   application_info.applicationVersion = 0x1000;
   application_info.pEngineName = "Spokk";
   application_info.engineVersion = 0x1001;
-  application_info.apiVersion = VK_MAKE_VERSION(1, 0, 37); // Can't go to 1.1 yet; see https://github.com/chaoticbob/SPIRV-Reflect/issues/67
+  application_info.apiVersion = VK_API_VERSION_1_2;
   VkInstanceCreateInfo instance_ci = {};
   instance_ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   instance_ci.pApplicationInfo = &application_info;
@@ -517,7 +517,9 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
   if (is_graphics_app_) {
     required_device_extension_names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
   }
-  required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
+  if (application_info.apiVersion < VK_API_VERSION_1_1) {
+    required_device_extension_names.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
+  }
   std::vector<const char *> optional_device_extension_names = ci.optional_device_extension_names;
   std::vector<const char *> enabled_device_extension_names = {};
   std::vector<VkExtensionProperties> enabled_device_extension_properties = {};
