@@ -47,7 +47,6 @@ using namespace spokk;
 #include "spokk_imgui_impl_glfw.h"
 #include "spokk_imgui_impl_vulkan.h"
 // clang-format on
-static_assert(spokk::PFRAME_COUNT == IMGUI_VK_QUEUED_FRAMES, "spokk and imgui must agree on queued frame count");
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -1061,6 +1060,9 @@ bool Application::InitImgui(VkRenderPass ui_render_pass, uint32_t ui_subpass) {
   imgui_vk_init_info.QueueFamily = graphics_and_present_queue_->family;
   imgui_vk_init_info.Queue = (VkQueue)*graphics_and_present_queue_;
   imgui_vk_init_info.PipelineCache = device_.PipelineCache();
+  imgui_vk_init_info.MinImageCount = PFRAME_COUNT;
+  imgui_vk_init_info.ImageCount = imgui_vk_init_info.MinImageCount;
+  imgui_vk_init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
   imgui_vk_init_info.Allocator = const_cast<VkAllocationCallbacks *>(device_.HostAllocator());
   imgui_vk_init_info.CheckVkResultFn = [](VkResult result) { SPOKK_VK_CHECK(result); };
 
@@ -1109,7 +1111,7 @@ bool Application::InitImgui(VkRenderPass ui_render_pass, uint32_t ui_subpass) {
   SPOKK_VK_CHECK(vkEndCommandBuffer(cb));
   SPOKK_VK_CHECK(vkQueueSubmit(*(device_.FindQueue(VK_QUEUE_GRAPHICS_BIT)), 1, &end_info, VK_NULL_HANDLE));
   SPOKK_VK_CHECK(vkDeviceWaitIdle(device_));
-  ImGui_ImplVulkan_InvalidateFontUploadObjects();
+  ImGui_ImplVulkan_DestroyFontUploadObjects();
   vkDestroyCommandPool(device_, cpool, device_.HostAllocator());
 
   // hide by default (which means is_imgui_visible must be true first, so we transition to false)

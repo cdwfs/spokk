@@ -741,7 +741,7 @@ void CameraDrone::Update(const spokk::InputState &input_state, float dt) {
   new_eye = glm::max(new_eye, pos_min_);
   new_eye = glm::min(new_eye, pos_max_);
   if (ImGui::TreeNode("Camera")) {
-    ImGui::InputFloat3("Pos", &new_eye.x, 2);
+    ImGui::InputFloat3("Pos", &new_eye.x, "%.2f");
     ImGui::DragFloat("Yaw", &camera_eulers.y, 0.01f, (float)-M_PI, (float)+M_PI);
     ImGui::DragFloat("Pitch", &camera_eulers.x, 0.01f, (float)-M_PI_2, (float)+M_PI_2);
     ImGui::TreePop();

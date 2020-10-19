@@ -259,7 +259,8 @@ public:
       ImGui::Text("Specular:");
       ImGui::ColorEdit3("Color##Spec", &material_.spec_color.x, default_color_edit_flags);
       ImGui::SliderFloat("Intensity##Spec", &material_.spec_color.w, 0.0f, 1.0f);
-      ImGui::SliderFloat("Exponent##Spec", &material_.spec_exp.x, 1.0f, 100000.0f, "%.2f", 10.0f);
+      ImGui::SliderFloat("Exponent##Spec", &material_.spec_exp.x, 1.0f, 100000.0f, "%.2f",
+        ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
       ImGui::TreePop();
     }
     if (ImGui::TreeNode("Lights")) {
@@ -277,7 +278,8 @@ public:
       ImGui::Text("Point Light:");
       float point_range = 1.0f / lights_.point_pos_ws_inverse_range.w;
       ImGui::InputFloat3("Position##Point", &lights_.point_pos_ws_inverse_range.x);
-      ImGui::SliderFloat("Range##Point", &point_range, 0.001f, 1000000.0f, "%.3f", 10.0f);
+      ImGui::SliderFloat("Range##Point", &point_range, 0.001f, 1000000.0f, "%.3f",
+        ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
       ImGui::ColorEdit3("Color##Point", &lights_.point_color.x, default_color_edit_flags);
       ImGui::SliderFloat("Intensity##Point", &lights_.point_color.w, 0.0f, 1.0f);
       lights_.point_pos_ws_inverse_range.w = 1.0f / point_range;
@@ -292,10 +294,11 @@ public:
       float spot_falloff_degrees_inner_original = spot_falloff_degrees_inner;
       float spot_falloff_degrees_outer_original = spot_falloff_degrees_outer;
       ImGui::InputFloat3("Position##Spot", &lights_.spot_pos_ws_inverse_range.x);
-      ImGui::SliderFloat("Range##Spot", &spot_range, 0.001f, 1000000.0f, "%.3f", 10.0f);
+      ImGui::SliderFloat("Range##Spot", &spot_range, 0.001f, 1000000.0f, "%.3f",
+        ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
       ImGui::ColorEdit3("Color##Spot", &lights_.spot_color.x, default_color_edit_flags);
       ImGui::SliderFloat("Intensity##Spot", &lights_.spot_color.w, 0.0f, 1.0f);
-      ImGui::InputFloat3("Direction##Spot", &spot_dir_wsn.x, 3);
+      ImGui::InputFloat3("Direction##Spot", &spot_dir_wsn.x, "%.3f");
       ImGui::SliderFloat("Inner Angle##Spot", &spot_falloff_degrees_inner, 0.0f, 90.0f);
       ImGui::SliderFloat("Outer Angle##Spot", &spot_falloff_degrees_outer, 0.0f, 90.0f);
       lights_.spot_pos_ws_inverse_range.w = 1.0f / spot_range;

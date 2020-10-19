@@ -164,12 +164,14 @@ public:
         ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreview;
     ImGui::Text("Background Mesh");
     ImGui::ColorEdit4("Albedo##BG", &bg_mesh_albedo_.x, default_color_edit_flags);
-    ImGui::SliderFloat("Spec Exp##BG", &bg_mesh_spec_exponent_, 1.0f, 100000.0f, "%.2f", 10.0f);
+    ImGui::SliderFloat("Spec Exp##BG", &bg_mesh_spec_exponent_, 1.0f, 100000.0f, "%.2f",
+      ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
     ImGui::SliderFloat("Spec Intensity##BG", &bg_mesh_spec_intensity_, 0.0f, 1.0f);
     ImGui::Separator();
     ImGui::Text("Foreground Mesh");
     ImGui::ColorEdit4("Albedo##FG", &fg_mesh_albedo_.x, default_color_edit_flags);
-    ImGui::SliderFloat("Spec Exp##FG", &fg_mesh_spec_exponent_, 1.0f, 100000.0f, "%.2f", 10.0f);
+    ImGui::SliderFloat("Spec Exp##FG", &fg_mesh_spec_exponent_, 1.0f, 100000.0f, "%.2f",
+      ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
     ImGui::SliderFloat("Spec Intensity##FG", &fg_mesh_spec_intensity_, 0.0f, 1.0f);
   }
 
