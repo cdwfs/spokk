@@ -1157,6 +1157,7 @@ int AssetManifest::ProcessShader(const ShaderAsset& shader) {
 
     // TODO(cort): move to init, this lookup can happen once
     const char* vulkan_sdk_dir = zomboGetEnv("VULKAN_SDK");
+    ZOMBO_ASSERT_RETURN(vulkan_sdk_dir != nullptr, -1, "VULKAN_SDK environment variable not found?");
     std::string abs_glslc_path;
     int glslc_path_error = CombineAbsDirAndPath(vulkan_sdk_dir, "bin/glslc", &abs_glslc_path);
     ZOMBO_ASSERT(!glslc_path_error, "dir+path combine error");
