@@ -3,6 +3,8 @@
 #include "spokk_debug.h"
 #include "spokk_device.h"
 
+#include <string.h>
+
 namespace spokk {
 
 VkResult TimestampQueryPool::Create(const Device& device, const CreateInfo& ci) {
