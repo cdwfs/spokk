@@ -135,7 +135,7 @@ const DeviceQueue* Device::FindQueue(VkQueueFlags queue_flags, VkSurfaceKHR pres
   for (auto& queue : queues_) {
     if ((queue.flags & queue_flags) == queue_flags) {
       // Make sure presentation requirement is met, if necessary.
-      if ((queue_flags | VK_QUEUE_GRAPHICS_BIT) != 0 && present_surface != VK_NULL_HANDLE) {
+      if ((queue_flags & VK_QUEUE_GRAPHICS_BIT) != 0 && present_surface != VK_NULL_HANDLE) {
         if (queue.present_surface != present_surface) {
           continue;
         }
