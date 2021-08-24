@@ -1,13 +1,13 @@
 #include "spokk_platform.h"
 
 // Must happen before any vulkan.h include, in order to get the platform-specific extensions included.
-#if defined(ZOMBO_PLATFORM_WINDOWS)
+#if defined(ZOMBO_OS_WINDOWS)
 #define VK_USE_PLATFORM_WIN32_KHR 1
 #define SPOKK_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_WIN32_SURFACE_EXTENSION_NAME
-#elif defined(ZOMBO_PLATFORM_POSIX)
+#elif defined(ZOMBO_OS_POSIX)
 #define VK_USE_PLATFORM_XCB_KHR 1
 #define SPOKK_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_XCB_SURFACE_EXTENSION_NAME
-#elif defined(ZOMBO_PLATFORM_ANDROID)
+#elif defined(ZOMBO_OS_ANDROID)
 #define VK_USE_PLATFORM_ANDROID_KHR 1
 #define SPOKK_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
 #else

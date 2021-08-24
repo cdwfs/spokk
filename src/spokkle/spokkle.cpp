@@ -10,9 +10,9 @@
 #include <assimp/DefaultLogger.hpp>
 #include <assimp/Importer.hpp>
 
-#if defined(ZOMBO_PLATFORM_WINDOWS)
+#if defined(ZOMBO_OS_WINDOWS)
 #include <Shlwapi.h>  // for Path*() functions
-#elif defined(ZOMBO_PLATFORM_POSIX)
+#elif defined(ZOMBO_OS_POSIX)
 #include <unistd.h>
 #endif
 
@@ -46,9 +46,9 @@ int GetFileModificationTime(const char* path, time_t* out_mtime) {
 }
 
 bool IsPathDirectory(const char* path) {
-#if defined(ZOMBO_PLATFORM_WINDOWS)
+#if defined(ZOMBO_OS_WINDOWS)
   return PathIsDirectoryA(path) ? true : false;
-#elif defined(ZOMBO_PLATFORM_POSIX)
+#elif defined(ZOMBO_OS_POSIX)
   // This should work on Windows as well, but S_ISDIR would be _S_ISDIR
   ZomboStatStruct out_stats = {};
   int stat_error = zomboStat(path, &out_stats);
@@ -59,9 +59,9 @@ bool IsPathDirectory(const char* path) {
 }
 
 bool IsRelativePath(const char* path) {
-#if defined(ZOMBO_PLATFORM_WINDOWS)
+#if defined(ZOMBO_OS_WINDOWS)
   return PathIsRelativeA(path) ? true : false;
-#elif defined(ZOMBO_PLATFORM_POSIX)
+#elif defined(ZOMBO_OS_POSIX)
   return (path != nullptr) && path[0] != '/';
 #else
 #error unsupported platform
@@ -69,7 +69,7 @@ bool IsRelativePath(const char* path) {
 }
 
 bool FileExists(const char* path) {
-#if defined(ZOMBO_PLATFORM_WINDOWS) || defined(ZOMBO_PLATFORM_POSIX)
+#if defined(ZOMBO_OS_WINDOWS) || defined(ZOMBO_OS_POSIX)
   ZomboStatStruct out_stats = {};
   return (zomboStat(path, &out_stats) == 0);
 #else
@@ -77,7 +77,7 @@ bool FileExists(const char* path) {
 #endif
 }
 
-#if defined(ZOMBO_PLATFORM_WINDOWS)
+#if defined(ZOMBO_OS_WINDOWS)
 // Modifies str in-place to replace all instances of ca with cb.
 void CharFromAToB(char* str, char ca, char cb) {
   char* c = str;
@@ -96,7 +96,7 @@ void CharFromAToB(char* str, char ca, char cb) {
 // Not safe in multithreaded programs (cwd is shared process-level state)
 int CombineAbsDirAndPath(const char* abs_dir, const char* path, int* buffer_nchars, char* out_buffer) {
   ZOMBO_ASSERT_RETURN(!IsRelativePath(abs_dir), -1, "abs_dir (%s) must be an absolute path", abs_dir);
-#if defined(ZOMBO_PLATFORM_WINDOWS)
+#if defined(ZOMBO_OS_WINDOWS)
   if (out_buffer == NULL) {
     *buffer_nchars = MAX_PATH + 1;  // PathCanonicalize always requires MAX_PATH + 1 chars
     return 0;
@@ -115,7 +115,7 @@ int CombineAbsDirAndPath(const char* abs_dir, const char* path, int* buffer_ncha
     }
     return err;
   }
-#elif defined(ZOMBO_PLATFORM_POSIX)
+#elif defined(ZOMBO_OS_POSIX)
   if (out_buffer == NULL) {
     *buffer_nchars = PATH_MAX;
     return 0;
@@ -188,7 +188,7 @@ int CombineAbsDirAndPath(const char* abs_dir, const char* path, std::string* out
 // eliminating ./.., etc.
 // Not safe in multithreaded programs (cwd is shared process-level state)
 int MakeAbsolutePath(const char* path, int* buffer_nchars, char* out_buffer) {
-#if defined(ZOMBO_PLATFORM_WINDOWS)
+#if defined(ZOMBO_OS_WINDOWS)
   if (out_buffer == NULL) {
     *buffer_nchars = MAX_PATH + 1;  // PathCanonicalize always requires MAX_PATH + 1 chars
     return 0;
@@ -201,7 +201,7 @@ int MakeAbsolutePath(const char* path, int* buffer_nchars, char* out_buffer) {
     }
     return ret;
   }
-#elif defined(ZOMBO_PLATFORM_POSIX)
+#elif defined(ZOMBO_OS_POSIX)
   if (out_buffer == NULL) {
     *buffer_nchars = PATH_MAX;
     return 0;
@@ -232,9 +232,9 @@ int MakeAbsolutePath(const char* path, std::string* out_path) {
 }
 
 int TruncatePathToDir(char* path) {
-#if defined(ZOMBO_PLATFORM_WINDOWS)
+#if defined(ZOMBO_OS_WINDOWS)
   return PathRemoveFileSpecA(path) ? 0 : -1;
-#elif defined(ZOMBO_PLATFORM_POSIX)
+#elif defined(ZOMBO_OS_POSIX)
   int len = strlen(path);
   // remove trailing slashes
   while (len > 1 && path[len - 1] == '/') {
