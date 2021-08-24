@@ -41,7 +41,6 @@ SOURCE_GROUP("process.h" REGULAR_EXPRESSION "subprocess.[ch]$")
 ADD_EXECUTABLE(spokkle
     ${SPOKKLE_SOURCES}
     ${SPOKKLE_HEADERS}
-    ${JSON_H_DIR}/json.c
     ${JSON_H_DIR}/json.h
     ${PROCESS_H_DIR}/subprocess.h
 )
