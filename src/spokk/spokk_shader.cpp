@@ -29,7 +29,7 @@ void Shader::AddShaderResourceToDescriptorSetLayout(const SpvReflectDescriptorBi
       // I'm not sure this should ever actually happen...but if it does, let's at least avoid
       // adding a redundant binding entry.
       ZOMBO_ERROR("set=%u binding=%u appears twice in a Shader? WTF?", new_binding.set, new_binding.binding);
-      ZOMBO_ASSERT(new_binding.descriptor_type == existing_binding.descriptorType,
+      ZOMBO_ASSERT(new_binding.descriptor_type == (SpvReflectDescriptorType)existing_binding.descriptorType,
           "set=%u binding=%u appears twice with different types in shader", new_binding.set, new_binding.binding);
       ZOMBO_ASSERT(existing_binding.descriptorCount == total_desc_count,
           "set=%u binding=%u appears twice with different array sizes in shader", new_binding.set, new_binding.binding);
@@ -519,7 +519,7 @@ void DescriptorPool::Add(
 void DescriptorPool::Add(const VkDescriptorSetLayoutCreateInfo& dset_layout, uint32_t dset_count) {
   for (uint32_t iBinding = 0; iBinding < dset_layout.bindingCount; ++iBinding) {
     const VkDescriptorSetLayoutBinding& binding = dset_layout.pBindings[iBinding];
-    ZOMBO_ASSERT(binding.descriptorType >= 0 && binding.descriptorType < SPOKK_VK_DESCRIPTOR_TYPE_RANGE_SIZE,
+    ZOMBO_ASSERT(binding.descriptorType >= 0 && (SpokkVkDescriptorType)binding.descriptorType < SPOKK_VK_DESCRIPTOR_TYPE_RANGE_SIZE,
         "binding descriptor type (%d) is out of range [0..%d]", binding.descriptorType,
         SPOKK_VK_DESCRIPTOR_TYPE_RANGE_SIZE - 1);
     pool_sizes[binding.descriptorType].descriptorCount += binding.descriptorCount * dset_count;
