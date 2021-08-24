@@ -55,10 +55,10 @@ GraphicsPipeline::GraphicsPipeline()
     color_blend_state_ci{},
     color_blend_attachment_states{},
     dynamic_state_ci{},
+    input_assembly_state_ci{},
     vertex_buffer_bindings{},
     vertex_attributes{},
-    vertex_input_state_ci{},
-    input_assembly_state_ci{} {}
+    vertex_input_state_ci{} {}
 void GraphicsPipeline::Init(const MeshFormat* mesh_format_in, const ShaderProgram* shader_program_in,
     const RenderPass* render_pass_in, uint32_t subpass_in, const std::vector<VkDynamicState> dynamic_states_in,
     const VkViewport viewport, const VkRect2D scissor_rect) {
