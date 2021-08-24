@@ -58,6 +58,7 @@ SET(IMGUI_SOURCE_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_demo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_draw.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_internal.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_tables.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_widgets.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imconfig.h
     PARENT_SCOPE

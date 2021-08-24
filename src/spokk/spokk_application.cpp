@@ -1071,13 +1071,14 @@ bool Application::InitImgui(VkRenderPass ui_render_pass, uint32_t ui_subpass) {
   imgui_vk_init_info.QueueFamily = graphics_and_present_queue_->family;
   imgui_vk_init_info.Queue = (VkQueue)*graphics_and_present_queue_;
   imgui_vk_init_info.PipelineCache = device_.PipelineCache();
+  imgui_vk_init_info.Subpass = ui_subpass;
   imgui_vk_init_info.MinImageCount = PFRAME_COUNT;
   imgui_vk_init_info.ImageCount = imgui_vk_init_info.MinImageCount;
   imgui_vk_init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
   imgui_vk_init_info.Allocator = const_cast<VkAllocationCallbacks *>(device_.HostAllocator());
   imgui_vk_init_info.CheckVkResultFn = [](VkResult result) { SPOKK_VK_CHECK(result); };
 
-  bool imgui_vk_init_success = ImGui_ImplVulkan_Init(&imgui_vk_init_info, ui_render_pass, ui_subpass);
+  bool imgui_vk_init_success = ImGui_ImplVulkan_Init(&imgui_vk_init_info, ui_render_pass);
   ZOMBO_ASSERT_RETURN(imgui_vk_init_success, false, "ImGui VK init failed");
 
   float content_scale_x = 1.0f, content_scale_y = 1.0f;
