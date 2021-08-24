@@ -48,7 +48,7 @@ extern "C"
 #   error Unsupported OS
 #endif
 
-#if   defined(__amd64__)
+#if   defined(__amd64__) || defined(_AMD64_)
 #   define ZOMBO_ARCH_X64
 #elif defined(__aarch64__)
 #   define ZOMBO_ARCH_ARM64
