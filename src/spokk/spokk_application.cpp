@@ -477,6 +477,7 @@ Application::Application(const CreateInfo &ci) : is_graphics_app_(ci.enable_grap
   for (const char *ext_name : enabled_instance_extension_names) {
     if (strcmp(ext_name, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
       is_debug_utils_ext_enabled = true;
+      break;
     }
   }
 #endif  // defined(VK_EXT_debug_utils)
